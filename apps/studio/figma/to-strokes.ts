@@ -41,6 +41,7 @@ import {
   type TextStroke,
 } from '../annotations-model.ts';
 import {
+  attrValue,
   type Bounds,
   clampIntoBounds,
   cleanText,
@@ -119,8 +120,19 @@ export interface PendingImage {
   /** The stroke whose `href` must be rewritten once the asset lands. */
   strokeId: string;
   nodeId: string;
-  /** Figma's image handle — resolved via `/v1/images`, downloaded by T8. */
-  imageRef: string;
+  /**
+   * Figma's image handle for a raster fill — resolved via `/v1/images`,
+   * downloaded by T8. `null` for loose vector artwork, which has no handle:
+   * there the NODE itself is what gets rendered.
+   */
+  imageRef: string | null;
+  /**
+   * What to ask Figma for. Absent ⇒ `png` (the raster-fill case, unchanged).
+   * Vector artwork ALSO asks for png — `ASSET_IMAGE_HREF_RE` admits only raster
+   * on an `<image>`, and an svg href is silently stripped by the sanitizer
+   * rather than rejected loudly.
+   */
+  format?: 'png' | 'svg';
 }
 
 export interface ToStrokesResult {
@@ -217,6 +229,16 @@ function strokeId(nodeId: string, suffix = ''): string {
 export interface ToStrokesOptions {
   /** Reset the id counter — tests want deterministic ids. */
   resetIds?: boolean;
+  /**
+   * Shift by THIS origin instead of the document's own bounding box.
+   *
+   * A design page's annotation layer has to line up with the artboards the
+   * canvas already positioned, and those were placed against the PAGE origin —
+   * which includes the frames this call does not see. Without the override the
+   * strokes get their own origin and every note lands offset by the distance
+   * between the two.
+   */
+  originOverride?: { x: number; y: number };
   /** Caller confirmed a board above `BOARD_STROKE_CEILING`. */
   confirmLarge?: boolean;
 }
@@ -249,7 +271,7 @@ export function toStrokes(doc: NormalizedDocument, opts: ToStrokesOptions = {}):
   const report = new ImportReport();
   const pendingImages: PendingImage[] = [];
   const bounds = documentBounds(doc.root);
-  const origin = { x: bounds.minX, y: bounds.minY };
+  const origin = opts.originOverride ?? { x: bounds.minX, y: bounds.minY };
   // Post-shift bounds, for D6b's geometry clamp.
   const shifted: Bounds = {
     minX: 0,
@@ -474,6 +496,65 @@ export function toStrokes(doc: NormalizedDocument, opts: ToStrokesOptions = {}):
         // Deferred — hosts must exist before endpoints can bind.
         connectors.push({ node, groupIds });
         return;
+
+      case 'VECTOR':
+      case 'LINE':
+      case 'STAR':
+      case 'REGULAR_POLYGON':
+      case 'BOOLEAN_OPERATION': {
+        // LOOSE VECTOR ARTWORK IS CONTENT, NOT NOISE.
+        //
+        // These used to fall through to `unmappable-type` and vanish. On the
+        // live StudyFi file that dropped the NINE red flow arrows drawn between
+        // the onboarding screens on Phase 0 — hand-drawn `VECTOR` nodes named
+        // "Arrow 35/37/38/…", not CONNECTORs, so the connector path never saw
+        // them. Side by side against Figma, the screens were right and the flow
+        // between them was simply gone.
+        //
+        // There is no stroke tool that reproduces an arbitrary path, and there
+        // does not need to be: the same renderer that draws the artboards draws
+        // these. Ask Figma for the node and place it as an image.
+        //
+        // RASTER, NOT VECTOR — and that is a security boundary, not a taste
+        // call. `ASSET_IMAGE_HREF_RE` admits only png/jpeg/webp/gif on an
+        // `<image>`, because an annotation SVG is PERSISTED AND SYNCED TO PEERS
+        // (DDR-054/060) and an `<image href="…svg">` pulls in a nested SVG
+        // document — a script-execution vector. Asking for svg here does not
+        // fail loudly: the sanitizer keeps the element and strips the href, so
+        // the arrow renders as nothing at all. Widening that allowlist to suit
+        // an importer would weaken every peer-synced board, so the import bends
+        // instead. The artboard renders stay svg — those are `<img src>` in a
+        // TSX canvas, a different surface with its own containment (D12).
+        // GEOMETRY COMES FROM THE RENDER BOUNDS, NOT THE GEOMETRIC BOX.
+        //
+        // A stroked path is drawn wider than its geometry. The nine Phase-0
+        // arrows are horizontal, so `absoluteBoundingBox.height` is 0.0001
+        // while `absoluteRenderBounds.height` is 22.09 (3px stroke plus the
+        // arrowhead). Placed at the geometric box the image is 121 × 0.00005
+        // px — present in the file, referenced correctly, and invisible.
+        const rb = node.absoluteRenderBounds;
+        const geo = rb
+          ? { ...shift(rb.x, rb.y), w: rb.width, h: rb.height }
+          : box;
+        const id = strokeId(node.id);
+        const stroke: ImageStroke = {
+          id,
+          tool: 'image',
+          x: geo.x,
+          y: geo.y,
+          w: Math.max(1, geo.w),
+          h: Math.max(1, geo.h),
+          href: '',
+          alt: attrValue(node.name) || 'vector',
+          ...(groupIds.length ? { groupIds } : {}),
+          ...(node.rotation ? { rotation: -node.rotation } : {}),
+        };
+        strokes.push(stroke);
+        nodeToStroke.set(node.id, id);
+        pendingImages.push({ strokeId: id, nodeId: node.id, imageRef: null, format: 'png' });
+        report.add(node.id, node.type, 'asset-pending');
+        return;
+      }
 
       case 'RECTANGLE':
       case 'ROUNDED_RECTANGLE':

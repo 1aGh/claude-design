@@ -277,7 +277,8 @@ export async function fetchImageUrls(
   fileKey: string,
   nodeIds: readonly string[],
   format: 'png' | 'svg' | 'jpg' = 'png',
-  scale = 2
+  scale = 2,
+  opts: { outlineText?: boolean } = {}
 ): Promise<FigmaImageResult> {
   if (nodeIds.length === 0) return { images: {} };
   if (nodeIds.length > MAX_IMAGE_BATCH) {
@@ -292,8 +293,74 @@ export async function fetchImageUrls(
     format,
     // Scale is meaningless for svg and Figma rejects it there.
     scale: format === 'svg' ? undefined : String(scale),
+    // Only meaningful for svg. `false` keeps real `<text>` runs in the output,
+    // which is what makes a rendered frame searchable instead of a picture of
+    // words. Omitted entirely for raster so the query stays byte-identical to
+    // what the asset lane has always sent.
+    svg_outline_text:
+      format === 'svg' && opts.outlineText !== undefined ? String(opts.outlineText) : undefined,
   });
   return { images: body?.images ?? {} };
+}
+
+/** One Figma comment, charset-bounded at the edge like every other name. */
+export interface FigmaComment {
+  id: string;
+  /** UNTRUSTED free text. Never interpreted, only ever rendered as data. */
+  message: string;
+  /** The node the pin hangs off, when it is pinned to one. */
+  nodeId?: string;
+  /** Offset within that node, or absolute page coords for a canvas-level pin. */
+  x?: number;
+  y?: number;
+  /** Thread parent. Replies group under their root pin. */
+  parentId?: string;
+  resolved: boolean;
+  /** Display handle only — provenance, never an identifier we act on (D7). */
+  author?: string;
+  createdAt?: string;
+}
+
+/**
+ * A file's review comments — the annotations a designer actually left.
+ *
+ * These live nowhere in the document tree, which is why a tree-walking import
+ * misses every one of them (the live StudyFi file carries 133). Unresolved and
+ * resolved both come back; dropping resolved threads throws away the record of
+ * what was already decided, so that call belongs to the caller.
+ */
+export async function fetchComments(fileKey: string): Promise<FigmaComment[]> {
+  const path = `/files/${encodeURIComponent(fileKey)}/comments`;
+  const body = await getJson<{ comments?: unknown[] }>(path);
+  const raw = body?.comments;
+  if (!Array.isArray(raw)) return [];
+
+  const out: FigmaComment[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const c = item as Record<string, unknown>;
+    const id = typeof c.id === 'string' ? c.id : undefined;
+    if (!id) continue;
+    const meta = (c.client_meta ?? {}) as Record<string, unknown>;
+    const offset = (meta.node_offset ?? {}) as Record<string, unknown>;
+    const user = (c.user ?? {}) as Record<string, unknown>;
+
+    const num = (v: unknown): number | undefined =>
+      typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+
+    out.push({
+      id,
+      message: typeof c.message === 'string' ? c.message : '',
+      nodeId: typeof meta.node_id === 'string' ? meta.node_id : undefined,
+      x: num(offset.x) ?? num(meta.x),
+      y: num(offset.y) ?? num(meta.y),
+      parentId: typeof c.parent_id === 'string' && c.parent_id ? c.parent_id : undefined,
+      resolved: Boolean(c.resolved_at),
+      author: typeof user.handle === 'string' ? user.handle : undefined,
+      createdAt: typeof c.created_at === 'string' ? c.created_at : undefined,
+    });
+  }
+  return out;
 }
 
 export interface FigmaStyleMeta {

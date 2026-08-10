@@ -44,6 +44,7 @@ import { sanitizeAnnotationSvg, strokesToSvg } from '../annotations-model.ts';
 import {
   applyRewrites,
   FIGMA_ASSET_HOSTS,
+  FIGMA_RENDER_MAX_BYTES,
   makeAssetBudget,
   resolveAssets,
 } from '../figma/assets.ts';
@@ -55,6 +56,7 @@ import {
 } from './_import-asset.mjs';
 import { fetchAsset } from './_fetch-asset.mjs';
 import {
+  fetchComments,
   fetchDocument,
   fetchLocalVariables,
   fetchNodes,
@@ -62,7 +64,9 @@ import {
   fetchStyles,
   FigmaApiError,
 } from '../figma/client.ts';
+import { commentsToStrokes, indexNodes } from '../figma/comments-to-strokes.ts';
 import { JsxTooLargeError, toArtboard, toCanvas } from '../figma/to-artboard.ts';
+import { toRenderCanvas } from '../figma/to-render.ts';
 import { BoardTooLargeError, toStrokes } from '../figma/to-strokes.ts';
 import { stylesToTokens, variablesToTokens } from '../figma/to-tokens.ts';
 import { attrValue, ImportReport } from '../figma/sanitize.ts';
@@ -440,10 +444,22 @@ export async function importPages({
   folder,
   dryRun = false,
   kind = 'digital',
+  mode = 'render',
 }) {
   const target = parseFigmaTarget(url, 'design');
   const pages = await fetchPages(target.fileKey);
   if (pages.length === 0) throw new ImportFigmaError(3, 'file has no pages');
+
+  // The review record lives outside the document tree, so it is fetched once
+  // for the file and matched to pages by the node each pin hangs off.
+  let comments = [];
+  try {
+    comments = await fetchComments(target.fileKey);
+  } catch {
+    // A file whose comments we cannot read still imports — the design is the
+    // point. Reported, never fatal.
+    comments = [];
+  }
 
   const folderSlug = folder ?? `figma-${target.fileKey.slice(0, 8).toLowerCase()}`;
   if (!SLUG_RE.test(folderSlug)) throw new ImportFigmaError(2, 'invalid --folder');
@@ -455,6 +471,10 @@ export async function importPages({
   const skipped = [];
   let resolvedAssets = 0;
   let pendingExports = 0;
+
+  /** Comment threads that found a home, and ones no page could place. */
+  const placedComments = new Set();
+  const everUnplaced = new Set();
 
   const staging = dryRun ? null : makeStagingDir();
   try {
@@ -508,16 +528,23 @@ export async function importPages({
         nodeCount: 0,
         maxDepth: 0,
       };
+      // RENDER-FIRST (default): each frame is Figma's own render, referenced
+      // from <img>. The JSX path stays reachable behind `--mode jsx` for the
+      // case where an editable artboard matters more than a faithful one.
       let result;
       try {
-        result = toCanvas(doc, pageNode, { kind, tokens });
+        result =
+          mode === 'jsx'
+            ? toCanvas(doc, pageNode, { kind, tokens })
+            : toRenderCanvas(doc, pageNode, { kind });
       } catch (err) {
         if (!(err instanceof JsxTooLargeError)) throw err;
         skipped.push({ page: page.id, why: 'page too large to translate' });
         continue;
       }
       reports.push(result.report);
-      pendingExports += result.pendingExports.length;
+      const pending = mode === 'jsx' ? result.pendingExports : result.pendingRenders;
+      pendingExports += pending.length;
 
       if (dryRun) {
         written.push({ title, artboards: result.artboardCount, bytes: result.metrics.bytes });
@@ -526,14 +553,25 @@ export async function importPages({
 
       const assets = await resolveAssets(
         target.fileKey,
-        result.pendingExports.map((x) => ({
-          nodeId: x.nodeId,
-          format: x.format,
-          placeholder: x.placeholder,
-        })),
+        mode === 'jsx'
+          ? result.pendingExports.map((x) => ({
+              nodeId: x.nodeId,
+              format: x.format,
+              placeholder: x.placeholder,
+            }))
+          : result.pendingRenders.map((x) => ({
+              nodeId: x.node.id,
+              format: 'svg',
+              placeholder: x.placeholder,
+            })),
         makeAssetDeps({ root, designRootRel, stagingDir: staging }),
         result.report,
-        budget
+        budget,
+        // A whole frame keeps its text as <text> and carries its raster fills
+        // inline, so it needs both knobs the icon lane does not.
+        mode === 'jsx'
+          ? {}
+          : { outlineText: false, svgMaxBytes: FIGMA_RENDER_MAX_BYTES }
       );
       resolvedAssets += assets.resolved.length;
       const tsx = applyRewrites(result.tsx, assets.rewrites);
@@ -553,6 +591,79 @@ export async function importPages({
       const finalMeta = assertContained(root, designRootRel, join(outDir, `${title}.meta.json`));
       renameSync(stagedTsx, finalTsx);
       renameSync(stagedMeta, finalMeta);
+
+      // The page's annotation layer has TWO sources, and the second one is the
+      // reason a tree-walking import felt half-migrated:
+      //
+      //   1. Loose page content — sticky notes, connectors, section labels,
+      //      stray screenshots — through the same whiteboard translator the
+      //      FigJam door uses. This is what rescues a flow diagram drawn in
+      //      CONNECTORs inside a design file.
+      //   2. The file's REVIEW COMMENTS, which live on a separate endpoint and
+      //      appear nowhere in the tree. Every previous import brought across
+      //      exactly zero of them.
+      const annStrokes = [];
+
+      if (result.annotations.length > 0) {
+        const annDoc = {
+          fileKey: target.fileKey,
+          surface: 'board',
+          origin: 'rest',
+          root: { id: page.id, type: 'CANVAS', name: '', visible: true, children: result.annotations },
+          nodeCount: result.annotations.length,
+          maxDepth: 1,
+        };
+        const ann = toStrokes(annDoc, { confirmLarge: true, originOverride: result.origin });
+        reports.push(ann.report);
+        if (ann.strokes.length > 0) {
+          const annAssets = await resolveAssets(
+            target.fileKey,
+            ann.pendingImages.map((x) => ({
+              nodeId: x.nodeId,
+              format: x.format ?? 'png',
+              placeholder: x.strokeId,
+            })),
+            makeAssetDeps({ root, designRootRel, stagingDir: staging }),
+            ann.report,
+            budget
+          );
+          for (const st of ann.strokes) {
+            const ref = annAssets.rewrites.get(st.id);
+            if (ref) st.href = ref.replace(/^\//, '');
+          }
+          annStrokes.push(...ann.strokes.filter((st) => st.tool !== 'image' || Boolean(st.href)));
+        }
+      }
+
+      if (comments.length > 0) {
+        const commentReport = new ImportReport();
+        const { strokes: pins, placedIds, unplacedIds } = commentsToStrokes(
+          comments,
+          indexNodes(pageNode),
+          result.origin,
+          commentReport,
+          page.id
+        );
+        reports.push(commentReport);
+        annStrokes.push(...pins);
+        // A thread not placed HERE usually just lives on another page. Only a
+        // thread unplaced on EVERY page is genuinely homeless, so the verdict
+        // waits until all pages have had their turn.
+        for (const id of placedIds) placedComments.add(id);
+        for (const id of unplacedIds) everUnplaced.add(id);
+      }
+
+      if (annStrokes.length > 0) {
+        const annSlug = canvasSlug(`${relDir}/${title}.tsx`);
+        const stagedAnn = join(staging, 'page.annotations.svg');
+        writeFileSync(stagedAnn, sanitizeAnnotationSvg(strokesToSvg(annStrokes)), 'utf8');
+        const finalAnn = assertContained(
+          root,
+          designRootRel,
+          join(root, designRootRel, `${annSlug}.annotations.svg`)
+        );
+        renameSync(stagedAnn, finalAnn);
+      }
       written.push({
         title,
         path: finalTsx,
@@ -564,7 +675,31 @@ export async function importPages({
     if (staging) rmSync(staging, { recursive: true, force: true });
   }
 
-  return { written, reports, skipped, resolvedAssets, pendingExports, folder: folderSlug };
+  // ORPHANED COMMENT THREADS. A thread no page could place is one whose pinned
+  // node has been DELETED from the file — Figma keeps the comment, the frame it
+  // annotated is gone, so there is no coordinate to put it at. Measured on the
+  // live StudyFi file: 34 of 115 threads. That is a property of the source
+  // document, not a translation failure, but it MUST be reported as its own
+  // disposition: "imported" would be a lie, and a silent drop is how this
+  // importer has lost content three times already.
+  const orphaned = [...everUnplaced].filter((id) => !placedComments.has(id));
+  if (orphaned.length > 0) {
+    const orphanReport = new ImportReport();
+    for (const id of orphaned) {
+      orphanReport.add(id, 'COMMENT', 'comment-target-deleted', 'pinned node no longer in file');
+    }
+    reports.push(orphanReport);
+  }
+
+  return {
+    written,
+    reports,
+    skipped,
+    resolvedAssets,
+    pendingExports,
+    folder: folderSlug,
+    comments: { placed: placedComments.size, orphaned: orphaned.length },
+  };
 }
 
 /** Pick the frames a `--frames` run should translate. */
@@ -747,6 +882,7 @@ function parseArgv(argv) {
     folder: null,
     dryRun: false,
     confirmLarge: false,
+    editable: false,
     json: false,
     help: false,
   };
@@ -780,6 +916,9 @@ function parseArgv(argv) {
       case '--confirm-large':
         out.confirmLarge = true;
         break;
+      case '--editable':
+        out.editable = true;
+        break;
       case '--json':
         out.json = true;
         break;
@@ -800,7 +939,7 @@ const HELP = `import-figma — Figma / FigJam import (reached via \`maude design
 Usage:
   maude design import-figma --board  <figjam-url> --root <repo> [--design-root .design]
                             [--slug <name>] [--dry-run] [--confirm-large] [--json]
-  maude design import-figma --pages  <figma-url>  --root <repo> [--folder <name>]
+  maude design import-figma --pages  <figma-url>  --root <repo> [--folder <name>] [--editable]
   maude design import-figma --frames <figma-url>  --root <repo> [--slug <name>]
   maude design import-figma --tokens <figma-url>  --root <repo>   (Phase 4 — not yet)
 
@@ -810,6 +949,16 @@ deterministic code — no vision model, no agent anywhere in the ingestion path
 
 Needs a Figma personal access token with the \`file_content:read\` scope, added
 once in Settings (Maude never asks for the blanket \`files:read\` scope).
+
+\`--pages\` imports RENDER-FIRST: every artboard is Figma's own render of that
+frame, so it is faithful by construction rather than a CSS reconstruction that
+has to reimplement auto-layout, constraints and clipping. Text stays real text
+inside the SVG. The trade is that a rendered artboard is not directly editable;
+\`--editable\` opts back into the JSX translation when an editable artboard
+matters more than an accurate one.
+
+The file's REVIEW COMMENTS come across as sticky annotations pinned where they
+sit — open threads on yellow paper, resolved ones on grey.
 
 Every node that is skipped, degraded or normalized is listed in the summary by
 NODE ID and a fixed reason code — never silently dropped.
@@ -847,6 +996,7 @@ async function main() {
         designRootRel: opts.designRoot,
         folder: opts.folder,
         dryRun: opts.dryRun,
+        mode: opts.editable ? 'jsx' : 'render',
       });
       const merged = new ImportReport();
       for (const rep of r.reports) merged.entries.push(...rep.entries);

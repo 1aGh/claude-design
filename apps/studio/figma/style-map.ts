@@ -224,7 +224,11 @@ export function mapNodeStyle(node: FigmaNode, opts: StyleMapOptions): MappedStyl
       const css = gradientCss(fill, opts, out);
       // A gradient is not a colour value — it has its own (bounded) shape,
       // built entirely from already-validated colour values plus integers.
-      if (css) out.declarations['background-image'] = css;
+      // camelCase, NOT `background-image`: these declarations are emitted into
+      // a JSX style OBJECT, where a hyphenated key is a syntax error that takes
+      // the whole canvas down. One gradient anywhere on a page was enough to
+      // make the file unparseable.
+      if (css) out.declarations.backgroundImage = css;
       else out.rejected.push('background-image');
     }
   }

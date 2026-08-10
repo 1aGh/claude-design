@@ -1312,3 +1312,70 @@ Fixed:
 
 **Status stays Accepted**, on the basis of three review rounds (two design, one
 post-code) with every blocker either closed or explicitly named above.
+
+---
+
+## D12 — Render-first is the default for design pages (2026-08-10, amendment)
+
+**Superseded:** D1's premise that a design page's value is its *translated JSX*.
+The trust boundary, the SSRF chokepoints, the character grammars and the caps
+are unchanged — this amends WHAT is emitted, not what is trusted.
+
+### What the first real file showed
+
+The JSX path was exercised against a live 6-page product file
+(`2H6a9YUgPAu0AGdEiwP895`, 115 frames). It produced five independent classes of
+visible defect:
+
+| Symptom | Cause |
+| --- | --- |
+| A whole canvas failed to parse | `background-image` — a kebab-case key emitted into a JSX style **object** |
+| Frames stacked in DOM order | Figma frames are absolutely positioned; the emitter mapped them to `flex-col` |
+| Sections split from their contents | anything not a top-level frame went to annotations, so a SECTION became an annotation while its child frames became artboards |
+| Missing images and fonts | a bespoke asset pipeline with its own caps and its own failure modes |
+| White screens rendered black | the frame's own fill was computed for contrast and then discarded |
+
+These are not five bugs. They are one: **translating a Figma frame into CSS
+means reimplementing Figma's layout engine** — auto-layout, constraints,
+clipping, blend modes, vector networks, text auto-resize — and every gap in that
+mapping is a defect on someone's real work. The bug surface is unbounded and
+grows with the fidelity of the source document.
+
+### Decision
+
+`--pages` renders **frame-first** by default: each frame is fetched from
+`/v1/images` as SVG with `svg_outline_text=false` and referenced from
+`<img src>`. `--editable` opts back into the JSX translation.
+
+Measured on the same file: `Phase 1` 283 KB → 47 KB, `User Flow Wireframe Kit`
+489 KB → 17 KB, and every canvas parses.
+
+**Why this is not a downgrade in containment — it is an upgrade.** An SVG inside
+an `<img>` cannot execute script and cannot fetch a subresource. The previous
+path inlined third-party vector markup into the canvas's own document. The bytes
+still traverse the DDR-167 sanitize + canary lane on the way to disk; the `<img>`
+is a second layer, not a replacement for the first.
+
+**Accepted cost:** a rendered artboard is not editable JSX. `.meta.json` keeps
+every frame's node id (`figma.frames[]`) so a single artboard can be exploded
+into JSX on demand, rather than mistranslating 115 of them up front.
+
+### D12a — Comments are part of the import
+
+Figma review comments live on `/v1/files/:key/comments` and appear **nowhere in
+the document tree**, so every tree-walking version of this importer brought
+across exactly zero of them. The same live file carries **133**. They import as
+sticky annotations pinned at their target node's position plus the comment's
+offset; threads fold into one card; resolved threads arrive on grey paper rather
+than being dropped, because a resolved comment is the record of a decision.
+
+### D12b — Sections are containers, not leaves
+
+A SECTION is descended: its frames become artboards and the section itself
+becomes a labeled region on the annotation layer. The annotation layer takes
+FigJam-native furniture (`STICKY`, `CONNECTOR`, `SHAPE_WITH_TEXT`, `STAMP`,
+`WIDGET`, `TABLE`), loose positioned content, and comments — nothing else.
+
+A page with **no** frames renders whole (Figma renders a `CANVAS` node), because
+the first cut of this rule emitted zero artboards for such a page and the canvas
+opened blank — the same silent-loss failure in a new costume.

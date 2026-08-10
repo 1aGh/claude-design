@@ -85,6 +85,28 @@ export interface AssetRequest {
   placeholder: string;
 }
 
+/**
+ * Per-call knobs for the render-first lane. Both default to the icon-export
+ * behaviour, so the existing fill/vector path is byte-identical without them.
+ */
+export interface ResolveOptions {
+  /**
+   * `false` keeps real `<text>` runs in a rendered SVG instead of converting
+   * them to outlines. Whole-frame renders want that — an artboard whose text is
+   * curves is a picture of a screen, not a screen you can search.
+   */
+  outlineText?: boolean;
+  /**
+   * Overrides `FIGMA_SVG_MAX_BYTES`. A single icon is kilobytes, but a whole
+   * rendered frame carries its raster fills inline as data URIs, so the 1 MB
+   * icon ceiling would reject perfectly normal screens.
+   */
+  svgMaxBytes?: number;
+}
+
+/** D11 — the whole-frame ceiling. Still far under DDR-167's own 5 MB. */
+export const FIGMA_RENDER_MAX_BYTES = 4 * 1024 * 1024;
+
 export interface ResolvedAsset {
   nodeId: string;
   placeholder: string;
@@ -202,7 +224,8 @@ export async function resolveAssets(
   requests: readonly AssetRequest[],
   deps: ResolveDeps,
   report: ImportReport,
-  budget: AssetBudget = makeAssetBudget()
+  budget: AssetBudget = makeAssetBudget(),
+  opts: ResolveOptions = {}
 ): Promise<ResolveResult> {
   const rewrites = new Map<string, string>();
   const resolved: ResolvedAsset[] = [];
@@ -230,13 +253,42 @@ export async function resolveAssets(
 
   // ── Batched URL resolution, per format ──
   const urlByNode = new Map<string, string>();
+  /** Effective format per node — an SVG that fell back to raster is tracked here. */
+  const formatByNode = new Map<string, 'svg' | 'png'>();
   for (const format of ['svg', 'png'] as const) {
     const ids = accepted.filter((r) => r.format === format).map((r) => r.nodeId);
     if (ids.length === 0) continue;
     for (const batch of batchIds(ids)) {
-      const { images } = await fetchImageUrls(fileKey, batch, format);
+      const { images } = await fetchImageUrls(
+        fileKey,
+        batch,
+        format,
+        2,
+        opts.outlineText !== undefined ? { outlineText: opts.outlineText } : {}
+      );
       for (const [nodeId, url] of Object.entries(images)) {
-        if (typeof url === 'string' && url.length > 0) urlByNode.set(nodeId, url);
+        if (typeof url === 'string' && url.length > 0) {
+          urlByNode.set(nodeId, url);
+          formatByNode.set(nodeId, format);
+        }
+      }
+    }
+  }
+
+  // RASTER FALLBACK. Figma answers `null` — not an error — for nodes it will
+  // not vectorize, and a null with no retry is an artboard whose <img> points
+  // at a placeholder that never resolves: a broken image where a screen should
+  // be. Ask for the same node as PNG before giving up on it.
+  const missing = accepted
+    .filter((r) => r.format === 'svg' && !urlByNode.has(r.nodeId))
+    .map((r) => r.nodeId);
+  for (const batch of batchIds(missing)) {
+    const { images } = await fetchImageUrls(fileKey, batch, 'png', 2);
+    for (const [nodeId, url] of Object.entries(images)) {
+      if (typeof url === 'string' && url.length > 0) {
+        urlByNode.set(nodeId, url);
+        formatByNode.set(nodeId, 'png');
+        report.add(nodeId, 'ASSET', 'asset-degraded', 'vector unavailable — rasterized');
       }
     }
   }
@@ -255,9 +307,13 @@ export async function resolveAssets(
       return;
     }
 
-    const staged = deps.stagingPath(req.nodeId, req.format);
+    // What we ACTUALLY got, which is not always what we asked for — see the
+    // raster fallback above.
+    const eff = formatByNode.get(req.nodeId) ?? req.format;
+    const staged = deps.stagingPath(req.nodeId, eff);
     try {
-      const cap = req.format === 'svg' ? FIGMA_SVG_MAX_BYTES : FIGMA_ASSET_MAX_BYTES;
+      const cap =
+        eff === 'svg' ? (opts.svgMaxBytes ?? FIGMA_SVG_MAX_BYTES) : FIGMA_ASSET_MAX_BYTES;
       const { bytes, ext } = await deps.stage(url, staged, cap);
       // Counted HERE, not after a successful promote: bytes that crossed the
       // network and landed on disk cost the same whether the promote succeeded.
@@ -265,19 +321,19 @@ export async function resolveAssets(
       // The staged kind must agree with what we asked Figma to render. A
       // mismatch means the response is not what the request implied — refuse
       // rather than promote something into a versioned, peer-synced tree.
-      const kindOk = req.format === 'svg' ? ext === 'svg' : ext !== 'svg';
+      const kindOk = eff === 'svg' ? ext === 'svg' : ext !== 'svg';
       if (!kindOk) {
         deps.discard(staged);
         report.add(req.nodeId, 'ASSET', 'asset-skipped', 'format mismatch');
         return;
       }
-      if (req.format === 'svg' && deps.promoteSvgBatch) {
+      if (eff === 'svg' && deps.promoteSvgBatch) {
         // Defer — one browser session for all of them beats one each.
         stagedSvgs.push({ req, staged });
         totalBytes += bytes;
         return;
       }
-      const { ref } = await deps.promote(staged, req.format);
+      const { ref } = await deps.promote(staged, eff);
       totalBytes += bytes;
       resolved.push({ nodeId: req.nodeId, placeholder: req.placeholder, ref, bytes });
       // Every placement that shares this render key gets the same asset.

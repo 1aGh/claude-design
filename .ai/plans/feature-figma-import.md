@@ -134,6 +134,25 @@ The MCP response is **structurally lossy in exactly the ways the translators nee
 
 ## Governing principle — editability is the acceptance bar, fidelity is subordinate
 
+> **AMENDED 2026-08-10 for `--pages`, after the first real file — see [DDR-216 D12](../archive/decisions/DDR-216-figma-ingestion-architecture-and-trust-boundary.md).**
+>
+> This principle was set from measurement of *fixtures*. Run against a live
+> 6-page product file (115 frames) the editability-first path produced five
+> independent classes of visible defect — a canvas that would not parse, frames
+> stacked in DOM order, sections split from their contents, missing assets, and
+> white screens rendering black — because translating a Figma frame into CSS
+> means reimplementing Figma's layout engine, and the bug surface is unbounded.
+>
+> **`--pages` is now render-first**: each artboard is Figma's own render,
+> referenced from `<img>`. `--editable` opts back into the translation below,
+> which is unchanged and still governs `--frames`. The user's ask — *"nestačí
+> prostě jen převést vše ... a importovat artboardy tak jak jsou?"* — is the
+> resolution: the acceptance bar for a **whole-file import** is faithfulness,
+> and editability is bought per-artboard on demand, not paid for up front
+> across every frame.
+>
+> The rest of this section describes the `--editable` / `--frames` path.
+
 **User decision, 2026-08-03:** *"chci určitě vždy editovatelný annotations i canvas artboards."* Both outputs — the whiteboard annotation layer AND the `DCArtboard` canvas — must land **editable**, always. This resolves the open question the measurement exposed (is an imported frame *a canvas you edit* or *a reference you build next to*?) in favour of the first, and it converts the three Phase-3 mitigations from recommendations into **acceptance criteria**.
 
 ### What "editable" means in Maude — testable, not a feeling

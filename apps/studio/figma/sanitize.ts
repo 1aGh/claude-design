@@ -52,6 +52,8 @@ export type Disposition =
   | 'truncated-attr'
   | 'unmappable-type'
   | 'unmappable-shape'
+  /** A comment whose pinned node no longer exists in the file — no position to place it at. */
+  | 'comment-target-deleted'
   | 'bind-degraded-to-bbox'
   | 'bind-dropped-self-connector'
   | 'asset-pending'

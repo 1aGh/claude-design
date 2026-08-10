@@ -8,7 +8,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { ArrowStroke, SectionStroke, StickyStroke, Stroke } from '../annotations-model.ts';
-import { STICKY_PALETTE, strokesToSvg } from '../annotations-model.ts';
+import { sanitizeAnnotationSvg, STICKY_PALETTE, strokesToSvg } from '../annotations-model.ts';
 import { isBindable } from '../annotations-bindings.ts';
 import { nearestStickyColor, toStrokes } from './to-strokes.ts';
 import { normalizeDocument } from './types.ts';
@@ -594,5 +594,113 @@ describe('image fills become pending assets, never a hotlink', () => {
     expect((strokes[0] as { href: string }).href).toBe('');
     expect(pendingImages).toEqual([{ strokeId: strokes[0].id, nodeId: '9:5', imageRef: 'abc123' }]);
     expect(report.entries.some((e) => e.disposition === 'asset-pending')).toBe(true);
+  });
+});
+
+describe('loose vector artwork (the missing flow arrows)', () => {
+  test('a VECTOR becomes an image stroke rendered by Figma, not a dropped node', () => {
+    // Phase 0 of the live StudyFi file draws the flow between onboarding screens
+    // with NINE hand-drawn VECTOR nodes ("Arrow 35/37/38/…"), not CONNECTORs.
+    // They used to fall through to `unmappable-type`: side by side against
+    // Figma, the screens were right and the flow between them was simply gone.
+    const doc = normalizeDocument(
+      {
+        id: '0:0',
+        name: 'Page',
+        type: 'CANVAS',
+        children: [
+          {
+            id: '1:5',
+            name: 'Arrow 35',
+            type: 'VECTOR',
+            visible: true,
+            absoluteBoundingBox: { x: 0, y: 0, width: 60, height: 12 },
+          },
+        ],
+      },
+      { fileKey: 'dGNzRC2kmrmGnOxaBa0RI7', surface: 'board' }
+    );
+    const out = toStrokes(doc, { resetIds: true });
+
+    expect(out.strokes).toHaveLength(1);
+    expect(out.strokes[0]).toMatchObject({ tool: 'image', w: 60, h: 12 });
+    expect(out.report.entries.some((e) => e.disposition === 'unmappable-type')).toBe(false);
+    // PNG, not SVG — see below. `imageRef` is null because a vector has no
+    // Figma image handle; the NODE itself is what gets rendered.
+    expect(out.pendingImages).toHaveLength(1);
+    expect(out.pendingImages[0].format).toBe('png');
+    expect(out.pendingImages[0].imageRef).toBeNull();
+  });
+
+  test('a stroked path is sized by its RENDER bounds, not its geometric box', () => {
+    // The nine Phase-0 arrows are horizontal, so their geometric box is
+    // 121 × 0.0001 while what Figma actually draws is 121 × 22.09 (a 3px stroke
+    // plus the arrowhead). Sized by the geometric box the image is present,
+    // correctly referenced, and invisible — which is exactly how this shipped
+    // "working" twice.
+    const doc = normalizeDocument(
+      {
+        id: '0:0',
+        name: 'Page',
+        type: 'CANVAS',
+        children: [
+          {
+            id: '1:5',
+            name: 'Arrow 35',
+            type: 'VECTOR',
+            visible: true,
+            strokeWeight: 3,
+            absoluteBoundingBox: { x: 800, y: 1238, width: 121, height: 0.0001 },
+            absoluteRenderBounds: { x: 800, y: 1227, width: 121, height: 22.09 },
+          },
+        ],
+      },
+      { fileKey: 'dGNzRC2kmrmGnOxaBa0RI7', surface: 'board' }
+    );
+    const out = toStrokes(doc, { resetIds: true });
+    expect(out.strokes[0]).toMatchObject({ tool: 'image', w: 121 });
+    expect((out.strokes[0] as { h: number }).h).toBeCloseTo(22.09, 1);
+  });
+
+  test('a node with no render bounds still gets a non-zero box', () => {
+    const doc = normalizeDocument(
+      {
+        id: '0:0',
+        name: 'Page',
+        type: 'CANVAS',
+        children: [
+          {
+            id: '1:6',
+            name: 'Hairline',
+            type: 'LINE',
+            visible: true,
+            absoluteBoundingBox: { x: 0, y: 0, width: 80, height: 0 },
+          },
+        ],
+      },
+      { fileKey: 'dGNzRC2kmrmGnOxaBa0RI7', surface: 'board' }
+    );
+    const out = toStrokes(doc, { resetIds: true });
+    expect((out.strokes[0] as { h: number }).h).toBeGreaterThanOrEqual(1);
+  });
+
+  test('the rendered href SURVIVES sanitization — svg would be silently stripped', () => {
+    // The bug this pins cost an entire debugging round. Asking Figma for `svg`
+    // resolved fine, rewrote fine, and passed every count check — then
+    // `ASSET_IMAGE_HREF_RE` (png/jpeg/webp/gif only, because a nested SVG in an
+    // `<image>` is a script vector on a peer-synced board) stripped the HREF
+    // while KEEPING the element. The arrow rendered as nothing.
+    //
+    // Asserting the element survives is not enough. Assert the href does.
+    const withHref = (href: string) =>
+      sanitizeAnnotationSvg(
+        strokesToSvg([{ id: 'i1', tool: 'image', x: 0, y: 0, w: 60, h: 12, href } as never])
+      );
+
+    expect(withHref('assets/abc12345.png')).toContain('assets/abc12345.png');
+    expect(withHref('assets/abc12345.svg')).not.toContain('assets/abc12345.svg');
+    // …and the element itself stays either way, which is exactly why counting
+    // `<image>` tags proved nothing.
+    expect(withHref('assets/abc12345.svg')).toContain('<image');
   });
 });

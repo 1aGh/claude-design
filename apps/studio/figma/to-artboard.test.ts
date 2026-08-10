@@ -14,6 +14,7 @@ import {
   isVectorCluster,
   MAX_WRAPPER_DEPTH,
   toArtboard,
+  toCanvas,
 } from './to-artboard.ts';
 import { ImportReport } from './sanitize.ts';
 import {
@@ -525,9 +526,42 @@ describe('style-map value grammars (DDR-172 Decision 4, reused)', () => {
       ],
     });
     const out = mapNodeStyle(frame!, { tokens: TOKENS });
-    expect(out.declarations['background-image']).toMatch(
+    // camelCase — these keys go into a JSX style OBJECT, where `background-image`
+    // is a syntax error that takes the whole canvas down with it.
+    expect(out.declarations['background-image']).toBeUndefined();
+    expect(out.declarations.backgroundImage).toMatch(
       /^linear-gradient\(\d+deg, #ff0000 0%, #0000ff 100%\)$/
     );
+  });
+
+  test('every emitted style key is a legal JS identifier (the canvas-killer guard)', () => {
+    // The regression this locks: ONE hyphenated key anywhere on a page made the
+    // generated .tsx unparseable, so the canvas rendered nothing at all.
+    const { frame } = frameDoc({
+      id: '2:20',
+      name: 'gradient-key-shape',
+      type: 'RECTANGLE',
+      absoluteBoundingBox: box(0, 0, 100, 100),
+      cornerRadius: 8,
+      fills: [
+        {
+          type: 'GRADIENT_LINEAR',
+          visible: true,
+          gradientStops: [
+            { position: 0, color: { r: 1, g: 0, b: 0, a: 1 } },
+            { position: 1, color: { r: 0, g: 0, b: 1, a: 1 } },
+          ],
+          gradientHandlePositions: [
+            { x: 0, y: 0 },
+            { x: 1, y: 0 },
+          ],
+        },
+      ],
+    });
+    const out = mapNodeStyle(frame!, { tokens: TOKENS });
+    for (const key of Object.keys(out.declarations)) {
+      expect(key).toMatch(/^[A-Za-z_$][A-Za-z0-9_$]*$/);
+    }
   });
 
   test('a drop shadow becomes a strict-numeric box-shadow (fixture 2:19)', () => {
@@ -646,5 +680,124 @@ describe('D8 gates are measurable', () => {
     });
     expect(result.tsx).not.toContain('invisible instructions');
     expect(result.report.entries.some((e) => e.disposition === 'hidden-node-skipped')).toBe(true);
+  });
+});
+
+describe('the frame fill becomes the ARTBOARD background (real-data regression)', () => {
+  test('a white Figma frame does not import as a black artboard', () => {
+    // Shipped broken: the fill was computed for the contrast reference and then
+    // thrown away, so every artboard used the canvas default — dark in a
+    // dark-themed project — and text contrast-checked against the frame's real
+    // white ground came out dark-on-dark.
+    const result = build({
+      id: '417:10793',
+      name: 'Onboarding-Step-1',
+      type: 'FRAME',
+      absoluteBoundingBox: box(0, 0, 375, 812),
+      fills: solid(1, 1, 1),
+    });
+    expect(result.tsx).toContain('background="#ffffff"');
+  });
+
+  test('a frame with no fill emits no background prop (canvas default wins)', () => {
+    const result = build({
+      id: '1:1',
+      name: 'F',
+      type: 'FRAME',
+      absoluteBoundingBox: box(0, 0, 100, 100),
+    });
+    expect(result.tsx).not.toContain('background=');
+  });
+
+  test('text on a white frame stays dark — contrast resolves against the real ground', () => {
+    const result = build({
+      id: '1:1',
+      name: 'F',
+      type: 'FRAME',
+      absoluteBoundingBox: box(0, 0, 400, 300),
+      fills: solid(1, 1, 1),
+      children: [
+        {
+          id: '2:1',
+          name: 't',
+          type: 'TEXT',
+          characters: 'Welcome to StudyFi',
+          fills: solid(0, 0, 0),
+          absoluteBoundingBox: box(0, 0, 200, 24),
+        },
+      ],
+    });
+    expect(result.tsx).toContain('background="#ffffff"');
+    expect(result.tsx).toContain('color: "#000000"');
+  });
+});
+
+describe('toCanvas surfaces LOOSE page content instead of dropping it', () => {
+  const frame = (id: string) => ({
+    id,
+    name: `Frame ${id}`,
+    type: 'FRAME',
+    absoluteBoundingBox: box(0, 0, 375, 812),
+  });
+  const note = (id: string, type = 'TEXT') => ({
+    id,
+    name: 'note',
+    type,
+    characters: 'Předvolby',
+    absoluteBoundingBox: box(900, 100, 200, 40),
+  });
+
+  function page(children: unknown[]) {
+    const doc = normalizeDocument(
+      { id: '0:1', name: 'Page', type: 'CANVAS', children },
+      { fileKey: KEY, surface: 'design' }
+    );
+    return { doc, page: doc.root };
+  }
+
+  test('a page with BOTH frames and loose content keeps both', () => {
+    // The bug: `loose` was computed and then used only in the no-frames branch,
+    // so on the live file 55 top-level nodes across 4 pages vanished with no
+    // disposition entry at all.
+    const { doc, page: p } = page([frame('1:1'), note('2:1'), note('2:2', 'RECTANGLE')]);
+    const out = toCanvas(doc, p);
+    expect(out.artboardCount).toBe(1);
+    expect(out.annotations.map((n) => n.id).sort()).toEqual(['2:1', '2:2']);
+  });
+
+  test('a page of ONLY loose content still wraps it in one artboard', () => {
+    const { doc, page: p } = page([note('2:1'), note('2:2')]);
+    const out = toCanvas(doc, p);
+    expect(out.artboardCount).toBe(1);
+    expect(out.annotations).toEqual([]);
+  });
+
+  test('a page of only frames has no annotation layer', () => {
+    const { doc, page: p } = page([frame('1:1'), frame('1:2')]);
+    const out = toCanvas(doc, p);
+    expect(out.artboardCount).toBe(2);
+    expect(out.annotations).toEqual([]);
+  });
+
+  test('the page origin comes back so the layer lines up with the artboards', () => {
+    const { doc, page: p } = page([
+      { ...frame('1:1'), absoluteBoundingBox: box(-2585, 2094, 375, 812) },
+      note('2:1'),
+    ]);
+    const out = toCanvas(doc, p);
+    expect(out.origin).toEqual({ x: -2585, y: 100 });
+  });
+
+  test('flow-diagram nodes on a design page reach the annotation layer', () => {
+    // CONNECTOR / SHAPE_WITH_TEXT are FigJam vocabulary that a design page can
+    // legitimately carry. The frame translator has no mapping for them; the
+    // whiteboard translator does.
+    const { doc, page: p } = page([
+      frame('1:1'),
+      { id: '3:1', name: 'c', type: 'CONNECTOR', absoluteBoundingBox: box(400, 0, 100, 10) },
+      { id: '3:2', name: 's', type: 'SHAPE_WITH_TEXT', shapeType: 'SQUARE', absoluteBoundingBox: box(600, 0, 100, 100) },
+    ]);
+    const out = toCanvas(doc, p);
+    expect(out.annotations.map((n) => n.type).sort()).toEqual(['CONNECTOR', 'SHAPE_WITH_TEXT']);
   });
 });

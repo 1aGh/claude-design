@@ -177,6 +177,15 @@ export interface FigmaNode {
   /** False ⇒ the node is not emitted at all (DDR-216 D6b). */
   visible: boolean;
   absoluteBoundingBox?: FigmaRect;
+  /**
+   * What is actually DRAWN — geometry plus stroke weight, arrowheads and
+   * effects. Differs from `absoluteBoundingBox` by more than a rounding error
+   * on stroked paths: a horizontal arrow's geometric box has height 0.0001
+   * while its render bounds are 22.09. Placing such a node at its geometric
+   * box renders it into nothing, which is how nine flow arrows imported
+   * "successfully" and were invisible.
+   */
+  absoluteRenderBounds?: FigmaRect;
   rotation?: number;
   opacity?: number;
   blendMode?: string;
@@ -420,6 +429,7 @@ function normalizeNode(raw: unknown, depth: number, state: WalkState): FigmaNode
   };
 
   assign('absoluteBoundingBox', rect(r.absoluteBoundingBox));
+  assign('absoluteRenderBounds', rect(r.absoluteRenderBounds));
   assign('rotation', num(r.rotation));
   assign('opacity', num(r.opacity));
   assign('blendMode', str(r.blendMode));
