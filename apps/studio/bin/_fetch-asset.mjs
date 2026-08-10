@@ -41,7 +41,7 @@ import { createHash } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync } from 'node:fs';
 import { isIP } from 'node:net';
-import { join, resolve, sep } from 'node:path';
+import { basename, dirname, join, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 // A real browser UA — some CDNs (wikimedia) 403 a bare curl/UA; the memory
@@ -512,8 +512,19 @@ export async function fetchAsset({
     if (!rawRoot) {
       throw new FetchAssetError(2, '--raw-out requires --raw-root (the directory the caller owns)');
     }
+    // BOTH sides get realpath'd, or neither. On macOS `/var` and `/tmp` are
+    // themselves OS-level symlinks (`-> /private/var`, `-> /private/tmp`), so
+    // realpath'ing only the root compares `/private/var/…` against `/var/…` and
+    // rejects EVERY legitimate staging path — which is exactly how this shipped
+    // and why the first real import skipped all 29 of its assets. Same trap
+    // DDR-172 Decision 1 documents for its own symlink check.
+    //
+    // The target does not exist yet, so realpath its PARENT (which does — the
+    // caller made the staging dir) and rebuild the leaf onto it.
     const rootAbs = realpathSync(resolve(rawRoot));
-    const outAbs = resolve(rawOut);
+    const requested = resolve(rawOut);
+    const parentAbs = realpathSync(dirname(requested));
+    const outAbs = join(parentAbs, basename(requested));
     if (outAbs !== rootAbs && !outAbs.startsWith(rootAbs + sep)) {
       throw new FetchAssetError(6, '--raw-out must resolve inside --raw-root');
     }

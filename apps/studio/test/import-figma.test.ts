@@ -110,7 +110,9 @@ afterEach(() => {
 describe('--board writes a sanitized annotation layer', () => {
   test('lands at a code-computed slug under the design root', async () => {
     const result = await importBoard({ url: BOARD_URL, root: sandbox });
-    expect(result.slug).toMatch(/^figjam-[a-z0-9]{1,8}$/);
+    // The slug is the HOST CANVAS's slug — an annotation layer named anything
+    // else has nothing to render it (found on the first live board import).
+    expect(result.slug).toMatch(/^ui-[a-z0-9_]+$/);
     expect(result.path?.startsWith(join(sandbox, '.design'))).toBe(true);
     expect(existsSync(result.path as string)).toBe(true);
   });
@@ -119,7 +121,7 @@ describe('--board writes a sanitized annotation layer', () => {
     const result = await importBoard({ url: BOARD_URL, root: sandbox });
     expect(result.slug).not.toContain('žlu');
     expect(result.slug).not.toContain('<');
-    expect(result.slug).toMatch(/^[a-z0-9-]{1,64}$/);
+    expect(result.slug).toMatch(/^[a-z0-9_-]{1,64}$/);
   });
 
   test('the written SVG is sanitizer-clean — no markup from the hostile name', async () => {
@@ -139,8 +141,10 @@ describe('--board writes a sanitized annotation layer', () => {
 
   test('an explicit --slug is honoured when it is a valid slug', async () => {
     const result = await importBoard({ url: BOARD_URL, root: sandbox, slug: 'retro-q3' });
-    expect(result.slug).toBe('retro-q3');
-    expect(result.path?.endsWith('retro-q3.annotations.svg')).toBe(true);
+    // `--slug` names the CANVAS; the annotation layer follows from it.
+    expect(result.canvas).toBe('ui/Retro Q3.tsx');
+    expect(result.slug).toBe('ui-retro_q3');
+    expect(result.path?.endsWith('ui-retro_q3.annotations.svg')).toBe(true);
   });
 
   test.each([
@@ -157,11 +161,15 @@ describe('--board writes a sanitized annotation layer', () => {
 });
 
 describe('staging is outside the design root, and leaves nothing behind', () => {
-  test('a successful run leaves exactly one file and no staging residue', async () => {
-    await importBoard({ url: BOARD_URL, root: sandbox });
+  test('a successful run leaves the layer + its host canvas, and no staging residue', async () => {
+    const result = await importBoard({ url: BOARD_URL, root: sandbox });
     const entries = readdirSync(join(sandbox, '.design'));
-    expect(entries.length).toBe(1);
-    expect(entries[0].endsWith('.annotations.svg')).toBe(true);
+    expect(entries.sort()).toEqual(['ui', `${result.slug}.annotations.svg`]);
+    // The host canvas — without it the strokes are on disk and invisible.
+    expect(readdirSync(join(sandbox, '.design', 'ui')).sort()).toEqual([
+      'Figjam Em6nowao.meta.json',
+      'Figjam Em6nowao.tsx',
+    ]);
     // No `.tmp-*` / staging directory anywhere under the design root.
     expect(entries.some((e) => e.startsWith('.tmp') || e.startsWith('maude-figma-'))).toBe(false);
   });

@@ -304,10 +304,10 @@ export function toStrokes(doc: NormalizedDocument, opts: ToStrokesOptions = {}):
     report.add(node.id, node.type, 'imported');
   };
 
-  const visit = (node: FigmaNode, groupIds: string[]): void => {
+  const visit = (node: FigmaNode, groupIds: string[], silent = false): void => {
     // D6b: an explicitly hidden node is not emitted at all.
     if (!node.visible) {
-      report.add(node.id, node.type, 'hidden-node-skipped', 'visible:false');
+      if (!silent) report.add(node.id, node.type, 'hidden-node-skipped', 'visible:false');
       return;
     }
 
@@ -324,7 +324,7 @@ export function toStrokes(doc: NormalizedDocument, opts: ToStrokesOptions = {}):
     switch (node.type) {
       case 'DOCUMENT':
       case 'CANVAS':
-        for (const c of node.children ?? []) visit(c, groupIds);
+        for (const c of node.children ?? []) visit(c, groupIds, silent);
         return;
 
       case 'GROUP':
@@ -333,7 +333,7 @@ export function toStrokes(doc: NormalizedDocument, opts: ToStrokesOptions = {}):
         // Excalidraw tag model. Deepest-first, so nested groups nest correctly.
         const gid = strokeId(node.id, 'g');
         const nextGroups = [gid, ...groupIds];
-        for (const c of node.children ?? []) visit(c, nextGroups);
+        for (const c of node.children ?? []) visit(c, nextGroups, silent);
         report.add(node.id, node.type, 'imported', 'group → groupIds tag');
         return;
       }
@@ -360,7 +360,7 @@ export function toStrokes(doc: NormalizedDocument, opts: ToStrokesOptions = {}):
         strokes.push(stroke);
         nodeToStroke.set(node.id, id);
         report.add(node.id, node.type, 'imported');
-        for (const c of node.children ?? []) visit(c, groupIds);
+        for (const c of node.children ?? []) visit(c, groupIds, silent);
         return;
       }
 
@@ -539,13 +539,43 @@ export function toStrokes(doc: NormalizedDocument, opts: ToStrokesOptions = {}):
         return;
       }
 
-      default:
-        // WIDGET, STAMP, TABLE, CODE_BLOCK, EMBED, LINK_UNFURL, MEDIA … have no
-        // Maude equivalent. Skipped AND REPORTED — the summary is what makes
-        // "never silently dropped" true.
-        report.add(node.id, node.type, 'unmappable-type');
-        for (const c of node.children ?? []) visit(c, groupIds);
+      default: {
+        // WIDGET, STAMP, TABLE, CODE_BLOCK, EMBED, LINK_UNFURL, MEDIA, and a
+        // FigJam sticker (an INSTANCE) … have no Maude equivalent. Skipped AND
+        // REPORTED — the summary is what makes "never silently dropped" true.
+        //
+        // But report the SUBTREE ONCE, not every leaf. Measured on a real retro
+        // board: 16 stickers carried 136 VECTOR children, so per-leaf reporting
+        // produced 152 lines of noise around 102 stickies that actually
+        // mattered. A summary nobody reads is not an honesty mechanism, and
+        // "this sticker didn't come through" is the fact — its 9 internal paths
+        // are not.
+        let descendants = 0;
+        const count = (n: FigmaNode) => {
+          for (const c of n.children ?? []) {
+            descendants += 1;
+            count(c);
+          }
+        };
+        count(node);
+        if (!silent) {
+          report.add(
+            node.id,
+            node.type,
+            'unmappable-type',
+            descendants > 0 ? `+${descendants} nested` : undefined
+          );
+        }
+        // STILL RECURSE. Quieting the report must not quiet the IMPORT: a
+        // sticker's subtree can hold a real photo, and on the first live board
+        // an earlier version of this collapse silently dropped 2 images and 6
+        // ellipses along with the 136 vector leaves it was meant to stop
+        // listing. Losing content is a worse failure than a noisy summary, and
+        // it is the harder one to notice. `silent` suppresses the per-descendant
+        // REPORT only.
+        for (const c of node.children ?? []) visit(c, groupIds, true);
         return;
+      }
     }
   };
 

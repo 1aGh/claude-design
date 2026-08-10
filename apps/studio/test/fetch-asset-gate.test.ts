@@ -6,8 +6,13 @@
 
 import { describe, expect, test } from 'bun:test';
 
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import {
   FetchAssetError,
+  fetchAsset,
   parseHttpsTarget,
   sniffImageExt,
   sniffStagedKind,
@@ -125,5 +130,60 @@ describe('sniffStagedKind — the --raw-out accept set', () => {
   test('only the HEAD is probed — a late `<svg` does not rescue a blob', () => {
     const late = Buffer.concat([Buffer.alloc(512, 0x41), svg()]);
     expect(sniffStagedKind(late)).toBeNull();
+  });
+});
+
+describe('--raw-out containment survives an OS-symlinked temp root', () => {
+  test('a legitimate staging path under os.tmpdir() is ACCEPTED', async () => {
+    // The bug this pins: `realpathSync` on the root but not the target compares
+    // `/private/var/…` against `/var/…` on macOS (both `/var` and `/tmp` are
+    // OS-level symlinks) and rejects every legitimate path. It shipped, and the
+    // first real import skipped all 29 of its assets with a generic
+    // "download or sanitize failed". Same trap DDR-172 Decision 1 documents.
+    const dir = mkdtempSync(join(tmpdir(), 'raw-out-probe-'));
+    try {
+      const out = join(dir, 'staged.png');
+      // Reaches the network gate rather than the containment check: any throw
+      // must NOT be the containment one.
+      let err: unknown;
+      try {
+        await fetchAsset({
+          url: 'https://figma.com/definitely-not-real.png',
+          root: dir,
+          rawOut: out,
+          rawRoot: dir,
+          allowHosts: FIGMA_HOSTS,
+          maxTime: 1,
+        });
+      } catch (e) {
+        err = e;
+      }
+      expect((err as Error | undefined)?.message ?? '').not.toContain('--raw-out must resolve');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a path OUTSIDE the declared root is still refused', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'raw-out-probe-'));
+    try {
+      await expect(
+        fetchAsset({
+          url: 'https://figma.com/x.png',
+          root: dir,
+          rawOut: join(dir, '..', 'escaped.png'),
+          rawRoot: dir,
+          allowHosts: FIGMA_HOSTS,
+        })
+      ).rejects.toThrow(/--raw-out must resolve inside/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('--raw-out without --raw-root is refused outright', async () => {
+    await expect(
+      fetchAsset({ url: 'https://figma.com/x.png', root: '/tmp', rawOut: '/tmp/x.png' })
+    ).rejects.toThrow(/requires --raw-root/);
   });
 });
