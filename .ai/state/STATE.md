@@ -3,9 +3,35 @@
 > **kgai-active repo** — working state and history live in the knowledge graph, not this file.
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
-**Status:** done — "sync carries the path" closed 2026-08-08 (a project arrives whole, in the shape its author gave it)
+**Status:** done — "the cloud copy matches your desktop" closed 2026-08-10 (sync fixes 4–8: no duplicates, no broken canvases, images present, honest Connect state, one save model)
 **Active plan:** —
 **Active task:** —
+
+_2026-08-10:_ **"The cloud copy matches your desktop" CLOSED + archived — the remaining five faults
+of the desktop↔cloud sync RCA (fixes 4–8, after 1–3's self-renewing link).** The drift had one root:
+the hub memoised a FLAT fallback path on the first `onDocumentStored`, before the peer's
+`syncMeta.path` stamp arrived — so a body that landed first was pinned to the wrong location forever
+(a stub that 404'd its dynamic import in the cloud, and a duplicate next to the real file). The path
+is now stamped BEFORE the handshake, and `pathIndex` carries provenance `{rel, fromPath}`: a
+fallback-derived entry is relocated in place when a validated path arrives, a real-file entry a peer
+owns is never moved (a peer may not move another peer's work). A one-shot boot migration quarantines
+the pre-fix duplicates to `_trash/`, never deleting. Images reached the cloud for the first time
+(DDR-217): the sync lanes were text-only, so `assets/` never left the desktop and the cell's
+`/assets/` route served bytes it never had — the desktop now PUSHES them over the existing
+authenticated route (the git-remote-pull option the plan recommended was REFUSED by the codebase's
+own facts: the cell strips its tenant remote post-seed and its history is separate by design). The UI
+stopped lying: the linked project reads **Connected** with a Disconnect, and a linked+credentialed
+repo's GitPanel withdraws to a read-only "Cloud is saving" posture so there is ONE save mechanism, not
+two (DDR-218 — presentation only, `.git` untouched). **The adversarial review earned its place:** both
+defender and attacker independently found the SAME blocker — the new asset PUT contained its
+destination LEXICALLY while the sibling relocation writer in the same PR already resolved symlinks, so
+a peer-committed `assets/x -> ../../ui` symlink + one PUT would overwrite a served canvas the studio
+child compiles (data→code, DDR-193 §2). Fixed by giving both hub writers ONE symlink guard
+(`path-contain.mjs`), plus a per-process write budget, authenticated-PUT rate limit, and an atomic
+detach. Shipped in `f0b5e8ca`. The recurring `bun test` clobber of `dist/client.bundle.js` bit twice
+this cycle — the committed bundle was silently reverted to the stale copy after each rebuild, caught
+only by `shasum` against the intended sha; the release rebuild must be the LAST step and verified by
+hash, never by a clean `git status`.
 
 _2026-08-08:_ **"Sync carries the path, so a project arrives whole" CLOSED + archived — a canvas now
 lands in the folder its author made, in both directions.** The document name is a flattened slug and
