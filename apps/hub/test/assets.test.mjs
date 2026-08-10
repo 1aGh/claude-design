@@ -5,7 +5,15 @@
 // content type that could turn an asset into a document on the hub's origin.
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+} from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -50,8 +58,20 @@ afterEach(async () => {
   if (dataDir) rmSync(dataDir, { recursive: true, force: true });
 });
 
-/** Drive the route handler directly with a fake req/res pair. */
-async function call({ pathname, method = 'GET', token, withS3 = true }) {
+/** Drive the route handler directly with a fake req/res pair. `body` (a Buffer
+ *  or an array of Buffers) makes the request async-iterable, the way the PUT
+ *  branch consumes a real IncomingMessage. */
+async function call({
+  pathname,
+  method = 'GET',
+  token,
+  withS3 = true,
+  designRoot = null,
+  body = null,
+  onWritten,
+  maxPutBytes,
+  putBudget,
+}) {
   const captured = { status: 0, headers: {}, body: null };
   const response = {
     writeHead(status, headers) {
@@ -64,14 +84,24 @@ async function call({ pathname, method = 'GET', token, withS3 = true }) {
       return this;
     },
   };
+  const chunks = body === null ? [] : Array.isArray(body) ? body : [body];
   const handled = await handleAssetRoute({
-    request: { headers: token ? { authorization: `Bearer ${token}` } : {} },
+    request: {
+      headers: token ? { authorization: `Bearer ${token}` } : {},
+      async *[Symbol.asyncIterator]() {
+        yield* chunks;
+      },
+    },
     response,
     pathname,
     method,
     dataDir,
     secret: '',
     s3: withS3 ? s3 : null,
+    designRoot,
+    onWritten,
+    maxPutBytes,
+    putBudget,
   });
   return { handled, ...captured };
 }
@@ -175,13 +205,171 @@ test('a missing object is 404', async () => {
   assert.equal(res.status, 404);
 });
 
-test('the hub is NOT an upload endpoint', async () => {
-  // Accepting writes here would make the hub an authenticated-but-cheap
-  // disk-fill surface. Assets are minted by the peer that has the bytes.
+test('a hub without a checkout is NOT an upload endpoint', async () => {
+  // The pre-DDR-217 posture, still true wherever there is no durable checkout
+  // to write into: accepting writes there would make the hub an
+  // authenticated-but-cheap disk-fill surface.
   const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
   for (const method of ['PUT', 'POST', 'DELETE']) {
     const res = await call({ pathname: '/assets/deadbeef.png', method, token: minted.value });
     assert.equal(res.status, 405, `${method} must be refused`);
+  }
+});
+
+/* -------------------------------------------- DDR-217 — the desktop push */
+
+test('an authenticated PUT streams into the checkout and fires the mirror hook', async () => {
+  const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-put-'));
+  let mirrored = 0;
+  try {
+    const res = await call({
+      pathname: '/assets/graphics/camo-bg.png',
+      method: 'PUT',
+      token: minted.value,
+      designRoot,
+      body: [Buffer.from('cam'), Buffer.from('o-bytes')],
+      onWritten: () => {
+        mirrored += 1;
+      },
+    });
+    assert.equal(res.status, 200, res.body);
+    assert.deepEqual(JSON.parse(res.body), { ok: true, key: 'graphics/camo-bg.png', bytes: 10 });
+    assert.equal(
+      readFileSync(join(designRoot, 'assets/graphics/camo-bg.png'), 'utf8'),
+      'camo-bytes'
+    );
+    assert.equal(mirrored, 1, 'the bucket mirror fires per successful push');
+  } finally {
+    rmSync(designRoot, { recursive: true, force: true });
+  }
+});
+
+test('an unauthenticated PUT is 401 — the token gate comes before everything', async () => {
+  const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-put-'));
+  try {
+    const res = await call({
+      pathname: '/assets/deadbeef.png',
+      method: 'PUT',
+      designRoot,
+      body: Buffer.from('x'),
+    });
+    assert.equal(res.status, 401);
+    assert.equal(existsSync(join(designRoot, 'assets/deadbeef.png')), false);
+  } finally {
+    rmSync(designRoot, { recursive: true, force: true });
+  }
+});
+
+test('an over-cap PUT aborts mid-stream and leaves no partial behind', async () => {
+  const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-put-'));
+  let mirrored = 0;
+  try {
+    const res = await call({
+      pathname: '/assets/deadbeef.mp4',
+      method: 'PUT',
+      token: minted.value,
+      designRoot,
+      body: [Buffer.alloc(6, 1), Buffer.alloc(6, 2)],
+      maxPutBytes: 8,
+      onWritten: () => {
+        mirrored += 1;
+      },
+    });
+    assert.equal(res.status, 413);
+    assert.equal(existsSync(join(designRoot, 'assets/deadbeef.mp4')), false);
+    const leftovers = readdirSync(join(designRoot, 'assets'));
+    assert.deepEqual(leftovers, [], `no partial/temp file: ${leftovers.join(', ')}`);
+    assert.equal(mirrored, 0, 'a refused push never mirrors');
+  } finally {
+    rmSync(designRoot, { recursive: true, force: true });
+  }
+});
+
+test('a PUT cannot follow a peer-committed symlink out of assets/ (F1 blocker)', async () => {
+  // DDR-054: a peer can COMMIT a symlink under assets/ into the shared repo.
+  // `assets/escape -> ../../ui` + PUT assets/escape/welcome.tsx would, with a
+  // lexical-only check, write attacker bytes over a served canvas the studio
+  // child then compiles (data→code, DDR-193 §2). The realpath guard refuses it.
+  const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-put-'));
+  try {
+    mkdirSync(join(designRoot, 'assets'), { recursive: true });
+    mkdirSync(join(designRoot, 'ui'), { recursive: true });
+    // The escape link: assets/escape resolves to the sibling ui/ directory.
+    symlinkSync(join(designRoot, 'ui'), join(designRoot, 'assets', 'escape'));
+
+    const res = await call({
+      pathname: '/assets/escape/welcome.tsx',
+      method: 'PUT',
+      token: minted.value,
+      designRoot,
+      body: Buffer.from('export default () => <script>PWNED</script>;'),
+    });
+    assert.equal(res.status, 400, 'the symlink-escaping PUT is refused');
+    assert.equal(
+      existsSync(join(designRoot, 'ui', 'welcome.tsx')),
+      false,
+      'nothing written outside assets/'
+    );
+  } finally {
+    rmSync(designRoot, { recursive: true, force: true });
+  }
+});
+
+test('the per-process PUT budget bounds total accepted bytes (F2)', async () => {
+  const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-put-'));
+  // One SHARED budget across both requests — the process singleton, in miniature.
+  const putBudget = { cap: 8, used: 0 };
+  try {
+    // First PUT exactly fills the budget; once spent, the next is refused 507
+    // up front (a stream that would OVERRUN a partial budget is 413 instead —
+    // both bound total bytes, this asserts the exhausted-up-front path).
+    const first = await call({
+      pathname: '/assets/aaaaaaaa.png',
+      method: 'PUT',
+      token: minted.value,
+      designRoot,
+      body: Buffer.alloc(8, 1),
+      maxPutBytes: 1024,
+      putBudget,
+    });
+    assert.equal(first.status, 200, first.body);
+    assert.equal(putBudget.used, 8, 'the budget records the committed bytes');
+    const second = await call({
+      pathname: '/assets/bbbbbbbb.png',
+      method: 'PUT',
+      token: minted.value,
+      designRoot,
+      body: Buffer.alloc(1, 2),
+      maxPutBytes: 1024,
+      putBudget,
+    });
+    assert.equal(second.status, 507, 'budget exhausted');
+    assert.equal(existsSync(join(designRoot, 'assets/bbbbbbbb.png')), false);
+  } finally {
+    rmSync(designRoot, { recursive: true, force: true });
+  }
+});
+
+test('a traversal key never reaches the PUT branch — the parser refuses it first', async () => {
+  const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-put-'));
+  try {
+    for (const bad of ['/assets/../secret.png', '/assets/a/../../etc/passwd', '/assets//x.png']) {
+      const res = await call({
+        pathname: bad,
+        method: 'PUT',
+        token: minted.value,
+        designRoot,
+        body: Buffer.from('x'),
+      });
+      assert.equal(res.handled, false, `${bad} must not be handled as an asset`);
+    }
+  } finally {
+    rmSync(designRoot, { recursive: true, force: true });
   }
 });
 

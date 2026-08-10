@@ -1,7 +1,25 @@
 {
-  "generated": "2026-08-10T11:15:54.105Z",
+  "generated": "2026-08-10T14:15:53.073Z",
   "version": "0.58.2",
   "entries": [
+    {
+      "id": "cloud-sync-matches-your-desktop",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "The cloud copy matches your desktop",
+      "summary": "A project you connect to the cloud now looks exactly like it does on your machine: no duplicated files, every canvas opens instead of breaking, and your images show up instead of grey boxes. The cloud picker says \"Connected\" for the project this folder is linked to, with a Disconnect right there — and once you're connected, the cloud saves every change automatically, so there's one place your work is saved, not two.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "cloud-link-self-renews",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "Cloud sync keeps itself signed in",
+      "summary": "A workspace you connect to the cloud stays synced — the session refreshes itself in the background instead of quietly expiring after a few hours and stranding your canvases on \"connecting…\". If a link ever can't sync for a few minutes it now says so and points you to reconnect, instead of spinning forever.",
+      "surface": "design-ui"
+    },
     {
       "id": "figma-import",
       "version": null,

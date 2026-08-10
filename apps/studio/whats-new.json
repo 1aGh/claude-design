@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "cloud-sync-matches-your-desktop",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "The cloud copy matches your desktop",
+      "summary": "A project you connect to the cloud now looks exactly like it does on your machine: no duplicated files, every canvas opens instead of breaking, and your images show up instead of grey boxes. The cloud picker says \"Connected\" for the project this folder is linked to, with a Disconnect right there — and once you're connected, the cloud saves every change automatically, so there's one place your work is saved, not two.",
+      "surface": "design-ui"
+    },
+    {
       "id": "cloud-link-self-renews",
       "version": null,
       "date": null,

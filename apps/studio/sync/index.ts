@@ -29,6 +29,7 @@ import type { Context, LinkedHub } from '../context.ts';
 import { createHistory } from '../history.ts';
 import { SYNTHETIC_FS_DELAY_MS } from '../hmr-broadcast.ts';
 import { type CanvasSyncAgent, createCanvasSyncAgent } from './agent.ts';
+import { pushAssets } from './asset-push.ts';
 import { atomicWrite } from './atomic-write.ts';
 import { createAutoCommit } from './autocommit.ts';
 import { type CellPairing, resolveCellPairing, sanitizeForLog } from './cell-pairing.ts';
@@ -44,6 +45,7 @@ import { createFsReader, type FsReader } from './fs-mirror.ts';
 import { getHubRecord } from './hubs-config.ts';
 import { loadJournal, type SyncJournal } from './journal.ts';
 import { isLoopbackHost } from './loopback.ts';
+import { migrateFlatFallback } from './migrate-flat-fallback.ts';
 import { migrateSeed } from './migrate-seed.ts';
 import { ORIGINS } from './origins.ts';
 import { createDocProjection, type DocProjection } from './projection.ts';
@@ -534,6 +536,18 @@ export function createSyncRuntime(
     // honest seed (`connecting`, nothing known) the moment the runtime starts.
     resetPersistedStatus(ctx, linkedHub.url);
 
+    // Fix 4 (sync RCA 2026-08-10) — one-shot quarantine of the pre-fix-5 flat
+    // fallback twins, BEFORE the scan: a flat twin that survived into the scan
+    // would sync as its own document and re-seed the duplicate on every peer.
+    // Skipped under cell pairing — a cell's checkout is the hub's to manage,
+    // and quarantining there would dirty a tree the hub commits.
+    if (!cellPairing) {
+      migrateFlatFallback({
+        designRoot: ctx.paths.designRoot,
+        designRel: ctx.paths.designRel,
+      });
+    }
+
     const scan = opts.canvases ? { canvases: opts.canvases, tsxCount: 0 } : await scanCanvases(ctx);
     // DDR-064 pre-cutover A4 + A6 — two files must never share a document, and
     // the pinned set must be bounded. See `admitCanvases`.
@@ -1009,6 +1023,21 @@ export function createSyncRuntime(
       console.log(`[sync/${slug}] the hub accepted this document — clearing its refusal.`);
     };
 
+    /**
+     * Stamp `syncMeta.path` from where this canvas actually is on THIS disk —
+     * never echoed from the wire, so a value some receiver refused is never
+     * laundered onward by being re-sent. Best-effort: a failure never costs
+     * the canvas its sync.
+     */
+    const stampFromLocalFile = (doc: Y.Doc, htmlAbs: string): void => {
+      try {
+        const rel = path.relative(ctx.paths.designRoot, htmlAbs).split(path.sep).join('/');
+        if (rel && !rel.startsWith('..')) stampCanvasPath(doc, rel, ORIGINS.DISK_PROJECTION);
+      } catch {
+        /* best-effort bookkeeping — never costs the canvas its sync */
+      }
+    };
+
     /** Post-handshake reconcile — shared by first connect and re-probe. */
     const handleSynced = async (
       canvas: CanvasDescriptor,
@@ -1070,17 +1099,10 @@ export function createSyncRuntime(
           }
         }
       }
-      // The path travels back OUT. `syncMeta.path` is stamped from where this
-      // canvas actually is on THIS disk — never echoed from the wire — so the
-      // next peer to receive this document can place it, and a value some
-      // receiver refused is never laundered onward by being re-sent.
-      try {
-        const rel = path.relative(ctx.paths.designRoot, canvasPaths.html).split(path.sep).join('/');
-        if (rel && !rel.startsWith('..'))
-          stampCanvasPath(provider.document, rel, ORIGINS.DISK_PROJECTION);
-      } catch {
-        /* best-effort bookkeeping — never costs the canvas its sync */
-      }
+      // The path travels back OUT — re-stamped post-reconcile as the belt to
+      // connectCanvas's pre-handshake braces (fix 5): this also covers a PULLED
+      // canvas, whose real local path exists only after relocatePulled ran.
+      stampFromLocalFile(provider.document, canvasPaths.html);
 
       // DDR-102 — honest status: the handshake + reconcile completed.
       mon.noteDocState(canvas.slug, 'connected');
@@ -1263,6 +1285,17 @@ export function createSyncRuntime(
         document,
       });
       providers.set(canvas.slug, provider);
+      // Fix 5 (sync RCA 2026-08-10): stamp the canvas path BEFORE the
+      // handshake, not only after reconcile. The path derives from this peer's
+      // real local file, so it is known NOW — and the hub's FIRST
+      // onDocumentStored must see it, or it memoises a flat fallback in its
+      // pathIndex and a stub is born. Pulled canvases are the one exception:
+      // their local path is a guess until the document arrives, and a guessed
+      // stamp would be laundered into every other peer (handleSynced stamps
+      // them after relocatePulled instead).
+      if (!pulledSlugs.has(canvas.slug)) {
+        stampFromLocalFile(provider.document, canvasPaths.html);
+      }
       // First-connect setup (agent/projection creation + doc-scoped wiring)
       // MUST run before handleSynced — that function resolves the
       // agent/projection from the maps, and a test stub's onceSynced can
@@ -1504,6 +1537,20 @@ export function createSyncRuntime(
       // place after each handshake, and the markers are the one consumer that
       // read them before that and would otherwise never read them again.
       markUntrusted();
+
+      // DDR-217 (fix 6) — mirror local assets up AFTER the handshakes settle
+      // (they carry the canvases; assets ride behind, never in front). Not
+      // under pairing: a cell's assets are already on the cell. Fire-and-forget
+      // — a miss is retried on the next boot for free.
+      if (!cellPairing) {
+        void pushAssets({
+          designRoot: ctx.paths.designRoot,
+          hubUrl: linkedHub.url,
+          token: () => token,
+        }).catch((err) => {
+          console.warn(`[sync/assets] asset push failed: ${(err as Error).message}`);
+        });
+      }
     });
 
     // Arm the pre-expiry renewal from the credential that just booted. Placed

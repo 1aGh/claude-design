@@ -643,9 +643,10 @@ export function createHub(config = {}) {
       }
 
       // Cloud Phase 3 — authenticated asset proxy. Peer-token gated, GET/HEAD
-      // only, and reachable ONLY for content-addressed keys. Never a presigned
-      // URL: the canvas CSP is `img-src 'self'` and a presigned URL would be a
-      // bearer credential living inside tenant-authored content.
+      // proxy plus the DDR-217 desktop asset PUSH (PUT, workspace-mode only),
+      // and reachable ONLY for validated keys. Never a presigned URL: the
+      // canvas CSP is `img-src 'self'` and a presigned URL would be a bearer
+      // credential living inside tenant-authored content.
       if (authPath.startsWith('/assets/')) {
         const handled = await handleAssetRoute({
           request,
@@ -655,6 +656,19 @@ export function createHub(config = {}) {
           dataDir,
           secret,
           s3: await s3Source.config(),
+          // DDR-217 — where a pushed asset lands (the checkout the studio
+          // child serves). Null on a hub with no checkout → PUT keeps its 405.
+          designRoot:
+            workspaceMode && repoDir
+              ? join(repoDir, process.env.MAUDE_DESIGN_ROOT ?? '.design')
+              : null,
+          // Mirror a pushed asset to the bucket now — the same fire-and-forget
+          // hook a browser upload uses (B3); the checkout stays the backstop.
+          onWritten: () => {
+            assetSweeper?.sweepNew().catch((err) => {
+              console.error(`[assets] post-push mirror failed: ${err.message}`);
+            });
+          },
           checkRateLimit: rateLimit
             ? (req) => checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
             : undefined,

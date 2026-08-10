@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-10T09:06:35.487Z",
+  "generated": "2026-08-10T14:17:11.442Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1092,6 +1092,17 @@
       "phaseKey": null
     },
     {
+      "id": "feature-sync-completion-fixes-4-8",
+      "title": "PRD: Desktop↔cloud sync — complete the RCA (fixes 4–8)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "A repo linked to Maude Cloud drifts away from its desktop copy: duplicate canvas files (ui-welcome.tsx next to ui/welcome.tsx), cloud canvases that die with TypeError: Failed to fetch dynamically i...",
+      "planPath": ".ai/plans/archive/feature-sync-completion-fixes-4-8.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
       "id": "feature-unified-settings-modal",
       "title": "Feature: Unified Settings modal (vertical tabs + internal scroll)",
       "status": "done",
@@ -1803,6 +1814,61 @@
       "date": null,
       "summary": "---",
       "planPath": ".ai/plans/archive/phase-c-sidecar-monitor-background.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "phase-sync-1-cloudbar-connected",
+      "title": "Phase sync-1: CloudBar — \"Connect\" becomes \"Connected\" for the linked project",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "The CloudBar project list renders every row as a Connect <name> button — including the project this folder is already linked to. Render a non-action \"Connected\" state for the linked+credentialed pr...",
+      "planPath": ".ai/plans/archive/phase-sync-1-cloudbar-connected.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "phase-sync-2-pathindex-stamp-race",
+      "title": "Phase sync-2: Fix the pathIndex race — stamp the canvas path before the first body reaches the hub",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Make the hub receive syncMeta.path on the FIRST onDocumentStored, so it never memoises a flat fallback path; and teach the hub to relocate an already-memoised fallback when a validated path later a...",
+      "planPath": ".ai/plans/archive/phase-sync-2-pathindex-stamp-race.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "phase-sync-3-flat-fallback-migration",
+      "title": "Phase sync-3: One-shot migration of the pre-fix-5 flat fallback files",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Create a one-shot, idempotent boot migration that quarantines the flat duplicate canvas files the pre-fix-5 fallback (v0.58.2, f2a38c46) already wrote to disk.",
+      "planPath": ".ai/plans/archive/phase-sync-3-flat-fallback-migration.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "phase-sync-4-cloud-asset-transport",
+      "title": "Phase sync-4: Cloud asset transport — DDR + implementation",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Get tenant assets (<designRoot>/assets/*) onto the cell's disk so its existing /assets/ route (apps/hub/src/server.mjs:649) serves real bytes instead of grey boxes.",
+      "planPath": ".ai/plans/archive/phase-sync-4-cloud-asset-transport.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "phase-sync-5-cloud-commit-posture",
+      "title": "Phase sync-5: Cloud-linked repo commit model — DDR + GitPanel posture",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "When a repo is cloud-linked AND credentialed, the desktop GitPanel withdraws its manual local-commit surface to a read-only History/\"cloud is saving your work\" posture — so the user sees ONE save m...",
+      "planPath": ".ai/plans/archive/phase-sync-5-cloud-commit-posture.md",
       "archived": true,
       "phaseKey": null
     },

@@ -166,8 +166,22 @@ export default function GitPanel({
   // History STAYS, and is the point: what the server committed is exactly what
   // someone wants to look back at. Only the working-tree half goes.
   historyOnly = false,
+  // THE DESKTOP HALF OF THE SAME DECISION (DDR-218, fix 8 of the 2026-08-10
+  // sync RCA). A repo linked+credentialed to Maude Cloud is cloud-managed: the
+  // cell commits every edit ~3 s after it lands, so the local Changes surface
+  // is the second save mechanism the user was confused by. Same withdrawal as
+  // `historyOnly`, plus a note naming the one mechanism that IS active.
+  // PRESENTATION, NOT A CONTROL — `.git` is untouched, a terminal `git` works
+  // exactly as before, and Disconnect (CloudBar) restores the panel live.
+  cloudManaged = false,
 }) {
-  const [tab, setTab] = useState(historyOnly ? 'history' : 'changes');
+  const withdrawn = historyOnly || cloudManaged;
+  const [tab, setTab] = useState(withdrawn ? 'history' : 'changes');
+  // `cloudManaged` flips at runtime (connect/disconnect) — the initial tab
+  // state alone would leave a freshly-linked panel sitting on Changes.
+  useEffect(() => {
+    if (withdrawn) setTab('history');
+  }, [withdrawn]);
   const [message, setMessage] = useState('');
   const [unchecked, setUnchecked] = useState(() => new Set()); // default = all checked
   const [expanded, setExpanded] = useState(() => new Set()); // unit keys with supporting files shown
@@ -454,13 +468,13 @@ export default function GitPanel({
     <aside
       className={'st-rpanel gp-panel' + (resizing ? ' is-resizing' : '')}
       style={width ? { width, flexBasis: width } : undefined}
-      aria-label={historyOnly ? 'History' : 'Changes'}
+      aria-label={withdrawn ? 'History' : 'Changes'}
       data-testid="git-panel"
     >
       <div className="gp-head">
         <div className="gp-panel-hd">
-          <span className="gp-panel-title">{historyOnly ? 'History' : 'Changes'}</span>
-          {!historyOnly && count > 0 && <span className="gp-count">{count} unsaved</span>}
+          <span className="gp-panel-title">{withdrawn ? 'History' : 'Changes'}</span>
+          {!withdrawn && count > 0 && <span className="gp-count">{count} unsaved</span>}
           <span className="gp-spacer" />
           <span className="gp-draft" title="Your project and shared draft">
             <Icon name="folder" size={12} />
@@ -476,7 +490,7 @@ export default function GitPanel({
             ×
           </button>
         </div>
-        {!historyOnly && (
+        {!withdrawn && (
           <div className="gp-tabs" role="tablist" aria-label="Changes and history">
             <button
               type="button"
@@ -496,6 +510,12 @@ export default function GitPanel({
             >
               History
             </button>
+          </div>
+        )}
+        {cloudManaged && (
+          <div className="gp-cloud-note" role="status" data-testid="git-cloud-managed">
+            <Icon name="check" size={13} /> Cloud is saving — changes sync automatically. Disconnect
+            to commit locally.
           </div>
         )}
       </div>
@@ -543,7 +563,7 @@ export default function GitPanel({
         </div>
       )}
 
-      {tab === 'changes' && !historyOnly ? (
+      {tab === 'changes' && !withdrawn ? (
         notRepo ? (
           <div className="gp-empty">
             <span className="gp-empty-glyph">

@@ -558,6 +558,93 @@ describe('workspace agent, end to end against real git', () => {
     await agent.stop();
   });
 
+  it('a late validated syncMeta.path relocates the fallback stub instead of pinning it', {
+    skip: gitOk ? false : 'git not available',
+  }, async () => {
+    // THE STAMP RACE, as a test (fix 5, sync RCA 2026-08-10). The first store
+    // arrives before the peer's `syncMeta.path` lands, the fallback places the
+    // body flat inside the group, and pathIndex used to memoise that guess
+    // forever — the real nested path could never win, and the canvas 404'd its
+    // dynamic import in the cloud for good.
+    const repo = tmp();
+    const agent = createWorkspaceAgent({ repoDir: repo, debounceMs: 5, log: silent() });
+    await agent.start();
+
+    const doc = new Y.Doc();
+    doc.getText('html').insert(0, 'export default () => <main>deep</main>;\n');
+
+    // Store 1: body, no path → the group-aware fallback guesses flat-in-group.
+    const first = await agent.onDocumentStored({
+      documentName: 'ws/acme/main/ui-social-summer',
+      document: doc,
+      user: null,
+    });
+    assert.deepEqual(first.written, ['ui/social-summer.tsx'], 'fallback stub first');
+    // Commit the stub, so the relocation below exercises the delete half too
+    // (an uncommitted stub is simply dropped from staging — see the
+    // tracked-paths guard in the agent).
+    const stubCommit = await agent.flush();
+    assert.equal(stubCommit.ok, true, 'the stub commits like any canvas');
+
+    // Store 2: the peer's stamp arrived — same document now carries its path.
+    doc.getMap('syncMeta').set('path', 'ui/social/summer.tsx');
+    const second = await agent.onDocumentStored({
+      documentName: 'ws/acme/main/ui-social-summer',
+      document: doc,
+      user: null,
+    });
+    assert.equal(second.bodyRel, 'ui/social/summer.tsx', 'the validated path wins');
+    assert.ok(existsSync(join(repo, '.design/ui/social/summer.tsx')), 'relocated to the real home');
+    assert.ok(!existsSync(join(repo, '.design/ui/social-summer.tsx')), 'the stub is gone');
+    assert.ok(
+      second.staged.includes('ui/social-summer.tsx'),
+      'the vacated path is staged (delete half)'
+    );
+    assert.ok(second.staged.includes('ui/social/summer.tsx'), 'the new path is staged (add half)');
+
+    // Store 3: the index now holds the validated home — no second document, no
+    // resurrection of the stub.
+    doc.getText('html').insert(doc.getText('html').length, '// more\n');
+    const third = await agent.onDocumentStored({
+      documentName: 'ws/acme/main/ui-social-summer',
+      document: doc,
+      user: null,
+    });
+    assert.deepEqual(third.written, ['ui/social/summer.tsx'], 'later stores land at the new home');
+    assert.ok(!existsSync(join(repo, '.design/ui/social-summer.tsx')), 'still exactly one file');
+
+    const commit = await agent.flush();
+    assert.equal(commit.ok, true, `commit failed: ${JSON.stringify(commit)}`);
+    const dirty = execFileSync('git', ['status', '--porcelain'], { cwd: repo, encoding: 'utf8' });
+    assert.equal(dirty.trim(), '', 'the move left nothing dirty — both halves committed');
+    await agent.stop();
+  });
+
+  it('a real checkout file is never relocated by a wire path (provenance wins)', {
+    skip: gitOk ? false : 'git not available',
+  }, async () => {
+    // pathIndex provenance: boot-scan entries come from real files the tenant
+    // has — a peer may not move another peer's work, whatever its stamp says.
+    const repo = tmp();
+    mkdirSync(join(repo, '.design/ui'), { recursive: true });
+    writeFileSync(join(repo, '.design/ui/a-b.tsx'), 'theirs\n');
+    const agent = createWorkspaceAgent({ repoDir: repo, debounceMs: 5, log: silent() });
+    await agent.start();
+
+    const doc = new Y.Doc();
+    doc.getText('html').insert(0, 'mine\n');
+    // A perfectly VALID path for this document — pointing somewhere else.
+    doc.getMap('syncMeta').set('path', 'ui/a/b.tsx');
+    const out = await agent.onDocumentStored({
+      documentName: 'ws/acme/main/ui-a-b',
+      document: doc,
+      user: null,
+    });
+    assert.deepEqual(out.written, ['ui/a-b.tsx'], 'the checkout location holds');
+    assert.ok(!existsSync(join(repo, '.design/ui/a')), 'no relocation, no twin');
+    await agent.stop();
+  });
+
   it('commits an edit ANOTHER process already wrote to disk (cell live pairing)', {
     skip: gitOk ? false : 'git not available',
   }, async () => {

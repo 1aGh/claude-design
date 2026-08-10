@@ -18,18 +18,12 @@
 // one, and does not spawn anything that could. The canvas body is a string
 // from a Y.Text to a file on disk and nothing in between ever looks inside it.
 
-import {
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  realpathSync,
-  renameSync,
-  writeFileSync,
-} from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { createAutoCommit } from '../../studio/sync/autocommit.ts';
 import { resolveCanvasBodyRel } from '../../studio/sync/canvas-path.ts';
 import { createGitRunner, ensureRepo, gitAvailable } from './git-runner.mjs';
+import { realpathOfDeepestExisting } from './path-contain.mjs';
 import {
   attributionFor,
   committableLanes,
@@ -76,31 +70,6 @@ function listFiles(dir, prefix = '', out = []) {
     }
   }
   return out;
-}
-
-/**
- * `realpathSync`, but for a path that does not exist yet.
- *
- * `resolve()` below is purely LEXICAL — it never follows a symlink — while
- * `atomicWrite`'s `mkdirSync(recursive: true)` traverses an existing one without
- * complaint. While the only reachable target was `<designRoot>/<slug>.tsx` that
- * only mattered for a symlinked design root (operator-controlled); now the peer
- * chooses the directory, so a `.design/ui/etc -> /etc` symlink committed in the
- * tenant's own repo would turn a document named `ui-etc-motd` into a write at
- * `/etc/motd.tsx` with peer-controlled bytes. Walk up to the deepest ancestor
- * that exists, resolve THAT, and re-attach the tail.
- */
-function realpathOfDeepestExisting(p) {
-  let cur = p;
-  for (;;) {
-    try {
-      return join(realpathSync(cur), relative(cur, p));
-    } catch {
-      const parent = dirname(cur);
-      if (parent === cur) return p;
-      cur = parent;
-    }
-  }
 }
 
 function readIfPresent(abs) {
@@ -229,7 +198,15 @@ export function createWorkspaceAgent(opts) {
         log.error?.(`[workspace] git unavailable: ${repo.reason} — continuing without history`);
         return repo;
       }
-      pathIndex = indexCanvasPaths(listFiles(designRoot));
+      // Provenance-aware (fix 5, sync RCA 2026-08-10): a boot-scan entry comes
+      // from a real file in the checkout — the strongest claim there is — so it
+      // carries fromPath: true and is never relocated on a peer's say-so.
+      pathIndex = new Map(
+        [...indexCanvasPaths(listFiles(designRoot))].map(([slug, rel]) => [
+          slug,
+          { rel, fromPath: true },
+        ])
+      );
       canvasGroups = readCanvasGroups();
       auto = createAutoCommit({
         repoRoot: repoDir,
@@ -274,9 +251,14 @@ export function createWorkspaceAgent(opts) {
 
       // WHERE THIS CANVAS GOES, in the only order that is safe.
       //
-      //   1. The checkout, when it already holds a file for this slug. It wins
-      //      unconditionally: relocating an existing file on a remote peer's
-      //      say-so would let any peer move any other peer's work.
+      //   1. The checkout, when it already holds a file for this slug — but the
+      //      claim carries PROVENANCE now (fix 5, sync RCA 2026-08-10). An
+      //      entry a real file or a validated path decided (fromPath: true —
+      //      every boot-scan entry included) wins unconditionally: relocating
+      //      an existing file on a remote peer's say-so would let any peer move
+      //      any other peer's work. An entry the FALLBACK produced
+      //      (fromPath: false) is only a guess this agent made when a body
+      //      arrived before its `syncMeta.path` stamp — superseded below.
       //   2. The document's own `syncMeta.path`, validated — the canvas the
       //      checkout has never seen, which is the whole bug. See
       //      studio/sync/canvas-path.ts; rule 7 (the path must slug back to
@@ -287,29 +269,59 @@ export function createWorkspaceAgent(opts) {
       // Step 2 is IMPORTED, never re-typed here — the Dockerfile copies that
       // module in for the same reason it copies autocommit.ts: re-typing a
       // guarantee is re-typing it without its tests.
-      const bodyRel =
-        pathIndex.get(slug) ??
-        resolveCanvasBodyRel({
-          path: content.path,
-          slug,
-          designRel,
-          canvasGroups,
-          onRefused: (reason) => log.warn?.(`[workspace] ignoring the path on ${slug} — ${reason}`),
-        }).rel;
-      const sib = siblingPaths(bodyRel);
-      const abs = (rel) => join(designRoot, rel);
+      const indexed = pathIndex.get(slug);
+      const resolved = indexed?.fromPath
+        ? null
+        : resolveCanvasBodyRel({
+            path: content.path,
+            slug,
+            designRel,
+            canvasGroups,
+            onRefused: (reason) =>
+              log.warn?.(`[workspace] ignoring the path on ${slug} — ${reason}`),
+          });
 
-      // A remote path may not choose a location that means something else. Only
-      // applies when the CHECKOUT did not already decide (pathIndex wins above,
-      // and a file the tenant really has is theirs whatever it is called).
-      if (!pathIndex.has(slug)) {
+      // A late VALIDATED path supersedes a memoised fallback. The first store
+      // routinely arrives before the peer's `syncMeta.path` stamp lands, the
+      // fallback wrote a flat stub, and pinning that stub in pathIndex meant
+      // the real nested path could never win — the body filled a file nobody
+      // serves and the canvas failed its dynamic import forever. Only a
+      // fallback is ever superseded; never a location a real file decided.
+      let relocateFrom = null;
+      let bodyRel;
+      let fromPath;
+      if (indexed && !indexed.fromPath && resolved.fromPath && resolved.rel !== indexed.rel) {
+        relocateFrom = indexed.rel;
+        bodyRel = resolved.rel;
+        fromPath = true;
+      } else if (indexed) {
+        bodyRel = indexed.rel;
+        // Same location — a validated path that AGREES with the fallback still
+        // upgrades its provenance, closing the relocation window for good.
+        fromPath = indexed.fromPath || !!(resolved?.fromPath && resolved.rel === indexed.rel);
+      } else {
+        bodyRel = resolved.rel;
+        fromPath = resolved.fromPath;
+      }
+
+      // A remote path may not choose a location that means something else. Runs
+      // whenever the REMOTE is choosing — a first write, or a relocation — and
+      // never when the checkout already decided from a real file.
+      if (!indexed || relocateFrom) {
         const served = readServedPaths();
-        const collides = [bodyRel, sib.meta, sib.css].some((rel) => served.has(rel));
-        if (collides) {
+        const cand = siblingPaths(bodyRel);
+        if ([bodyRel, cand.meta, cand.css].some((rel) => served.has(rel))) {
           log.error?.(`[workspace] refusing to write over a served project file: ${bodyRel}`);
-          return null;
+          if (!relocateFrom) return null;
+          // Refuse the RELOCATION, not the store: the flat fallback is untidy,
+          // overwriting the tenant's stylesheet is a loss.
+          bodyRel = relocateFrom;
+          fromPath = false;
+          relocateFrom = null;
         }
       }
+      const sib = siblingPaths(bodyRel);
+      const abs = (rel) => join(designRoot, rel);
 
       // Path containment. `slug` is already charset-constrained by the hub's
       // documentName regex, but this is the last point before a write and the
@@ -327,6 +339,51 @@ export function createWorkspaceAgent(opts) {
         if (real !== realRoot && !real.startsWith(realRoot + sep)) {
           log.error?.(`[workspace] refusing write through a symlink: ${rel}`);
           return null;
+        }
+      }
+
+      // Execute the relocation: move the stub (and any sidecars it grew) to
+      // the validated home — filesystem rename + staging both halves ≈ git mv,
+      // AFTER the containment gates above proved the destination is inside the
+      // design root. A lane that fails to move is simply left for the normal
+      // write path below to (re)create at the new location.
+      const vacated = [];
+      const arrived = [];
+      if (relocateFrom) {
+        const from = siblingPaths(relocateFrom);
+        for (const [src, dst] of [
+          [relocateFrom, bodyRel],
+          [from.meta, sib.meta],
+          [from.css, sib.css],
+          [from.annotations, sib.annotations],
+        ]) {
+          if (src === dst) continue;
+          try {
+            mkdirSync(dirname(abs(dst)), { recursive: true });
+            renameSync(abs(src), abs(dst));
+            vacated.push(src);
+            arrived.push(dst);
+          } catch {
+            /* that lane never materialized — nothing to vacate */
+          }
+        }
+        log.log?.(
+          `[workspace] relocated ${slug}: ${relocateFrom} → ${bodyRel} ` +
+            '(a validated syncMeta.path superseded the fallback)'
+        );
+        // The delete half is stageable only for paths git TRACKS: `git add` on
+        // a vanished never-committed path exits 128, and autocommit re-queues
+        // the whole batch forever — and the stub often lives shorter than one
+        // debounce window. `ls-files` lists only tracked paths, exit 0 always.
+        if (vacated.length > 0) {
+          const repoRels = vacated.map((rel) => relative(repoDir, abs(rel)).split(sep).join('/'));
+          const tracked = await run(['ls-files', '--', ...repoRels], { cwd: repoDir });
+          const known = new Set(
+            tracked.code === 0 ? tracked.stdout.split('\n').filter(Boolean) : repoRels
+          );
+          for (let i = vacated.length - 1; i >= 0; i--) {
+            if (!known.has(repoRels[i])) vacated.splice(i, 1);
+          }
         }
       }
 
@@ -355,10 +412,13 @@ export function createWorkspaceAgent(opts) {
       // are neighbours and why the meta lane in particular must not diverge.
       const committable = committableLanes({ bodyRel, content, onDisk });
 
-      if (writes.length === 0 && committable.length === 0) return null;
+      if (writes.length === 0 && committable.length === 0 && vacated.length === 0) return null;
 
       const who = attributionFor(user);
-      const toStage = new Set(committable);
+      // A relocation stages BOTH halves of the move: the vacated paths (the
+      // delete side — `git add` records a tracked-but-missing file as gone) and
+      // the arrived ones (the add side, even when the bytes were untouched).
+      const toStage = new Set([...committable, ...vacated, ...arrived]);
       for (const w of writes) {
         atomicWrite(abs(w.relPath), w.text);
         toStage.add(w.relPath);
@@ -367,9 +427,11 @@ export function createWorkspaceAgent(opts) {
         // autocommit stages paths relative to the REPO root, not the design root.
         auto.note(relative(repoDir, abs(rel)).split(sep).join('/'), who);
       }
-      // A brand-new canvas becomes indexable immediately, so a second event in
-      // the same session does not re-derive the default flat path.
-      if (!pathIndex.has(slug)) pathIndex.set(slug, bodyRel);
+      // A brand-new canvas becomes indexable immediately (a second event in the
+      // same session does not re-derive the default flat path) — and provenance
+      // travels with it, so a fallback entry stays supersedable until a
+      // validated path or a relocation upgrades it.
+      pathIndex.set(slug, { rel: bodyRel, fromPath });
 
       return { slug, bodyRel, written: writes.map((w) => w.relPath), staged: [...toStage] };
     } catch (err) {

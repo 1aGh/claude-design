@@ -249,3 +249,92 @@ Then in Claude Code (against every consumer repo):
 ## Tracking
 
 Workflow state for this roadmap lives at `../state/STATE.md`. Each phase opens a feature branch, lands a changeset, and gets merged behind a `next` branch. Final v1.0 squash to `main` only after Phase 8 ships (+ optionally Phase 11) and `/flow:validate` is clean across all phases. Phase 9 starts its own development line post-tag.
+
+---
+
+# Sync completion fixes 4–8 — execution guide (2026-08-10)
+
+> Implements [`feature-sync-completion-fixes-4-8.md`](./archive/feature-sync-completion-fixes-4-8.md) (PRD) — the remaining five fixes from the desktop↔cloud sync RCA. Separate mini-roadmap from the v1.0 phases above; phase files use the `phase-sync-*` prefix to avoid colliding with the archived `phase-1..13` numbering.
+
+## Dependency graph
+
+```
+ sync-1 CloudBar "Connected"     sync-2 pathIndex stamp race     sync-4 asset transport      sync-5 commit posture
+ (client, trivial)               (sync + hub — MVP core)         (DDR 6a → impl 6)           (DDR 8a → impl 8)
+        │                               │                              │                          │
+        │                               ▼                              │                          │
+        │                        sync-3 flat-fallback                  │                          │
+        │                        migration (needs the                  │                          │
+        │                        recurrence closed first)              │                          │
+        └───────────────────────────────┴──────────────────────────────┴──────────────────────────┘
+                                                       │
+                                                       ▼
+                                     sync-5 Task 3: single release-minified
+                                     client-bundle rebuild (covers sync-1 + sync-5)
+                                                       │
+                                                       ▼
+                                     End-to-end sync verification (PRD §9)
+                                     against a live cloud-linked project
+```
+
+Only hard edge: **sync-2 → sync-3**. Everything else can parallelize; recommended serial order (cheap→expensive, per the RCA plan): 1 → 2 → 3 → 4 → 5.
+
+## Execution order
+
+| Step | Phase | Fix | File | Can parallelize? | Command |
+| ---- | ----- | --- | ---- | ---------------- | ------- |
+| 1 | CloudBar "Connected" label | 7 | `archive/phase-sync-1-cloudbar-connected.md` | with any | `/flow:execute .ai/plans/archive/phase-sync-1-cloudbar-connected.md` |
+| 2 | pathIndex stamp race (MVP core) | 5 | `archive/phase-sync-2-pathindex-stamp-race.md` | with 1, 4 | `/flow:execute .ai/plans/archive/phase-sync-2-pathindex-stamp-race.md` |
+| 3 | Flat-fallback migration | 4 | `archive/phase-sync-3-flat-fallback-migration.md` | after 2; with 4, 5 | `/flow:execute .ai/plans/archive/phase-sync-3-flat-fallback-migration.md` |
+| 4 | Cloud asset transport (DDR-gated) | 6a+6 | `archive/phase-sync-4-cloud-asset-transport.md` | with 1–3, 5 | `/flow:execute .ai/plans/archive/phase-sync-4-cloud-asset-transport.md` |
+| 5 | Cloud commit posture (DDR-gated, bundle close-out) | 8a+8 | `archive/phase-sync-5-cloud-commit-posture.md` | last | `/flow:execute .ai/plans/archive/phase-sync-5-cloud-commit-posture.md` |
+
+## Copy-paste execution blocks
+
+### Phase sync-1 — CloudBar "Connected"
+
+```
+/flow:execute .ai/plans/archive/phase-sync-1-cloudbar-connected.md
+```
+
+> **What to build:** In `CloudBar.jsx` project rows (~L786-817), match `p.url` against `local.linkedHub?.url` via `projectFromHubUrl`/`hostOf` (reuse the L234-237 reassurance logic). Linked+credentialed → non-action "Connected" (check icon, muted) + Disconnect; linked-uncredentialed or unrelated → keep Connect. Test in `cloud-endpoints.test.ts`.
+
+### Phase sync-2 — pathIndex stamp race
+
+```
+/flow:execute .ai/plans/archive/phase-sync-2-pathindex-stamp-race.md
+```
+
+> **What to build:** (1) `sync/index.ts`: stamp `stampCanvasPath` BEFORE the first body apply (in `connectCanvas` setup), not only post-reconcile (~L884). (2) `workspace-agent.mjs`: `pathIndex` stores `{rel, fromPath}`; a validated `syncMeta.path` supersedes a memoised fallback via containment-checked in-tree relocation (never relocate a checkout-decided path). Regression test: body-before-stamp → nested path, no flat stub, no second document (DDR-064 A4). New hub-write surface → DDR-054 adversarial review.
+
+### Phase sync-3 — flat-fallback migration
+
+```
+/flow:execute .ai/plans/archive/phase-sync-3-flat-fallback-migration.md
+```
+
+> **What to build:** `sync/migrate-flat-fallback.ts` mirroring `migrate-seed.ts` (idempotent, best-effort, never throws into boot): design-root `<slug>.tsx` colliding (via `canvasSlugFromRel`) with a grouped twin → move + siblings to `_trash/<slug>-flat-<ts>/`; lone flat file untouched. Wire into sync boot before first reconcile. Tests: collision trashed / lone kept / second run no-op.
+
+### Phase sync-4 — cloud asset transport
+
+```
+/flow:execute .ai/plans/archive/phase-sync-4-cloud-asset-transport.md
+```
+
+> **What to build:** DDR first (`/flow:record-ddr`): options A git-remote pull (recommended — assets already git-tracked; confirm whose remote the cell checkout tracks, that gates A) / B content-addressed lane / C lazy fetch. Then implement per DDR — bytes onto the cell so `/assets/` (server.mjs:649) serves them. Must STREAM (videos to ~108 MB), stay inside design root (DDR-054). Acceptance: cloud canvas shows `${PC}/park-catch.jpg`, hub/cell test for asset presence.
+
+### Phase sync-5 — cloud commit posture
+
+```
+/flow:execute .ai/plans/archive/phase-sync-5-cloud-commit-posture.md
+```
+
+> **What to build:** DDR first: linked+credentialed repo = cloud-managed; recommendation de-emphasise (hide commit UI, `.git` untouched), escape hatch = disconnect. Then gate `GitPanel` on `linkedHub && credentialed` → History + "Cloud is saving" note, reacting LIVE to `sync:status`. Close-out: `cd apps/studio && MAUDE_SKIP_RUNTIME_BUILD=1 bun run build.ts --release`, commit `dist/client.bundle.js` + `dist/styles.css`.
+
+## Validation commands
+
+Per phase: `/flow:utils-verify`. Full gate before closing the feature: `/flow:validate`, plus this bundle's own §Validation — `pnpm lint`; `pnpm test` + `cd apps/studio && bun test` + `cd apps/hub && node --test` (guard `git status apps/studio/dist/` around every bun run); `pnpm --filter @maude/site build`; `check-import-coherence.sh` + `check-version-parity.sh`; `maude design smoke --changed-only`; `security-auditor` + `ethical-hacker` on the two new hub-write surfaces. The acceptance test for the whole bundle is the live end-to-end verification (PRD §9) against a cloud-linked project.
+
+## Final close-out
+
+`/flow:done` on the feature — DDR sweep (two DDRs must exist), commit, What's New entry (user-visible: Connected state + cloud images + single save mechanism), roadmap regen (`pnpm --filter @maude/site gen:roadmap`), archive the plans.

@@ -160,4 +160,34 @@ export function saveHubCredential(
   renameSync(tmp, path);
 }
 
+/**
+ * Forget the credential + per-machine trust for `normUrl` — the unlink half of
+ * `saveHubCredential`. Idempotent (a missing entry is simply done), and atomic
+ * for the same reason the save is: the file holds EVERY hub credential on the
+ * machine, so a torn write drops them all.
+ */
+export function deleteHubCredential(normUrl: string): void {
+  const path = hubsConfigPath();
+  if (!existsSync(path)) return;
+  let cfg: HubsFile;
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf8'));
+    if (!parsed || typeof parsed.hubs !== 'object' || parsed.hubs === null) return;
+    cfg = parsed as HubsFile;
+  } catch {
+    return; // malformed → nothing recoverable to forget
+  }
+  if (!(normUrl in cfg.hubs) && !cfg.trusted?.includes(normUrl)) return;
+  delete cfg.hubs[normUrl];
+  if (Array.isArray(cfg.trusted)) cfg.trusted = cfg.trusted.filter((u) => u !== normUrl);
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify(cfg, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+  try {
+    chmodSync(tmp, 0o600);
+  } catch {
+    /* windows / read-only fs — best effort */
+  }
+  renameSync(tmp, path);
+}
+
 export const __testing = { probeHealth };

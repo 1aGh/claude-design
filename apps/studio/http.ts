@@ -33,7 +33,6 @@ import { buildCanvasSandboxed, buildStats } from './canvas-build-sandbox.ts';
 import { canvasLibPath } from './canvas-lib-resolver.ts';
 import { TranspileError } from './canvas-pipeline.ts';
 import { createCloudEndpoints } from './cloud/endpoints.ts';
-import { createFigmaEndpoints } from './figma/endpoints.ts';
 import type { AiActivity } from './collab/ai-activity.ts';
 import type { Context } from './context.ts';
 import { reloadConfig } from './context.ts';
@@ -42,6 +41,7 @@ import { probeSetupReadiness } from './design-setup-readiness.ts';
 import { type Format, isFormat, isScope, type Scope } from './exporters/index.ts';
 import { type ExportJobQueue, ExportQueueFullError } from './exporters/jobs.ts';
 import type { ActiveJsonShape } from './exporters/scope.ts';
+import { createFigmaEndpoints } from './figma/endpoints.ts';
 import { generatedClipAnalysis } from './footage/schema.ts';
 import { createFootageStore, FOOTAGE_MAX_BYTES } from './footage-store.ts';
 import {
@@ -406,6 +406,7 @@ export const READ_ONLY_ALLOWED_WRITES = new Set([
   // still a gate that is wrong.
   '/_comments',
   '/_api/hub/link', // link/unlink ≈ session management (cell allows /auth/logout)
+  '/_api/cloud/detach', // unlink — the same session-management class as hub/link
   '/_api/workspace/sign-in', // signing in is how the role is (re)learned
   '/_api/workspace/disclosure',
   '/_api/cloud/signin/start', // account session, not project state
@@ -2426,6 +2427,18 @@ export function createHttp(
           typeof body.project === 'string' ? body.project : undefined
         )
       );
+    },
+    '/_api/cloud/detach': async (req: Request) => {
+      // The in-app `maude design unlink` (fix 7, sync RCA 2026-08-10). Same
+      // gates as attach; MAIN ORIGIN ONLY (absent from CANVAS_SAFE_API +
+      // startCanvasServer routes — it rewrites config.json and drops a stored
+      // credential).
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isTrustedRequestHost(req))
+        return new Response('local request required', { status: 403 });
+      return gitJson(await cloudApi.detach());
     },
 
     '/_api/github/identity': async (req: Request) => {

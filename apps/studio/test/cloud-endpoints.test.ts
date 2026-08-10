@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import {
   connectOutcomeNote,
   isDisplayableUrl,
+  isLinkedProjectRow,
   localIdentityHint,
   parseDeepLink,
   shareViewUrl,
@@ -184,6 +185,101 @@ describe('status — names the LOCAL half so a deep link can be read', () => {
     >;
     expect(json.linkedHub).toBeNull();
     expect(json.project).toBe('fresh-thing');
+  });
+});
+
+describe('isLinkedProjectRow — Connected is a state only a credentialed link earns (fix 7)', () => {
+  const CLOUD = 'https://cloud.maude.sh';
+  const row = (over = {}) =>
+    isLinkedProjectRow({
+      projectUrl: 'https://alligators.cloud.maude.sh',
+      linkedHubUrl: 'https://alligators.cloud.maude.sh',
+      linkedHubCredentialed: true,
+      cloudUrl: CLOUD,
+      ...over,
+    });
+
+  test('linked + credentialed → the row is Connected', () => {
+    expect(row()).toBe(true);
+  });
+  test('linked but UNCREDENTIALED still offers Connect — config.json travels with the repo (B2)', () => {
+    expect(row({ linkedHubCredentialed: false })).toBe(false);
+  });
+  test('an unrelated project keeps its Connect button', () => {
+    expect(row({ projectUrl: 'https://dugmate.cloud.maude.sh' })).toBe(false);
+  });
+  test('unlinked folder: no row is Connected', () => {
+    expect(row({ linkedHubUrl: null, linkedHubCredentialed: false })).toBe(false);
+  });
+  test('self-host addresses carry no project label — exact origin decides', () => {
+    expect(
+      row({
+        projectUrl: 'http://127.0.0.1:8788',
+        linkedHubUrl: 'http://127.0.0.1:8788',
+        cloudUrl: 'http://127.0.0.1:8788',
+      })
+    ).toBe(true);
+    // Two stubs on different ports are two different workspaces.
+    expect(
+      row({
+        projectUrl: 'http://127.0.0.1:8788',
+        linkedHubUrl: 'http://127.0.0.1:9999',
+        cloudUrl: 'http://127.0.0.1:8788',
+      })
+    ).toBe(false);
+  });
+  test('a label on one side and none on the other never matches', () => {
+    expect(row({ projectUrl: 'http://127.0.0.1:8788' })).toBe(false);
+  });
+});
+
+describe('detach — the in-app unlink (fix 7 Disconnect)', () => {
+  test('drops linkedHub + the hub credential, cycles the runtime to solo; idempotent', async () => {
+    const { createCloudEndpoints } = await import('../cloud/endpoints.ts');
+    const { mkdirSync, existsSync } = await import('node:fs');
+    const repoRoot = join(scratch, 'detach-me');
+    const designRoot = join(repoRoot, '.design');
+    mkdirSync(designRoot, { recursive: true });
+    const hubUrl = 'https://alligators.cloud.maude.sh';
+    writeFileSync(
+      join(designRoot, 'config.json'),
+      JSON.stringify({ designRoot: '.design', linkedHub: { url: hubUrl, linkedAt: 1 } })
+    );
+    writeFileSync(
+      join(scratch, 'hubs.json'),
+      JSON.stringify({ hubs: { [hubUrl]: { token: 'mau_x', linkedAt: 1 } }, trusted: [hubUrl] })
+    );
+
+    const restarts: unknown[] = [];
+    const api = createCloudEndpoints({
+      paths: { repoRoot, designRoot },
+      syncControl: {
+        restart: async (linkedHub) => {
+          restarts.push(linkedHub);
+          return { syncing: false, canvases: 0, reason: 'unlinked' };
+        },
+      },
+    });
+
+    const r = await api.detach();
+    expect(r.status).toBe(200);
+    expect((r.json as { detached?: boolean }).detached).toBe(true);
+    // The committed half is gone, the rest of config.json survives.
+    const cfg = JSON.parse(readFileSync(join(designRoot, 'config.json'), 'utf8'));
+    expect(cfg.linkedHub).toBeUndefined();
+    expect(cfg.designRoot).toBe('.design');
+    // The credential + trust entry are gone too (the CLI unlink default).
+    const hubs = JSON.parse(readFileSync(join(scratch, 'hubs.json'), 'utf8'));
+    expect(hubs.hubs[hubUrl]).toBeUndefined();
+    expect(hubs.trusted).not.toContain(hubUrl);
+    // The runtime was cycled with the explicit unlink sentinel, not undefined.
+    expect(restarts).toEqual([null]);
+    expect(existsSync(join(designRoot, 'config.json'))).toBe(true);
+
+    // Second detach: still ok, nothing to do.
+    const again = await api.detach();
+    expect(again.status).toBe(200);
+    expect((again.json as { detached?: boolean }).detached).toBe(false);
   });
 });
 

@@ -190,6 +190,34 @@ function projectFromHubUrl(hubUrl, cloudHost) {
 }
 
 /**
+ * Is this project row the one THIS folder is already linked to?
+ *
+ * Fix 7 of the 2026-08-10 sync RCA: every row used to render the same
+ * `Connect <name>` button, including the project this folder was already
+ * syncing with — the UI lying about an established link. Only a CREDENTIALED
+ * link counts (the `linkedHub` half alone comes from a committed config.json —
+ * attacker-authorable, B2), so a linked-but-uncredentialed row still offers
+ * Connect: it genuinely needs the sign-in.
+ *
+ * Addresses inside the configured cloud zone compare by the project label they
+ * carry (`projectFromHubUrl`, NFKD-folded like the platform); addresses that
+ * carry none (self-hosts, e2e stubs at `http://127.0.0.1:<port>`) fall back to
+ * an exact origin match, so two stubs on different ports never collapse.
+ */
+export function isLinkedProjectRow({ projectUrl, linkedHubUrl, linkedHubCredentialed, cloudUrl }) {
+  if (!linkedHubUrl || !linkedHubCredentialed) return false;
+  const cloudHost = hostOf(cloudUrl);
+  const linked = projectFromHubUrl(linkedHubUrl, cloudHost);
+  const row = projectFromHubUrl(projectUrl, cloudHost);
+  if (linked && row) return linked === row;
+  try {
+    return new URL(String(projectUrl)).origin === new URL(String(linkedHubUrl)).origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Does this folder look like the cloud project a link is naming?
  *
  * A hint about a decision the person makes — never an authorization gate. It
@@ -326,6 +354,7 @@ function Spark({ size = 15 }) {
 function Icon({ name, size = 15 }) {
   const p = {
     'chevron-up': <polyline points="3.5 10 8 5.5 12.5 10" />,
+    check: <polyline points="3 8.5 6.5 12 13 4.5" />,
     external: (
       <>
         <path d="M6 3.5H3.2A.7.7 0 0 0 2.5 4.2v8.6a.7.7 0 0 0 .7.7h8.6a.7.7 0 0 0 .7-.7V10" />
@@ -369,7 +398,11 @@ function Icon({ name, size = 15 }) {
   );
 }
 
-export default function CloudBar({ syncStatus }) {
+// `onLinkedHub` lifts the resolved link state to the app shell (DDR-218): the
+// GitPanel's cloud-managed posture turns on the same `linkedHub.credentialed`
+// fact this panel's Connected row does, and CloudBar owns every action that
+// changes it (status resolve, attach, detach) — so it reports, the app decides.
+export default function CloudBar({ syncStatus, onLinkedHub }) {
   const [state, setState] = useState('loading'); // loading | out | in
   const [email, setEmail] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -417,6 +450,7 @@ export default function CloudBar({ syncStatus }) {
           linkedHub: r.json?.linkedHub ?? null,
           resolved: true,
         });
+        onLinkedHub?.(r.json?.linkedHub ?? null);
         if (r.ok && r.json?.connected) {
           setEmail(r.json.email);
           setState('in');
@@ -476,8 +510,19 @@ export default function CloudBar({ syncStatus }) {
     setPending(null);
     if (r.ok && r.json?.ok) {
       setConnected({ project: r.json.project ?? pending.project, sync: r.json.sync });
+      adoptLink(r.json.url);
     } else {
       setError(r.json?.error || 'The workspace could not be connected.');
+    }
+  }
+
+  // A successful attach IS a credentialed link — mirror it into `local` so the
+  // project list flips to Connected without a second status fetch (the server
+  // just wrote both halves: linkedHub in config.json + the hub credential).
+  function adoptLink(url) {
+    if (typeof url === 'string' && url) {
+      setLocal((l) => ({ ...l, linkedHub: { url, credentialed: true } }));
+      onLinkedHub?.({ url, credentialed: true });
     }
   }
 
@@ -562,10 +607,27 @@ export default function CloudBar({ syncStatus }) {
     setBusy('');
     if (r.ok && r.json?.ok) {
       setConnected({ project: r.json.project ?? projectId, sync: r.json.sync });
+      adoptLink(r.json.url);
     } else {
       setError(r.json?.error || 'The workspace could not be connected.');
     }
     setMenuOpen(false);
+  }
+
+  /** The in-app `maude design unlink` — drops the link AND stops syncing now. */
+  async function disconnect() {
+    setBusy('disconnect');
+    setError('');
+    const r = await api('/_api/cloud/detach', { method: 'POST' });
+    setBusy('');
+    setMenuOpen(false);
+    if (r.ok && r.json?.ok) {
+      setLocal((l) => ({ ...l, linkedHub: null }));
+      setConnected(null);
+      onLinkedHub?.(null);
+    } else {
+      setError(r.json?.error || 'The workspace could not be disconnected.');
+    }
   }
 
   async function signOut() {
@@ -801,6 +863,35 @@ export default function CloudBar({ syncStatus }) {
                       <Icon name="external" size={15} /> View {p.name || p.id} in the browser
                       <span className="gi-menu-login" style={{ marginLeft: 'auto' }}>viewer</span>
                     </button>
+                  ) : isLinkedProjectRow({
+                      projectUrl: p.url,
+                      linkedHubUrl: local.linkedHub?.url,
+                      linkedHubCredentialed: local.linkedHub?.credentialed,
+                      cloudUrl,
+                    }) ? (
+                    // The project this folder is ALREADY linked to. Connected is
+                    // a state, not an action — the one action left is leaving.
+                    // (Same wrapper shape as the "Loading projects…" row; the
+                    // button is the focusable menu entry.)
+                    <div
+                      key={p.id}
+                      className="gi-menu-item is-connected"
+                      data-testid={`cloud-project-${p.id}`}
+                    >
+                      <Icon name="check" size={15} /> {p.name || p.id}
+                      <span className="gi-menu-login" style={{ marginLeft: 'auto' }}>Connected</span>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        role="menuitem"
+                        disabled={busy === 'disconnect'}
+                        onClick={disconnect}
+                        aria-label={`Disconnect this folder from ${p.name || p.id}`}
+                        data-testid={`cloud-disconnect-${p.id}`}
+                      >
+                        {busy === 'disconnect' ? 'Disconnecting…' : 'Disconnect'}
+                      </button>
+                    </div>
                   ) : (
                     <button
                       key={p.id}

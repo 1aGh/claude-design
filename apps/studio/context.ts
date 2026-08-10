@@ -191,7 +191,8 @@ export interface Context {
    * non-serving entry points construct a Context without one.
    */
   syncControl?: {
-    restart(linkedHub?: LinkedHub): Promise<{
+    /** `null` means UNLINK: clear the in-memory link and cycle back to solo. */
+    restart(linkedHub?: LinkedHub | null): Promise<{
       syncing: boolean;
       canvases: number;
       reason?: string;

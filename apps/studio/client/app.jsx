@@ -2589,6 +2589,9 @@ function Sidebar({
   // Passed through to CloudBar only — the live `sync:status` payload that makes
   // the connect note follow the link instead of freezing at attach time.
   syncStatus,
+  // Passed through to CloudBar only — lifts linkedHub changes to the app shell
+  // so the GitPanel's cloud-managed posture (DDR-218) reacts live.
+  onLinkedHub,
 }) {
   const filteredGroups = useMemo(() => {
     if (!search) return groups;
@@ -2964,7 +2967,7 @@ function Sidebar({
           Absent rather than disabled, because unlike the agent chat there is
           nothing here to explain — the capability is not missing, it is
           already satisfied. */}
-      {cloud === null ? <CloudBar syncStatus={syncStatus} /> : null}
+      {cloud === null ? <CloudBar syncStatus={syncStatus} onLinkedHub={onLinkedHub} /> : null}
       {/* Phase 28 (E3) — GitHub identity as a compact avatar docked at the BOTTOM:
           sign in, connected account + New/Pull/Share, sign out. Self-contained
           (owns its device-code + CreateProject dialogs). Renders nothing in browser. */}
@@ -9475,6 +9478,10 @@ function App() {
   // Phase 9 Task 8 — hub-down offline mode banner. Driven by the 'sync:status'
   // WS message the linked-mode sync runtime emits. null in solo mode.
   const [syncStatus, setSyncStatus] = useState(null);
+  // DDR-218 — the folder's cloud link ({url, credentialed} | null), lifted from
+  // CloudBar (status resolve / attach / detach). Gates the GitPanel's
+  // cloud-managed posture; linked-but-uncredentialed keeps the full panel.
+  const [cloudLinkedHub, setCloudLinkedHub] = useState(null);
   // Phase 27 (E2) — in-UI git layer. `gitStatus` is the live dirty-state the
   // server broadcasts on `git-status`; `changesOpen` toggles the Changes panel;
   // `diffTarget` opens the before/after DiffView ({ file, conflict }).
@@ -14317,6 +14324,7 @@ function App() {
           onGetLatest={gitGetLatest}
           canvasKinds={cfg?.canvasKinds}
           syncStatus={syncStatus}
+          onLinkedHub={setCloudLinkedHub}
         />
       );
     if (id === 'changes')
@@ -14339,6 +14347,14 @@ function App() {
           // server-side (`projectReadOnly`, the manifest's role matrix), and
           // they are unchanged by this flag.
           historyOnly={!!cfg.cloud}
+          // DDR-218 (fix 8) — the DESKTOP half of the same withdrawal: a repo
+          // linked+credentialed to Maude Cloud is cloud-managed (the cell
+          // commits every edit as it lands), so the local Changes surface is
+          // the second save mechanism the sync RCA's user was confused by.
+          // Live: CloudBar lifts every link change (resolve/attach/detach)
+          // into `cloudLinkedHub`. Same presentation-not-a-control rule as
+          // `historyOnly` above; Disconnect restores the panel in place.
+          cloudManaged={!cfg.cloud && !!cloudLinkedHub?.credentialed}
           resizing={resizingFor('changes')}
           onClose={() => setChangesOpen(false)}
           onCommit={gitCommit}

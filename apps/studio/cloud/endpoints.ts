@@ -15,11 +15,19 @@
 //             user token → saveHubCredential() + linkedHub in config.json —
 //             the exact state `maude design link` would have written by hand.
 
-import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 
-import { saveHubCredential } from '../sync/hub-link.ts';
+import { deleteHubCredential, saveHubCredential } from '../sync/hub-link.ts';
 import { getHubToken, normalizeUrl } from '../sync/hubs-config.ts';
 
 /**
@@ -116,11 +124,14 @@ interface Ctx {
    * syncing after the next start.
    */
   syncControl?: {
-    restart(linkedHub?: {
-      url: string;
-      linkedAt: number;
-      syncTsx?: boolean;
-    }): Promise<{ syncing: boolean; canvases: number; reason?: string; detail?: string }>;
+    /** `null` = unlink: clear the runtime's in-memory link, cycle to solo. */
+    restart(
+      linkedHub?: {
+        url: string;
+        linkedAt: number;
+        syncTsx?: boolean;
+      } | null
+    ): Promise<{ syncing: boolean; canvases: number; reason?: string; detail?: string }>;
   };
 }
 
@@ -318,6 +329,50 @@ export function createCloudEndpoints(ctx: Ctx) {
         role: exchanged.body.role,
         project: exchanged.body.project,
       });
+    },
+
+    /**
+     * Detach THIS project from its workspace — the in-app `maude design
+     * unlink` (fix 7's Disconnect, sync RCA 2026-08-10). Drops the committed
+     * `linkedHub` AND the stored hub credential for that address (the CLI
+     * default), then cycles the runtime back to solo so syncing stops NOW
+     * rather than at the next restart. Idempotent: disconnecting an unlinked
+     * project answers ok, not an error.
+     */
+    async detach(): Promise<CloudEndpointResult> {
+      const cfgPath = join(ctx.paths.designRoot, 'config.json');
+      let cfg: Record<string, unknown> = {};
+      try {
+        cfg = JSON.parse(readFileSync(cfgPath, 'utf8'));
+      } catch {
+        /* absent/malformed → nothing linked */
+      }
+      const linked = (cfg as { linkedHub?: { url?: unknown } }).linkedHub;
+      const url = typeof linked?.url === 'string' ? linked.url : null;
+      if (linked) {
+        delete cfg.linkedHub;
+        // Temp + rename (security review 2026-08-10, F5) — config.json is the
+        // SERVED project config (tokensCssRel, canvasGroups); a crash mid-write
+        // would corrupt it. Same atomic posture as `hub-link.ts`, but WITHOUT
+        // the credential store's 0o600 (this file is committed + world-readable
+        // by design), so it inherits the umask like the plain write it replaces.
+        const tmp = `${cfgPath}.${process.pid}.tmp`;
+        writeFileSync(tmp, `${JSON.stringify(cfg, null, 2)}\n`, 'utf8');
+        renameSync(tmp, cfgPath);
+      }
+      if (url) {
+        try {
+          deleteHubCredential(normalizeUrl(url));
+        } catch {
+          /* an unparseable stored URL has no credential entry to drop */
+        }
+      }
+      try {
+        await ctx.syncControl?.restart(null);
+      } catch {
+        /* best-effort — the link is gone on disk either way */
+      }
+      return { status: 200, json: { ok: true, detached: !!linked } };
     },
   };
 

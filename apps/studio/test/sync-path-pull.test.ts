@@ -233,6 +233,69 @@ describe('a peer with an empty design root pulls the project down whole', () => 
   });
 });
 
+describe('boot runs the flat-fallback quarantine BEFORE the scan (fix 4)', () => {
+  test('a pre-fix-5 flat twin is in _trash by the time the runtime settles', async () => {
+    const ctx = makeCtx();
+    mkdirSync(join(ctx.paths.designRoot, 'ui'), { recursive: true });
+    writeFileSync(join(ctx.paths.designRoot, 'ui/welcome.tsx'), 'grouped\n');
+    writeFileSync(join(ctx.paths.designRoot, 'ui-welcome.tsx'), 'flat stub\n');
+    hubListing([]);
+
+    const runtime = createSyncRuntime(ctx, { providerFactory: hubDocProviderFactory({}) });
+    await runtime?.start();
+    await runtime?.stop();
+
+    expect(existsSync(join(ctx.paths.designRoot, 'ui-welcome.tsx'))).toBe(false);
+    expect(existsSync(join(ctx.paths.designRoot, 'ui/welcome.tsx'))).toBe(true);
+    expect(existsSync(join(ctx.paths.designRoot, '_trash'))).toBe(true);
+  });
+});
+
+describe('the stamp race — the path is on the doc BEFORE the handshake (fix 5)', () => {
+  test('a local canvas stamps syncMeta.path before onceSynced, so the hub’s first store sees it', async () => {
+    // The RCA bug: the stamp lived only in the post-reconcile tail, so the
+    // hub's FIRST onDocumentStored saw a bare body, memoised the flat fallback
+    // in its pathIndex, and the real nested path could never win — a stub was
+    // born whose dynamic import failed forever.
+    const ctx = makeCtx();
+    const bodyAbs = join(ctx.paths.designRoot, NESTED_REL);
+    mkdirSync(join(ctx.paths.designRoot, 'ui/2026/social'), { recursive: true });
+    writeFileSync(bodyAbs, BODY);
+    hubListing([]);
+
+    let pathAtHandshake: unknown = 'never-called';
+    const runtime = createSyncRuntime(ctx, {
+      canvases: [
+        {
+          slug: NESTED_SLUG,
+          html: bodyAbs,
+          comments: join(ctx.paths.commentsDir, `${NESTED_SLUG}.json`),
+          annotations: join(ctx.paths.designRoot, `${NESTED_SLUG}.annotations.svg`),
+          meta: bodyAbs.replace(/\.tsx$/, '.meta.json'),
+          css: bodyAbs.replace(/\.tsx$/, '.css'),
+        },
+      ],
+      providerFactory: (args) => {
+        const doc = args.document ?? new Y.Doc();
+        return {
+          document: doc,
+          awareness: new Awareness(doc),
+          async onceSynced() {
+            // What the hub can see by the time the handshake settles — the
+            // stamp must ALREADY be there, not arrive with the reconcile tail.
+            pathAtHandshake = doc.getMap('syncMeta').get('path');
+          },
+          destroy() {},
+        };
+      },
+    });
+    await runtime?.start();
+    await runtime?.stop();
+
+    expect(pathAtHandshake).toBe(NESTED_REL);
+  });
+});
+
 describe("rule 7 governs a path's IDENTITY, not what already lives there", () => {
   test('a pulled canvas never lands on a file that already exists locally', async () => {
     // `scanCanvases` omits a canvas whose `.meta.json` says `syncable: false` —

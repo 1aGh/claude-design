@@ -52,8 +52,11 @@ export interface SyncSupervisor {
   /**
    * Adopt a just-authorized link and cycle the runtime. `linkedHub` is passed
    * BY VALUE from the attach lane on purpose — never re-read from disk.
+   * `null` is the detach lane: clear the in-memory link (the config write on
+   * disk is invisible to a cfg captured at boot) and cycle back to solo.
+   * `undefined` keeps whatever the config already holds.
    */
-  restart(linkedHub?: LinkedHub): Promise<SyncStartOutcome>;
+  restart(linkedHub?: LinkedHub | null): Promise<SyncStartOutcome>;
   stop(): Promise<void>;
   /** The live runtime, or null in solo mode. Test/inspection surface. */
   current(): SyncRuntime | null;
@@ -166,6 +169,7 @@ export function createSyncSupervisor(
         }
         runtime = null;
         if (linkedHub) adoptLinkedHub(ctx, linkedHub);
+        else if (linkedHub === null) delete ctx.cfg.linkedHub;
         return boot();
       }),
     stop: () =>
