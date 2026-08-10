@@ -363,14 +363,27 @@ export function createCloudEndpoints(ctx: Ctx) {
   }): Promise<CloudEndpointResult> {
     // The cell is a different host than the control plane — one direct call.
     let hubToken: string | null = null;
+    let hubTokenExpiresAt: number | undefined;
+    let vouchedRole: string | undefined;
     try {
       const res = await fetch(`${workspaceUrl}/auth/login`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ token: projectToken }),
       });
-      const body = (await res.json().catch(() => ({}))) as CloudBody;
-      if (res.ok && body?.token) hubToken = body.token;
+      const body = (await res.json().catch(() => ({}))) as CloudBody & {
+        expiresAt?: unknown;
+        user?: { role?: unknown };
+      };
+      if (res.ok && body?.token) {
+        hubToken = body.token;
+        // The cell reports when this session dies (≤ the 12 h project-token
+        // cap). Persisted so the sync runtime can renew BEFORE the deadline —
+        // discarding it here is what made every link silently expire.
+        if (typeof body.expiresAt === 'number' && Number.isFinite(body.expiresAt))
+          hubTokenExpiresAt = body.expiresAt;
+        if (typeof body.user?.role === 'string' && body.user.role) vouchedRole = body.user.role;
+      }
     } catch {
       /* handled below */
     }
@@ -385,7 +398,7 @@ export function createCloudEndpoints(ctx: Ctx) {
     }
 
     const norm = normalizeUrl(workspaceUrl);
-    saveHubCredential(norm, hubToken);
+    saveHubCredential(norm, hubToken, vouchedRole, hubTokenExpiresAt);
 
     // Project side — linkedHub in .design/config.json (committed; no token).
     const cfgPath = join(ctx.paths.designRoot, 'config.json');

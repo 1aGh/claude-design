@@ -154,3 +154,39 @@ test('valid-token rate limit → reason names the rate limit + retry hint', asyn
     rmSync(dir2, { recursive: true, force: true });
   }
 });
+
+test('invalid-token rate limit → reason still says "invalid token" (permanent, not transient)', async () => {
+  // The peer classifies on this string. The old wording ('rate limit
+  // exceeded — retry in up to 60s') filed an expired credential under the
+  // TRANSIENT class, so the runtime kept retrying into the very bucket
+  // refusing it and the invalid-token cause never surfaced. The reason must
+  // lead with the cause; the bucket is only the messenger.
+  const dir3 = mkdtempSync(join(tmpdir(), 'maude-hub-rl3-'));
+  // A configured token turns permissive dev mode OFF — without one, an empty
+  // dataDir + empty secret accepts any token and the invalid path is
+  // unreachable.
+  addToken(dir3, { label: 'alice' });
+  const port3 = BASE_PORT + 600 + portCounter;
+  const built = createHub({
+    port: port3,
+    dataDir: dir3,
+    secret: '',
+    publicUrl: `https://hub.example.com:${port3}`,
+    verbose: false,
+    rateLimit: true,
+    invalidConnRateLimit: 1,
+  });
+  await built.server.listen();
+  try {
+    // First invalid attempt eats the whole ceiling and reports the plain cause…
+    const first = await authFailureReason(port3, { name: 'doc-one', token: 'mau_garbage' });
+    assert.equal(first, 'invalid token');
+    // …second lands in the bucket — and the reason must still name the cause.
+    const second = await authFailureReason(port3, { name: 'doc-one', token: 'mau_garbage' });
+    assert.match(second, /invalid token/);
+    assert.match(second, /rate limited/);
+  } finally {
+    await built.server.destroy();
+    rmSync(dir3, { recursive: true, force: true });
+  }
+});

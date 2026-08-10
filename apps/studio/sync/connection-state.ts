@@ -42,6 +42,14 @@ export interface SyncStatusSnapshot {
   flash: 'synced' | null;
   /** ms epoch this snapshot was produced. */
   updatedAt: number;
+  /**
+   * ms epoch this link's monitor was created — i.e. when this runtime started
+   * trying. The one clock `connecting…` can honestly be measured against:
+   * `updatedAt` moves on every emit (an auth-rejection storm refreshes it
+   * forever), so "how long has nothing synced" needs a stamp that does NOT
+   * reset while nothing is actually working. Absent in pre-existing payloads.
+   */
+  startedAt?: number;
   /** DDR-102 — per-doc rollup (additive; absent in pre-DDR-102 payloads). */
   docs?: { synced: number; pending: number; rejected: number };
   /** DDR-102 — slugs currently auth-rejected, capped at 20 (see docs.rejected
@@ -130,6 +138,8 @@ export function createConnectionMonitor(opts: ConnectionMonitorOptions = {}): Co
   let lastSyncAt: number | null = null;
   let offlineSince: number | null = null;
   let flash: 'synced' | null = null;
+  /** When this monitor began trying — see `SyncStatusSnapshot.startedAt`. */
+  const startedAt = now();
 
   let graceTimer: TimerHandle | null = null;
   let escalateTimer: TimerHandle | null = null;
@@ -172,6 +182,7 @@ export function createConnectionMonitor(opts: ConnectionMonitorOptions = {}): Co
       offlineSince,
       flash,
       updatedAt: now(),
+      startedAt,
       docs,
       rejectedSlugs,
       ...(pulled ? { pulled } : {}),

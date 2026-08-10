@@ -183,3 +183,80 @@ describe('hub-supplied text is untrusted (DDR-054)', () => {
     expect(p?.names).toEqual([]);
   });
 });
+
+describe('zero progress has a deadline — the stalled phase', () => {
+  const NOW = 10 * 60_000; // 10 minutes after the epoch-zero base
+
+  test('connecting past the ceiling with nothing synced becomes stalled, with the move named', () => {
+    const p = syncPresentation(
+      { ...base, state: 'connecting', startedAt: 1, docs: { synced: 0, pending: 73, rejected: 0 } },
+      { project: 'alligators', now: NOW }
+    );
+    expect(p?.phase).toBe('stalled');
+    expect(p?.online).toBe(false);
+    expect(p?.title).toContain('Nothing has synced');
+    expect(p?.next).toContain('Reconnect');
+  });
+
+  test('a fresh connect is NOT stalled — the handshake gets its moment', () => {
+    const p = syncPresentation(
+      { ...base, state: 'connecting', startedAt: 1, docs: { synced: 0, pending: 73, rejected: 0 } },
+      { project: 'alligators', now: 30_000 }
+    );
+    expect(p?.phase).toBe('connecting');
+  });
+
+  test('any progress at all cancels the stall — syncing is not stalling', () => {
+    const p = syncPresentation(
+      { ...base, startedAt: 1, docs: { synced: 1, pending: 72, rejected: 0 } },
+      { project: 'alligators', now: NOW }
+    );
+    expect(p?.phase).toBe('syncing');
+  });
+
+  test('zero known documents past the ceiling also stalls', () => {
+    const p = syncPresentation(
+      { ...base, state: 'connecting', startedAt: 1, docs: { synced: 0, pending: 0, rejected: 0 } },
+      { project: 'alligators', now: NOW }
+    );
+    expect(p?.phase).toBe('stalled');
+  });
+
+  test('an old payload without startedAt can never stall (fail open to connecting)', () => {
+    const p = syncPresentation(
+      { ...base, state: 'connecting' },
+      { project: 'alligators', now: NOW }
+    );
+    expect(p?.phase).toBe('connecting');
+  });
+
+  test('a refusal still outranks a stall — the more specific cause wins', () => {
+    const p = syncPresentation(
+      { ...base, startedAt: 1, docs: { synced: 0, pending: 0, rejected: 73 } },
+      { project: 'alligators', now: NOW }
+    );
+    expect(p?.phase).toBe('refused');
+  });
+
+  test('an unreachable hub still outranks a stall — offline explains itself', () => {
+    const p = syncPresentation(
+      { ...base, state: 'offline', startedAt: 1, docs: { synced: 0, pending: 3, rejected: 0 } },
+      { project: 'alligators', now: NOW }
+    );
+    expect(p?.phase).toBe('offline');
+  });
+
+  test('a garbage startedAt fails open, never into a false alarm', () => {
+    const p = syncPresentation(
+      // biome-ignore lint/suspicious/noExplicitAny: hostile-payload shape test
+      {
+        ...base,
+        state: 'connecting',
+        startedAt: 'yes' as any,
+        docs: { synced: 0, pending: 1, rejected: 0 },
+      },
+      { project: 'alligators', now: NOW }
+    );
+    expect(p?.phase).toBe('connecting');
+  });
+});

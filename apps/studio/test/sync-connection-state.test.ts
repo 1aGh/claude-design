@@ -61,6 +61,19 @@ describe('connection monitor', () => {
     expect(monitor.snapshot().state).toBe('online');
   });
 
+  test('the snapshot carries a stable startedAt — the clock a stall is measured against', () => {
+    const { clock, monitor } = makeMonitor();
+    const born = monitor.snapshot().startedAt;
+    expect(typeof born).toBe('number');
+    // It must NOT move with later emits — `updatedAt` does that job, and a
+    // rejection storm refreshing `updatedAt` forever is exactly why a second,
+    // fixed stamp exists.
+    clock.advance(60_000);
+    monitor.noteProviderStatus('p1', 'connecting');
+    expect(monitor.snapshot().startedAt).toBe(born);
+    expect(monitor.snapshot().updatedAt).toBeGreaterThan(born as number);
+  });
+
   test('a link nobody answers still escalates to offline', () => {
     // The seed change must not create a state that waits forever: a provider
     // that only ever reports 'connecting' has to reach the offline banner on

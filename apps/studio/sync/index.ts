@@ -23,7 +23,7 @@ import path from 'node:path';
 
 import type { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
-
+import { renewHubCredential } from '../cloud/renew.ts';
 import { Y_TYPES } from '../collab/persistence.ts';
 import type { Context, LinkedHub } from '../context.ts';
 import { createHistory } from '../history.ts';
@@ -41,7 +41,7 @@ import {
 import { createDocNameResolver } from './doc-name.ts';
 import { createEchoGuard } from './echo-guard.ts';
 import { createFsReader, type FsReader } from './fs-mirror.ts';
-import { getHubToken } from './hubs-config.ts';
+import { getHubRecord } from './hubs-config.ts';
 import { loadJournal, type SyncJournal } from './journal.ts';
 import { isLoopbackHost } from './loopback.ts';
 import { migrateSeed } from './migrate-seed.ts';
@@ -96,9 +96,14 @@ export type AuthFailureClass = 'rate-limit' | 'not-authorized' | 'invalid-token'
  *  → `generic` (interop-safe degradation). */
 export function classifyAuthFailure(raw: string): AuthFailureClass {
   const s = raw.toLowerCase();
-  if (s.includes('rate limit')) return 'rate-limit';
-  if (s.includes('not authorized')) return 'not-authorized';
+  // Permanent classes FIRST. The hub's invalid-token bucket refuses with
+  // "invalid token — rate limited, retry in up to 60s": both substrings are
+  // present, and testing 'rate limit' first filed an expired credential under
+  // the transient class — so the runtime retried into the very bucket
+  // refusing it, and the one cause that needed a person never surfaced.
   if (s.includes('invalid token')) return 'invalid-token';
+  if (s.includes('not authorized')) return 'not-authorized';
+  if (s.includes('rate limit')) return 'rate-limit';
   return 'generic';
 }
 
@@ -202,6 +207,16 @@ export interface CreateSyncRuntimeOptions {
     settleTimeoutMs?: number;
     setTimer?: (cb: () => void, ms: number) => ReturnType<typeof setTimeout>;
     clearTimer?: (h: ReturnType<typeof setTimeout>) => void;
+    /**
+     * Silent credential renewal (cloud workspaces). Called single-flight at
+     * ~80 % of the stored credential's remaining life and on any
+     * `invalid-token` rejection; a non-null return swaps the runtime's token
+     * in place and re-probes rejected docs immediately. Default: the Maude
+     * Cloud renewal lane (`cloud/renew.ts`); it answers null for a machine
+     * that is not signed in, so self-hosted hubs keep today's behaviour.
+     * Never called under cell pairing (the cell's token comes from its env).
+     */
+    renewCredential?: () => Promise<{ token: string; expiresAt: number | null } | null>;
   };
 }
 
@@ -355,14 +370,20 @@ export function createSyncRuntime(
   // this process in its environment. `~/.config/maude/hubs.json` is a PERSON's
   // credential store and does not exist in a cell (HOME=/tmp) — which is exactly
   // why the old guard was unreachable by accident rather than by design.
-  const resolvedToken = cellPairing ? cellPairing.token : getHubToken(linkedHub.url);
+  const storedRecord = cellPairing ? null : getHubRecord(linkedHub.url);
+  const resolvedToken = cellPairing ? cellPairing.token : (storedRecord?.token ?? null);
   if (!resolvedToken) {
     console.warn(
       `[sync] linked to ${linkedHub.url} but no token in ~/.config/maude/hubs.json. Re-run 'maude design link' on this machine. Solo mode for now.`
     );
     return null;
   }
-  const token: string = resolvedToken;
+  // MUTABLE on purpose: silent renewal swaps it in place, and connectCanvas
+  // reads it at call time — so every provider (re)created after a renewal
+  // carries the fresh credential without a runtime restart.
+  let token: string = resolvedToken;
+  let tokenExpiresAt: number | null =
+    typeof storedRecord?.expiresAt === 'number' ? storedRecord.expiresAt : null;
 
   // DDR-102 — the default factory multiplexes every provider over ONE shared
   // WebSocket per hub URL; the runtime owns its disposal (stop(), after the
@@ -418,6 +439,18 @@ export function createSyncRuntime(
   >();
   let authWarnTimer: TimerHandle | null = null;
   let reprobeTimer: TimerHandle | null = null;
+  let renewTimer: TimerHandle | null = null;
+  /** Single-flight guard: 73 rejected docs must trigger ONE renewal, not 73. */
+  let renewInFlight: Promise<boolean> | null = null;
+  // Silent credential renewal (cloud). Absent under cell pairing — the cell's
+  // token arrives via its environment and is the hub's own to rotate.
+  const renewCredential = cellPairing
+    ? null
+    : (opts.auth?.renewCredential ??
+      (async () => {
+        const r = await renewHubCredential(linkedHub.url);
+        return r.ok ? { token: r.token, expiresAt: r.expiresAt } : null;
+      }));
   const settleTimers = new Set<TimerHandle>();
   /** Pending synthetic `fs:any` emissions (cell pairing only), keyed by the
    *  design-root-relative path so a second write to the same file inside the
@@ -753,20 +786,87 @@ export function createSyncRuntime(
       console.warn(`[sync] hub auth rejections (${linkedHub.url}):\n${lines.join('\n')}`);
     };
 
+    /** Reconnect every permanently-rejected doc now. Idempotent — the map is
+     *  drained, so a second call during the same burst is a no-op. */
+    const reprobeNow = (): void => {
+      if (stopped) return;
+      if (reprobeTimer !== null) {
+        authClearTimer(reprobeTimer);
+        reprobeTimer = null;
+      }
+      const entries = [...rejectedPermanent.values()];
+      rejectedPermanent.clear();
+      for (const entry of entries) {
+        mon.noteDocState(entry.canvas.slug, 'pending');
+        void connectCanvas(entry.canvas, entry.canvasPaths, entry.doc).catch((err) => {
+          console.error(`[sync/${entry.canvas.slug}] re-probe failed:`, err);
+        });
+      }
+    };
+
     const scheduleReprobe = (): void => {
       if (reprobeTimer !== null || stopped) return;
       reprobeTimer = authSetTimer(() => {
         reprobeTimer = null;
-        if (stopped) return;
-        const entries = [...rejectedPermanent.values()];
-        rejectedPermanent.clear();
-        for (const entry of entries) {
-          mon.noteDocState(entry.canvas.slug, 'pending');
-          void connectCanvas(entry.canvas, entry.canvasPaths, entry.doc).catch((err) => {
-            console.error(`[sync/${entry.canvas.slug}] re-probe failed:`, err);
-          });
-        }
+        reprobeNow();
       }, reprobeMs);
+    };
+
+    /**
+     * Renew the hub credential in place — single-flight, silent, and never
+     * worse than failure: an unrenewable credential leaves the stored one
+     * untouched and every existing behaviour (slow re-probe, refused status)
+     * exactly as it was.
+     */
+    const renewCredentialNow = (): Promise<boolean> => {
+      if (!renewCredential || stopped) return Promise.resolve(false);
+      if (renewInFlight) return renewInFlight;
+      renewInFlight = (async () => {
+        try {
+          const fresh = await renewCredential();
+          if (stopped || !fresh || typeof fresh.token !== 'string' || !fresh.token) return false;
+          token = fresh.token;
+          tokenExpiresAt = typeof fresh.expiresAt === 'number' ? fresh.expiresAt : null;
+          console.log(`[sync] hub credential renewed for ${linkedHub.url}`);
+          scheduleRenewal();
+          return true;
+        } catch (err) {
+          console.warn(`[sync] hub credential renewal failed: ${(err as Error).message}`);
+          return false;
+        } finally {
+          renewInFlight = null;
+        }
+      })();
+      return renewInFlight;
+    };
+
+    /**
+     * Arm the pre-expiry renewal at ~80 % of the credential's REMAINING life
+     * (never sooner than a minute out). No stored expiry — a self-hosted hub,
+     * or a credential written before expiry was persisted — means no timer:
+     * exactly the old behaviour. A failed renewal retries on the re-probe
+     * cadence; once the credential actually dies, the invalid-token path
+     * below triggers renewal anyway, so the timer is an optimization, not the
+     * safety net.
+     */
+    const scheduleRenewal = (): void => {
+      if (renewTimer !== null) {
+        authClearTimer(renewTimer);
+        renewTimer = null;
+      }
+      if (!renewCredential || stopped || tokenExpiresAt === null) return;
+      const delay = Math.max(60_000, (tokenExpiresAt - Date.now()) * 0.8);
+      renewTimer = authSetTimer(() => {
+        renewTimer = null;
+        void renewCredentialNow().then((ok) => {
+          if (!ok && !stopped && tokenExpiresAt !== null) {
+            renewTimer = authSetTimer(() => {
+              renewTimer = null;
+              void renewCredentialNow();
+            }, reprobeMs);
+          }
+        });
+      }, delay);
     };
 
     const handleAuthFailure = (
@@ -796,6 +896,17 @@ export function createSyncRuntime(
             /* best-effort */
           }
           scheduleReprobe();
+        }
+        // An invalid token is the one refusal the runtime can FIX: the stored
+        // credential expired (≤ 12 h cell sessions, Phase 23 B2) while the
+        // account next to it is still signed in. Renew silently — single-flight
+        // across the whole burst — and on success reconnect the rejected docs
+        // NOW instead of making the user wait out the slow re-probe (or press
+        // Connect again, which is all this ever needed).
+        if (reasonClass === 'invalid-token') {
+          void renewCredentialNow().then((renewed) => {
+            if (renewed) reprobeNow();
+          });
         }
       }
     };
@@ -1312,6 +1423,12 @@ export function createSyncRuntime(
       // read them before that and would otherwise never read them again.
       markUntrusted();
     });
+
+    // Arm the pre-expiry renewal from the credential that just booted. Placed
+    // last — the timer needs nothing from boot, and boot needs nothing from it
+    // (a credential that dies mid-boot lands in the invalid-token path, which
+    // triggers renewal on its own).
+    scheduleRenewal();
   }
 
   async function stop(): Promise<void> {
@@ -1366,6 +1483,10 @@ export function createSyncRuntime(
     if (reprobeTimer !== null) {
       authClearTimer(reprobeTimer);
       reprobeTimer = null;
+    }
+    if (renewTimer !== null) {
+      authClearTimer(renewTimer);
+      renewTimer = null;
     }
     for (const h of settleTimers) authClearTimer(h);
     settleTimers.clear();

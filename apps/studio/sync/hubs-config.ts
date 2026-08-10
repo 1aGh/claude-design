@@ -23,6 +23,20 @@ export interface HubRecord {
    * write-capable, and nobody is demoted by an upgrade.
    */
   role?: string;
+  /**
+   * When this credential dies (ms epoch), as the workspace reported at mint.
+   *
+   * A cell session expires WITH the 12 h project token that minted it (Phase
+   * 23 B2 — that cap is the revocation window and must stay). What was
+   * missing is anyone LOOKING at the deadline: the token was saved, the
+   * expiry discarded, and ≤ 12 h later all sync died into a permanent
+   * `connecting…`. Stored so the runtime can renew BEFORE it, silently.
+   *
+   * Absent on self-hosted hubs (their tokens may not expire) and on every
+   * credential written before this shipped — both mean "no scheduled
+   * renewal", which is exactly the old behaviour.
+   */
+  expiresAt?: number;
 }
 
 export interface HubsConfig {
@@ -108,11 +122,15 @@ export function isHubReadOnly(url: string): boolean {
 
 /** Look up a token for `url`. Returns null when no entry exists. */
 export function getHubToken(url: string): string | null {
+  return getHubRecord(url)?.token ?? null;
+}
+
+/** The whole stored record for `url` (token + role + expiresAt), or null. */
+export function getHubRecord(url: string): HubRecord | null {
   try {
     const norm = normalizeUrl(url);
-    const cfg = loadHubsConfig();
-    const record = cfg.hubs[norm];
-    return record ? record.token : null;
+    const record = loadHubsConfig().hubs[norm];
+    return record && typeof record.token === 'string' ? record : null;
   } catch {
     return null;
   }

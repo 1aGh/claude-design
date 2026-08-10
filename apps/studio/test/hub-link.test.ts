@@ -67,3 +67,14 @@ test('a second credential for the same hub replaces the token (per-machine key)'
   // Trust is not duplicated.
   expect(cfg.trusted.filter((u: string) => u === 'https://hub.example.dev')).toHaveLength(1);
 });
+
+test('role + expiresAt round-trip through the store (the renewal deadline survives)', () => {
+  saveHubCredential('https://hub.example.dev', 'mau_secret', 'member', 1786400000000);
+  const cfg = JSON.parse(readFileSync(process.env.HUBS_CONFIG_PATH as string, 'utf8'));
+  expect(cfg.hubs['https://hub.example.dev'].role).toBe('member');
+  expect(cfg.hubs['https://hub.example.dev'].expiresAt).toBe(1786400000000);
+  // Absent stays absent — a self-hosted hub's credential carries no deadline.
+  saveHubCredential('https://hub.example.dev', 'mau_secret2');
+  const cfg2 = JSON.parse(readFileSync(process.env.HUBS_CONFIG_PATH as string, 'utf8'));
+  expect(cfg2.hubs['https://hub.example.dev'].expiresAt).toBeUndefined();
+});

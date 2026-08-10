@@ -35,7 +35,7 @@ export interface HubLinkResult {
 const HUB_PROBE_TIMEOUT_MS = 4000;
 
 interface HubsFile {
-  hubs: Record<string, { token: string; linkedAt: number }>;
+  hubs: Record<string, { token: string; linkedAt: number; role?: string; expiresAt?: number }>;
   trusted?: string[];
 }
 
@@ -108,8 +108,20 @@ async function probeHealth(url: string): Promise<{ ok: boolean; version?: string
   }
 }
 
-/** Upsert the token (+ the vouched role) under `normUrl` + record per-machine trust; mode 0600. */
-export function saveHubCredential(normUrl: string, token: string, role?: string): void {
+/**
+ * Upsert the token (+ the vouched role + expiry) under `normUrl` + record
+ * per-machine trust; mode 0600.
+ *
+ * The upsert REPLACES the record, so a caller that knows the role/expiry must
+ * pass them again or they are dropped — the silent-renewal path reads the old
+ * record first and carries the role forward for exactly this reason.
+ */
+export function saveHubCredential(
+  normUrl: string,
+  token: string,
+  role?: string,
+  expiresAt?: number
+): void {
   const path = hubsConfigPath();
   const dir = dirname(path);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -123,7 +135,12 @@ export function saveHubCredential(normUrl: string, token: string, role?: string)
       /* malformed → start fresh rather than throw */
     }
   }
-  cfg.hubs[normUrl] = { token, linkedAt: Date.now(), ...(role ? { role } : {}) };
+  cfg.hubs[normUrl] = {
+    token,
+    linkedAt: Date.now(),
+    ...(role ? { role } : {}),
+    ...(typeof expiresAt === 'number' && Number.isFinite(expiresAt) ? { expiresAt } : {}),
+  };
   if (!Array.isArray(cfg.trusted)) cfg.trusted = [];
   if (!cfg.trusted.includes(normUrl)) cfg.trusted.push(normUrl);
   writeFileSync(path, `${JSON.stringify(cfg, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });

@@ -22,9 +22,21 @@ export type SyncPhase =
   | 'connecting'
   | 'syncing'
   | 'synced'
+  | 'stalled'
   | 'refused'
   | 'offline'
   | 'nothing-syncable';
+
+/**
+ * How long `connecting…` may honestly stay on screen with ZERO documents
+ * synced before it becomes a different sentence. A real handshake settles in
+ * seconds; five minutes of nothing is not a connection in progress, it is a
+ * link that needs a person (the alligators incident sat in `connecting…` for
+ * DAYS while every document was being refused). Matches the auth re-probe
+ * cadence so the claim "nothing is moving" has had at least one full retry
+ * cycle behind it.
+ */
+export const STALL_AFTER_MS = 5 * 60 * 1000;
 
 export interface SyncPresentation {
   phase: SyncPhase;
@@ -119,10 +131,36 @@ function readCounts(
  */
 export function syncPresentation(
   status: SyncStatusLike | null | undefined,
-  opts: { project?: string | null } = {}
+  opts: { project?: string | null; now?: number } = {}
 ): SyncPresentation | null {
   if (!status || status.linked === false) return null;
   const project = safeName(opts.project, 'the workspace');
+  const now = typeof opts.now === 'number' ? opts.now : Date.now();
+
+  // ZERO PROGRESS HAS A DEADLINE. Every `connecting…` below is honest for a
+  // handshake and a lie after five minutes of it — the phase reads as "in
+  // progress" while nothing is moving and nothing will. Once the link has
+  // been trying since `startedAt` with not one document synced, the sentence
+  // changes to the one that names the move. Validated like everything else
+  // read off disk; an absent/garbage stamp simply never stalls (old payloads).
+  const startedAt =
+    typeof status.startedAt === 'number' &&
+    Number.isFinite(status.startedAt) &&
+    status.startedAt > 0
+      ? status.startedAt
+      : null;
+  const stalled = (): SyncPresentation => {
+    const min = Math.max(1, Math.round((now - (startedAt as number)) / 60_000));
+    return {
+      phase: 'stalled',
+      online: false,
+      label: 'stalled',
+      title: `Nothing has synced with ${project} in the ${min} minute${min === 1 ? '' : 's'} since Maude started trying.`,
+      next: 'Reconnect the workspace — the sign-in may have expired.',
+      names: [],
+    };
+  };
+  const isStalled = startedAt !== null && now - startedAt > STALL_AFTER_MS;
 
   if (status.notSyncable) {
     const tsx = status.tsxCount ?? 0;
@@ -203,6 +241,7 @@ export function syncPresentation(
     // Pre-DDR-102 payload: `state` is all there is. Report it as the weaker
     // evidence it is, rather than promoting it to a document-level claim.
     const online = status.state === 'online' || status.flash === 'synced';
+    if (!online && isStalled) return stalled();
     return {
       phase: online ? 'synced' : 'connecting',
       online,
@@ -218,6 +257,7 @@ export function syncPresentation(
   const total = docs.synced + docs.pending + docs.rejected;
 
   if (total === 0) {
+    if (isStalled) return stalled();
     return {
       phase: 'connecting',
       online: false,
@@ -232,6 +272,7 @@ export function syncPresentation(
     // Zero settled yet is a different fact from some settled: one is a
     // handshake in flight, the other is visible progress.
     const started = docs.synced > 0;
+    if (!started && isStalled) return stalled();
     return {
       phase: started ? 'syncing' : 'connecting',
       online: false,

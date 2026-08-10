@@ -150,6 +150,7 @@ export const ACTIVITY_CAP = 200;
  * @property {boolean} [verbose]
  * @property {boolean} [rateLimit]  default true; set false in tests/dev
  * @property {number} [connRateLimit]  valid-token auths per label per minute (default CONN_RATE_LIMIT_MAX; env HUB_CONN_RATE_LIMIT)
+ * @property {number} [invalidConnRateLimit]  invalid-token attempts per IP per minute (default INVALID_CONN_RATE_LIMIT_MAX; tests only)
  */
 
 /**
@@ -217,6 +218,7 @@ export function createHub(config = {}) {
   const insecureHttp = config.insecureHttp ?? false;
   // DDR-102 — valid-token auth ceiling (per label per minute).
   const connRateLimitMax = config.connRateLimit ?? CONN_RATE_LIMIT_MAX;
+  const invalidConnRateLimitMax = config.invalidConnRateLimit ?? INVALID_CONN_RATE_LIMIT_MAX;
   const startedAt = Date.now();
 
   // DDR-053 §5: refuse to boot if publicUrl can be weaponized into shell
@@ -479,15 +481,21 @@ export function createHub(config = {}) {
       const ip = clientIp(request);
       if (
         rateLimit &&
-        !rateStore.check(`auth:${ip}`, INVALID_CONN_RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS)
+        !rateStore.check(`auth:${ip}`, invalidConnRateLimitMax, RATE_LIMIT_WINDOW_MS)
       ) {
         if (verbose) {
           console.warn(
             `[hub] invalid-token attempt rate limit exceeded for ip=${sanitizeForLog(ip)} ` +
-              `(ceiling ${INVALID_CONN_RATE_LIMIT_MAX} per 60s, persisted across restarts)`
+              `(ceiling ${invalidConnRateLimitMax} per 60s, persisted across restarts)`
           );
         }
-        throw authError('rate limit exceeded — retry in up to 60s');
+        // The reason must still SAY "invalid token". This bucket only fills
+        // with invalid credentials, and the generic wording made a peer with
+        // an expired token classify the refusal as transient and keep
+        // retrying into the very bucket refusing it — masking the one cause
+        // that needed a person (the alligators incident: 1840 rate-limit
+        // lines hiding 138 invalid-token ones).
+        throw authError('invalid token — rate limited, retry in up to 60s');
       }
       throw authError('invalid token');
     },

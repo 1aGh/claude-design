@@ -67,7 +67,7 @@ export interface SignInInput {
 /** Injected in tests. */
 export interface SignInDeps {
   fetchImpl?: typeof fetch;
-  save?: (normUrl: string, token: string, role?: string) => void;
+  save?: (normUrl: string, token: string, role?: string, expiresAt?: number) => void;
 }
 
 /**
@@ -186,8 +186,12 @@ export async function signInToWorkspace(
   //    viewer is known to be one at BOOT. Learning it from the first refusal
   //    instead means showing somebody an editor and then taking it away.
   const vouchedRole = typeof body.user?.role === 'string' ? body.user.role : 'member';
+  //    …and WHEN it dies. The expiry was already read (it is echoed to the UI
+  //    below) — discarding it from the store is what left the sync runtime
+  //    with no deadline to renew against.
+  const expiresAt = typeof body.expiresAt === 'number' ? body.expiresAt : undefined;
   try {
-    save(norm, body.token, vouchedRole);
+    save(norm, body.token, vouchedRole, expiresAt);
   } catch {
     return fail(500, "Couldn't save the workspace connection on this computer.", 'save-failed');
   }

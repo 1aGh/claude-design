@@ -30,6 +30,7 @@ import { createConnectionMonitor } from '../sync/connection-state.ts';
 import {
   type AwarenessRegistry,
   buildNoSyncablePayload,
+  classifyAuthFailure,
   createSyncRuntime,
   discoverCanvases,
   type SyncProvider,
@@ -1029,6 +1030,28 @@ describe('createDefaultProviderFactory — shared socket multiplexing', () => {
 
 // DDR-102 — auth-failure intelligence (classification, aggregation,
 // destroy-on-permanent + re-probe) and the honest settled boot summary.
+describe('classifyAuthFailure — permanent classes outrank the transient ones', () => {
+  test('the invalid-token bucket refusal classifies as invalid-token, not rate-limit', () => {
+    // The hub's invalid-token bucket says BOTH things. Filing it under
+    // rate-limit (transient) made the runtime retry into the very bucket
+    // refusing it — the alligators incident's 1840-vs-138 log ratio.
+    expect(classifyAuthFailure('invalid token — rate limited, retry in up to 60s')).toBe(
+      'invalid-token'
+    );
+  });
+
+  test('plain reasons still land in their own classes', () => {
+    expect(classifyAuthFailure('invalid token')).toBe('invalid-token');
+    expect(classifyAuthFailure('token not authorized for this documentName')).toBe(
+      'not-authorized'
+    );
+    expect(classifyAuthFailure('rate limit exceeded for this token — retry in up to 60s')).toBe(
+      'rate-limit'
+    );
+    expect(classifyAuthFailure('permission-denied')).toBe('generic');
+  });
+});
+
 describe('DDR-102 — auth-failure intelligence + boot summary', () => {
   function fakeTimerQueue() {
     let nextId = 1;
@@ -1059,15 +1082,17 @@ describe('DDR-102 — auth-failure intelligence + boot summary', () => {
   function authStubFactory() {
     const made: Array<{
       documentName: string;
+      token: string | undefined;
       destroyed: boolean;
       emitAuthFailure: (reason: string) => void;
       document: Y.Doc;
     }> = [];
-    const factory = (args: { documentName: string; document?: Y.Doc }) => {
+    const factory = (args: { documentName: string; token?: string; document?: Y.Doc }) => {
       const document = args.document ?? new Y.Doc();
       const cbs = new Set<(info: { reason: string }) => void>();
       const entry = {
         documentName: args.documentName,
+        token: args.token,
         destroyed: false,
         emitAuthFailure: (reason: string) => {
           for (const cb of cbs) cb({ reason });
@@ -1168,6 +1193,156 @@ describe('DDR-102 — auth-failure intelligence + boot summary', () => {
       await runtime?.stop();
     } finally {
       console.warn = origWarn;
+    }
+  });
+
+  test('invalid-token triggers ONE silent renewal and an immediate re-probe with the fresh token', async () => {
+    const url = 'https://hub.example.com';
+    writeHubsConfig(url, 'mau_stale');
+    const ctx = makeCtx({ url, linkedAt: 1 });
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'a.html'), '<a/>');
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'b.html'), '<b/>');
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'c.html'), '<c/>');
+
+    const timers = fakeTimerQueue();
+    const { factory, made } = authStubFactory();
+    let renewCalls = 0;
+    const origWarn = console.warn;
+    const origLog = console.log;
+    console.warn = () => {};
+    console.log = () => {};
+    try {
+      const runtime = createSyncRuntime(ctx, {
+        providerFactory: factory,
+        auth: {
+          warnDebounceMs: 2_000,
+          reprobeMs: 300_000,
+          settleTimeoutMs: 15_000,
+          setTimer: timers.setTimer,
+          clearTimer: timers.clearTimer,
+          renewCredential: async () => {
+            renewCalls++;
+            return { token: 'mau_fresh', expiresAt: null };
+          },
+        },
+      });
+      await runtime?.start();
+      expect(made).toHaveLength(3);
+      expect(made.every((m) => m.token === 'mau_stale')).toBe(true);
+
+      // The whole burst rejects with the expired credential…
+      for (const m of made.slice(0, 3)) m.emitAuthFailure('invalid token');
+      await new Promise((res) => setTimeout(res, 10));
+
+      // …ONE renewal (single-flight), and the re-probe happened NOW — no
+      // 5-minute wait — with the fresh token on every reconnected provider.
+      expect(renewCalls).toBe(1);
+      const reprobed = made.slice(3);
+      expect(reprobed.map((m) => m.documentName).sort()).toEqual(['ui-a', 'ui-b', 'ui-c']);
+      expect(reprobed.every((m) => m.token === 'mau_fresh')).toBe(true);
+
+      await runtime?.stop();
+    } finally {
+      console.warn = origWarn;
+      console.log = origLog;
+    }
+  });
+
+  test('a failed renewal changes nothing — rejected docs wait for the slow re-probe as before', async () => {
+    const url = 'https://hub.example.com';
+    writeHubsConfig(url, 'mau_stale');
+    const ctx = makeCtx({ url, linkedAt: 1 });
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'a.html'), '<a/>');
+
+    const timers = fakeTimerQueue();
+    const { factory, made } = authStubFactory();
+    const origWarn = console.warn;
+    const origLog = console.log;
+    console.warn = () => {};
+    console.log = () => {};
+    try {
+      const runtime = createSyncRuntime(ctx, {
+        providerFactory: factory,
+        auth: {
+          warnDebounceMs: 2_000,
+          reprobeMs: 300_000,
+          settleTimeoutMs: 15_000,
+          setTimer: timers.setTimer,
+          clearTimer: timers.clearTimer,
+          renewCredential: async () => null, // signed out / revoked / self-hosted
+        },
+      });
+      await runtime?.start();
+      made[0]?.emitAuthFailure('invalid token');
+      await new Promise((res) => setTimeout(res, 10));
+
+      // No immediate re-probe (the renewal failed) — the doc stays rejected…
+      expect(made).toHaveLength(1);
+      expect(runtime?.status()?.docs?.rejected).toBe(1);
+      // …until the slow re-probe fires, with the ORIGINAL token (unchanged).
+      timers.fire(300_000);
+      await new Promise((res) => setTimeout(res, 10));
+      expect(made).toHaveLength(2);
+      expect(made[1]?.token).toBe('mau_stale');
+
+      await runtime?.stop();
+    } finally {
+      console.warn = origWarn;
+      console.log = origLog;
+    }
+  });
+
+  test('a stored expiry arms a pre-expiry renewal at ~80% of the remaining life', async () => {
+    const url = 'https://hub.example.com';
+    const cfgPath = process.env.HUBS_CONFIG_PATH;
+    if (!cfgPath) throw new Error('HUBS_CONFIG_PATH not set by beforeEach');
+    writeFileSync(
+      cfgPath,
+      JSON.stringify({
+        hubs: { [url]: { token: 'mau_stale', linkedAt: 1, expiresAt: Date.now() + 100_000 } },
+      })
+    );
+    chmodSync(cfgPath, 0o600);
+    const ctx = makeCtx({ url, linkedAt: 1 });
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'a.html'), '<a/>');
+
+    const timers = fakeTimerQueue();
+    const { factory } = authStubFactory();
+    let renewCalls = 0;
+    const origWarn = console.warn;
+    const origLog = console.log;
+    console.warn = () => {};
+    console.log = () => {};
+    try {
+      const runtime = createSyncRuntime(ctx, {
+        providerFactory: factory,
+        auth: {
+          warnDebounceMs: 2_000,
+          reprobeMs: 300_000,
+          settleTimeoutMs: 15_000,
+          setTimer: timers.setTimer,
+          clearTimer: timers.clearTimer,
+          renewCredential: async () => {
+            renewCalls++;
+            return { token: 'mau_fresh', expiresAt: null };
+          },
+        },
+      });
+      await runtime?.start();
+      // 100 s of life left → the renewal timer sits at 80 s, so a 30 s sweep
+      // must not reach it (only the settle timers live down there)…
+      timers.fire(30_000);
+      await new Promise((res) => setTimeout(res, 5));
+      expect(renewCalls).toBe(0);
+      // …and the 80 s sweep fires it, once, without any rejection happening.
+      timers.fire(80_000);
+      await new Promise((res) => setTimeout(res, 5));
+      expect(renewCalls).toBe(1);
+
+      await runtime?.stop();
+    } finally {
+      console.warn = origWarn;
+      console.log = origLog;
     }
   });
 
