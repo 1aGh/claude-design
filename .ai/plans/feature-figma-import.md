@@ -322,6 +322,23 @@ Imported frames must not hardcode hex. `style-map.ts` resolves every Figma paint
 
 Execute in order. Each task is atomic and testable.
 
+> ### ⚠️ Corrections from DDR-216 — read before any task below
+>
+> T1 shipped [DDR-216](../archive/decisions/DDR-216-figma-ingestion-architecture-and-trust-boundary.md)
+> after **two** design-stage security rounds. Several statements in this plan were
+> measured false against the codebase during those rounds. **Where this plan and
+> DDR-216 disagree, DDR-216 wins.** The specific reversals:
+>
+> | This plan says | Actually |
+> |---|---|
+> | Widening `isBindable` is *"a small, self-contained change that needs no new geometry"* (§ Verified findings, § Governing principle 1) | **False.** `TextStroke` has no `w`/`h` — the bbox is synthesized from content. `bindCandidate`/`anchorPoint`/`recomputeBoundArrows` never pass the anchors map, so a naive widening mints **permanent zombie binds** on anchored text; unbounded text bboxes and topmost-first scanning make one node a board-wide bind magnet. Ships with DDR-216 **D9's four fixes**, in the stated order (fix 1 with-or-before fix 2), plus native regression coverage. |
+> | `design-system-keeper` Pass A.10 is the editability gate (§ Governing principle, T7) | **It is not a gate.** Severity `warning`, never self-promoting; skipped entirely when no `kind="web"` artboard is declared — and the translator picks the kind; satisfied by the mere *existence* of a comment, which a generator emits mechanically. Use **D8's machine-checkable gates**; A.10 runs promoted-to-blocker for `imported-figma` only. |
+> | Figma asset URLs *"expire in ~7 days"* (§ Phase 3 measured, T8) | **~30 days** per Figma's own support. Download-first is still mandatory (CSP + expiry), but don't tune anything to the wrong number. |
+> | `--tokens`/frames land via `fetch-asset` and an SVG parent export (T7 mitigation 2, T8) | `_fetch-asset.mjs` **structurally refuses SVG** (`sniffImageExt`, `assetName`). Use **DDR-216 D11's composition** — `--raw-out` into out-of-tree staging, then `_import-asset.mjs`'s DDR-167 SVG lane, then atomic promotion. Never widen the shared sniff. PNG @2× is an acceptable fallback; the annotation layer takes PNG (`ASSET_IMAGE_HREF_RE` is **not** extended). |
+> | Register `figma` in the provider registry so the key store works with no new custody code (T4) | `figma` fits no `Modality` and `ProviderEntry` needs a factory. `figma` is **not** in the media-generation registry; two dedicated routes call `keys.ts` directly (**D2**). The routes also need `isTrustedRequestHost` + `sameOriginWrite` + a `readJson` cap — allowlist exclusion alone leaves a live CSRF hole (**D3**). |
+> | Sanitizing layer names/text before JSX is the content control (T7) | Necessary, not sufficient. Add **D6a** (zero-glyph character classes — Unicode Tags, zero-width, bidi) and **D6b** (normalize visibility rather than detect invisibility), and note D6b covers the **canvas path only** — the board path gets normalization plus a stroke-count ceiling and a quarantined staging canvas. |
+> | Report artifacts / staging live under `_history/` because it is gitignored (T9, and D5's own first draft) | **Gitignored ≠ not replicated.** `~/git/.stignore` excludes neither `.design/` nor `_history/`. Asset staging goes **outside the synced tree**; verify exclusions against the sync list, not the git list. |
+
 ### Phase 0 — Contract
 
 **T1: RECORD the Figma ingestion DDR**

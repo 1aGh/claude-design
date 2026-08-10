@@ -233,6 +233,7 @@ describe('the vocabulary itself', () => {
       '/_api/debug-bundle',
       '/_api/design',
       '/_api/export',
+      '/_api/figma',
       '/_api/generate',
       '/_api/github',
       '/_api/hub',

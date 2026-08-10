@@ -39,7 +39,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync } from 'node:fs';
 import { isIP } from 'node:net';
 import { join, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -202,7 +202,7 @@ export function classifyAddress(addr) {
  * FetchAssetError (code 3) on anything else — non-https scheme, embedded
  * credentials, missing host.
  */
-export function parseHttpsTarget(rawUrl) {
+export function parseHttpsTarget(rawUrl, opts = {}) {
   let u;
   try {
     u = new URL(rawUrl);
@@ -221,7 +221,69 @@ export function parseHttpsTarget(rawUrl) {
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new FetchAssetError(3, `bad port ${u.port}`);
   }
+  // DDR-216 D4 — an OPTIONAL host allowlist, at the gate rather than at the
+  // caller. Absent (the default) = today's unrestricted behaviour, so the
+  // existing moodboard/research callers are untouched. The Figma lane always
+  // passes it.
+  //
+  // Matching is exact-or-DOTTED-SUFFIX, never a bare `endsWith`: `endsWith(
+  // 'figma.com')` admits `evil-figma.com`, and `endsWith('.amazonaws.com')`
+  // admits every S3 bucket on earth.
+  //
+  // This is a REACH control (which endpoint), never a CONTENT control — the
+  // Figma render bucket is a SHARED object store any account can write into,
+  // so the byte-level sniff below is what actually protects the tree. And it
+  // NARROWS the IP gate, never replaces it: an allowlisted hostname that
+  // resolves to 127.0.0.1 is still refused by `resolveSafeIp`.
+  if (opts.allowHosts?.length) {
+    const h = host.toLowerCase();
+    const ok = opts.allowHosts.some((suffix) => {
+      const s = String(suffix).toLowerCase().replace(/^\./, '');
+      return h === s || h.endsWith(`.${s}`);
+    });
+    if (!ok) throw new FetchAssetError(3, `host not in this lane's allowlist: ${safeHostLabel(h)}`);
+  }
+  // DDR-216 D4 — the Figma lane pins 443. Named as NEW logic rather than
+  // assumed: this function accepts 1–65535 by default and always has.
+  if (opts.pinPort443 && port !== 443) {
+    throw new FetchAssetError(3, `this lane requires port 443 (got ${port})`);
+  }
   return { host, port };
+}
+
+/**
+ * A hostname reduced to a charset-validated token before it can be printed.
+ *
+ * DDR-216 D10: this verb's output is read BY an agent, so an upstream-controlled
+ * string must never appear verbatim in a message. A DNS label charset is narrow
+ * enough to be safe and specific enough to diagnose.
+ */
+function safeHostLabel(host) {
+  const cleaned = String(host)
+    .toLowerCase()
+    .replace(/[^a-z0-9.-]/g, '');
+  return cleaned.slice(0, 253) || '(unprintable)';
+}
+
+/**
+ * The `--raw-out` accept set: everything `sniffImageExt` accepts, PLUS SVG.
+ *
+ * `sniffImageExt` is deliberately NOT modified — it is the type gate the
+ * moodboard lane depends on, and a standing test asserts it still returns null
+ * for `<svg`/`<?xml`. The SVG probe below reuses the exact leading-token shape
+ * `_import-asset.mjs`'s own `svgPreParseReject` uses, so a payload accepted here
+ * is one that lane will actually attempt to parse (and then sanitize).
+ */
+export function sniffStagedKind(bytes) {
+  const raster = sniffImageExt(bytes);
+  if (raster) return raster;
+  // Text probe on the first bytes only — never decode the whole body to guess.
+  const head = Buffer.from(bytes.subarray(0, 256)).toString('utf8');
+  // Deliberately NARROWER than `svgPreParseReject`'s own leading-token set: a
+  // bare `<!--` prologue is legal SVG but it is also what lets an arbitrary text
+  // payload masquerade as one (review F2), and no Figma export starts with it.
+  // The full DDR-167 lane still validates properly downstream.
+  return /^\s*(<\?xml|<svg)/i.test(head) ? 'svg' : null;
 }
 
 // ── image sniff + naming ─────────────────────────────────────────────────────
@@ -408,9 +470,79 @@ export async function fetchAsset({
   designRootRel = '.design',
   maxBytes = DEFAULT_MAX_BYTES,
   maxTime = DEFAULT_MAX_TIME,
+  allowHosts,
+  pinPort443 = false,
+  rawOut = null,
+  rawRoot = null,
 }) {
-  const { host, port } = parseHttpsTarget(url);
+  const { host, port } = parseHttpsTarget(url, { allowHosts, pinPort443 });
   const pinIp = await resolveSafeIp(host);
+
+  // ── `--raw-out` (DDR-216 D11) ──────────────────────────────────────────────
+  //
+  // Download under the FULL network gate (IP classification, DNS pin, redirect
+  // ban, size/time caps, host allowlist) but write to a CALLER-SUPPLIED path
+  // instead of `assets/`, and do NOT content-address or name the file.
+  //
+  // Why this exists: D11 composes two already-reviewed gates rather than
+  // widening one. A Figma vector export is an SVG, and this helper's raster-only
+  // sniff is load-bearing for its OTHER caller (the DDR-147 moodboard lane,
+  // where URLs are research-harvested and there is no allowlist at all). So the
+  // Figma lane stages the bytes here and hands them to `_import-asset.mjs`'s
+  // DDR-167 SVG lane (allowlist DOM-sanitize → SVGO validity gate) before
+  // anything is named or lands in the versioned tree.
+  //
+  // IT STILL SNIFFS. `--raw-out` must never mean "skip the type gate" — that
+  // would turn the one reviewable downloader into an unsniffed one (HTML, JS,
+  // polyglots, archives) for the next caller who copies it. It sniffs against
+  // an EXTENDED accept set; `sniffImageExt` itself is untouched, which is what
+  // keeps the standing "sniffImageExt still rejects SVG" test literally true.
+  if (rawOut) {
+    // CONTAINMENT (post-implementation review F2). Without this, `--raw-out`
+    // was an arbitrary-file-write primitive on the ONE helper whose whole job
+    // is to be the safe downloader: `resolve()` + `renameSync()` with no root
+    // relationship, no charset assertion, and a type gate a leading `<!--`
+    // satisfies. An agent that can run `maude design fetch-asset` (ACP
+    // default-allows `Bash(maude:*)`) could have written remote bytes over
+    // `CLAUDE.md` — durable prompt injection.
+    //
+    // So the mode now REQUIRES the caller to declare the directory it owns, and
+    // the target must resolve inside it. The Figma lane passes its per-run
+    // staging dir; there is no way to express "anywhere".
+    if (!rawRoot) {
+      throw new FetchAssetError(2, '--raw-out requires --raw-root (the directory the caller owns)');
+    }
+    const rootAbs = realpathSync(resolve(rawRoot));
+    const outAbs = resolve(rawOut);
+    if (outAbs !== rootAbs && !outAbs.startsWith(rootAbs + sep)) {
+      throw new FetchAssetError(6, '--raw-out must resolve inside --raw-root');
+    }
+    // Never overwrite: a staged download is always a fresh file, so an existing
+    // target means either a collision or an attempt to clobber something.
+    if (existsSync(outAbs)) {
+      throw new FetchAssetError(6, '--raw-out target already exists');
+    }
+    const tmpRaw = `${outAbs}.part`;
+    try {
+      curlDownload({ url, host, port, pinIp, tmpAbs: tmpRaw, maxBytes, maxTime });
+      let data;
+      try {
+        data = readFileSync(tmpRaw);
+      } catch {
+        throw new FetchAssetError(4, 'download produced no file');
+      }
+      if (data.length === 0) throw new FetchAssetError(4, 'downloaded empty body');
+      if (data.length > maxBytes) throw new FetchAssetError(4, `file exceeds ${maxBytes} bytes`);
+      const kind = sniffStagedKind(data);
+      if (!kind) {
+        throw new FetchAssetError(5, 'not a png/jpg/gif/webp/svg payload (HTML/script rejected)');
+      }
+      renameSync(tmpRaw, outAbs);
+      return { ref: null, path: outAbs, name: null, bytes: data.length, ext: kind };
+    } finally {
+      rmSync(tmpRaw, { force: true });
+    }
+  }
 
   const { assetsDir } = containedAssetPath(root, designRootRel, 'placeholder.png');
   mkdirSync(assetsDir, { recursive: true });
@@ -476,6 +608,21 @@ function parseArgv(argv) {
       case '--max-time':
         out.maxTime = Number(argv[++i]);
         break;
+      // DDR-216 D4/D11 — all three default to today's behaviour, so every
+      // existing caller of this helper is untouched.
+      case '--allow-host':
+        if (!out.allowHosts) out.allowHosts = [];
+        out.allowHosts.push(argv[++i]);
+        break;
+      case '--pin-port-443':
+        out.pinPort443 = true;
+        break;
+      case '--raw-out':
+        out.rawOut = argv[++i];
+        break;
+      case '--raw-root':
+        out.rawRoot = argv[++i];
+        break;
       case '--json':
         out.json = true;
         break;
@@ -540,8 +687,14 @@ async function main() {
       designRootRel: opts.designRoot,
       maxBytes: opts.maxBytes,
       maxTime: opts.maxTime,
+      ...(opts.allowHosts ? { allowHosts: opts.allowHosts } : {}),
+      ...(opts.pinPort443 ? { pinPort443: true } : {}),
+      ...(opts.rawOut ? { rawOut: opts.rawOut } : {}),
+      ...(opts.rawRoot ? { rawRoot: opts.rawRoot } : {}),
     });
-    process.stdout.write(opts.json ? `${JSON.stringify(r)}\n` : `${r.ref}\n`);
+    // `--raw-out` has no canvas ref (it deliberately writes outside `assets/`),
+    // so print the staged path instead of a null.
+    process.stdout.write(opts.json ? `${JSON.stringify(r)}\n` : `${r.ref ?? r.path}\n`);
   } catch (err) {
     process.stderr.write(`fetch-asset: ${err.message}\n`);
     process.exit(err instanceof FetchAssetError ? err.code : 1);

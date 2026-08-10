@@ -69,6 +69,14 @@ const BIN_VERBS = new Set([
   // contract, and patches (theme-block-scoped) or scaffolds the target
   // design system. CLI-only — no HTTP route, no in-app panel.
   'import-tokens',
+  // DDR-216 (feature-figma-import, Phase 2 / T6). `import-figma` is the REST
+  // door: pulls a real Figma/FigJam document over the API and translates it
+  // with DETERMINISTIC code — no vision model, no agent anywhere in the
+  // ingestion path. That is the structural difference from
+  // `/design:import --reconstruct` (DDR-174), whose whole orchestrator/agent
+  // split exists because an LLM reads its input; do not copy that architecture
+  // into this one, it would close nothing here.
+  'import-figma',
   // DDR-173 (Phase 3 / T12). `import-brand` extracts typed palette/font
   // cues + a hardened logo asset from an already-DDR-167-sanitized SVG for
   // `/design:setup-ds --from-brand` — never re-reads or re-sanitizes the

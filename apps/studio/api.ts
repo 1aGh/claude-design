@@ -5260,7 +5260,12 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     // `loadCanvasMeta` call the DDR-093 DS-map loop below already makes for
     // non-path-owned (`ui/`) canvases — no extra I/O for the common case.
     const canvasKinds: Record<string, string> = {};
-    const NOTABLE_KINDS = new Set(['reconstructed-experimental']);
+    // DDR-216 D7 adds `imported-figma`. The badge deliberately reads as
+    // THIRD-PARTY CONTENT rather than as provenance-therefore-trustworthy: a
+    // clean "imported from Figma" stamp otherwise makes the most
+    // attacker-influenced artifact in the tree look like real design work, to a
+    // human AND to `design-system-keeper` / the critic panel.
+    const NOTABLE_KINDS = new Set(['reconstructed-experimental', 'imported-figma']);
     const defaultDs = cfg.defaultDesignSystem || cfg.designSystems?.[0]?.name || 'project';
     // A file under `system/<folder>/` belongs to the DS that owns that folder —
     // path-authoritative, because specimens/ui_kits rarely carry a sidecar

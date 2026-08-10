@@ -1,0 +1,368 @@
+/**
+ * @file       figma/client.ts — the Figma REST client (DDR-216 D2/D4/D5).
+ * @scope      apps/studio/figma/client.ts
+ * @purpose    Fetch a document, its nodes, its rendered images and its styles —
+ *             and nothing else. Produces the normalized tree in `types.ts`.
+ *
+ * @invariant  SSRF CHOKEPOINT 1 — every request URL is composed from the
+ *             hardcoded `API_BASE` below plus values already charset-validated
+ *             by `url.ts`, each `encodeURIComponent`-ed. **No caller-supplied
+ *             host, scheme, port or path prefix ever reaches a request.** This
+ *             is the closure Round 1 of the DDR-216 security review attacked
+ *             directly and could not break; if you are adding a method, compose
+ *             it the same way rather than accepting a URL.
+ *
+ * @invariant  THE TOKEN IS RESOLVED AT REQUEST TIME AND NEVER CACHED, LOGGED,
+ *             OR RETURNED. `getProviderKey('figma')` is called inside the
+ *             request that needs it. Errors are built from code-owned strings
+ *             and the request PATH — never headers, never a raw response body
+ *             (DDR-216 D2 + D10; `figma-routes.test.ts` asserts it).
+ *
+ * @invariant  Figma's `/v1/images` answers with URLs Maude did not choose. This
+ *             module returns them; it NEVER downloads one. That goes through
+ *             `_fetch-asset.mjs`'s gate (DDR-216 D4 chokepoint 2 / D11).
+ */
+
+import { getProviderKey } from '../generation/keys.ts';
+import {
+  FigmaCapError,
+  MAX_RESPONSE_BYTES,
+  type NormalizedDocument,
+  normalizeDocument,
+} from './types.ts';
+
+/** The ONLY base. Never derived from input, never overridable at runtime. */
+const API_BASE = 'https://api.figma.com/v1';
+
+/** Whole-request budget. A slow file is a failure, not an indefinite hang. */
+const REQUEST_TIMEOUT_MS = 30_000;
+
+/** Bounded 429 backoff (DDR-216 D5) — never an unbounded sleep loop. */
+const MAX_RETRIES = 3;
+const MAX_BACKOFF_TOTAL_MS = 30_000;
+/** Per-retry ceiling — 3 × this stays inside the total budget above. */
+const MAX_SINGLE_BACKOFF_MS = 10_000;
+
+/**
+ * `IMAGE_COST = 200` ⇒ ~30 req/min. Batch ids into as few calls as the endpoint
+ * allows; never one call per node (DDR-216 D5).
+ */
+export const MAX_IMAGE_BATCH = 100;
+
+export type FigmaErrorKind =
+  | 'not_configured'
+  | 'unauthorized'
+  | 'forbidden'
+  | 'not_found'
+  | 'rate_limited'
+  | 'too_large'
+  | 'network'
+  | 'bad_response';
+
+export class FigmaApiError extends Error {
+  readonly kind: FigmaErrorKind;
+  readonly status?: number;
+  /** The request PATH only — never the query, never a header, never a body. */
+  readonly path: string;
+
+  constructor(kind: FigmaErrorKind, path: string, message: string, status?: number) {
+    super(message);
+    this.name = 'FigmaApiError';
+    this.kind = kind;
+    this.path = path;
+    if (status !== undefined) this.status = status;
+  }
+}
+
+/** Fixed, code-owned messages. No upstream string is ever interpolated. */
+const MESSAGE_BY_KIND: Readonly<Record<FigmaErrorKind, string>> = {
+  not_configured: 'No Figma token configured — add one in Settings.',
+  unauthorized: 'Figma rejected the token — check it is current and has file_content:read.',
+  forbidden: 'Figma denied access to this resource for the configured token.',
+  not_found: 'Figma has no such file or node.',
+  rate_limited: 'Figma rate-limited this import — try again in a minute.',
+  too_large: 'Figma response is too large — import a specific frame instead.',
+  network: 'Could not reach the Figma API.',
+  bad_response: 'Figma returned a response this client could not read.',
+};
+
+function apiError(kind: FigmaErrorKind, path: string, status?: number): FigmaApiError {
+  return new FigmaApiError(kind, path, MESSAGE_BY_KIND[kind], status);
+}
+
+/**
+ * Compose a request URL. `path` is a code-owned literal with already-validated
+ * segments; `query` values are encoded here. There is deliberately no overload
+ * that accepts a full URL.
+ */
+function buildUrl(path: string, query?: Record<string, string | undefined>): string {
+  const url = new URL(`${API_BASE}${path}`);
+  if (query) {
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== '') url.searchParams.set(key, value);
+    }
+  }
+  return url.toString();
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Parse `Retry-After` (delta-seconds only — the HTTP-date form is not worth a
+ * date parser here) and clamp it. An upstream header is untrusted input for
+ * scheduling purposes just like anything else: a hostile or buggy value must
+ * not be able to park this process for an hour.
+ */
+export function retryAfterMs(header: string | null): number {
+  const seconds = header ? Number.parseInt(header, 10) : Number.NaN;
+  if (!Number.isFinite(seconds) || seconds < 0) return 1_000;
+  return Math.min(seconds * 1_000, MAX_SINGLE_BACKOFF_MS);
+}
+
+/**
+ * One authenticated GET. Resolves the token at call time, enforces the response
+ * byte cap while reading, and retries only on 429 within a bounded budget.
+ */
+async function getJson<T>(path: string, query?: Record<string, string | undefined>): Promise<T> {
+  const token = await getProviderKey('figma');
+  if (!token) throw apiError('not_configured', path);
+
+  const url = buildUrl(path, query);
+  let spentBackoffMs = 0;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        headers: { 'X-Figma-Token': token, Accept: 'application/json' },
+        redirect: 'error', // the API never legitimately redirects
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+    } catch {
+      // Deliberately swallow the cause: a fetch error message can carry the URL
+      // and, on some runtimes, request detail. D10 — output is code-owned.
+      throw apiError('network', path);
+    }
+
+    if (res.status === 429) {
+      const waitMs = retryAfterMs(res.headers.get('Retry-After'));
+      if (attempt === MAX_RETRIES || spentBackoffMs + waitMs > MAX_BACKOFF_TOTAL_MS) {
+        throw apiError('rate_limited', path, 429);
+      }
+      spentBackoffMs += waitMs;
+      await sleep(waitMs);
+      continue;
+    }
+
+    if (!res.ok) {
+      if (res.status === 401) throw apiError('unauthorized', path, 401);
+      if (res.status === 403) throw apiError('forbidden', path, 403);
+      if (res.status === 404) throw apiError('not_found', path, 404);
+      throw apiError('bad_response', path, res.status);
+    }
+
+    // Trust `Content-Length` as an early-out only; the real bound is the byte
+    // count of what actually arrived (a missing or lying header must not be
+    // the thing standing between an 8 MB cap and the heap).
+    const declared = Number.parseInt(res.headers.get('Content-Length') ?? '', 10);
+    if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) {
+      throw apiError('too_large', path, res.status);
+    }
+
+    const buffer = await readCapped(res, path);
+    try {
+      return JSON.parse(new TextDecoder().decode(buffer)) as T;
+    } catch {
+      throw apiError('bad_response', path, res.status);
+    }
+  }
+
+  throw apiError('rate_limited', path, 429);
+}
+
+/**
+ * Read a response body, aborting the moment it exceeds the cap. Streaming
+ * rather than `res.arrayBuffer()` so an unbounded body is never fully
+ * materialized before the check — the cap has to hold against a response that
+ * does not declare its length.
+ */
+async function readCapped(res: Response, path: string): Promise<Uint8Array> {
+  const body = res.body;
+  if (!body) throw apiError('bad_response', path, res.status);
+
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > MAX_RESPONSE_BYTES) {
+        await reader.cancel().catch(() => {});
+        throw apiError('too_large', path, res.status);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock?.();
+  }
+
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
+
+// ── Public surface ──────────────────────────────────────────────────────────
+
+export interface FetchDocumentOptions {
+  fileKey: string;
+  surface: 'design' | 'board';
+  /** When present, fetches only this subtree — see the note below. */
+  nodeId?: string;
+  /** Figma's own tree-depth projection knob; independent of our own cap. */
+  depth?: number;
+}
+
+/**
+ * Fetch and normalize a document.
+ *
+ * **Prefers `/nodes` whenever a node id is present.** A whole enterprise file is
+ * tens of MB and blows both the byte cap and any reasonable memory budget;
+ * whole-file import is not a viable default, frame-scoped is (DDR-216 D5).
+ */
+export async function fetchDocument(opts: FetchDocumentOptions): Promise<NormalizedDocument> {
+  const { fileKey, surface, nodeId, depth } = opts;
+  const meta = { fileKey, surface, origin: 'rest' as const };
+
+  if (nodeId) {
+    const path = `/files/${encodeURIComponent(fileKey)}/nodes`;
+    const body = await getJson<{ nodes?: Record<string, { document?: unknown }> }>(path, {
+      ids: nodeId,
+      depth: depth !== undefined ? String(depth) : undefined,
+    });
+    const entry = body?.nodes?.[nodeId];
+    if (!entry?.document) throw apiError('not_found', path, 404);
+    return normalizeDocument(entry.document, meta);
+  }
+
+  const path = `/files/${encodeURIComponent(fileKey)}`;
+  const body = await getJson<{ document?: unknown }>(path, {
+    depth: depth !== undefined ? String(depth) : undefined,
+  });
+  if (!body?.document) throw apiError('bad_response', path, 200);
+  return normalizeDocument(body.document, meta);
+}
+
+export interface FigmaImageResult {
+  /** nodeId → the URL Figma rendered it to, or null when it declined. */
+  images: Record<string, string | null>;
+}
+
+/**
+ * Ask Figma to render nodes. Returns URLs; **downloading is not this module's
+ * job** — the returned URLs are response-controlled and must go through
+ * `_fetch-asset.mjs`'s gate (DDR-216 D4/D11).
+ *
+ * Callers batch: `MAX_IMAGE_BATCH` ids per call, never one call per node.
+ */
+export async function fetchImageUrls(
+  fileKey: string,
+  nodeIds: readonly string[],
+  format: 'png' | 'svg' | 'jpg' = 'png',
+  scale = 2
+): Promise<FigmaImageResult> {
+  if (nodeIds.length === 0) return { images: {} };
+  if (nodeIds.length > MAX_IMAGE_BATCH) {
+    throw new FigmaCapError(
+      'nodes',
+      `image batch of ${nodeIds.length} exceeds the ${MAX_IMAGE_BATCH}-id ceiling`
+    );
+  }
+  const path = `/images/${encodeURIComponent(fileKey)}`;
+  const body = await getJson<{ images?: Record<string, string | null>; err?: unknown }>(path, {
+    ids: nodeIds.join(','),
+    format,
+    // Scale is meaningless for svg and Figma rejects it there.
+    scale: format === 'svg' ? undefined : String(scale),
+  });
+  return { images: body?.images ?? {} };
+}
+
+export interface FigmaStyleMeta {
+  key: string;
+  /** UNTRUSTED — charset-bounded before it becomes a token name (DDR-216 D6). */
+  name: string;
+  styleType: string;
+  /** UNTRUSTED and DELIBERATELY UNUSED — never carried into any output. */
+  description?: string;
+  nodeId?: string;
+}
+
+/** Paint / text / effect styles — the Phase-4 input. */
+export async function fetchStyles(fileKey: string): Promise<FigmaStyleMeta[]> {
+  const path = `/files/${encodeURIComponent(fileKey)}/styles`;
+  const body = await getJson<{ meta?: { styles?: unknown[] } }>(path);
+  const raw = body?.meta?.styles;
+  if (!Array.isArray(raw)) return [];
+  const out: FigmaStyleMeta[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const s = item as Record<string, unknown>;
+    const key = typeof s.key === 'string' ? s.key : undefined;
+    const styleType = typeof s.style_type === 'string' ? s.style_type : undefined;
+    if (!key || !styleType) continue;
+    const entry: FigmaStyleMeta = {
+      key,
+      name: typeof s.name === 'string' ? s.name : '',
+      styleType,
+    };
+    if (typeof s.node_id === 'string') entry.nodeId = s.node_id;
+    out.push(entry);
+  }
+  return out;
+}
+
+export interface FigmaVariablesResult {
+  /** False when the plan gates the endpoint — a NORMAL outcome, not an error. */
+  available: boolean;
+  raw?: unknown;
+}
+
+/**
+ * Local variables — richer than styles (modes → themes), but **Enterprise-plan
+ * gated**. A 403 here is the COMMON case (the dogfood account is Pro), so it
+ * degrades to `{ available: false }` and the caller says "using your styles"
+ * rather than surfacing a failure (DDR-216 D5).
+ */
+export async function fetchLocalVariables(fileKey: string): Promise<FigmaVariablesResult> {
+  const path = `/files/${encodeURIComponent(fileKey)}/variables/local`;
+  try {
+    const body = await getJson<{ meta?: unknown }>(path);
+    return { available: true, raw: body?.meta };
+  } catch (err) {
+    if (err instanceof FigmaApiError && (err.kind === 'forbidden' || err.kind === 'not_found')) {
+      return { available: false };
+    }
+    throw err;
+  }
+}
+
+export interface FigmaIdentity {
+  /** UNTRUSTED — length/charset-bounded before display, never persisted. */
+  handle: string;
+}
+
+/** `GET /v1/me` — the Settings "probe this token" call. */
+export async function fetchIdentity(): Promise<FigmaIdentity> {
+  const body = await getJson<{ handle?: unknown; email?: unknown }>('/me');
+  const handle = typeof body?.handle === 'string' ? body.handle : '';
+  return { handle };
+}

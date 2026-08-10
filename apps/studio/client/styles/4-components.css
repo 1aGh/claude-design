@@ -2044,3 +2044,116 @@
   color: var(--u-fg-0);
   background: var(--u-bg-2);
 }
+
+/* ── Figma import panel (DDR-216 / T11) ─────────────────────────────────────
+ * Rides the shared .st-scrim / .st-dialog shell (3-shell-maude.css). Tokens
+ * only — no hardcoded colour, and no inline `style=` in the JSX either, because
+ * the canvas CSP (`style-src 'self'`) drops inline styles SILENTLY. */
+.st-figma-dialog {
+  width: min(560px, 92vw);
+  padding-bottom: var(--space-4);
+}
+.st-figma-label {
+  display: block;
+  padding: var(--space-3) var(--space-5) 4px;
+  font-size: var(--type-xs, 12px);
+  color: var(--fg-2);
+}
+.st-figma-input {
+  display: block;
+  width: calc(100% - (2 * var(--space-5)));
+  margin: 0 var(--space-5);
+  padding: 8px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-1);
+  color: var(--fg-0);
+  font-family: var(--font-mono);
+  font-size: var(--type-sm, 13px);
+}
+.st-figma-modes {
+  border: 0;
+  margin: 0;
+  padding: 0 var(--space-5);
+}
+.st-figma-mode {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: var(--type-sm, 13px);
+  color: var(--fg-1);
+}
+.st-figma-mode-hint {
+  color: var(--fg-3);
+  font-size: var(--type-xs, 12px);
+}
+.st-figma-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: var(--space-4) var(--space-5) 0;
+}
+.st-figma-notice {
+  margin: var(--space-3) var(--space-5) 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+  color: var(--fg-2);
+  font-size: var(--type-xs, 12px);
+}
+/* The third-party-content banner. Deliberately reads as a caution, not as a
+ * provenance badge — an "imported from Figma" stamp otherwise makes the most
+ * attacker-influenced artifact in the tree look like verified design work. */
+.st-figma-notice-warn {
+  border-color: var(--status-warn, var(--border-default));
+  color: var(--fg-1);
+}
+.st-figma-error {
+  margin: var(--space-3) var(--space-5) 0;
+  color: var(--status-danger, var(--fg-0));
+  font-size: var(--type-xs, 12px);
+}
+.st-figma-summary {
+  margin: var(--space-3) var(--space-5) 0;
+  padding: 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+  font-size: var(--type-xs, 12px);
+  color: var(--fg-2);
+}
+.st-figma-summary-hd {
+  color: var(--fg-1);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.st-figma-summary-row {
+  margin: var(--space-2) var(--space-5) 0;
+  font-size: var(--type-xs, 12px);
+  color: var(--fg-2);
+}
+.st-figma-summary .st-figma-summary-row {
+  margin: 4px 0 0;
+}
+.st-figma-summary-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.st-figma-summary-kind {
+  color: var(--fg-1);
+}
+.st-figma-summary-count {
+  font-family: var(--font-mono);
+  color: var(--fg-2);
+}
+.st-figma-summary-ids {
+  display: block;
+  font-family: var(--font-mono);
+  color: var(--fg-3);
+  overflow-wrap: anywhere;
+}

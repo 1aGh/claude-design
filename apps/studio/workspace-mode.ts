@@ -67,6 +67,10 @@ export const FORBIDDEN_ROUTE_PREFIXES: ReadonlyArray<{ prefix: string; why: stri
       why: 'media generation runs tenant-authored prompts against a provider key held here',
     },
     {
+      prefix: '/_api/figma',
+      why: 'the Figma lane STORES and SPENDS a user personal access token, and imports write the design root — a cell must hold no provider credential (DDR-216 D2/D3, same class as /_api/generate)',
+    },
+    {
       prefix: '/_api/shell-shot',
       why: 'the shell screenshot spawns a headless browser against the studio — the same evaluation `/_api/export` is forbidden for',
     },

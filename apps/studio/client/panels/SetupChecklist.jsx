@@ -80,7 +80,7 @@ function StatusIcon({ present }) {
   );
 }
 
-export function SetupChecklist({ report, loading, refresh, onStartTour, onBringBrand }) {
+export function SetupChecklist({ report, loading, refresh, onStartTour, onBringBrand, onImportFigma }) {
   return (
     <div className="setup-cl">
       <ul className="setup-cl-list">
@@ -131,6 +131,16 @@ export function SetupChecklist({ report, loading, refresh, onStartTour, onBringB
             Bring my existing brand
           </a>
         )}
+        {onImportFigma && (
+          <button
+            type="button"
+            data-testid="onboarding-import-figma"
+            className="btn btn--ghost btn--sm"
+            onClick={onImportFigma}
+          >
+            Import from Figma
+          </button>
+        )}
         {refresh && (
           <button
             type="button"
@@ -148,7 +158,13 @@ export function SetupChecklist({ report, loading, refresh, onStartTour, onBringB
 
 // Standalone modal, reachable from Help ▸ Quick setup… — reuses the shared
 // help-modal chrome (backdrop + header + body), same shape as ReadinessDialog.
-export default function SetupChecklistDialog({ open, onClose, onStartTour, onBringBrand }) {
+export default function SetupChecklistDialog({
+  open,
+  onClose,
+  onStartTour,
+  onBringBrand,
+  onImportFigma,
+}) {
   const { report, loading, refresh } = useSetupReadiness(open);
   useEffect(() => {
     if (!open) return undefined;
@@ -207,6 +223,14 @@ export default function SetupChecklistDialog({ open, onClose, onStartTour, onBri
                   ? () => {
                       onClose();
                       onBringBrand();
+                    }
+                  : undefined
+              }
+              onImportFigma={
+                onImportFigma
+                  ? () => {
+                      onClose();
+                      onImportFigma();
                     }
                   : undefined
               }

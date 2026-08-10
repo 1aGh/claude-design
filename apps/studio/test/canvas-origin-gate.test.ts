@@ -214,6 +214,19 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         '/_api/github/invite',
         '/_api/github/clone',
         '/_api/github/create-project',
+        // DDR-216 D3 — every /_api/figma/* route is MAIN-ORIGIN ONLY (absent from
+        // CANVAS_SAFE_API + startCanvasServer's `routes` map). A canvas-reachable
+        // Figma route would be a token-exfiltration primitive AND an SSRF
+        // primitive at once: `connect` stores the user's PAT, `probe` spends it,
+        // and `status` would leak whether one exists. A request from this origin
+        // 403s at the gate rather than reaching a handler. (The complementary
+        // cross-SITE guard — `isTrustedRequestHost` + `sameOriginWrite` on the
+        // MAIN origin, which allowlist omission does nothing about — lives in
+        // figma-routes.test.ts; both halves are required, neither is sufficient.)
+        '/_api/figma/status',
+        '/_api/figma/connect',
+        '/_api/figma/probe',
+        '/_api/figma/import',
         // Local-only project create (mkdir + git init + scaffold) — writes to disk,
         // no token; MAIN-ORIGIN ONLY, so the canvas origin must 403 at the gate.
         '/_api/project/create-local',

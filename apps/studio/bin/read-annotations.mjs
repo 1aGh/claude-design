@@ -106,6 +106,9 @@ Args:
 
 FigJam v3 additive fields per annotation: z (render order), groupIds (deepest →
 shallowest), author ("ai" for annotate-verb strokes), authorName/authorId
+// (an IMPORTED stroke carries authorName "imported-figma" — DDR-216 D7, so a
+// consuming skill can tell third-party content from what the user drew), the
+// rendered fontSize for text/sticky (so 8 px is distinguishable from a heading)
 (human-drawn stickies), and from/to host ids on bound arrows.
 
 Section annotations additionally carry members: an array of every OTHER
@@ -210,6 +213,10 @@ function readText(attrs, inner) {
     h: null,
     text: decodeEntities(inner).trim(),
     color: attr(attrs, 'fill') || attr(attrs, 'stroke') || null,
+    // DDR-216 D6b / review F5 — a consuming skill must be able to see HOW BIG
+    // this renders. Without it, text at the 8 px floor is indistinguishable
+    // from a heading in the JSON an agent is handed.
+    fontSize: num(attr(attrs, 'font-size')),
   };
   if (anchorId) o.anchorId = anchorId;
   return o;
@@ -235,7 +242,8 @@ function readSticky(attrs, inner) {
   // Geometry off the inner <rect>; paper tint off the group fill; body off the
   // inner <text>. (annotations-layer.tsx strokeToSvgEl 'sticky' branch.)
   const rectAttrs = inner.match(/<rect\b([^>]*?)\/?>/)?.[1] ?? '';
-  const body = inner.match(/<text\b[^>]*>([\s\S]*?)<\/text>/)?.[1] ?? '';
+  const textEl = inner.match(/<text\b([^>]*)>([\s\S]*?)<\/text>/);
+  const body = textEl?.[2] ?? '';
   return {
     tool: 'sticky',
     id: attr(attrs, 'data-id') || '',
@@ -245,6 +253,8 @@ function readSticky(attrs, inner) {
     h: num(attr(rectAttrs, 'height')),
     text: decodeEntities(body).trim(),
     color: attr(attrs, 'fill') || null,
+    // See readText — a consuming skill needs the rendered size.
+    fontSize: num(attr(textEl?.[1] ?? '', 'font-size')),
   };
 }
 

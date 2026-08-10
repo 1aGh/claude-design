@@ -33,6 +33,7 @@ import { buildCanvasSandboxed, buildStats } from './canvas-build-sandbox.ts';
 import { canvasLibPath } from './canvas-lib-resolver.ts';
 import { TranspileError } from './canvas-pipeline.ts';
 import { createCloudEndpoints } from './cloud/endpoints.ts';
+import { createFigmaEndpoints } from './figma/endpoints.ts';
 import type { AiActivity } from './collab/ai-activity.ts';
 import type { Context } from './context.ts';
 import { reloadConfig } from './context.ts';
@@ -1110,6 +1111,58 @@ export function createHttp(
   // startCanvasServer) and loopback-Host gated — every route either bears or
   // stores the cloud credential.
   const cloudApi = createCloudEndpoints(ctx);
+  // Figma import (DDR-216). Same dual-allowlist rule as the GitHub + cloud
+  // routes: MAIN-ORIGIN ONLY, plus loopback-Host and same-origin gating on
+  // every one of them — each either stores or spends the user's Figma PAT.
+  const figmaApi = createFigmaEndpoints({
+    // The import itself lives in the CLI helper — ONE implementation, so the
+    // panel and `maude design import-figma` cannot drift apart in what they
+    // sanitize, cap or report. Imported lazily so the studio's boot path never
+    // pulls the import machinery (and its browser-backed SVG lane) into memory
+    // for the 99% of sessions that never import anything.
+    async runImport({ url, mode, dryRun }) {
+      const mod = await import('./bin/_import-figma.mjs');
+      const args = {
+        url,
+        root: ctx.paths.repoRoot,
+        designRootRel: ctx.paths.designRel,
+        dryRun: Boolean(dryRun),
+      };
+      if (mode === 'board') {
+        const r = await mod.importBoard(args);
+        return {
+          summary: {
+            mode,
+            slug: r.slug,
+            strokeCount: r.strokeCount,
+            dispositions: r.report.entries,
+          },
+        };
+      }
+      if (mode === 'frames') {
+        const r = await mod.importFrames(args);
+        return {
+          summary: {
+            mode,
+            frameCount: r.frameCount,
+            written: r.written.map((w: { slug: string }) => w.slug),
+            assets: { resolved: r.resolvedAssets, pending: r.pendingExports },
+            dispositions: r.reports.flatMap((rep: { entries: unknown[] }) => rep.entries),
+          },
+        };
+      }
+      const r = await mod.importTokens(args);
+      return {
+        summary: {
+          mode,
+          source: r.source,
+          count: r.count,
+          path: r.path,
+          dispositions: r.report.entries,
+        },
+      };
+    },
+  });
   const gitJson = (r: { status: number; json: unknown }) =>
     Response.json(r.json, { status: r.status, headers: { 'Cache-Control': 'no-store' } });
 
@@ -2417,6 +2470,69 @@ export function createHttp(
         return new Response('local request required', { status: 403 });
       const body = await readJson<unknown>(req, 8 * 1024);
       return gitJson(await githubApi.clone(body));
+    },
+
+    // ── Figma import (DDR-216 D2/D3) ────────────────────────────────────────
+    // MAIN-ORIGIN ONLY: absent from BOTH CANVAS_SAFE_API and startCanvasServer's
+    // `routes` map, so the untrusted canvas origin cannot reach them at all —
+    // a canvas-reachable Figma route would be a token-exfiltration primitive AND
+    // an SSRF primitive at once.
+    //
+    // Allowlist-omission alone proves the WRONG property, though: the main origin
+    // is reachable from any website the user happens to visit while the server is
+    // up. Without the two gates below, a CORS-simple POST from evil.example would
+    // plant an attacker's PAT (`connect`) or spend the user's on an attacker-chosen
+    // file key (`probe`) — opaque response, real side effect. So all three carry
+    // `isTrustedRequestHost` + `sameOriginWrite` + a body cap, and `probe` counts
+    // as a WRITE for gating purposes even though it stores nothing: it spends the
+    // credential and reaches the network. (DDR-216 D3, Round-1 security finding.)
+    '/_api/figma/status': async (req: Request) => {
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      // `sameOriginRead`, not just `sameOriginWrite`: this is a GET, and browsers
+      // do NOT reliably stamp `Origin` on a simple cross-origin GET — so the
+      // write-side guard cannot see this one coming. Without it, any page the
+      // user visits can probe whether they have Figma connected (a small but
+      // real cross-site state leak, and the same shape as the Task-2.5
+      // audio-search F1 finding this helper was added for).
+      if (!sameOriginRead(req)) return new Response('cross-origin read rejected', { status: 403 });
+      if (!isTrustedRequestHost(req))
+        return new Response('local request required', { status: 403 });
+      return gitJson(figmaApi.status());
+    },
+
+    '/_api/figma/connect': async (req: Request) => {
+      if (req.method !== 'POST' && req.method !== 'DELETE')
+        return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isTrustedRequestHost(req))
+        return new Response('local request required', { status: 403 });
+      if (req.method === 'DELETE') return gitJson(figmaApi.disconnect());
+      const body = await readJson<unknown>(req, 8 * 1024);
+      return gitJson(figmaApi.connect(body));
+    },
+
+    '/_api/figma/probe': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isTrustedRequestHost(req))
+        return new Response('local request required', { status: 403 });
+      return gitJson(await figmaApi.probe());
+    },
+
+    // Runs an import. Same triple gate as the other three, and for the same
+    // reasons — it spends the PAT, it reaches the network, and it writes into
+    // the design root. The body is validated into a fixed {mode, url, dryRun}
+    // shape; a caller never gets to choose an output path.
+    '/_api/figma/import': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isTrustedRequestHost(req))
+        return new Response('local request required', { status: 403 });
+      const body = await readJson<unknown>(req, 8 * 1024);
+      return gitJson(await figmaApi.runImport(body));
     },
 
     '/_api/github/create-project': async (req: Request) => {

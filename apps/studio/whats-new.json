@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "figma-import",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Bring your Figma work in",
+      "summary": "Paste a Figma link and get the real thing, not a picture of it: design frames become editable canvases, a FigJam board becomes your whiteboard with its sticky notes and arrows still attached, and your colour and text styles become design tokens. Add a Figma access token once in Settings to get started.",
+      "surface": "design-ui"
+    },
+    {
       "id": "sync-carries-the-path",
       "version": "0.58.2",
       "date": "2026-08-08",

@@ -796,6 +796,170 @@ function GemmaModelCard() {
 
 // feature-unified-settings-modal — one modal for every Maude preference, laid
 // out as a left vertical tab rail + an internally-scrolling pane. Categories:
+/**
+ * Figma connect card (DDR-216 D2/D3 / T11).
+ *
+ * Same trust model as ProviderCard, DIFFERENT routes: `figma` is deliberately
+ * not in the media-generation registry, so this card talks to
+ * `/_api/figma/{status,connect,probe}` — all three main-origin-only, loopback-
+ * and same-origin-gated, and none of which ever echoes the token back.
+ *
+ * The scope named here is `file_content:read`, never the deprecated blanket
+ * `files:read`. The "Connected as …" handle comes from `/v1/me` and is
+ * upstream-controlled — bounded server-side and rendered as a React text child
+ * (never `dangerouslySetInnerHTML`), and deliberately never persisted.
+ */
+function FigmaConnectCard() {
+  const [status, setStatus] = useState(null); // null = loading
+  const [tokenInput, setTokenInput] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [handle, setHandle] = useState(null);
+
+  const load = useCallback(() => {
+    fetch('/_api/figma/status')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then(setStatus)
+      .catch(() => setStatus({ configured: false }));
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function connect() {
+    const token = tokenInput.trim();
+    if (!token || busy) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch('/_api/figma/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMsg(body.error || 'could not save the token');
+        return;
+      }
+      // Clear the field immediately — the value is never read back from the
+      // server, so leaving it on screen only risks a shoulder-surf.
+      setTokenInput('');
+      load();
+      await probe();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function probe() {
+    setMsg(null);
+    const res = await fetch('/_api/figma/probe', { method: 'POST' });
+    const body = await res.json().catch(() => ({}));
+    if (body.ok) {
+      setHandle(body.handle || '');
+      setMsg(null);
+    } else {
+      setHandle(null);
+      setMsg(body.error || 'Figma did not accept that token.');
+    }
+  }
+
+  async function disconnect() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await fetch('/_api/figma/connect', { method: 'DELETE' });
+      setHandle(null);
+      setMsg(null);
+      load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const configured = Boolean(status?.configured);
+
+  return (
+    <div className="st-provider-card" data-testid="figma-connect-card">
+      <div className="st-provider-hd">
+        <span className="st-provider-name">Figma</span>
+        {configured && (
+          <span className="st-provider-configured">
+            <Icon name="check" size={12} /> connected
+          </span>
+        )}
+      </div>
+      <p className="st-settings-intro">
+        Import real Figma documents — frames become editable canvases, FigJam boards become the
+        whiteboard, and paint/text/effect styles become design tokens. The translation is plain
+        code: no AI reads your file.
+      </p>
+      <p className="st-settings-intro">
+        Create a personal access token with the <code>{status?.requiredScope || 'file_content:read'}</code>{' '}
+        scope. It is stored on this machine only and is never sent anywhere but Figma.
+      </p>
+      {status?.tokenUrl && (
+        <a className="st-provider-keylink" href={status.tokenUrl} target="_blank" rel="noreferrer">
+          Get a token <Icon name="external" size={12} />
+        </a>
+      )}
+      <div className="st-provider-keyrow">
+        <input
+          className="st-provider-keyinput"
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={configured ? '•••••••• stored' : 'figd_…'}
+          value={tokenInput}
+          onChange={(e) => setTokenInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') connect();
+          }}
+          aria-label="Figma personal access token"
+          data-testid="figma-connect-input"
+        />
+        <button
+          type="button"
+          className="st-btn"
+          disabled={busy || !tokenInput.trim()}
+          onClick={connect}
+          data-testid="figma-connect-save"
+        >
+          {configured ? 'Replace' : 'Save'}
+        </button>
+        {configured && (
+          <button
+            type="button"
+            className="st-btn"
+            disabled={busy}
+            onClick={disconnect}
+            data-testid="figma-disconnect"
+          >
+            Remove
+          </button>
+        )}
+      </div>
+      {configured && (
+        <button type="button" className="st-btn" disabled={busy} onClick={probe}>
+          Test connection
+        </button>
+      )}
+      {handle !== null && (
+        <div className="st-provider-status" data-testid="figma-connected-as">
+          Connected as {handle || 'your Figma account'}
+        </div>
+      )}
+      {msg && (
+        <div className="st-provider-status" data-testid="figma-connect-error">
+          {msg}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const TABS = [
   { id: 'appearance', label: 'Appearance' },
   { id: 'canvas-view', label: 'Canvas & View' },
@@ -813,6 +977,11 @@ const TABS = [
   // does not have. There is nothing for the reader to act on, so a whole tab of
   // dead controls is worse than no tab.
   { id: 'ai-generation', label: 'AI generation', local: true },
+  // DDR-216 — Figma is its OWN tab, not a row under "AI generation". It is not
+  // a media-generation provider (it produces no modality and needs no adapter),
+  // and putting it in that registry would create a second write path for the
+  // same secret — which is how one of them ends up ungated.
+  { id: 'figma', label: 'Figma', local: true },
   { id: 'subtitles', label: 'Subtitles', local: true },
   { id: 'video', label: 'Video', local: true },
 ];
@@ -1241,6 +1410,18 @@ export default function SettingsPanel({
               {providers?.length === 0 && (
                 <div className="st-settings-intro">No providers registered.</div>
               )}
+            </section>
+
+            {/* Figma — the import credential (DDR-216 D2/D3). Separate routes from
+                the generation keys above, and separate on purpose. */}
+            <section
+              role="tabpanel"
+              id="st-spanel-figma"
+              aria-labelledby="st-stab-figma"
+              hidden={tab !== 'figma'}
+            >
+              <div className="st-rp-hd">Figma</div>
+              <FigmaConnectCard />
             </section>
 
             {/* Subtitles — kept mounted so WhisperModelCard's download poll survives

@@ -17,18 +17,69 @@ import {
   rotatePoint,
   type Stroke,
   strokeBBox,
+  strokeHitTest,
   strokeRotation,
 } from './annotations-model.ts';
 
-/** Hosts an arrow endpoint can attach to (shapes + cards, FigJam set). */
+/**
+ * The largest bbox a TEXT stroke may present as a bind target, PER AXIS.
+ *
+ * A `TextStroke` has no stored `w`/`h` — `strokeBBox` SYNTHESIZES one from the
+ * content (`max(8, longest * fontSize * 0.55)` wide). So a long single line can
+ * project a bind strip tens of thousands of px wide, and `bindCandidate` scans
+ * topmost-first with no area preference: one such stroke would silently become a
+ * board-wide magnet that steals every endpoint the user drags. Text bigger than
+ * a plausible label is therefore not offered as a host at all (DDR-216 D9).
+ */
+export const MAX_TEXT_BIND_W = 1200;
+export const MAX_TEXT_BIND_H = 480;
+
+/**
+ * Hosts an arrow endpoint can attach to (shapes + cards, FigJam set).
+ *
+ * **Widened to `text` + `section` (DDR-216 D9).** FigJam binds connectors to
+ * anything, and on the only real board measured 2/2 connectors had at least one
+ * endpoint Maude could not bind — so an imported connector degraded to a frozen
+ * line. It is also a plain native gap: you could not attach an arrow to a text
+ * label or a section, independent of import.
+ *
+ * Three deliberate exclusions, each closing a regression the naive widening
+ * would have introduced:
+ *
+ *  1. **ANCHORED text is still not bindable.** `bindCandidate`/`anchorPoint`/
+ *     `recomputeBoundArrows` call `strokeBBox(s)` WITHOUT the anchors map, and
+ *     for a text stroke with `anchorId` that returns `null`. Admitting it would
+ *     mint a bind that `anchorPoint` can never resolve — and `applyEnd` would
+ *     keep it (it only strips when the host stops being bindable), freezing the
+ *     arrow at stale coordinates forever. That is strictly worse than today's
+ *     honest "strip the bind, freeze the endpoint". Anchored text lives inside a
+ *     host shape which is itself bindable, so nothing is lost: bind to the shape.
+ *  2. **Oversized text is not offered** — see `MAX_TEXT_BIND_W`/`_H`.
+ *  3. **Groups are not bindable by construction** — Maude groups are a flat
+ *     `groupIds[]` tag array, not addressable objects. A group-targeted import
+ *     endpoint falls back to the group's geometric bbox and is reported.
+ */
 export function isBindable(s: Stroke): boolean {
-  return (
+  if (
     s.tool === 'rect' ||
     s.tool === 'ellipse' ||
     s.tool === 'polygon' ||
     s.tool === 'sticky' ||
     s.tool === 'image'
-  );
+  ) {
+    return true;
+  }
+  if (s.tool === 'section') return true;
+  if (s.tool === 'text') {
+    if (s.anchorId) return false; // (1) — no resolvable bbox without the anchors map
+    const bb = strokeBBox(s);
+    // Per-AXIS, not an area product: an area cap is satisfiable by a very wide,
+    // very short strip, which is precisely the board-wide magnet shape. 4 000
+    // chars at the fontSize floor of 8 gives w ≈ 17 600 × h ≈ 9.6 — area 168 960,
+    // comfortably under a 640×480 product (post-implementation review F8).
+    return !!bb && bb.w > 0 && bb.h > 0 && bb.w <= MAX_TEXT_BIND_W && bb.h <= MAX_TEXT_BIND_H; // (2)
+  }
+  return false;
 }
 
 /** Bind proximity threshold in world px at zoom 1 (Excalidraw's 15 px). */
@@ -78,6 +129,20 @@ export function bindCandidate(
     ) {
       continue;
     }
+    // A SECTION is a large container, and the natural gesture is to draw one
+    // AROUND existing notes — which puts it later in the array, i.e. topmost.
+    // Testing its raw bbox would make the whole interior a magnet, so every
+    // arrow drawn between two stickies inside a section would bind to the
+    // section instead. `strokeHitTest` already encodes the right rule (a section
+    // is grabbed by its BORDER or its label chip; the interior stays
+    // click-through), so defer to it rather than inventing a second geometry.
+    //
+    // Deliberately NOT "prefer the smallest containing bbox": containment here
+    // is over a bbox INFLATED by `threshold`, so smallest-area lets an 8×8 dot
+    // 14 px AWAY beat the large rect the pointer is actually inside — and it
+    // inverts the visual invariant, letting a shape hidden behind an opaque one
+    // win a bind the user cannot see happening (DDR-216 D9 fix 4).
+    if (s.tool === 'section' && !strokeHitTest(s, wx, wy, threshold)) continue;
     return {
       hostId: s.id,
       nx: snapMagnet(clamp01((wx - bb.x) / bb.w)),
@@ -155,7 +220,21 @@ export function recomputeBoundArrows(strokes: readonly Stroke[]): Stroke[] {
         }
       }
       const pt = anchorPoint(host, effective.nx, effective.ny);
-      if (!pt) return;
+      if (!pt) {
+        // The host is bindable but its bbox is unresolvable right now (e.g. a
+        // text stroke whose anchors map isn't reachable from here). Returning
+        // silently would KEEP a bind that can never be honoured — the arrow
+        // would freeze at stale coordinates permanently, across save/load,
+        // while still claiming to be attached. Strip it instead: the arrow
+        // survives unbound with its endpoint frozen, which is the same honest
+        // degradation a deleted host already gets. (DDR-216 D9 fix 2 — inert
+        // before the `isBindable` widening, load-bearing after it.)
+        const copy: ArrowStroke = { ...next };
+        delete copy[end === 'start' ? 'startBind' : 'endBind'];
+        next = copy;
+        mutated = true;
+        return;
+      }
       if (end === 'start') {
         if (next.x1 !== pt[0] || next.y1 !== pt[1]) {
           next = { ...next, x1: pt[0], y1: pt[1] };

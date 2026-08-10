@@ -36,11 +36,20 @@ const APP = readFileSync(join(STUDIO, 'client', 'app.jsx'), 'utf8');
 const SETTINGS = readFileSync(join(STUDIO, 'client', 'panels', 'SettingsPanel.jsx'), 'utf8');
 
 describe('the cloud shell offers nothing it cannot honour', () => {
-  test('the local-machine settings tabs are flagged, and only those three', () => {
+  test('the local-machine settings tabs are flagged — and the list is exact', () => {
+    // An exact list, not a `toContain`: the failure this guards is a tab that
+    // configures machine-local state shipping to the cloud shell UNFLAGGED,
+    // where its routes are refused by design (DDR-209 D1) and it renders as a
+    // wall of 404s. A new tab has to be classified deliberately, which means
+    // this assertion is SUPPOSED to fail when one is added.
+    //
+    // `figma` (DDR-216) is local-machine for the same reason `ai-generation`
+    // is: the credential lives in `~/.config/maude/keys.json` on this machine,
+    // and the import writes into this machine's design root.
     const flagged = [
       ...SETTINGS.matchAll(/\{ id: '([a-z-]+)', label: '[^']+', local: true \}/g),
     ].map((m) => m[1]);
-    expect(flagged.sort()).toEqual(['ai-generation', 'subtitles', 'video']);
+    expect(flagged.sort()).toEqual(['ai-generation', 'figma', 'subtitles', 'video']);
   });
 
   test('the tab rail renders the FILTERED list, not the raw table', () => {
