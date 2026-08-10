@@ -21,14 +21,20 @@ Any command at a decision **bookend**:
 
 ## 1. Read the config first (the resolver)
 
+**Store resolution is primarily the ENGINE's job since kgai v1.5.1.** A repo with a committed `.kgairc` (project layer of the engine's three-layer config: session `<store>/kg.config.json` → project `.kgairc` → global `~/.kgai/config.json`) resolves its store through `kg config` — typically to a shared parent-folder store like `../.kgai-shared`. For `.kgairc`-enrolled repos, **`kg config` → `store_root` is the source of truth**; don't second-guess it from Maude config.
+
 Read `knowledgeGraph.*` from `.ai/workflows.config.json` (all knobs; never hardcode). Design-only repos read the same block from the same file.
 
 ```
 mode    = config.knowledgeGraph.mode    ?? "auto"     # auto (default) | on | off
-store   = config.knowledgeGraph.store   ?? ""         # "" = local-only .kgai/store
+store   = config.knowledgeGraph.store   ?? ""         # fallback/override for maude verbs — see below
 scope   = config.knowledgeGraph.scope   ?? {}         # { repo, dept } — stamped on every write
 capture = config.knowledgeGraph.capture ?? { decisions:true, state:true, auto:true }
 ```
+
+- `knowledgeGraph.store` **remains as a fallback/override for the `maude kg` verbs** — repos without a `.kgairc` (legacy per-repo `.kgai/store`, or an explicit remote-only setup) still resolve through it. When both exist, the engine's `.kgairc` resolution wins for anything the engine itself does; the Maude config value is only consulted when `kg config` yields no store.
+- **Scope fallback:** when `knowledgeGraph.scope` is absent (a `.kgairc`-enrolled repo that never got a config block), derive `repo` from `git remote get-url origin` (repo name, sans `.git`) and default `dept` to `dev` — the same rule the shared `.kgairc` capture prompt states.
+- `engineVersion` is now a **floor, not a pin**: minimum **v1.5.1** (the `.kgairc` / `kg trust` / `kg config` surface). The engine installs and self-updates via the official installer; check with `kg version`.
 
 **An absent `knowledgeGraph` block is treated as `mode:auto`** — exactly like `orchestration`. A user adds the block only to dial down (`off`) or force (`on`).
 
@@ -36,12 +42,15 @@ capture = config.knowledgeGraph.capture ?? { decisions:true, state:true, auto:tr
 
 ```
 kgPresent    = `command -v kg` succeeds
-storeResolvable = store != "" OR a local .kgai/store dir exists
+storeResolvable = `kg config` resolves a store_root (covers .kgairc)
+                  OR config store != "" OR a legacy local .kgai/store dir exists
 
 active = mode == "on"  ? true                          # force (errors surface, no silent fallback)
        : mode == "off" ? false                         # classic .ai/ path, byte-for-byte unchanged
        : /* auto */      (kgPresent && storeResolvable) # conservative — first-run repos stay on files
 ```
+
+**`pending_approval` is its own state, not "inactive" and not yours to fix.** A committed `.kgairc` does nothing until a human on this machine approves it — no store is created, and `kg config` reports `pending_approval`. When the resolver sees that: treat the graph as **inactive for this run** (classic `.ai/` path), tell the user once — "this repo has a committed `.kgairc` awaiting approval; review it with `kg trust --show` and approve with `kg trust`" — and **NEVER run `kg trust` yourself**. Approving a capture prompt injected into future sessions is a human trust decision; the skill may run it only on the user's explicit instruction.
 
 The resolver is available as `maude kg resolve --json` (prints `{active, mode, store, scope}`), so a command can gate in one call instead of re-deriving. **If `active == false`, do NOTHING kgai — run the command's classic `.ai/` path unchanged.** This is the load-bearing no-regression invariant (memory `feedback-no-break-exhaustive-verify`): the `else` branch is today's behavior verbatim.
 
@@ -51,9 +60,9 @@ The resolver is available as `maude kg resolve --json` (prints `{active, mode, s
 
 Plugin markdown calls `maude kg <verb>`, **never** a raw `kg` binary path — `maude kg` resolves the bundled/pinned `kg`, exports the resolved `KGAI_STORE`/scope env, and (in the desktop bundle) points at the staged sidecar + `libkuzu`. The recipes below are the contract; the resolved store/scope are injected for you.
 
-> **The recipes below match the real kgai v1.4.0 CLI surface (verified live 2026-08-05).** `kg version`/`--help` is the source of truth; the command set is `init · ingest · context · history · as-of · search · resolve · query · conflicts · sync · remote · rotate · rebuild · export · status · doctor`, with `info` as a true alias of `status`. Nothing was removed since v1.0.0 (the stability-promise version) — v1.1.0–v1.4.0 were fixes and additive flags, not surface breaks — so every recipe here still applies; the additions below are new capability, not a rewrite.
+> **The recipes below match the real kgai v1.5.1 CLI surface.** `kg version`/`--help` is the source of truth; the command set is `init · ingest · context · history · as-of · search · resolve · query · conflicts · sync · remote · rotate · rebuild · export · status · doctor · config · prompt · trust`, with `info` as a true alias of `status`. Nothing was removed since v1.0.0 (the stability-promise version) — v1.1.0–v1.4.0 were fixes and additive flags, and v1.5.x added the `.kgairc` three-layer config plus `config`/`prompt`/`trust` — additive capability, not a surface break, so every recipe here still applies.
 >
-> **Local engine footgun (hit while doing this update):** `kg`'s update mechanism has been broken on macOS since v0.1.x — a `sha256sum`-based install fingerprint (Linux-only tool) came out empty on every Mac, matched the empty file the prior run wrote, and the "already current" fast path then skipped every reinstall forever. Fixed upstream in v1.4.0. If `kg status`'s `"version"` field reads suspiciously old, don't trust the repo's pinned `engineVersion` as proof the running binary matches — re-run the installer (`curl -fsSL https://raw.githubusercontent.com/kgaidev/kgai/main/scripts/install.sh | bash`) and check `command -v kg` actually resolves to the fresh one (a stale `~/.local/bin/kg` symlink to an old side-install can shadow it).
+> **Local engine footgun (hit while doing this update):** `kg`'s update mechanism has been broken on macOS since v0.1.x — a `sha256sum`-based install fingerprint (Linux-only tool) came out empty on every Mac, matched the empty file the prior run wrote, and the "already current" fast path then skipped every reinstall forever. Fixed upstream in v1.4.0; the official installer (`curl -fsSL https://raw.githubusercontent.com/kgaidev/kgai/main/scripts/install.sh | bash`) is now the supported path and self-updates at SessionStart. If `kg status`'s `"version"` field reads suspiciously old, re-run the installer and check `command -v kg` actually resolves to the fresh one (a stale `~/.local/bin/kg` symlink to an old side-install can shadow it).
 >
 > **`kg rotate` has no `--help`.** Passing `--help` to a subcommand that doesn't recognize it runs the subcommand for real instead of erroring — `kg rotate --help` actually rotated a local install identity during this update's own verification pass. Harmless when local-only (no remote configured), but don't probe an unfamiliar `kg` subcommand with `--help` to see what it does; read `kg --help`'s one-line summary first.
 
@@ -83,22 +92,26 @@ maude kg context --about "<subject>" [--paths a,b] [--max N]
 
 Reach for `search` FIRST on topical prior-art (the `/flow:plan` case); fall back to `context` when you already have a concrete element id.
 
-- **`kg context --paths` matches nested files (fixed v1.1.0)** — a stored `paths` prop ending in `/*` now compares as its directory prefix, so `src/billing/*` correctly overlaps `src/billing/invoice/sub/x.ts`. If a downstream repo is still pinned pre-1.1.0, `--paths` recall on nested trees silently under-matches — one more reason not to float an old `engineVersion`.
+- **`kg context --paths` matches nested files (fixed v1.1.0)** — a stored `paths` prop ending in `/*` now compares as its directory prefix, so `src/billing/*` correctly overlaps `src/billing/invoice/sub/x.ts`. A stale side-install pre-1.1.0 silently under-matches on nested trees — one more reason to verify `kg version` meets the v1.5.1 floor.
 - **`kg as-of <YYYY-MM-DD>` means the END of that day (fixed v1.1.0)** — a bare date used to parse as midnight UTC, so asking "as of today" silently dropped everything recorded today.
 
-### ADMIN — `kg status` / `info` / `remote` / `rotate` (troubleshooting, not part of the read/write/sync recipes)
+### ADMIN — `kg status` / `info` / `config` / `prompt` / `trust` / `remote` / `rotate` (troubleshooting, not part of the read/write/sync recipes)
 
 ```
 maude kg doctor            # already wired — hash-chain + store health
 kg status                  # config + graph summary at a glance: version, remote, counts (info is an exact alias)
-kg remote                  # no args: shows local/global/effective sync remote and its source — read-only, does not mutate
-kg remote "s3://bucket/prefix" [--global]   # set this project's (or the machine-wide default) sync remote
+kg config                  # v1.5.1: resolved three-layer config — store_root, prompt source, pending_approval state
+kg prompt                  # v1.5.1: the capture prompt the .kgairc injects at SessionStart
+kg trust --show|--list|--dismiss|--revoke   # v1.5.1: the .kgairc approval gate — HUMAN-ONLY, see §2
+kg remote                  # no args: shows the store's sync remote and its source — read-only, does not mutate
+kg remote "s3://bucket/prefix"   # set the resolved STORE's sync remote (session layer, per-store)
 kg rotate                  # gives the LOCAL STORE a fresh install identity — mutating, not a query
 ```
 
-- `status`/`info` and `remote` (no args) are **new since v1.0.0/v1.1.0** and safe to run directly (they don't create a store — v1.1.0 made every read command side-effect-free in an unrelated directory).
+- `status`/`info` and `remote` (no args) are safe to run directly (they don't create a store — v1.1.0 made every read command side-effect-free in an unrelated directory).
+- **The remote is per-STORE.** `remote` in a `.kgairc` is always ignored by the engine (a clone must never dictate an upload target), and `kg remote --global` is no longer recommended — a machine-wide default remote also captures personal/local stores. Set the remote once on the shared store; the company onboarding script does it.
+- **`kg trust` is a human decision.** `kg trust --show` (read-only) is fine for diagnosis; the bare approving `kg trust` must never be run by the skill on its own — see the `pending_approval` rule in §2.
 - **`kg rotate` is NOT a read despite living in the same help block as `doctor`/`status` — it mutates.** It exists to fix a copied-store shard fork, not for routine use, and **it has no `--help` flag** — passing one runs the real command instead of erroring. Don't probe it speculatively.
-- `remote`/`rotate` aren't part of any flow/design command today (this repo has no configured remote — `store: ""` in `.ai/workflows.config.json`); they're documented here so a future SYNC-remote setup task doesn't have to rediscover the CLI surface.
 
 ### WRITE — `kg ingest` (decision + scope + cross-ref) — **JSON on stdin**
 
@@ -195,6 +208,7 @@ kgai is schema-free; a "kind" is just a string. This glossary is the shared voca
 | Condition | Behavior |
 | --- | --- |
 | `kg` missing / `mode:off` / store unreachable | classic `.ai/` path, unchanged (the `else` branch) |
+| `kg config` reports `pending_approval` (unapproved committed `.kgairc`) | classic `.ai/` path for this run; tell the user to review with `kg trust --show` — **never run `kg trust` yourself** (§2) |
 | `kg sync` fails at close | warn, keep local log, retry next session — never block |
 | Two heads on one element (conflict) | surface `kg conflicts` in `/flow:status`; do not auto-merge |
 | `mode:on` but `kg` absent | surface the error (user forced it) — do NOT silently fall back |

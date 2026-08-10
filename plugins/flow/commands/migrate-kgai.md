@@ -15,7 +15,8 @@ One-time migration of the file-based decision store (`.ai/decisions/DDR-*.md`) i
 
 ### 1. Pre-flight
 
-- Confirm kgai is set up: `maude kg doctor`. If `active: false`, the import target is a local `.kgai/store` — run `/flow:init` with `--kg` or `kg init` first, and set `knowledgeGraph.scope` (`repo`/`dept`) in `.ai/workflows.config.json` so the migrated decisions are scope-tagged (model A, DDR-189).
+- Confirm kgai is set up: `maude kg doctor`, and check where the import will land: **`kg config` → `store_root`**. Since kgai v1.5.1 the import targets the store the engine resolves — for a `.kgairc`-enrolled repo that is typically the **shared parent-folder store** (e.g. `../.kgai-shared`), not a per-repo `.kgai/store`. If `kg config` reports `pending_approval`, stop and tell the user to review the committed `.kgairc` (`kg trust --show`) and approve it (`kg trust`) — never approve it yourself. Only a repo with no `.kgairc` at all falls back to `kg init` + a local store.
+- Set `knowledgeGraph.scope` (`repo`/`dept`) in `.ai/workflows.config.json` so the migrated decisions are scope-tagged (model A, DDR-189). If the repo is joining the shared graph and doesn't carry the org's `.kgairc` yet, it should get one **committed** as part of this migration (identical values = same trust fingerprint).
 - **Always dry-run first** to see the shape:
 
   ```bash
@@ -55,6 +56,8 @@ maude kg query "MATCH (a:Element)-[l:LINK]->(b:Element) WHERE l.kind='SUPERSEDES
 - `--design` — the `.design/` importer (`canvas:`/`ds:`/`footage:`/`reel:`) is a **follow-up, not yet implemented**; the command reports so. Plans, `.design/` and scenarios are deliberately out of scope.
 
 > **kgai is append-only — there is no `remove_link`.** A wrongly-classified edge can only be dropped by rebuilding the store, so prefer `--dry-run` before a bulk run. And a clean rebuild replays **files only**: decisions recorded graph-native (no `.md`) do not survive it.
+
+> **Already have a legacy per-repo `.kgai/store`?** Folding it into the shared store is a shard copy, not a re-import: `cp <old>/log/*.ndjson <shared>/log/` (longest-wins per shard filename — shards are append-only, per-install) then `kg rebuild`. This preserves graph-native decisions too. See `flow:kgai-migrate` for the contract; the company onboarding script does it automatically.
 
 ## Notes
 

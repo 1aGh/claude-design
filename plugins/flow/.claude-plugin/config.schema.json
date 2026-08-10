@@ -314,7 +314,7 @@
           "type": "string",
           "enum": ["auto", "on", "off"],
           "default": "auto",
-          "description": "Opt-out default `auto` (absent block == `auto`). `auto` = active only when `kg` is on PATH AND (`store` is set OR a local `.kgai/store` exists) — conservative, mirrors `orchestration.mode:auto`; a first-run repo stays on files until the user opts in via onboarding. `on` = force kgai active (errors surface rather than silently falling back). `off` = disable entirely; today's classic `.ai/decisions/` + STATE.md path, byte-for-byte unchanged."
+          "description": "Opt-out default `auto` (absent block == `auto`). `auto` = active only when `kg` is on PATH AND a store resolves (`kg config` store_root via an approved committed `.kgairc`, this `store` value, or a legacy local `.kgai/store`) — conservative, mirrors `orchestration.mode:auto`; a first-run repo stays on files until the user opts in via onboarding. An unapproved `.kgairc` (`kg config` → pending_approval) counts as NOT resolved until a human runs `kg trust`. `on` = force kgai active (errors surface rather than silently falling back). `off` = disable entirely; today's classic `.ai/decisions/` + STATE.md path, byte-for-byte unchanged."
         },
         "engine": {
           "type": "string",
@@ -325,12 +325,12 @@
         "engineVersion": {
           "type": "string",
           "default": "v1.0.0",
-          "description": "PINNED kgai release the CLI + desktop bundle target. Advance deliberately (harness-verified via `maude kg check-upstream`), never float — auto-tracking `latest` would let an upstream change silently alter behavior mid-rollout and is a supply-chain surface (DDR-054/056 reasoning: the bundled `kg` is third-party)."
+          "description": "MINIMUM kgai release the integration targets (a floor, not a pin — the engine installs via the official installer, which self-updates at SessionStart; the manual pinned-download flow is retired). Must be at least `v1.5.1` — the `.kgairc` three-layer config + `kg config`/`kg prompt`/`kg trust` surface. Verify with `kg version`; drift check via `maude kg check-upstream`."
         },
         "store": {
           "type": "string",
           "default": "",
-          "description": "Remote store the graph syncs to. `s3://company-kg/store` (shared company remote, cross-repo) | `kgai://org/project` (cloud-broker keyspace) | git remote | `\"\"` = local-only `.kgai/store`. Empty string keeps everything on this machine."
+          "description": "Fallback/override store for the `maude kg` verbs. Since kgai v1.5.1 store resolution is primarily the ENGINE's job: a repo with an approved committed `.kgairc` resolves its store via `kg config` (typically a shared parent-folder store like `../.kgai-shared`), and that wins — this value is consulted only when `kg config` yields no store (legacy per-repo setups). The sync remote is set per-STORE with `kg remote` (session layer), never here and never via `kg remote --global`."
         },
         "scope": {
           "type": "object",
