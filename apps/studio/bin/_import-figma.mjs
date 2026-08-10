@@ -47,14 +47,26 @@ import {
   makeAssetBudget,
   resolveAssets,
 } from '../figma/assets.ts';
-import { importSvg, sniffRasterKind, writeContainedAsset } from './_import-asset.mjs';
+import {
+  importSvg,
+  importSvgBatch,
+  sniffRasterKind,
+  writeContainedAsset,
+} from './_import-asset.mjs';
 import { fetchAsset } from './_fetch-asset.mjs';
-import { fetchDocument, fetchLocalVariables, fetchStyles, FigmaApiError } from '../figma/client.ts';
-import { JsxTooLargeError, toArtboard } from '../figma/to-artboard.ts';
+import {
+  fetchDocument,
+  fetchLocalVariables,
+  fetchNodes,
+  fetchPages,
+  fetchStyles,
+  FigmaApiError,
+} from '../figma/client.ts';
+import { JsxTooLargeError, toArtboard, toCanvas } from '../figma/to-artboard.ts';
 import { BoardTooLargeError, toStrokes } from '../figma/to-strokes.ts';
 import { stylesToTokens, variablesToTokens } from '../figma/to-tokens.ts';
-import { ImportReport } from '../figma/sanitize.ts';
-import { FigmaCapError, walkNodes } from '../figma/types.ts';
+import { attrValue, ImportReport } from '../figma/sanitize.ts';
+import { FigmaCapError, normalizeDocument, walkNodes } from '../figma/types.ts';
 import { FigmaUrlError, parseFigmaTarget } from '../figma/url.ts';
 
 export class ImportFigmaError extends Error {
@@ -306,6 +318,11 @@ function makeAssetDeps({ root, designRootRel, stagingDir }) {
       const r = writeContainedAsset(root, designRootRel, data, ext);
       return { ref: r.ref };
     },
+    async promoteSvgBatch(stagedPaths) {
+      const texts = stagedPaths.map((sp) => readFileSync(sp, 'utf8'));
+      const out = await importSvgBatch(texts, { root, designRootRel });
+      return out.map((r) => r?.ref ?? null);
+    },
     discard(path) {
       rmSync(path, { force: true });
     },
@@ -400,6 +417,154 @@ export default function Canvas() {
   );
 }
 `;
+}
+
+/**
+ * Phase 3 (page mode) — a whole Figma FILE as one folder, one canvas per page.
+ *
+ * The model a real file actually has: a page IS a canvas, a frame IS an
+ * artboard. Measured on a live StudyFi file — 7 pages, 1–43 frames each, one
+ * empty, one page of loose content with no frames at all, and one page whose
+ * full payload exceeds the 8 MB response cap. All four shapes are handled here
+ * rather than left for the user to discover:
+ *
+ *   • empty page          → skipped and reported, no empty canvas written
+ *   • page with no frames → its loose content wrapped in ONE artboard
+ *   • page over the cap   → its frames fetched in adaptive batches (`fetchNodes`)
+ *   • page that fits      → fetched whole, one request
+ */
+export async function importPages({
+  url,
+  root,
+  designRootRel = '.design',
+  folder,
+  dryRun = false,
+  kind = 'digital',
+}) {
+  const target = parseFigmaTarget(url, 'design');
+  const pages = await fetchPages(target.fileKey);
+  if (pages.length === 0) throw new ImportFigmaError(3, 'file has no pages');
+
+  const folderSlug = folder ?? `figma-${target.fileKey.slice(0, 8).toLowerCase()}`;
+  if (!SLUG_RE.test(folderSlug)) throw new ImportFigmaError(2, 'invalid --folder');
+
+  const tokens = readDsTokens(root, designRootRel);
+  const budget = makeAssetBudget();
+  const written = [];
+  const reports = [];
+  const skipped = [];
+  let resolvedAssets = 0;
+  let pendingExports = 0;
+
+  const staging = dryRun ? null : makeStagingDir();
+  try {
+    for (const page of pages) {
+      // Page titles are UNTRUSTED — they become a FILENAME, so they go through
+      // the allowlist charset, never near-verbatim.
+      const title = attrValue(page.name) || `Page ${page.id.replace(/[^0-9]+/g, '-')}`;
+
+      let pageNode;
+      try {
+        const doc = await fetchDocument({
+          fileKey: target.fileKey,
+          surface: 'design',
+          nodeId: page.id,
+        });
+        pageNode = doc.root;
+      } catch (err) {
+        if (!(err instanceof FigmaApiError) || err.kind !== 'too_large') throw err;
+        // Over the cap whole — assemble it from its children instead. The cap
+        // bounds ONE RESPONSE, not what a caller may put together.
+        const shallow = await fetchDocument({
+          fileKey: target.fileKey,
+          surface: 'design',
+          nodeId: page.id,
+          depth: 1,
+        });
+        const ids = (shallow.root.children ?? []).map((c) => c.id);
+        const dropped = [];
+        const byId = await fetchNodes(target.fileKey, ids, { onSkip: (id) => dropped.push(id) });
+        const children = ids
+          .map((id) => byId.get(id))
+          .filter(Boolean)
+          .map(
+            (raw) => normalizeDocument(raw, { fileKey: target.fileKey, surface: 'design' }).root
+          );
+        pageNode = { ...shallow.root, children };
+        for (const id of dropped) skipped.push({ page: page.id, node: id, why: 'node too large' });
+      }
+
+      const kids = (pageNode.children ?? []).filter((c) => c.visible);
+      if (kids.length === 0) {
+        skipped.push({ page: page.id, why: 'empty page' });
+        continue;
+      }
+
+      const doc = {
+        fileKey: target.fileKey,
+        surface: 'design',
+        origin: 'rest',
+        root: pageNode,
+        nodeCount: 0,
+        maxDepth: 0,
+      };
+      let result;
+      try {
+        result = toCanvas(doc, pageNode, { kind, tokens });
+      } catch (err) {
+        if (!(err instanceof JsxTooLargeError)) throw err;
+        skipped.push({ page: page.id, why: 'page too large to translate' });
+        continue;
+      }
+      reports.push(result.report);
+      pendingExports += result.pendingExports.length;
+
+      if (dryRun) {
+        written.push({ title, artboards: result.artboardCount, bytes: result.metrics.bytes });
+        continue;
+      }
+
+      const assets = await resolveAssets(
+        target.fileKey,
+        result.pendingExports.map((x) => ({
+          nodeId: x.nodeId,
+          format: x.format,
+          placeholder: x.placeholder,
+        })),
+        makeAssetDeps({ root, designRootRel, stagingDir: staging }),
+        result.report,
+        budget
+      );
+      resolvedAssets += assets.resolved.length;
+      const tsx = applyRewrites(result.tsx, assets.rewrites);
+      const meta = {
+        ...result.meta,
+        source: { ...result.meta.source, importedAt: new Date().toISOString() },
+      };
+
+      const relDir = `ui/${folderSlug}`;
+      const stagedTsx = join(staging, 'page.tsx');
+      const stagedMeta = join(staging, 'page.meta.json');
+      writeFileSync(stagedTsx, tsx, 'utf8');
+      writeFileSync(stagedMeta, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
+      const outDir = join(root, designRootRel, relDir);
+      mkdirSync(outDir, { recursive: true });
+      const finalTsx = assertContained(root, designRootRel, join(outDir, `${title}.tsx`));
+      const finalMeta = assertContained(root, designRootRel, join(outDir, `${title}.meta.json`));
+      renameSync(stagedTsx, finalTsx);
+      renameSync(stagedMeta, finalMeta);
+      written.push({
+        title,
+        path: finalTsx,
+        artboards: result.artboardCount,
+        bytes: result.metrics.bytes,
+      });
+    }
+  } finally {
+    if (staging) rmSync(staging, { recursive: true, force: true });
+  }
+
+  return { written, reports, skipped, resolvedAssets, pendingExports, folder: folderSlug };
 }
 
 /** Pick the frames a `--frames` run should translate. */
@@ -579,6 +744,7 @@ function parseArgv(argv) {
     root: null,
     designRoot: '.design',
     slug: null,
+    folder: null,
     dryRun: false,
     confirmLarge: false,
     json: false,
@@ -589,6 +755,7 @@ function parseArgv(argv) {
     switch (a) {
       case '--board':
       case '--frames':
+      case '--pages':
       case '--tokens':
         if (out.mode)
           throw new ImportFigmaError(2, 'pick exactly one of --board/--frames/--tokens');
@@ -603,6 +770,9 @@ function parseArgv(argv) {
         break;
       case '--slug':
         out.slug = argv[++i];
+        break;
+      case '--folder':
+        out.folder = argv[++i];
         break;
       case '--dry-run':
         out.dryRun = true;
@@ -630,7 +800,8 @@ const HELP = `import-figma — Figma / FigJam import (reached via \`maude design
 Usage:
   maude design import-figma --board  <figjam-url> --root <repo> [--design-root .design]
                             [--slug <name>] [--dry-run] [--confirm-large] [--json]
-  maude design import-figma --frames <figma-url>  --root <repo>   (Phase 3 — not yet)
+  maude design import-figma --pages  <figma-url>  --root <repo> [--folder <name>]
+  maude design import-figma --frames <figma-url>  --root <repo> [--slug <name>]
   maude design import-figma --tokens <figma-url>  --root <repo>   (Phase 4 — not yet)
 
 Pulls the real document over the Figma REST API and translates it with
@@ -669,6 +840,31 @@ async function main() {
   }
 
   try {
+    if (opts.mode === 'pages') {
+      const r = await importPages({
+        url: opts.url,
+        root,
+        designRootRel: opts.designRoot,
+        folder: opts.folder,
+        dryRun: opts.dryRun,
+      });
+      const merged = new ImportReport();
+      for (const rep of r.reports) merged.entries.push(...rep.entries);
+      if (opts.json) {
+        process.stdout.write(
+          `${JSON.stringify({ folder: r.folder, written: r.written, skipped: r.skipped, assets: { resolved: r.resolvedAssets, pending: r.pendingExports }, dispositions: merged.entries })}\n`
+        );
+      } else {
+        const lines = r.written.map(
+          (w) => `  ${w.title} — ${w.artboards} artboard(s), ${Math.round(w.bytes / 1024)} KB`
+        );
+        const skips = r.skipped.map((x) => `  skipped ${x.page ?? ''} ${x.node ?? ''} (${x.why})`);
+        process.stdout.write(
+          `import-figma: ${r.written.length} page(s) -> ui/${r.folder}/${opts.dryRun ? ' (dry run)' : ''}\n${[...lines, ...skips].join('\n')}\n${formatSummary(merged, { assets: `${r.resolvedAssets}/${r.pendingExports} resolved` })}\n`
+        );
+      }
+      return;
+    }
     if (opts.mode === 'frames') {
       const r = await importFrames({
         url: opts.url,

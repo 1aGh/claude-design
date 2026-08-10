@@ -1,11 +1,20 @@
 {
-  "generated": "2026-08-08T09:03:54.386Z",
-  "version": "0.58.1",
+  "generated": "2026-08-10T11:15:54.105Z",
+  "version": "0.58.2",
   "entries": [
     {
-      "id": "sync-carries-the-path",
+      "id": "figma-import",
       "version": null,
       "date": null,
+      "kind": "feature",
+      "title": "Bring your Figma work in",
+      "summary": "Paste a Figma link and get the real thing, not a picture of it: design frames become editable canvases, a FigJam board becomes your whiteboard with its sticky notes and arrows still attached, and your colour and text styles become design tokens. Add a Figma access token once in Settings to get started.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "sync-carries-the-path",
+      "version": "0.58.2",
+      "date": "2026-08-08",
       "kind": "fix",
       "title": "Canvases arrive in the folder you made",
       "summary": "A canvas you create in a nested folder now shows up on your other machine — and in the cloud — in that same folder, instead of quietly landing somewhere the file tree never listed. Connecting a project to an empty folder brings the whole thing down with its structure intact.",

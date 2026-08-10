@@ -623,6 +623,78 @@ export async function importSvg(svgText, { root, designRootRel = '.design' }) {
  * only the rasterize step is blocked, so this fails loud there rather than
  * pretending the whole pipeline is unavailable.
  */
+
+/**
+ * The execution canary for MANY sanitized SVGs, in ONE browser session.
+ *
+ * Same coverage as `runSvgExecutionCanary`, same probe, same hard network
+ * denial, same directly-navigated document — the only thing that changes is
+ * that the session is created once instead of once per file.
+ *
+ * Why it exists: measured on a real 6-page product file, a per-file canary cost
+ * ~4.5 s each, so a normal design system's icon set (530 distinct vector
+ * renders after component dedupe) would have taken ~40 minutes and forced the
+ * import to drop most of its artwork against an asset-count cap. The canary is
+ * not what needed relaxing — the session-per-file was.
+ *
+ * Returns the set of indices that TRIPPED, so the caller refuses exactly those
+ * and keeps the rest. A tripped canary is still a hard refusal for that file.
+ */
+export async function runSvgExecutionCanaryBatch(sanitizedSvgs, { timeoutMs = 15_000 } = {}) {
+  const tripped = new Set();
+  if (sanitizedSvgs.length === 0) return tripped;
+  const dir = mkdtempSync(join(tmpdir(), 'maude-import-svg-batch-'));
+  const probePath = join(dir, 'probe.js');
+  try {
+    writeFileSync(probePath, 'window.__MAUDE_IMPORT_CANARY__ = false;\n');
+    const paths = sanitizedSvgs.map((svg, i) => {
+      const p = join(dir, `candidate-${i}.svg`);
+      writeFileSync(p, svg);
+      return p;
+    });
+    await withSandboxedRender(
+      async (session) => {
+        for (let i = 0; i < paths.length; i += 1) {
+          session.open(pathToFileURL(paths[i]).href);
+          // The probe re-runs on EVERY navigation in this session (it is
+          // registered as an init script), so the flag is per-document — a
+          // clean file after a tripped one still reads false.
+          if (session.eval('window.__MAUDE_IMPORT_CANARY__ === true').trim() === 'true') {
+            tripped.add(i);
+          }
+        }
+      },
+      { timeoutMs, initScriptPath: probePath }
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  return tripped;
+}
+
+/**
+ * Sanitize + canary + write MANY SVGs. The batched counterpart of `importSvg`.
+ * Returns one result per input, or `null` where the file was refused.
+ */
+export async function importSvgBatch(svgTexts, { root, designRootRel = '.design' }) {
+  const sanitized = svgTexts.map((t) => {
+    try {
+      return sanitizeSvgAllowlist(t);
+    } catch {
+      return null;
+    }
+  });
+  const live = [];
+  for (let i = 0; i < sanitized.length; i += 1) if (sanitized[i] !== null) live.push(i);
+
+  const tripped = await runSvgExecutionCanaryBatch(live.map((i) => sanitized[i]));
+  return sanitized.map((svg, i) => {
+    if (svg === null) return null;
+    if (tripped.has(live.indexOf(i))) return null;
+    return writeContainedAsset(root, designRootRel, Buffer.from(svg, 'utf8'), 'svg');
+  });
+}
+
 export async function importPdf(inputPath, { root, designRootRel = '.design' }) {
   const buffer = readPdfCapped(inputPath);
   const pageCount = await getPdfPageCountIsolated(buffer);

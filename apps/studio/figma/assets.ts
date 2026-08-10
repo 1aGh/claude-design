@@ -50,8 +50,21 @@ export const FIGMA_ASSET_HOSTS = Object.freeze([
   'figma-alpha-api.s3.us-west-2.amazonaws.com',
 ]);
 
-/** D5 — total assets per import. A backstop against an engineered document. */
-export const MAX_ASSETS_PER_IMPORT = 200;
+/**
+ * D5 — total DISTINCT assets per import (post-dedupe).
+ *
+ * Raised from 200 on measurement, not on request. A normal 6-page product file
+ * — the live StudyFi onboarding file — carries 984 vector clusters that dedupe
+ * to ~530 distinct component renders. At 200 it dropped a THIRD of the file's
+ * artwork, which is not a backstop against an engineered document, it is a
+ * refusal to import normal work.
+ *
+ * The bound that actually protects the tree is `MAX_ASSET_BYTES_PER_IMPORT`:
+ * 530 icons are a few MB, while one photo-heavy board is tens. A count cap is
+ * the wrong dimension for vector art and was calibrated before anyone had run
+ * the thing on a real file.
+ */
+export const MAX_ASSETS_PER_IMPORT = 1500;
 /** D5 — cumulative bytes, the cap the per-item ones do not give you. */
 export const MAX_ASSET_BYTES_PER_IMPORT = 64 * 1024 * 1024;
 /**
@@ -93,6 +106,14 @@ export interface ResolveDeps {
    * lane and rasters through the content-addressed write.
    */
   promote(stagedPath: string, kind: 'svg' | 'png'): Promise<{ ref: string }>;
+  /**
+   * Optional: promote MANY svg files in one pass. The DDR-167 execution canary
+   * launches a browser per call, so a per-file promote made a real icon set a
+   * ~40-minute import. When present this is used for every staged SVG; when
+   * absent the per-file `promote` is, so a caller that has not been updated
+   * still works.
+   */
+  promoteSvgBatch?(stagedPaths: readonly string[]): Promise<Array<string | null>>;
   /** Where staged bytes live — OUTSIDE the design root (D5). */
   stagingPath(nodeId: string, ext: string): string;
   /** Drop a staged file on any failure path. */
@@ -123,6 +144,23 @@ export interface ResolveResult {
   /** placeholder → ref, for rewriting the emitted source in one pass. */
   rewrites: Map<string, string>;
   totalBytes: number;
+}
+
+/**
+ * The id to RENDER for a node — an instance renders as its component.
+ *
+ * Figma scopes a node inside a component instance as `I<instancePath>;<compId>`,
+ * so 40 placements of one icon are 40 distinct node ids that render to
+ * byte-identical SVG. Measured on a live StudyFi file: 984 vector clusters
+ * across 6 pages collapsed to a small fraction once keyed this way. Without it
+ * the 200-asset cap eats a real file's icon set alive, and every duplicate also
+ * costs a download AND a browser canary.
+ *
+ * Content-addressing already dedupes on DISK; this dedupes the WORK.
+ */
+export function renderKey(nodeId: string): string {
+  const semi = nodeId.lastIndexOf(';');
+  return semi > 0 ? nodeId.slice(semi + 1) : nodeId;
 }
 
 /** Split ids into `/v1/images`-sized batches. Never one call per node. */
@@ -172,10 +210,21 @@ export async function resolveAssets(
 
   if (requests.length === 0) return { resolved, rewrites, totalBytes };
 
+  // Dedupe by RENDER KEY first — the cap should bound distinct artwork, not
+  // repeated placements of the same icon.
+  const byKey = new Map<string, AssetRequest[]>();
+  for (const r of requests) {
+    const key = `${renderKey(r.nodeId)}:${r.format}`;
+    const list = byKey.get(key);
+    if (list) list.push(r);
+    else byKey.set(key, [r]);
+  }
+  const unique = [...byKey.values()].map((group) => group[0]);
+
   const room = Math.max(0, MAX_ASSETS_PER_IMPORT - budget.count);
-  const accepted = requests.slice(0, room);
+  const accepted = unique.slice(0, room);
   budget.count += accepted.length;
-  for (const dropped of requests.slice(room)) {
+  for (const dropped of unique.slice(room)) {
     report.add(dropped.nodeId, 'ASSET', 'asset-cap-reached', `>${MAX_ASSETS_PER_IMPORT}`);
   }
 
@@ -192,7 +241,9 @@ export async function resolveAssets(
     }
   }
 
-  // ── Bounded-concurrency download + sanitize + promote ──
+  // ── Bounded-concurrency download; SVG promotes are batched afterwards ──
+  const stagedSvgs: Array<{ req: AssetRequest; staged: string }> = [];
+
   await pooled(accepted, MAX_CONCURRENT_DOWNLOADS, async (req) => {
     const url = urlByNode.get(req.nodeId);
     if (!url) {
@@ -220,10 +271,19 @@ export async function resolveAssets(
         report.add(req.nodeId, 'ASSET', 'asset-skipped', 'format mismatch');
         return;
       }
+      if (req.format === 'svg' && deps.promoteSvgBatch) {
+        // Defer — one browser session for all of them beats one each.
+        stagedSvgs.push({ req, staged });
+        totalBytes += bytes;
+        return;
+      }
       const { ref } = await deps.promote(staged, req.format);
       totalBytes += bytes;
       resolved.push({ nodeId: req.nodeId, placeholder: req.placeholder, ref, bytes });
-      rewrites.set(req.placeholder, ref);
+      // Every placement that shares this render key gets the same asset.
+      for (const sibling of byKey.get(`${renderKey(req.nodeId)}:${req.format}`) ?? [req]) {
+        rewrites.set(sibling.placeholder, ref);
+      }
     } catch {
       // FAIL CLOSED — including when the bun-side sanitizer is simply not
       // available in a packaged app (DDR-177). Delete the staged bytes and
@@ -232,6 +292,31 @@ export async function resolveAssets(
       report.add(req.nodeId, 'ASSET', 'asset-skipped', 'download or sanitize failed');
     }
   });
+
+  if (stagedSvgs.length > 0 && deps.promoteSvgBatch) {
+    let refs: Array<string | null>;
+    try {
+      refs = await deps.promoteSvgBatch(stagedSvgs.map((x) => x.staged));
+    } catch {
+      // FAIL CLOSED for the whole batch, same rule as the per-file path: the
+      // bun-side lane being unavailable must never become "we already have the
+      // bytes" (DDR-177's packaged-app failure mode).
+      refs = stagedSvgs.map(() => null);
+    }
+    for (let i = 0; i < stagedSvgs.length; i += 1) {
+      const { req, staged } = stagedSvgs[i];
+      const ref = refs[i];
+      if (!ref) {
+        deps.discard(staged);
+        report.add(req.nodeId, 'ASSET', 'asset-skipped', 'sanitize refused');
+        continue;
+      }
+      resolved.push({ nodeId: req.nodeId, placeholder: req.placeholder, ref, bytes: 0 });
+      for (const sibling of byKey.get(`${renderKey(req.nodeId)}:svg`) ?? [req]) {
+        rewrites.set(sibling.placeholder, ref);
+      }
+    }
+  }
 
   return { resolved, rewrites, totalBytes };
 }

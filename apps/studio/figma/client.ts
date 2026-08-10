@@ -355,6 +355,84 @@ export async function fetchLocalVariables(fileKey: string): Promise<FigmaVariabl
   }
 }
 
+/**
+ * Fetch MANY nodes by id, in batches, adapting to the response-byte cap.
+ *
+ * `fetchDocument` fetches one subtree, and a whole PAGE of a real file routinely
+ * blows the 8 MB cap — measured on a live StudyFi file, one page of 190
+ * top-level nodes did exactly that while its siblings came in at 1–7 k nodes.
+ * Refusing the page is the wrong answer when the caller wants the page: the
+ * cap is a bound on ONE RESPONSE, not on how much a caller may assemble.
+ *
+ * So: chunk the ids, and on a `too_large` HALVE the chunk and retry. A single
+ * id that still trips the cap is genuinely too big and is reported, not
+ * silently dropped. This keeps every individual request inside the cap while
+ * letting an import cover a page — the node-count and depth caps in
+ * `normalizeDocument` still bound the assembled total.
+ */
+export async function fetchNodes(
+  fileKey: string,
+  ids: readonly string[],
+  opts: { chunk?: number; onSkip?: (id: string) => void } = {}
+): Promise<Map<string, unknown>> {
+  const out = new Map<string, unknown>();
+  const path = `/files/${encodeURIComponent(fileKey)}/nodes`;
+
+  const run = async (batch: readonly string[], chunk: number): Promise<void> => {
+    if (batch.length === 0) return;
+    try {
+      const body = await getJson<{ nodes?: Record<string, { document?: unknown }> }>(path, {
+        ids: batch.join(','),
+      });
+      for (const id of batch) {
+        const doc = body?.nodes?.[id]?.document;
+        if (doc) out.set(id, doc);
+        else opts.onSkip?.(id);
+      }
+    } catch (err) {
+      if (!(err instanceof FigmaApiError) || err.kind !== 'too_large') throw err;
+      if (batch.length === 1) {
+        // One node that alone exceeds the cap. Genuinely too big — report it
+        // rather than pretending the page imported whole.
+        opts.onSkip?.(batch[0]);
+        return;
+      }
+      const half = Math.max(1, Math.floor(batch.length / 2));
+      await run(batch.slice(0, half), half);
+      await run(batch.slice(half), half);
+    }
+  };
+
+  const size = Math.max(1, opts.chunk ?? 8);
+  for (let i = 0; i < ids.length; i += size) {
+    await run(ids.slice(i, i + size), size);
+  }
+  return out;
+}
+
+export interface FigmaPage {
+  id: string;
+  /** UNTRUSTED — charset-bounded before it becomes a filename. */
+  name: string;
+}
+
+/** The file's pages, cheaply (`depth: 1` — names and ids, no content). */
+export async function fetchPages(fileKey: string): Promise<FigmaPage[]> {
+  const path = `/files/${encodeURIComponent(fileKey)}`;
+  const body = await getJson<{ document?: { children?: unknown[] } }>(path, { depth: '1' });
+  const kids = body?.document?.children;
+  if (!Array.isArray(kids)) return [];
+  const out: FigmaPage[] = [];
+  for (const k of kids) {
+    if (!k || typeof k !== 'object') continue;
+    const c = k as Record<string, unknown>;
+    if (c.type !== 'CANVAS') continue;
+    if (typeof c.id !== 'string') continue;
+    out.push({ id: c.id, name: typeof c.name === 'string' ? c.name : '' });
+  }
+  return out;
+}
+
 export interface FigmaIdentity {
   /** UNTRUSTED — length/charset-bounded before display, never persisted. */
   handle: string;

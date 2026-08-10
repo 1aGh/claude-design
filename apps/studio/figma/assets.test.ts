@@ -12,6 +12,7 @@ import {
   FIGMA_ASSET_MAX_BYTES,
   FIGMA_SVG_MAX_BYTES,
   MAX_ASSETS_PER_IMPORT,
+  renderKey,
   resolveAssets,
   type AssetRequest,
   type ResolveDeps,
@@ -239,5 +240,133 @@ describe('the host allowlist is frozen and exact', () => {
     ]);
     for (const h of FIGMA_ASSET_HOSTS) expect(h).not.toContain('*');
     expect(Object.isFrozen(FIGMA_ASSET_HOSTS)).toBe(true);
+  });
+});
+
+describe('dedupe by render key — an instance renders as its component', () => {
+  test('instance-scoped ids collapse to the component', () => {
+    // Figma scopes a node inside an instance as `I<instancePath>;<compId>`.
+    expect(renderKey('I2:796;2:794')).toBe('2:794');
+    expect(renderKey('I6:799;2:794')).toBe('2:794');
+    expect(renderKey('I24:454;103:731')).toBe('103:731');
+    // A plain node keys as itself.
+    expect(renderKey('2:794')).toBe('2:794');
+  });
+
+  test('40 placements of one icon cost ONE render and ONE download', async () => {
+    stubImages();
+    const { deps, rec } = makeDeps();
+    const requests = Array.from({ length: 40 }, (_, i) => ({
+      nodeId: `I${i}:1;2:794`,
+      format: 'svg' as const,
+      placeholder: `/assets/pending-${i}.svg`,
+    }));
+    const out = await resolveAssets(KEY, requests, deps, new ImportReport());
+    expect(imageCalls.length).toBe(1);
+    expect(rec.staged.length).toBe(1);
+    expect(rec.promoted.length).toBe(1);
+    // …and every placement still gets rewritten to that one asset.
+    expect(out.rewrites.size).toBe(40);
+    expect(new Set(out.rewrites.values()).size).toBe(1);
+  });
+
+  test('the cap bounds DISTINCT artwork, not repeated placements', async () => {
+    stubImages();
+    const { deps } = makeDeps();
+    const report = new ImportReport();
+    // 400 placements of 3 icons — well under the cap once deduped.
+    const requests = Array.from({ length: 400 }, (_, i) => ({
+      nodeId: `I${i}:1;9:${i % 3}`,
+      format: 'svg' as const,
+      placeholder: `/assets/pending-${i}.svg`,
+    }));
+    await resolveAssets(KEY, requests, deps, report);
+    expect(report.count('asset-cap-reached')).toBe(0);
+  });
+
+  test('distinct components still each count against the cap', async () => {
+    stubImages();
+    const { deps } = makeDeps();
+    const report = new ImportReport();
+    const requests = Array.from({ length: MAX_ASSETS_PER_IMPORT + 7 }, (_, i) => ({
+      nodeId: `I1:1;9:${i}`,
+      format: 'svg' as const,
+      placeholder: `/assets/pending-${i}.svg`,
+    }));
+    await resolveAssets(KEY, requests, deps, report);
+    expect(report.count('asset-cap-reached')).toBe(7);
+  });
+});
+
+describe('SVG promotes are batched — the canary is a browser launch each', () => {
+  test('every staged svg goes through ONE batch call, not N promotes', async () => {
+    stubImages();
+    const batches: string[][] = [];
+    const { deps, rec } = makeDeps({
+      promoteSvgBatch: async (paths) => {
+        batches.push([...paths]);
+        return paths.map((p) => `/assets/${p.split('/').pop()}`);
+      },
+    });
+    const requests = Array.from({ length: 12 }, (_, i) => req(`9:${i}`, 'svg'));
+    const out = await resolveAssets(KEY, requests, deps, new ImportReport());
+    expect(batches.length).toBe(1);
+    expect(batches[0].length).toBe(12);
+    expect(rec.promoted).toEqual([]); // the per-file path is not used
+    expect(out.rewrites.size).toBe(12);
+  });
+
+  test('rasters still take the per-file path', async () => {
+    stubImages();
+    const batches: string[][] = [];
+    const { deps, rec } = makeDeps({
+      promoteSvgBatch: async (paths) => {
+        batches.push([...paths]);
+        return paths.map(() => '/assets/x.svg');
+      },
+    });
+    await resolveAssets(KEY, [req('9:1', 'png')], deps, new ImportReport());
+    expect(batches.length).toBe(0);
+    expect(rec.promoted.length).toBe(1);
+  });
+
+  test('a batch that THROWS fails closed for every file in it', async () => {
+    stubImages();
+    const { deps, rec } = makeDeps({
+      promoteSvgBatch: async () => {
+        throw new Error('bun required: happy-dom not bundled');
+      },
+    });
+    const report = new ImportReport();
+    const out = await resolveAssets(KEY, [req('9:1', 'svg'), req('9:2', 'svg')], deps, report);
+    expect(out.rewrites.size).toBe(0);
+    expect(rec.discarded.length).toBe(2);
+    expect(report.count('asset-skipped')).toBe(2);
+  });
+
+  test('one refused file in a batch does not sink the others', async () => {
+    stubImages();
+    const { deps, rec } = makeDeps({
+      promoteSvgBatch: async (paths) =>
+        paths.map((p, i) => (i === 1 ? null : `/assets/ok${i}.svg`)),
+    });
+    const report = new ImportReport();
+    const out = await resolveAssets(
+      KEY,
+      [req('9:1', 'svg'), req('9:2', 'svg'), req('9:3', 'svg')],
+      deps,
+      report
+    );
+    expect(out.rewrites.size).toBe(2);
+    expect(rec.discarded.length).toBe(1);
+    expect(report.count('asset-skipped')).toBe(1);
+  });
+
+  test('a caller without promoteSvgBatch still works (per-file fallback)', async () => {
+    stubImages();
+    const { deps, rec } = makeDeps();
+    const out = await resolveAssets(KEY, [req('9:1', 'svg')], deps, new ImportReport());
+    expect(rec.promoted.length).toBe(1);
+    expect(out.rewrites.size).toBe(1);
   });
 });
