@@ -127,7 +127,7 @@ Required minimum is **v1.5.1** (the `.kgairc` + `kg trust` + `kg config`/`kg pro
 Each engineer clones the company repos **as siblings into one folder** and runs the onboarding script from AI-StudyMate:
 
 ```bash
-~/git/studyfi/AI-StudyMate/scripts/kg-onboard.sh
+~/git/studyfi/studyfi-design/scripts/kg-onboard.sh
 ```
 
 It shows `kg trust --show`, waits for the human approval, backfills any legacy per-repo stores (`cp *.ndjson` into the shared log — longest-wins per shard filename — then `kg rebuild`), sets the per-store remote, runs the first `kg sync`, and verifies every repo resolves to the same store. `--yes` exists for running it after the approval was already granted in a Claude session. Full per-user walkthrough: [onboarding](./kgai-onboarding.md).

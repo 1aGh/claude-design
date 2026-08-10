@@ -43,7 +43,7 @@ A cloned `.kgairc` does **nothing** yet — no store is created, `kg config` rep
 ## 4. Run the onboarding script + approve the `.kgairc`
 
 ```bash
-~/git/studyfi/AI-StudyMate/scripts/kg-onboard.sh
+~/git/studyfi/studyfi-design/scripts/kg-onboard.sh
 ```
 
 The script:
