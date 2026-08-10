@@ -83,7 +83,7 @@ export function remedyFor(reason: string): string | undefined {
   }
   if (/OffthreadVideo/i.test(reason)) {
     return (
-      "This comp uses <OffthreadVideo>, which the audio renderer rejects. Import " +
+      'This comp uses <OffthreadVideo>, which the audio renderer rejects. Import ' +
       "{ Video } from '@remotion/media' instead — only @remotion/media elements " +
       'carry audio through the export.'
     );

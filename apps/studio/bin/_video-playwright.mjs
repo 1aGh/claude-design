@@ -88,7 +88,8 @@ const SETTLE_MS = 16;
 // every export, and encode is not the bottleneck anyway (~50ms of a ~1050ms
 // frame — see the MAUDE_TIMING line). Changing how a design tool renders is not
 // something to smuggle in behind a perf flag. Opt in with MAUDE_CAPTURE_GPU=1.
-const gpuArgs = process.env.MAUDE_CAPTURE_GPU === '1' ? ['--enable-gpu', '--ignore-gpu-blocklist'] : [];
+const gpuArgs =
+  process.env.MAUDE_CAPTURE_GPU === '1' ? ['--enable-gpu', '--ignore-gpu-blocklist'] : [];
 const browser = await launchChromium(gpuArgs.length ? { args: gpuArgs } : undefined);
 try {
   const ctx = await browser.newContext({

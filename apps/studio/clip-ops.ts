@@ -745,7 +745,13 @@ export function applySetPlaybackRate(
   }
   const { clips } = enumerateClips(canvasAbsPath, source, artboardId);
   const { clip } = mustResolve(canvasAbsPath, clips, stableId, expectedHash);
-  const mediaStart = directMediaTagStart(source, clip, ['Video', 'OffthreadVideo', 'Audio', 'MaudeVideo', 'MaudeAudio']);
+  const mediaStart = directMediaTagStart(source, clip, [
+    'Video',
+    'OffthreadVideo',
+    'Audio',
+    'MaudeVideo',
+    'MaudeAudio',
+  ]);
   if (mediaStart == null) {
     throw new CanvasEditError(
       `clip "${stableId}" has no direct media element — speed applies to <Video>/<Audio> clips (shared/wrapper media would change every user)`,
@@ -788,7 +794,13 @@ export function applyTrimIn(
   const delta = Math.round(deltaFrames);
   const { clips } = enumerateClips(canvasAbsPath, source, artboardId);
   const { clip } = mustResolve(canvasAbsPath, clips, stableId, expectedHash);
-  const mediaStart = directMediaTagStart(source, clip, ['Video', 'OffthreadVideo', 'Audio', 'MaudeVideo', 'MaudeAudio']);
+  const mediaStart = directMediaTagStart(source, clip, [
+    'Video',
+    'OffthreadVideo',
+    'Audio',
+    'MaudeVideo',
+    'MaudeAudio',
+  ]);
   if (mediaStart == null) {
     throw new CanvasEditError(
       `clip "${stableId}" has no direct media element — in-point trim applies to media clips`,
@@ -851,7 +863,13 @@ export function applyClipAudio(
 ): { source: string } {
   const { clips } = enumerateClips(canvasAbsPath, source, artboardId);
   const { clip } = mustResolve(canvasAbsPath, clips, stableId, expectedHash);
-  const mediaStart = directMediaTagStart(source, clip, ['Video', 'OffthreadVideo', 'Audio', 'MaudeVideo', 'MaudeAudio']);
+  const mediaStart = directMediaTagStart(source, clip, [
+    'Video',
+    'OffthreadVideo',
+    'Audio',
+    'MaudeVideo',
+    'MaudeAudio',
+  ]);
   if (mediaStart == null) {
     throw new CanvasEditError(`clip "${stableId}" has no direct media element to set audio on`, {
       canvas: canvasAbsPath,
@@ -1046,7 +1064,13 @@ export function applyClipGrade(
 ): { source: string; filter: string } {
   const { clips } = enumerateClips(canvasAbsPath, source, artboardId);
   const { clip } = mustResolve(canvasAbsPath, clips, stableId, expectedHash);
-  const mediaStart = directMediaTagStart(source, clip, ['Video', 'OffthreadVideo', 'Img', 'MaudeVideo', 'MaudeImg']);
+  const mediaStart = directMediaTagStart(source, clip, [
+    'Video',
+    'OffthreadVideo',
+    'Img',
+    'MaudeVideo',
+    'MaudeImg',
+  ]);
   if (mediaStart == null) {
     throw new CanvasEditError(`clip "${stableId}" has no direct media element to grade`, {
       canvas: canvasAbsPath,
@@ -1104,7 +1128,13 @@ export function applyClipFraming(
 ): { source: string } {
   const { clips } = enumerateClips(canvasAbsPath, source, artboardId);
   const { clip } = mustResolve(canvasAbsPath, clips, stableId, expectedHash);
-  const mediaStart = directMediaTagStart(source, clip, ['Video', 'OffthreadVideo', 'Img', 'MaudeVideo', 'MaudeImg']);
+  const mediaStart = directMediaTagStart(source, clip, [
+    'Video',
+    'OffthreadVideo',
+    'Img',
+    'MaudeVideo',
+    'MaudeImg',
+  ]);
   if (mediaStart == null) {
     throw new CanvasEditError(`clip "${stableId}" has no direct media element to frame`, {
       canvas: canvasAbsPath,

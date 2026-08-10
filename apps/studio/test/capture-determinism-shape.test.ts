@@ -108,7 +108,9 @@ describe('bundle cache paths must be content-addressed', () => {
 describe('the video shim must guard its output size', () => {
   test('it calls assertRenderOutputSizeOk like the pdf shim does', () => {
     const shim = read('bin/_video-playwright.mjs');
-    expect(shim).toContain("assertRenderOutputSizeOk(clip.width, clip.height, deviceScaleFactor, '_video-playwright')");
+    expect(shim).toContain(
+      "assertRenderOutputSizeOk(clip.width, clip.height, deviceScaleFactor, '_video-playwright')"
+    );
   });
 });
 
