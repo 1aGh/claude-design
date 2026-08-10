@@ -7,15 +7,6 @@
 // (2:8 → 2:7 → 2:6) and the FOUR vector leaves forming one mark (2:2…2:5).
 
 import { describe, expect, test } from 'bun:test';
-
-import {
-  flattenWrappers,
-  isStylelessWrapper,
-  isVectorCluster,
-  MAX_WRAPPER_DEPTH,
-  toArtboard,
-  toCanvas,
-} from './to-artboard.ts';
 import { ImportReport } from './sanitize.ts';
 import {
   isValidColorValue,
@@ -26,6 +17,14 @@ import {
   perceptualDistance,
   resolveColor,
 } from './style-map.ts';
+import {
+  flattenWrappers,
+  isStylelessWrapper,
+  isVectorCluster,
+  MAX_WRAPPER_DEPTH,
+  toArtboard,
+  toCanvas,
+} from './to-artboard.ts';
 import { normalizeDocument } from './types.ts';
 
 const KEY = 'dGNzRC2kmrmGnOxaBa0RI7';
@@ -795,7 +794,13 @@ describe('toCanvas surfaces LOOSE page content instead of dropping it', () => {
     const { doc, page: p } = page([
       frame('1:1'),
       { id: '3:1', name: 'c', type: 'CONNECTOR', absoluteBoundingBox: box(400, 0, 100, 10) },
-      { id: '3:2', name: 's', type: 'SHAPE_WITH_TEXT', shapeType: 'SQUARE', absoluteBoundingBox: box(600, 0, 100, 100) },
+      {
+        id: '3:2',
+        name: 's',
+        type: 'SHAPE_WITH_TEXT',
+        shapeType: 'SQUARE',
+        absoluteBoundingBox: box(600, 0, 100, 100),
+      },
     ]);
     const out = toCanvas(doc, p);
     expect(out.annotations.map((n) => n.type).sort()).toEqual(['CONNECTOR', 'SHAPE_WITH_TEXT']);

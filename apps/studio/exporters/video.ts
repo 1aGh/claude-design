@@ -20,9 +20,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import { getEncodeLibBundle, getWebRendererBundle } from './_browser-bundles.ts';
-import { type ExportDegradation, hasAudioStream, remedyFor } from './degraded.ts';
-import { audioRefusalMessage, scanUnsupportedMedia } from './unsupported-media.ts';
 import { exportShimPath, runShim } from './_runtime.ts';
+import { type ExportDegradation, hasAudioStream, remedyFor } from './degraded.ts';
 import {
   canvasShellUrl,
   type ExportContext,
@@ -31,6 +30,7 @@ import {
   type ExportResult,
 } from './index.ts';
 import type { Target } from './scope.ts';
+import { audioRefusalMessage, scanUnsupportedMedia } from './unsupported-media.ts';
 
 // DDR-045: resolve via DEV_SERVER_ROOT, never `import.meta.dir`. See _runtime.ts.
 const VIDEO_PLAYWRIGHT = exportShimPath('_video-playwright.mjs');

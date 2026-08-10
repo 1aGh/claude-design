@@ -312,8 +312,7 @@ export async function resolveAssets(
     const eff = formatByNode.get(req.nodeId) ?? req.format;
     const staged = deps.stagingPath(req.nodeId, eff);
     try {
-      const cap =
-        eff === 'svg' ? (opts.svgMaxBytes ?? FIGMA_SVG_MAX_BYTES) : FIGMA_ASSET_MAX_BYTES;
+      const cap = eff === 'svg' ? (opts.svgMaxBytes ?? FIGMA_SVG_MAX_BYTES) : FIGMA_ASSET_MAX_BYTES;
       const { bytes, ext } = await deps.stage(url, staged, cap);
       // Counted HERE, not after a successful promote: bytes that crossed the
       // network and landed on disk cost the same whether the promote succeeded.

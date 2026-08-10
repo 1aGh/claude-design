@@ -6,16 +6,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  type AssetRequest,
   applyRewrites,
   batchIds,
   FIGMA_ASSET_HOSTS,
   FIGMA_ASSET_MAX_BYTES,
   FIGMA_SVG_MAX_BYTES,
   MAX_ASSETS_PER_IMPORT,
+  type ResolveDeps,
   renderKey,
   resolveAssets,
-  type AssetRequest,
-  type ResolveDeps,
 } from './assets.ts';
 import { ImportReport } from './sanitize.ts';
 

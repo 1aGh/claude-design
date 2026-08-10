@@ -57,8 +57,20 @@ describe('classification (the split-personality bug)', () => {
     // A flow diagram drawn in CONNECTORs inside a design file is the common case.
     const { page } = pageDoc([
       frame('1:2'),
-      { id: '1:9', name: 'note', type: 'STICKY', visible: true, absoluteBoundingBox: box(0, 0, 240, 240) },
-      { id: '1:10', name: 'link', type: 'CONNECTOR', visible: true, absoluteBoundingBox: box(0, 0, 100, 10) },
+      {
+        id: '1:9',
+        name: 'note',
+        type: 'STICKY',
+        visible: true,
+        absoluteBoundingBox: box(0, 0, 240, 240),
+      },
+      {
+        id: '1:10',
+        name: 'link',
+        type: 'CONNECTOR',
+        visible: true,
+        absoluteBoundingBox: box(0, 0, 100, 10),
+      },
     ]);
     const { frames, annotations } = classifyPageChildren(page, new ImportReport());
     expect(frames.map((f) => f.id)).toEqual(['1:2']);
@@ -70,7 +82,13 @@ describe('classification (the split-personality bug)', () => {
     // node has to land SOMEWHERE.
     const { page } = pageDoc([
       frame('1:2'),
-      { id: '1:5', name: 'label', type: 'TEXT', visible: true, absoluteBoundingBox: box(9, 9, 80, 20) },
+      {
+        id: '1:5',
+        name: 'label',
+        type: 'TEXT',
+        visible: true,
+        absoluteBoundingBox: box(9, 9, 80, 20),
+      },
     ]);
     const { annotations } = classifyPageChildren(page, new ImportReport());
     expect(annotations.map((a) => a.id)).toEqual(['1:5']);
@@ -126,8 +144,20 @@ describe('emission', () => {
     // Regression: a scratch page of loose content produced ZERO artboards, so
     // the canvas opened blank and the page looked like it had not imported.
     const { doc, page } = pageDoc([
-      { id: '1:5', name: 'note', type: 'TEXT', visible: true, absoluteBoundingBox: box(10, 20, 80, 20) },
-      { id: '1:6', name: 'box', type: 'RECTANGLE', visible: true, absoluteBoundingBox: box(30, 40, 100, 60) },
+      {
+        id: '1:5',
+        name: 'note',
+        type: 'TEXT',
+        visible: true,
+        absoluteBoundingBox: box(10, 20, 80, 20),
+      },
+      {
+        id: '1:6',
+        name: 'box',
+        type: 'RECTANGLE',
+        visible: true,
+        absoluteBoundingBox: box(30, 40, 100, 60),
+      },
     ]);
     const out = toRenderCanvas(doc, page);
 

@@ -6,10 +6,9 @@
 // against SPECIFIC IDS rather than "a board".
 
 import { describe, expect, test } from 'bun:test';
-
-import type { ArrowStroke, SectionStroke, StickyStroke, Stroke } from '../annotations-model.ts';
-import { sanitizeAnnotationSvg, STICKY_PALETTE, strokesToSvg } from '../annotations-model.ts';
 import { isBindable } from '../annotations-bindings.ts';
+import type { ArrowStroke, SectionStroke, StickyStroke, Stroke } from '../annotations-model.ts';
+import { STICKY_PALETTE, sanitizeAnnotationSvg, strokesToSvg } from '../annotations-model.ts';
 import { nearestStickyColor, toStrokes } from './to-strokes.ts';
 import { normalizeDocument } from './types.ts';
 

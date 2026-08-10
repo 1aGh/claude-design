@@ -49,29 +49,29 @@ import {
   resolveAssets,
 } from '../figma/assets.ts';
 import {
-  importSvg,
-  importSvgBatch,
-  sniffRasterKind,
-  writeContainedAsset,
-} from './_import-asset.mjs';
-import { fetchAsset } from './_fetch-asset.mjs';
-import {
+  FigmaApiError,
   fetchComments,
   fetchDocument,
   fetchLocalVariables,
   fetchNodes,
   fetchPages,
   fetchStyles,
-  FigmaApiError,
 } from '../figma/client.ts';
 import { commentsToStrokes, indexNodes } from '../figma/comments-to-strokes.ts';
+import { attrValue, ImportReport } from '../figma/sanitize.ts';
 import { JsxTooLargeError, toArtboard, toCanvas } from '../figma/to-artboard.ts';
 import { toRenderCanvas } from '../figma/to-render.ts';
 import { BoardTooLargeError, toStrokes } from '../figma/to-strokes.ts';
 import { stylesToTokens, variablesToTokens } from '../figma/to-tokens.ts';
-import { attrValue, ImportReport } from '../figma/sanitize.ts';
 import { FigmaCapError, normalizeDocument, walkNodes } from '../figma/types.ts';
 import { FigmaUrlError, parseFigmaTarget } from '../figma/url.ts';
+import { fetchAsset } from './_fetch-asset.mjs';
+import {
+  importSvg,
+  importSvgBatch,
+  sniffRasterKind,
+  writeContainedAsset,
+} from './_import-asset.mjs';
 
 export class ImportFigmaError extends Error {
   constructor(code, message) {
@@ -569,9 +569,7 @@ export async function importPages({
         budget,
         // A whole frame keeps its text as <text> and carries its raster fills
         // inline, so it needs both knobs the icon lane does not.
-        mode === 'jsx'
-          ? {}
-          : { outlineText: false, svgMaxBytes: FIGMA_RENDER_MAX_BYTES }
+        mode === 'jsx' ? {} : { outlineText: false, svgMaxBytes: FIGMA_RENDER_MAX_BYTES }
       );
       resolvedAssets += assets.resolved.length;
       const tsx = applyRewrites(result.tsx, assets.rewrites);
@@ -609,7 +607,13 @@ export async function importPages({
           fileKey: target.fileKey,
           surface: 'board',
           origin: 'rest',
-          root: { id: page.id, type: 'CANVAS', name: '', visible: true, children: result.annotations },
+          root: {
+            id: page.id,
+            type: 'CANVAS',
+            name: '',
+            visible: true,
+            children: result.annotations,
+          },
           nodeCount: result.annotations.length,
           maxDepth: 1,
         };
@@ -637,7 +641,11 @@ export async function importPages({
 
       if (comments.length > 0) {
         const commentReport = new ImportReport();
-        const { strokes: pins, placedIds, unplacedIds } = commentsToStrokes(
+        const {
+          strokes: pins,
+          placedIds,
+          unplacedIds,
+        } = commentsToStrokes(
           comments,
           indexNodes(pageNode),
           result.origin,

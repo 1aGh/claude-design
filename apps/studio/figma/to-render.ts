@@ -34,7 +34,7 @@
  *             JSX on demand rather than mistranslating all 115 up front.
  */
 
-import { attrValue, identifierFromNodeId, ImportReport } from './sanitize.ts';
+import { attrValue, ImportReport, identifierFromNodeId } from './sanitize.ts';
 import { rawFillHex } from './to-artboard.ts';
 import type { FigmaNode, NormalizedDocument } from './types.ts';
 

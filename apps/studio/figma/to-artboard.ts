@@ -37,8 +37,8 @@ import {
   cleanText,
   ensureContrast,
   ensureFontSize,
-  identifierFromNodeId,
   ImportReport,
+  identifierFromNodeId,
   jsxStringLiteral,
 } from './sanitize.ts';
 import {
@@ -196,9 +196,7 @@ function styleObjectLiteral(decls: Record<string, string>, marker: boolean): str
   // Keys land in a JS object literal unquoted, so a hyphen is a hard syntax
   // error rather than a bad style — belt-and-braces against a kebab-case CSS
   // property reaching here from anywhere, which killed a whole canvas once.
-  const body = entries
-    .map(([k, v]) => `${camelizeCssKey(k)}: ${JSON.stringify(v)}`)
-    .join(', ');
+  const body = entries.map(([k, v]) => `${camelizeCssKey(k)}: ${JSON.stringify(v)}`).join(', ');
   return `{{ ${body} }}${marker ? ` /* ${NO_TOKEN_MARKER.slice(3, -3).trim()} */` : ''}`;
 }
 

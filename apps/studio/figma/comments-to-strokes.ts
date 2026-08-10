@@ -23,8 +23,8 @@
 
 import {
   DEFAULT_STICKY_COLOR,
-  type StickyStroke,
   STICKY_PALETTE,
+  type StickyStroke,
   type Stroke,
 } from '../annotations-model.ts';
 import type { FigmaComment } from './client.ts';
@@ -135,7 +135,9 @@ export function commentsToStrokes(
     if (clean.truncated) report.add(root.id, 'COMMENT', 'truncated-text');
     if (!clean.text.trim()) continue;
 
-    const lines = clean.text.split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(l.length / CHARS_PER_LINE)), 0);
+    const lines = clean.text
+      .split('\n')
+      .reduce((n, l) => n + Math.max(1, Math.ceil(l.length / CHARS_PER_LINE)), 0);
     const h = Math.min(CARD_MAX_H, Math.max(CARD_MIN_H, lines * LINE_H + 24));
 
     const card: StickyStroke = {

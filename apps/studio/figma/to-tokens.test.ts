@@ -9,8 +9,8 @@ import { describe, expect, test } from 'bun:test';
 
 import type { FigmaStyleMeta } from './client.ts';
 import { stylesToTokens, tokenNameSegments, variablesToTokens } from './to-tokens.ts';
-import { normalizeDocument } from './types.ts';
 import type { FigmaNode } from './types.ts';
+import { normalizeDocument } from './types.ts';
 
 function node(raw: unknown): FigmaNode {
   return normalizeDocument(raw, { fileKey: 'dGNzRC2kmrmGnOxaBa0RI7', surface: 'design' }).root;

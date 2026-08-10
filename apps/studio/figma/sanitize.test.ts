@@ -9,14 +9,14 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   attrValue,
-  cleanText,
   clampIntoBounds,
+  cleanText,
   contrastRatio,
   ensureContrast,
   ensureFontSize,
   hexToRgb01,
-  identifierFromNodeId,
   ImportReport,
+  identifierFromNodeId,
   jsxStringLiteral,
   MIN_FONT_SIZE,
   rgb01ToHex,

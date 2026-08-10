@@ -48,7 +48,12 @@ const ORIGIN = { x: 1000, y: 500 };
 
 describe('positioning', () => {
   test('a pin lands at its node position plus its offset, page-normalized', () => {
-    const { strokes } = commentsToStrokes([comment()], indexNodes(page()), ORIGIN, new ImportReport());
+    const { strokes } = commentsToStrokes(
+      [comment()],
+      indexNodes(page()),
+      ORIGIN,
+      new ImportReport()
+    );
     expect(strokes).toHaveLength(1);
     expect(strokes[0]).toMatchObject({ tool: 'sticky', x: 20, y: 30 });
   });
@@ -110,7 +115,12 @@ describe('resolved threads', () => {
   });
 
   test('an open thread stays on the default yellow', () => {
-    const { strokes } = commentsToStrokes([comment()], indexNodes(page()), ORIGIN, new ImportReport());
+    const { strokes } = commentsToStrokes(
+      [comment()],
+      indexNodes(page()),
+      ORIGIN,
+      new ImportReport()
+    );
     expect((strokes[0] as { color: string }).color).toBe(STICKY_PALETTE[0]);
   });
 });

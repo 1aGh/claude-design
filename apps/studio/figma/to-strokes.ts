@@ -533,9 +533,7 @@ export function toStrokes(doc: NormalizedDocument, opts: ToStrokesOptions = {}):
         // arrowhead). Placed at the geometric box the image is 121 × 0.00005
         // px — present in the file, referenced correctly, and invisible.
         const rb = node.absoluteRenderBounds;
-        const geo = rb
-          ? { ...shift(rb.x, rb.y), w: rb.width, h: rb.height }
-          : box;
+        const geo = rb ? { ...shift(rb.x, rb.y), w: rb.width, h: rb.height } : box;
         const id = strokeId(node.id);
         const stroke: ImageStroke = {
           id,
