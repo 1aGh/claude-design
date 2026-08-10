@@ -111,6 +111,40 @@ describe('renewHubCredential', () => {
     expect(calls[2]).toBe(`${HUB_URL}/auth/login`);
   });
 
+  test('F5: the FRESH role from the cell login wins over the stale stored one', async () => {
+    signIn();
+    writeHubRecord({ token: 'mau_stale', linkedAt: 1, role: 'member' });
+    const { doFetch } = fakeFetch({
+      ...HAPPY_ROUTES,
+      [`${HUB_URL}/auth/login`]: {
+        status: 200,
+        body: { token: 'mau_new', expiresAt: 12345, user: { email: 'm@x.cz', role: 'owner' } },
+      },
+    });
+    const r = await renewHubCredential(HUB_URL, doFetch);
+    expect(r.ok).toBe(true);
+    expect(readHubRecord()?.role).toBe('owner'); // not the stale 'member'
+  });
+
+  test('F5: an older cell that omits the role falls back to the stored one', async () => {
+    signIn();
+    writeHubRecord({ token: 'mau_stale', linkedAt: 1, role: 'member' });
+    const { doFetch } = fakeFetch({
+      ...HAPPY_ROUTES,
+      [`${HUB_URL}/auth/login`]: { status: 200, body: { token: 'mau_new', expiresAt: 12345 } },
+    });
+    await renewHubCredential(HUB_URL, doFetch);
+    expect(readHubRecord()?.role).toBe('member');
+  });
+
+  test('claim-a: an embedded-credential hubUrl is refused, no network touched', async () => {
+    signIn();
+    const { doFetch, calls } = fakeFetch(HAPPY_ROUTES);
+    const r = await renewHubCredential('https://evil@alligators.cloud.test', doFetch);
+    expect(r).toEqual({ ok: false, reason: 'no-matching-project' });
+    expect(calls).toHaveLength(0);
+  });
+
   test('account token revoked (401 on projects) → account-revoked, store untouched', async () => {
     signIn();
     writeHubRecord({ token: 'mau_stale', linkedAt: 1 });

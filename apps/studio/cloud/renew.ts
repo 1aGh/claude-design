@@ -165,11 +165,16 @@ export async function renewHubCredential(
       ? cellLogin.body.expiresAt
       : null;
 
-  // The upsert replaces the whole record — carry the vouched role forward so a
-  // renewal never silently promotes (or forgets) what the workspace said.
-  const priorRole = getHubRecord(norm)?.role;
+  // The upsert replaces the whole record, so the role must be re-supplied. F5:
+  // prefer the role the cell JUST vouched (its /auth/login echoes `user.role`)
+  // over the stored one — this is the one moment the code learns the current
+  // role, and carrying the stale value forward would discard exactly that.
+  // Fall back to the prior role only when the cell didn't say (older cell).
+  const freshRoleRaw = (cellLogin.body.user as { role?: unknown } | undefined)?.role;
+  const freshRole = typeof freshRoleRaw === 'string' && freshRoleRaw ? freshRoleRaw : undefined;
+  const role = freshRole ?? getHubRecord(norm)?.role;
   try {
-    saveHubCredential(norm, cellLogin.body.token, priorRole, expiresAt ?? undefined);
+    saveHubCredential(norm, cellLogin.body.token, role, expiresAt ?? undefined);
   } catch {
     return { ok: false, reason: 'save-failed' };
   }

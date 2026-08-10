@@ -150,7 +150,10 @@ export function syncPresentation(
       ? status.startedAt
       : null;
   const stalled = (): SyncPresentation => {
-    const min = Math.max(1, Math.round((now - (startedAt as number)) / 60_000));
+    // `?? now` rather than a cast: every call site is behind `isStalled`, which
+    // has already proved `startedAt` is a number — and a future one that isn't
+    // reads "1 minute" instead of "NaN minutes".
+    const min = Math.max(1, Math.round((now - (startedAt ?? now)) / 60_000));
     return {
       phase: 'stalled',
       online: false,

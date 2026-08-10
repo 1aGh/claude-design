@@ -44,6 +44,11 @@ describe('normalizeUrl', () => {
   test('preserves non-root path case', () => {
     expect(normalizeUrl('https://Hub.example.com/Path')).toBe('https://hub.example.com/Path');
   });
+
+  test('rejects embedded credentials (claim-a hardening — user:pass@ survives toString)', () => {
+    expect(() => normalizeUrl('https://evil@proj.cloud.maude.sh')).toThrow(/embedded credentials/);
+    expect(() => normalizeUrl('https://u:p@proj.cloud.maude.sh')).toThrow(/embedded credentials/);
+  });
 });
 
 // Write the test hubs.json with mode 0600 so the DDR-054 §2h mode-warning

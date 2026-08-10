@@ -205,7 +205,7 @@ export async function signInToWorkspace(
         email: typeof body.user?.email === 'string' ? body.user.email : String(input.email).trim(),
         role: vouchedRole,
       },
-      expiresAt: typeof body.expiresAt === 'number' ? body.expiresAt : null,
+      expiresAt: expiresAt ?? null,
       version: probe.version,
     },
   };

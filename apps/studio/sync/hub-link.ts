@@ -22,7 +22,7 @@
 // phase-9's hub model expects private hosts), so we do NOT block private IPs; the safety
 // is the loopback caller gate + no reflection + no token on the probe.
 
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 import { hubsConfigPath, normalizeUrl } from './hubs-config.ts';
@@ -143,12 +143,21 @@ export function saveHubCredential(
   };
   if (!Array.isArray(cfg.trusted)) cfg.trusted = [];
   if (!cfg.trusted.includes(normUrl)) cfg.trusted.push(normUrl);
-  writeFileSync(path, `${JSON.stringify(cfg, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+  // F3 (2026-08-10 review) — atomic temp-then-rename. This write used to run
+  // only when a human pressed Connect; silent renewal now fires it on a timer,
+  // several times a minute under a rejection burst. A truncating in-place
+  // writeFileSync that is interrupted (crash / kill / full disk) leaves a
+  // half-written file — and since it holds EVERY hub credential on the machine,
+  // that drops them all. rename(2) is atomic on POSIX: a reader sees the whole
+  // old file or the whole new one, never a torn one.
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify(cfg, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
   try {
-    chmodSync(path, 0o600);
+    chmodSync(tmp, 0o600);
   } catch {
     /* windows / read-only fs — best effort */
   }
+  renameSync(tmp, path);
 }
 
 export const __testing = { probeHealth };

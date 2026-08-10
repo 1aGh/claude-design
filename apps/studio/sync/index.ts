@@ -110,6 +110,36 @@ export function classifyAuthFailure(raw: string): AuthFailureClass {
 export const AUTH_WARN_DEBOUNCE_MS = 2_000;
 export const AUTH_REPROBE_MS = 5 * 60 * 1000;
 export const BOOT_SETTLE_TIMEOUT_MS = 15_000;
+/** F1 — minimum wall-clock between renewal attempts. A burst of rejections
+ *  collapses to one renewal (single-flight); the NEXT burst waits this out. */
+export const RENEW_MIN_INTERVAL_MS = 60_000;
+/** F1 — consecutive successful renewals with no completed handshake in between
+ *  before the runtime stops renewing and lets the link surface as
+ *  refused/stalled. Small: a renewal that fixed the credential clears at least
+ *  one doc, so >0 useless renewals means the credential was never the cause. */
+export const RENEW_MAX_WITHOUT_PROGRESS = 3;
+/** F2 — setTimeout clamps delays above this (2^31-1) to 1 ms, turning a
+ *  far-future expiry into a tight renewal loop. Clamp before we hand it over. */
+export const MAX_TIMER_DELAY_MS = 2_147_483_647;
+/** F2 — a hub-reported `expiresAt` further out than this is not believed for
+ *  scheduling (cloud cells issue ≤ 12 h; a month is already implausible). */
+export const MAX_CREDENTIAL_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * A hub-reported `expiresAt` sane enough to schedule against, or null.
+ *
+ * F2: the value crosses the DDR-054 trust boundary (a hub picks it) and is fed
+ * to `setTimeout`. A non-integer, a past stamp, or one absurdly far out (skew,
+ * or a hostile hub planting a far-future value to arm a tight loop) must not
+ * schedule a renewal — null means "no timer", the safe pre-existing behaviour.
+ * A credential already expired simply falls to the invalid-token path instead.
+ */
+export function validExpiry(raw: unknown, nowMs: number = Date.now()): number | null {
+  if (typeof raw !== 'number' || !Number.isInteger(raw)) return null;
+  if (raw <= nowMs) return null;
+  if (raw - nowMs > MAX_CREDENTIAL_LIFETIME_MS) return null;
+  return raw;
+}
 
 const AUTH_CLASS_HINT: Record<AuthFailureClass, string> = {
   'rate-limit':
@@ -217,6 +247,12 @@ export interface CreateSyncRuntimeOptions {
      * Never called under cell pairing (the cell's token comes from its env).
      */
     renewCredential?: () => Promise<{ token: string; expiresAt: number | null } | null>;
+    /** F1 — clock for the renewal frequency floor (test injection). Default Date.now. */
+    now?: () => number;
+    /** F1 — minimum ms between renewal attempts. Default RENEW_MIN_INTERVAL_MS. */
+    renewMinIntervalMs?: number;
+    /** F1 — consecutive no-progress renewals before giving up. Default RENEW_MAX_WITHOUT_PROGRESS. */
+    renewMaxWithoutProgress?: number;
   };
 }
 
@@ -382,8 +418,9 @@ export function createSyncRuntime(
   // reads it at call time — so every provider (re)created after a renewal
   // carries the fresh credential without a runtime restart.
   let token: string = resolvedToken;
-  let tokenExpiresAt: number | null =
-    typeof storedRecord?.expiresAt === 'number' ? storedRecord.expiresAt : null;
+  // Through validExpiry (F2) — the stored value came off disk written from a
+  // hub body, so a bogus/far-future stamp must not schedule a renewal at boot.
+  let tokenExpiresAt: number | null = validExpiry(storedRecord?.expiresAt);
 
   // DDR-102 — the default factory multiplexes every provider over ONE shared
   // WebSocket per hub URL; the runtime owns its disposal (stop(), after the
@@ -442,6 +479,24 @@ export function createSyncRuntime(
   let renewTimer: TimerHandle | null = null;
   /** Single-flight guard: 73 rejected docs must trigger ONE renewal, not 73. */
   let renewInFlight: Promise<boolean> | null = null;
+  // F1 (2026-08-10 security review) — RATE DISCIPLINE on the renew↔reprobe
+  // cycle. Single-flight bounds concurrency; these bound FREQUENCY. Without
+  // them a legitimate cell refusing on VOLUME (its invalid-token bucket, which
+  // now answers "invalid token — rate limited") classifies permanent →
+  // triggers renewal → renewal succeeds (the token was never the problem) →
+  // reprobeNow reconnects all N docs → the bucket refuses them again → loop.
+  // Reproduced at 2342 renewals/s. This is the exact retry-storm class the
+  // whole change exists to end, one level up — so it gets a floor AND a cap.
+  const renewNow = opts.auth?.now ?? (() => Date.now());
+  const renewMinIntervalMs = opts.auth?.renewMinIntervalMs ?? RENEW_MIN_INTERVAL_MS;
+  const renewMaxWithoutProgress = opts.auth?.renewMaxWithoutProgress ?? RENEW_MAX_WITHOUT_PROGRESS;
+  /** Wall-clock of the last renewal attempt (0 = never). The floor. */
+  let lastRenewAt = 0;
+  /** Successful renewals since the last completed handshake. The cap: a
+   *  renewal that keeps succeeding while nothing connects is not fixing
+   *  anything — stop, and let the link surface as refused/stalled. Reset to 0
+   *  at every `connected` doc (the handshake-success point). */
+  let renewalsSinceProgress = 0;
   // Silent credential renewal (cloud). Absent under cell pairing — the cell's
   // token arrives via its environment and is the hub's own to rotate.
   const renewCredential = cellPairing
@@ -821,12 +876,23 @@ export function createSyncRuntime(
     const renewCredentialNow = (): Promise<boolean> => {
       if (!renewCredential || stopped) return Promise.resolve(false);
       if (renewInFlight) return renewInFlight;
+      // F1 — the cap: renewals that keep succeeding without a handshake landing
+      // are not fixing anything (a real fix clears at least one doc, which
+      // resets this to 0). Stop, and let the docs' own rejected state surface
+      // as refused/stalled — both name "reconnect the workspace".
+      if (renewalsSinceProgress >= renewMaxWithoutProgress) return Promise.resolve(false);
+      // F1 — the floor: one renewal per interval, whatever the outcome. Stamped
+      // here (commit point), not on success, so a failing renewal also waits.
+      const sinceLast = renewNow() - lastRenewAt;
+      if (lastRenewAt !== 0 && sinceLast < renewMinIntervalMs) return Promise.resolve(false);
+      lastRenewAt = renewNow();
       renewInFlight = (async () => {
         try {
           const fresh = await renewCredential();
           if (stopped || !fresh || typeof fresh.token !== 'string' || !fresh.token) return false;
           token = fresh.token;
-          tokenExpiresAt = typeof fresh.expiresAt === 'number' ? fresh.expiresAt : null;
+          tokenExpiresAt = validExpiry(fresh.expiresAt);
+          renewalsSinceProgress++;
           console.log(`[sync] hub credential renewed for ${linkedHub.url}`);
           scheduleRenewal();
           return true;
@@ -855,14 +921,26 @@ export function createSyncRuntime(
         renewTimer = null;
       }
       if (!renewCredential || stopped || tokenExpiresAt === null) return;
-      const delay = Math.max(60_000, (tokenExpiresAt - Date.now()) * 0.8);
+      // F2 — clamp both ends. The lower floor keeps a near-expiry credential
+      // from arming an immediate timer; the upper clamp stops a far-future
+      // `expiresAt` (validExpiry already rejects > 30 d, but a peer's clock
+      // skew can still land the *delay* past setTimeout's int32 ceiling, where
+      // it silently fires at 1 ms) from becoming a tight loop.
+      const raw = (tokenExpiresAt - renewNow()) * 0.8;
+      const delay = Math.min(MAX_TIMER_DELAY_MS, Math.max(60_000, raw));
       renewTimer = authSetTimer(() => {
         renewTimer = null;
         void renewCredentialNow().then((ok) => {
+          // F4 — a failed pre-expiry renewal RE-ARMS on the slow cadence
+          // (through scheduleRenewal, so the frequency floor + cap still
+          // apply) instead of leaving the process with no scheduled renewal
+          // for the rest of its life.
           if (!ok && !stopped && tokenExpiresAt !== null) {
             renewTimer = authSetTimer(() => {
               renewTimer = null;
-              void renewCredentialNow();
+              void renewCredentialNow().then((ok2) => {
+                if (!ok2) scheduleRenewal();
+              });
             }, reprobeMs);
           }
         });
@@ -1007,6 +1085,10 @@ export function createSyncRuntime(
       // DDR-102 — honest status: the handshake + reconcile completed.
       mon.noteDocState(canvas.slug, 'connected');
       mon.noteSyncActivity(canvas.slug);
+      // F1 — a completed handshake IS progress: a renewal actually helped, so
+      // the no-progress cap resets. Without this a healthy link that renews
+      // legitimately every 12 h would burn one cap slot per renewal forever.
+      renewalsSinceProgress = 0;
     };
 
     /**

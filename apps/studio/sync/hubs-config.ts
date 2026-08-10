@@ -54,6 +54,16 @@ export function hubsConfigPath(): string {
 /** Normalize a hub URL — trim trailing slash, lower-case scheme + host. */
 export function normalizeUrl(url: string): string {
   const u = new URL(url);
+  // Reject embedded credentials outright (2026-08-10 review, claim-a residual).
+  // `URL.toString()` PRESERVES `user:pass@` — the renewal lane is safe only
+  // because it fetches the normalized string and requires it to equal a URL the
+  // cloud itself listed. A `https://evil@proj.cloud.maude.sh` config would
+  // survive normalization intact; refusing it here means such a value can never
+  // be stored or matched, so a later "fetch hubUrl directly" edit can't become
+  // credential exfiltration. A real hub URL never carries userinfo.
+  if (u.username || u.password) {
+    throw new Error('hub URL must not contain embedded credentials');
+  }
   u.protocol = u.protocol.toLowerCase();
   u.hostname = u.hostname.toLowerCase();
   let str = u.toString();

@@ -36,6 +36,7 @@ import {
   type SyncProvider,
   scanCanvases,
   toWsUrl,
+  validExpiry,
 } from '../sync/index.ts';
 import { createSyncStatusStore } from '../sync/status.ts';
 
@@ -1030,6 +1031,27 @@ describe('createDefaultProviderFactory — shared socket multiplexing', () => {
 
 // DDR-102 — auth-failure intelligence (classification, aggregation,
 // destroy-on-permanent + re-probe) and the honest settled boot summary.
+describe('validExpiry — a hub-reported deadline sane enough to schedule against', () => {
+  const NOW = 1_000_000_000_000;
+  test('accepts a plausible future integer', () => {
+    expect(validExpiry(NOW + 12 * 60 * 60 * 1000, NOW)).toBe(NOW + 12 * 60 * 60 * 1000);
+  });
+  test('rejects a past or present stamp (falls to the invalid-token path instead)', () => {
+    expect(validExpiry(NOW - 1, NOW)).toBeNull();
+    expect(validExpiry(NOW, NOW)).toBeNull();
+  });
+  test('rejects an absurdly far-future stamp (the setTimeout-overflow trap)', () => {
+    expect(validExpiry(NOW + 60 * 24 * 60 * 60 * 1000, NOW)).toBeNull(); // 60 days
+  });
+  test('rejects non-integers and non-numbers', () => {
+    expect(validExpiry(NOW + 1000.5, NOW)).toBeNull();
+    expect(validExpiry('soon', NOW)).toBeNull();
+    expect(validExpiry(Number.NaN, NOW)).toBeNull();
+    expect(validExpiry(Number.POSITIVE_INFINITY, NOW)).toBeNull();
+    expect(validExpiry(undefined, NOW)).toBeNull();
+  });
+});
+
 describe('classifyAuthFailure — permanent classes outrank the transient ones', () => {
   test('the invalid-token bucket refusal classifies as invalid-token, not rate-limit', () => {
     // The hub's invalid-token bucket says BOTH things. Filing it under
@@ -1241,6 +1263,124 @@ describe('DDR-102 — auth-failure intelligence + boot summary', () => {
       expect(reprobed.map((m) => m.documentName).sort()).toEqual(['ui-a', 'ui-b', 'ui-c']);
       expect(reprobed.every((m) => m.token === 'mau_fresh')).toBe(true);
 
+      await runtime?.stop();
+    } finally {
+      console.warn = origWarn;
+      console.log = origLog;
+    }
+  });
+
+  test('F1: a hub refusing on VOLUME cannot drive a renewal storm — the cap stops it', async () => {
+    // The regression this whole review turned on. A cell refusing its own
+    // clients with "invalid token — rate limited" classifies permanent →
+    // triggers renewal → renewal succeeds (token was fine) → reprobe → every
+    // reconnected doc is refused again → loop. Reproduced at 2342/s before the
+    // cap. Here every reconnected provider auto-re-rejects, so without the cap
+    // this test would spin forever; with it, renewals are bounded.
+    const url = 'https://hub.example.com';
+    writeHubsConfig(url, 'mau_stale');
+    const ctx = makeCtx({ url, linkedAt: 1 });
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'a.html'), '<a/>');
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'b.html'), '<b/>');
+
+    let renewCalls = 0;
+    let providersMade = 0;
+    const origWarn = console.warn;
+    const origLog = console.log;
+    console.warn = () => {};
+    console.log = () => {};
+    // Every provider auto-rejects with the volume-refusal string the moment a
+    // failure handler is attached — modelling a full hub bucket.
+    const factory = (args: { documentName: string; token?: string; document?: Y.Doc }) => {
+      const document = args.document ?? new Y.Doc();
+      providersMade++;
+      return {
+        document,
+        onAuthFailed(cb: (info: { reason: string }) => void) {
+          queueMicrotask(() => cb({ reason: 'invalid token — rate limited, retry in up to 60s' }));
+          return () => {};
+        },
+        onceSynced: () => new Promise<void>(() => {}),
+        destroy() {},
+      };
+    };
+    try {
+      const runtime = createSyncRuntime(ctx, {
+        providerFactory: factory,
+        auth: {
+          warnDebounceMs: 2_000,
+          reprobeMs: 300_000,
+          settleTimeoutMs: 15_000,
+          setTimer: () => 0 as unknown as ReturnType<typeof setTimeout>,
+          clearTimer: () => {},
+          renewMinIntervalMs: 0, // isolate the CAP from the floor
+          renewCredential: async () => {
+            renewCalls++;
+            return { token: `mau_fresh_${renewCalls}`, expiresAt: null };
+          },
+        },
+      });
+      await runtime?.start();
+      // Let the storm run itself out — if the cap failed, this never settles
+      // and the test times out (which is itself the failure signal).
+      for (let i = 0; i < 20; i++) await new Promise((res) => setTimeout(res, 5));
+
+      // Bounded by the cap (default 3), NOT thousands.
+      expect(renewCalls).toBeLessThanOrEqual(3);
+      expect(renewCalls).toBeGreaterThan(0);
+      // Providers created is likewise bounded — no runaway reconnect fan-out.
+      expect(providersMade).toBeLessThan(20);
+      await runtime?.stop();
+    } finally {
+      console.warn = origWarn;
+      console.log = origLog;
+    }
+  });
+
+  test('F1: the frequency floor collapses a rapid second burst to no extra renewal', async () => {
+    const url = 'https://hub.example.com';
+    writeHubsConfig(url, 'mau_stale');
+    const ctx = makeCtx({ url, linkedAt: 1 });
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'a.html'), '<a/>');
+
+    let renewCalls = 0;
+    let clock = 1_000_000;
+    const origWarn = console.warn;
+    const origLog = console.log;
+    console.warn = () => {};
+    console.log = () => {};
+    const { factory, made } = authStubFactory();
+    try {
+      const runtime = createSyncRuntime(ctx, {
+        providerFactory: factory,
+        auth: {
+          warnDebounceMs: 2_000,
+          reprobeMs: 300_000,
+          settleTimeoutMs: 15_000,
+          setTimer: () => 0 as unknown as ReturnType<typeof setTimeout>,
+          clearTimer: () => {},
+          now: () => clock,
+          renewMinIntervalMs: 60_000,
+          renewCredential: async () => {
+            renewCalls++;
+            return { token: 'mau_fresh', expiresAt: null };
+          },
+        },
+      });
+      await runtime?.start();
+      made[0]?.emitAuthFailure('invalid token');
+      await new Promise((res) => setTimeout(res, 10));
+      expect(renewCalls).toBe(1);
+      // A second rejection 10 s later (inside the 60 s floor) → no new renewal.
+      clock += 10_000;
+      made[0]?.emitAuthFailure('invalid token');
+      await new Promise((res) => setTimeout(res, 10));
+      expect(renewCalls).toBe(1);
+      // Past the floor → renewal is allowed again.
+      clock += 60_000;
+      made[0]?.emitAuthFailure('invalid token');
+      await new Promise((res) => setTimeout(res, 10));
+      expect(renewCalls).toBe(2);
       await runtime?.stop();
     } finally {
       console.warn = origWarn;
