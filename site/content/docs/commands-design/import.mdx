@@ -1,28 +1,28 @@
 ---
 title: /design:import
-description: "Bring an existing design into Maude. `--reconstruct <image>` (T15, experimental) turns a Figma-frame PNG export into a real, token-styled canvas via a Bash-free vision-authoring + reality-check loop (DDR-174). Token files and brand material have their own dedicated entry points — see Notes below."
+description: "Bring an existing design into Maude. `--figma <url>` pulls a REAL Figma document over the REST API and translates it with deterministic code — no vision model anywhere (DDR-216). `--reconstruct <image>` is the lossy fallback for when all you have is a picture (DDR-174). The two share no architecture. Token files and brand material have their own dedicated entry points — see Notes below."
 ---
 
 | Property | Value |
 | -------- | ----- |
 | **Command** | `/design:import` |
 | **Category** | `daily` (daily) |
-| **Argument hint** | `--reconstruct <image-path> [--name \"<title>\"] [--into <canvas-path>] [--rounds N]` |
+| **Argument hint** | `--figma <url> \| --reconstruct <image-path> [--name \"<title>\"] [--into <canvas-path>] [--rounds N]` |
 | **Source** | [`plugins/design/commands/import.md`](https://github.com/1aGh/maude/blob/main/plugins/design/commands/import.md) |
 
 ## Description
 
-Bring an existing design into Maude. `--reconstruct &lt;image>` (T15, experimental) turns a Figma-frame PNG export into a real, token-styled canvas via a Bash-free vision-authoring + reality-check loop (DDR-174). Token files and brand material have their own dedicated entry points — see Notes below.
+Bring an existing design into Maude. `--figma &lt;url>` pulls a REAL Figma document over the REST API and translates it with deterministic code — no vision model anywhere (DDR-216). `--reconstruct &lt;image>` is the lossy fallback for when all you have is a picture (DDR-174). The two share no architecture. Token files and brand material have their own dedicated entry points — see Notes below.
 
 ## Invocation
 
 ```text
-/design:import --reconstruct <image-path> [--name \"<title>\"] [--into <canvas-path>] [--rounds N]
+/design:import --figma <url> | --reconstruct <image-path> [--name \"<title>\"] [--into <canvas-path>] [--rounds N]
 ```
 
 ## Summary
 
-`/design:import` is the umbrella entry point for migration-ingestion work (plan `feature-onboarding-and-design-system-migration`, Phase 3–4). Today it implements exactly one mode:
+`/design:import` is the umbrella entry point for migration-ingestion work. It implements two modes, and **they share no architecture** — read the next paragraph before assuming anything from one applies to the other.
 ## Source of truth
 
 <Callout type="note" title="Generated from frontmatter">
