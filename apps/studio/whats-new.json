@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "cloud-link-self-renews",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "Cloud sync keeps itself signed in",
+      "summary": "A workspace you connect to the cloud stays synced — the session refreshes itself in the background instead of quietly expiring after a few hours and stranding your canvases on \"connecting…\". If a link ever can't sync for a few minutes it now says so and points you to reconnect, instead of spinning forever.",
+      "surface": "design-ui"
+    },
+    {
       "id": "figma-import",
       "version": null,
       "date": null,
