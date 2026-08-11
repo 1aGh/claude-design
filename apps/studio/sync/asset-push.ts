@@ -118,6 +118,39 @@ const MAX_SWEEP_BACKOFF_MS = 5 * 60_000;
  *  code. Hub-supplied text ⇒ bounded and stripped before it reaches the UI. */
 const ERROR_SNIPPET_CHARS = 80;
 
+/**
+ * Every upload closes its connection. NOT an optimization — a correctness
+ * requirement, learned the expensive way (2026-08-11, second pass).
+ *
+ * A peer that refuses a PUT **before reading the body** (the cloud studio door
+ * answering 401, the edge answering 503) leaves unread request bytes in an
+ * HTTP/1.1 keep-alive socket. The connection is then desynchronized: the next
+ * request Bun sends over it NEVER gets a response. With no retry that stayed
+ * invisible — the refusal was reported and the sweep moved on. The moment a
+ * retry re-sent on that same pooled socket, the sweep wedged forever and the
+ * dev-server sidecar died with it (Bun segfault, 4 crash-loops, alligators).
+ * Measured: `connection: close` on the retry ALONE does not help (the retry is
+ * handed the already-poisoned socket) — it has to be on the request that may be
+ * refused, i.e. every PUT. One TLS handshake per asset against multi-MB bodies
+ * is not a cost worth reasoning about.
+ */
+const UPLOAD_CONNECTION_HEADERS = { connection: 'close' } as const;
+
+/** HEAD is a small, bodyless probe — a hub that has not answered in 30 s is not
+ *  about to. */
+const HEAD_TIMEOUT_MS = 30_000;
+
+/**
+ * How long one upload may take before the sweep abandons it: a fixed floor plus
+ * an allowance for the bytes at a deliberately pessimistic 100 kB/s, capped.
+ * The backstop for anything that wedges a connection the way the keep-alive
+ * desync above did — a sweep that hangs forever takes the whole dev-server with
+ * it, and "this asset failed, next boot retries it" is always the better end.
+ */
+export function putTimeoutMs(bytes: number): number {
+  return Math.min(10 * 60_000, 60_000 + (Number.isFinite(bytes) ? bytes : 0) / 100);
+}
+
 /** Min ms between mid-flight progress emits. A 90-file DS at LAN speed would
  *  otherwise broadcast 90 payloads in a couple of seconds; failures and the
  *  final emit always go out regardless. */
@@ -237,16 +270,21 @@ async function putWithRetry(ctx: {
   sleep: (ms: number) => Promise<void>;
   /** Mutable per-sweep pause budget, shared across every asset. */
   backoff: { remainingMs: number };
+  timeoutFor: (bytes: number) => number;
 }): Promise<Response> {
   const send = (): Promise<Response> => {
     const body = Bun.file(ctx.file);
     return ctx.fetchImpl(ctx.url, {
       method: 'PUT',
-      // An explicit length keeps the request out of chunked encoding — which
-      // is the live hypothesis for the one 29.7 MB `.mov` that got a 503 from
-      // the edge with no hub invocation logged at all (RCA §Secondary).
-      headers: { ...ctx.headers, 'content-length': String(body.size) },
+      headers: {
+        ...ctx.headers,
+        ...UPLOAD_CONNECTION_HEADERS,
+        // Bun derives this from the file anyway (measured) — stated explicitly
+        // so a body length is never something a future body type has to guess.
+        'content-length': String(body.size),
+      },
       body,
+      signal: AbortSignal.timeout(ctx.timeoutFor(body.size)),
     });
   };
   const first = await send();
@@ -282,6 +320,8 @@ export async function pushAssets(opts: {
   now?: () => number;
   /** Injectable pause for the 429 backoff (tests — a fake clock, not a wait). */
   sleep?: (ms: number) => Promise<void>;
+  /** Injectable per-request time budget (tests — seconds, not minutes). */
+  timeoutFor?: (bytes: number) => number;
 }): Promise<AssetPushResult> {
   const { designRoot, hubUrl } = opts;
   const fetchImpl = opts.fetchImpl ?? fetch;
@@ -293,6 +333,7 @@ export async function pushAssets(opts: {
       new Promise<void>((res) => {
         setTimeout(res, ms);
       }));
+  const timeoutFor = opts.timeoutFor ?? putTimeoutMs;
   // Shared across the whole sweep — see MAX_SWEEP_BACKOFF_MS.
   const backoff = { remainingMs: MAX_SWEEP_BACKOFF_MS };
   const base = hubUrl.replace(/\/+$/, '');
@@ -327,9 +368,22 @@ export async function pushAssets(opts: {
     const url = `${base}${routeFor(rel).url}`;
     const headers = { authorization: `Bearer ${opts.token()}` };
     try {
-      const head = await fetchImpl(url, { method: 'HEAD', headers });
+      const head = await fetchImpl(url, {
+        method: 'HEAD',
+        headers,
+        signal: AbortSignal.timeout(HEAD_TIMEOUT_MS),
+      });
       if (head.ok) {
         out.skipped += 1;
+        continue;
+      }
+      // A hub that refuses the PROBE refuses the upload — pushing the body
+      // anyway just streams megabytes at a door that already said no. The
+      // cloud studio door answers exactly this for a route the deployed hub
+      // does not have yet, once per asset, for the whole DS asset set.
+      if (head.status === 401 || head.status === 403) {
+        out.failed.push({ key: rel, reason: await failureReason(head) });
+        emitProgress(rel, false, true);
         continue;
       }
       const put = await putWithRetry({
@@ -339,6 +393,7 @@ export async function pushAssets(opts: {
         file: path.join(designRoot, rel),
         sleep,
         backoff,
+        timeoutFor,
       });
       if (put.ok) out.pushed.push(rel);
       else {
@@ -346,7 +401,13 @@ export async function pushAssets(opts: {
         emitProgress(rel, false, true);
       }
     } catch (err) {
-      out.failed.push({ key: rel, reason: (err as Error).message });
+      const e = err as Error;
+      out.failed.push({
+        key: rel,
+        // "TimeoutError: The operation timed out" tells a person nothing about
+        // which limit fired; name the budget instead.
+        reason: e.name === 'TimeoutError' ? 'timed out — the hub stopped answering' : e.message,
+      });
       emitProgress(rel, false, true);
     }
   }

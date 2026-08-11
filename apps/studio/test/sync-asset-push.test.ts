@@ -10,7 +10,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { listPushableAssets, pushAssets } from '../sync/asset-push.ts';
+import { listPushableAssets, pushAssets, putTimeoutMs } from '../sync/asset-push.ts';
 
 function scratchDesignRoot(): string {
   return mkdtempSync(join(tmpdir(), 'asset-push-'));
@@ -362,6 +362,96 @@ describe('pushAssets — 429 pacing, 5xx retry, honest failure reasons (RCA 2026
     });
     expect(r.failed).toHaveLength(10);
     expect(slept).toEqual([60_000, 60_000, 60_000, 60_000, 60_000]);
+  });
+});
+
+describe('pushAssets — a refused upload must not wedge the sweep (2026-08-11, second pass)', () => {
+  test('every PUT closes its connection — the keep-alive desync that killed the sidecar', async () => {
+    // A peer that refuses a PUT before reading the body leaves unread bytes in
+    // the socket; the next request over that pooled connection never gets an
+    // answer. Measured: `connection: close` on the retry alone does NOT help —
+    // it must be on the request that may be refused. Pin it.
+    const designRoot = scratchDesignRoot();
+    mkdirSync(join(designRoot, 'assets'), { recursive: true });
+    writeFileSync(join(designRoot, 'assets/one.png'), 'x');
+    const seen: Array<Record<string, string>> = [];
+    const fetchImpl = (async (_i: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'HEAD') return new Response(null, { status: 404 });
+      seen.push((init?.headers ?? {}) as Record<string, string>);
+      return new Response(null, { status: 503 }); // refused → the retry re-sends
+    }) as typeof fetch;
+    await pushAssets({
+      designRoot,
+      hubUrl: 'https://x.example',
+      token: () => 't',
+      fetchImpl,
+      log: { log: () => {}, warn: () => {} },
+      sleep: async () => {},
+    });
+    expect(seen).toHaveLength(2); // first attempt + the 5xx retry
+    expect(seen.every((h) => h.connection === 'close')).toBe(true);
+  });
+
+  test('a request that never answers is abandoned, named, and the sweep goes on', async () => {
+    const designRoot = scratchDesignRoot();
+    mkdirSync(join(designRoot, 'assets'), { recursive: true });
+    writeFileSync(join(designRoot, 'assets/a-hangs.png'), 'x');
+    writeFileSync(join(designRoot, 'assets/b-fine.png'), 'x');
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'HEAD') return new Response(null, { status: 404 });
+      if (!String(input).includes('a-hangs')) return new Response(null, { status: 200 });
+      // Wedged: answers only when the caller's own budget aborts it.
+      return new Promise<Response>((_res, rej) => {
+        init?.signal?.addEventListener('abort', () => rej(init.signal?.reason));
+      });
+    }) as typeof fetch;
+    const r = await pushAssets({
+      designRoot,
+      hubUrl: 'https://x.example',
+      token: () => 't',
+      fetchImpl,
+      log: { log: () => {}, warn: () => {} },
+      sleep: async () => {},
+      timeoutFor: () => 25,
+    });
+    expect(r.failed).toEqual([
+      { key: 'assets/a-hangs.png', reason: 'timed out — the hub stopped answering' },
+    ]);
+    expect(r.pushed).toEqual(['assets/b-fine.png']);
+  });
+
+  test('a hub that refuses the PROBE never gets the body streamed at it', async () => {
+    // The deployed cloud door answers 401 for a route it does not have yet —
+    // once per DS asset. Uploading anyway is pure waste on every boot.
+    const designRoot = scratchDesignRoot();
+    mkdirSync(join(designRoot, 'system/ds/assets/logos'), { recursive: true });
+    writeFileSync(join(designRoot, 'system/ds/assets/logos/mark.svg'), '<svg/>');
+    const methods: string[] = [];
+    const fetchImpl = (async (_i: RequestInfo | URL, init?: RequestInit) => {
+      methods.push(init?.method ?? 'GET');
+      return new Response('{"error":"sign in to open this project"}', { status: 401 });
+    }) as typeof fetch;
+    const r = await pushAssets({
+      designRoot,
+      hubUrl: 'https://x.example',
+      token: () => 't',
+      fetchImpl,
+      log: { log: () => {}, warn: () => {} },
+      sleep: async () => {},
+    });
+    expect(methods).toEqual(['HEAD']); // no PUT at all
+    expect(r.failed).toEqual([
+      {
+        key: 'system/ds/assets/logos/mark.svg',
+        reason: 'HTTP 401 — {"error":"sign in to open this project"}',
+      },
+    ]);
+  });
+
+  test('the upload budget has a floor, scales with bytes, and is capped', () => {
+    expect(putTimeoutMs(0)).toBe(60_000);
+    expect(putTimeoutMs(30 * 1024 * 1024)).toBeGreaterThan(5 * 60_000); // the 29.7 MB .mov
+    expect(putTimeoutMs(10 * 1024 * 1024 * 1024)).toBe(10 * 60_000);
   });
 });
 
