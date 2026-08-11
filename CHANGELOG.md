@@ -1,5 +1,62 @@
 # @1agh/maude
 
+## 0.58.3
+
+### Patch Changes
+
+- f28c465: A cloud link renews itself instead of silently dying after 12 hours.
+
+  The desktop held a never-expiring account sign-in next to a ≤12-hour cell
+  session token and nothing connected the two — so every cloud workspace link
+  stopped syncing within half a day, every canvas was refused with `invalid
+token`, and the status bar sat on `connecting…` indefinitely. Re-pressing
+  Connect was the only cure, and nothing told you to.
+
+  Now the sync runtime renews the session token in place from the account
+  you're already signed into — on a timer before it expires, and immediately
+  when a refusal proves it already has. No re-login chore, and the 12-hour
+  revocation window is unchanged: a renewal only ever mints a fresh token
+  through the cloud, so being signed out, revoked, or removed from a project
+  makes it fail exactly where it should.
+
+  Two honesty fixes ride along: the hub's rate-limited refusal of an invalid
+  token now says so (a peer no longer mistakes it for a transient limit and
+  retries forever into the bucket refusing it), and a link that has synced
+  nothing for five minutes reads as **stalled** with a reconnect prompt
+  instead of a permanent `connecting…`. Renewal itself is rate-disciplined —
+  a floor plus a no-progress cap — so it can never become the retry storm it
+  exists to end.
+
+- f0b5e8c: A cloud-linked project now matches your desktop exactly — same files, same
+  canvases, same images — and connecting means one save mechanism, not two.
+
+  This closes the remaining faults from the desktop↔cloud sync RCA (fixes 4–8;
+  fixes 1–3 shipped alongside the self-renewing link):
+
+  - **No more duplicates or broken canvases.** The hub used to memoise a flat
+    fallback path before the canvas's real path was stamped, so a body that
+    arrived first was pinned to the wrong location forever — a stub that failed
+    its dynamic import in the cloud, and a duplicate file next to the real one.
+    The path is now stamped before the first sync, and the hub relocates a
+    fallback in place when the real path arrives (never moving a file another
+    peer actually owns). A one-shot migration quarantines the duplicate flat
+    copies earlier versions already wrote to `_trash/`, never deleting them.
+
+  - **Images show up instead of grey boxes.** The sync lanes carried text only,
+    so a linked project's `assets/` never reached the cell. The desktop now
+    pushes them over the existing authenticated asset route — streamed,
+    size-capped, and contained to the design root — so the cloud serves the real
+    bytes.
+
+  - **The cloud picker tells the truth.** The project this folder is linked to
+    reads **Connected** (with a Disconnect), not another **Connect** button.
+
+  - **One place your work is saved.** Once a repo is linked and signed in, the
+    desktop's local-commit panel steps back to a read-only History with a
+    "Cloud is saving — changes sync automatically" note, so you're not choosing
+    between two save mechanisms. Your git is untouched; Disconnect brings the
+    panel back.
+
 ## 0.58.2
 
 ### Patch Changes

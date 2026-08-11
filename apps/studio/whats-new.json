@@ -3,8 +3,8 @@
   "entries": [
     {
       "id": "cloud-sync-matches-your-desktop",
-      "version": null,
-      "date": null,
+      "version": "0.58.3",
+      "date": "2026-08-11",
       "kind": "fix",
       "title": "The cloud copy matches your desktop",
       "summary": "A project you connect to the cloud now looks exactly like it does on your machine: no duplicated files, every canvas opens instead of breaking, and your images show up instead of grey boxes. The cloud picker says \"Connected\" for the project this folder is linked to, with a Disconnect right there — and once you're connected, the cloud saves every change automatically, so there's one place your work is saved, not two.",
@@ -12,8 +12,8 @@
     },
     {
       "id": "cloud-link-self-renews",
-      "version": null,
-      "date": null,
+      "version": "0.58.3",
+      "date": "2026-08-11",
       "kind": "fix",
       "title": "Cloud sync keeps itself signed in",
       "summary": "A workspace you connect to the cloud stays synced — the session refreshes itself in the background instead of quietly expiring after a few hours and stranding your canvases on \"connecting…\". If a link ever can't sync for a few minutes it now says so and points you to reconnect, instead of spinning forever.",
@@ -21,8 +21,8 @@
     },
     {
       "id": "figma-import",
-      "version": null,
-      "date": null,
+      "version": "0.58.3",
+      "date": "2026-08-11",
       "kind": "feature",
       "title": "Bring your Figma work in",
       "summary": "Paste a Figma link and get the real thing, not a picture of it: design frames become editable canvases, a FigJam board becomes your whiteboard with its sticky notes and arrows still attached, and your colour and text styles become design tokens. Add a Figma access token once in Settings to get started.",
