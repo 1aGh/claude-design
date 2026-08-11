@@ -450,11 +450,23 @@ describe('the asset pipeline is actually WIRED into --frames', () => {
 
     const r = await importFrames({ url: URL_D, root: sandbox });
     const imageCalls = seen.filter((u) => u.includes('/v1/images/'));
+    const byFormat = (f: string) =>
+      imageCalls.filter((u) => new URL(u).searchParams.get('format') === f);
+
     // ONE call for the whole cluster — the collapse is what keeps this at 1
-    // instead of 2 (or, on a real logo, 14).
-    expect(imageCalls.length).toBe(1);
-    expect(new URL(imageCalls[0]).searchParams.get('ids')).toBe('2:1');
-    expect(new URL(imageCalls[0]).searchParams.get('format')).toBe('svg');
+    // instead of 2 (or, on a real logo, 14). Asserted PER FORMAT, because this
+    // stub returns `{ '2:1': null }`, i.e. Figma DECLINING to render, which the
+    // later SVG→PNG degradation path answers with a second, legitimate request.
+    // The original `imageCalls.length === 1` conflated "the collapse batched the
+    // cluster" with "nothing retried", and went red in main when the degradation
+    // landed — the same incomplete change that left `asset-degraded` outside the
+    // Disposition union (DDR-219 D9). The collapse claim is what this test owns.
+    expect(byFormat('svg')).toHaveLength(1);
+    expect(new URL(byFormat('svg')[0]).searchParams.get('ids')).toBe('2:1');
+    // The degradation is intended behaviour, so it is asserted rather than
+    // tolerated: one retry, for the same collapsed id, never one per leaf.
+    expect(byFormat('png')).toHaveLength(1);
+    expect(new URL(byFormat('png')[0]).searchParams.get('ids')).toBe('2:1');
     expect(r.pendingExports).toBe(1);
   });
 

@@ -390,9 +390,12 @@ export function applyRewrites(source: string, rewrites: ReadonlyMap<string, stri
   return out;
 }
 
-/** The disposition set this module can emit — kept in sync with `sanitize.ts`. */
+/** The disposition set this module can emit — kept in sync with `sanitize.ts`.
+ *  `asset-degraded` was missing here as well as from the union; both halves of
+ *  the drift are closed together (DDR-219 D9). */
 export const ASSET_DISPOSITIONS: readonly Disposition[] = [
   'asset-pending',
   'asset-skipped',
   'asset-cap-reached',
+  'asset-degraded',
 ];

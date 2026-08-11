@@ -39,28 +39,58 @@
  * @invariant  DEPENDENCY-FREE — pure string/number work.
  */
 
-/** Every disposition this feature can report. A FIXED enum: the per-import
+/** Every disposition this feature can report. A FIXED set: the per-import
  *  summary's "never silently dropped" promise is only true because a caller
- *  cannot invent a reason string (DDR-216 D5/D7). */
-export type Disposition =
-  | 'imported'
-  | 'hidden-chars-dropped'
-  | 'hidden-node-skipped'
-  | 'text-normalized'
-  | 'geometry-clamped'
-  | 'truncated-text'
-  | 'truncated-attr'
-  | 'unmappable-type'
-  | 'unmappable-shape'
+ *  cannot invent a reason string (DDR-216 D5/D7).
+ *
+ *  A frozen ARRAY, with the type derived from it, rather than a bare union —
+ *  because a union alone is a compile-time promise and this repo runs **no
+ *  `tsc` gate** (CLAUDE.md states the omission deliberately: `quality` is
+ *  lint/tests/build/parity/tarball/tokens/site-content, no typecheck). That gap
+ *  is not hypothetical: `assets.ts` shipped `'asset-degraded'` — absent from the
+ *  union — to `main`, onto the wire (`http.ts` `/_api/figma/import`), into verb
+ *  stdout that an agent reads (D10), and into `FigmaImportPanel`. Found by the
+ *  DDR-219 design-stage review, fixed here with `asset-degraded` admitted as the
+ *  legitimate outcome it always was. See DDR-219 D9. */
+export const DISPOSITIONS = Object.freeze([
+  'imported',
+  'hidden-chars-dropped',
+  'hidden-node-skipped',
+  'text-normalized',
+  'geometry-clamped',
+  'truncated-text',
+  'truncated-attr',
+  'unmappable-type',
+  'unmappable-shape',
   /** A comment whose pinned node no longer exists in the file — no position to place it at. */
-  | 'comment-target-deleted'
-  | 'bind-degraded-to-bbox'
-  | 'bind-dropped-self-connector'
-  | 'asset-pending'
-  | 'asset-skipped'
-  | 'asset-cap-reached'
-  | 'jsx-cap-reached'
-  | 'value-rejected';
+  'comment-target-deleted',
+  'bind-degraded-to-bbox',
+  'bind-dropped-self-connector',
+  'asset-pending',
+  'asset-skipped',
+  'asset-cap-reached',
+  /** A vector Figma declined to render as SVG, re-requested as PNG. */
+  'asset-degraded',
+  'jsx-cap-reached',
+  'value-rejected',
+] as const);
+
+export type Disposition = (typeof DISPOSITIONS)[number];
+
+const DISPOSITION_SET: ReadonlySet<string> = new Set(DISPOSITIONS);
+
+export function isDisposition(v: string): v is Disposition {
+  return DISPOSITION_SET.has(v);
+}
+
+/** `detail` is a code-owned note, and the only field on the wire that no
+ *  sanitizer touches — so it is the one place an upstream string would ride out
+ *  to a model unescaped (DDR-219 D9). It is NOT charset-restricted to ASCII:
+ *  real notes carry `—` and `→` legitimately. What distinguishes a code-owned
+ *  note from interpolated node text is that it is SHORT and carries no
+ *  zero-glyph payload, so those are what get asserted. Longest real note today
+ *  is 36 chars. */
+export const MAX_DETAIL_LEN = 64;
 
 export interface ReportEntry {
   /** `^[0-9]+:[0-9]+$` — an identifier, never node text (DDR-216 D7). */
@@ -76,6 +106,17 @@ export class ImportReport {
   readonly entries: ReportEntry[] = [];
 
   add(nodeId: string, type: string, disposition: Disposition, detail?: string): void {
+    // The backstop the missing `tsc` gate cannot provide. A disposition outside
+    // the set is a programming error, never bad input — so it throws rather than
+    // degrading: silent acceptance is exactly how `asset-degraded` reached main.
+    if (!DISPOSITION_SET.has(disposition)) {
+      throw new Error(`ImportReport: unknown disposition ${JSON.stringify(disposition)}`);
+    }
+    if (detail !== undefined && !isCodeOwnedDetail(detail)) {
+      throw new Error(
+        `ImportReport: detail must be a short code-owned note (<=${MAX_DETAIL_LEN} chars, no zero-glyph); got ${detail.length} chars`
+      );
+    }
     this.entries.push(
       detail ? { nodeId, type, disposition, detail } : { nodeId, type, disposition }
     );
@@ -84,6 +125,11 @@ export class ImportReport {
   count(disposition: Disposition): number {
     return this.entries.filter((e) => e.disposition === disposition).length;
   }
+}
+
+/** True when `detail` looks like the code-owned note it is contracted to be. */
+export function isCodeOwnedDetail(detail: string): boolean {
+  return detail.length <= MAX_DETAIL_LEN && !ZERO_GLYPH_ONESHOT_RE.test(detail);
 }
 
 // ── D6a — character classes ─────────────────────────────────────────────────
@@ -111,33 +157,37 @@ export class ImportReport {
  * *letters or symbols* by category but render blank. A category rule cannot rot
  * the way an enumeration does.
  */
-const ZERO_GLYPH_RE = new RegExp(
-  [
-    // Format / control / private-use / unassigned — the categories that cover
-    // every bidi control, every zero-width, the Tags block, and anything Unicode
-    // adds later without this list needing an edit.
-    '[\\p{Cf}\\p{Cc}\\p{Co}\\p{Cn}]',
-    // Blank-rendering code points that are LETTERS or SYMBOLS by category, so no
-    // category rule catches them. Listed one per alternative rather than as a
-    // character class: `\u034F` is a COMBINING character, and a class mixing it
-    // with base characters is the `noMisleadingCharacterClass` footgun.
-    '\\u00AD', // soft hyphen
-    '\\u034F', // combining grapheme joiner
-    '\\u061C', // arabic letter mark (Trojan Source)
-    '\\u115F', // hangul choseong filler
-    '\\u1160', // hangul jungseong filler
-    '\\u17B4', // khmer inherent AQ
-    '\\u17B5', // khmer inherent AA
-    '[\\u180B-\\u180E]', // mongolian selectors + vowel separator
-    '\\u2800', // braille pattern blank
-    '\\u3164', // HANGUL FILLER — category Lo, i.e. a LETTER
-    '[\\uFE00-\\uFE0F]', // variation selectors
-    '\\uFFA0', // halfwidth hangul filler
-    '[\\uFFF9-\\uFFFB]', // interlinear annotation
-    '[\\u{E0100}-\\u{E01EF}]', // variation selectors supplement
-  ].join('|'),
-  'gu'
-);
+const ZERO_GLYPH_SOURCE = [
+  // Format / control / private-use / unassigned — the categories that cover
+  // every bidi control, every zero-width, the Tags block, and anything Unicode
+  // adds later without this list needing an edit.
+  '[\\p{Cf}\\p{Cc}\\p{Co}\\p{Cn}]',
+  // Blank-rendering code points that are LETTERS or SYMBOLS by category, so no
+  // category rule catches them. Listed one per alternative rather than as a
+  // character class: `\u034F` is a COMBINING character, and a class mixing it
+  // with base characters is the `noMisleadingCharacterClass` footgun.
+  '\\u00AD', // soft hyphen
+  '\\u034F', // combining grapheme joiner
+  '\\u061C', // arabic letter mark (Trojan Source)
+  '\\u115F', // hangul choseong filler
+  '\\u1160', // hangul jungseong filler
+  '\\u17B4', // khmer inherent AQ
+  '\\u17B5', // khmer inherent AA
+  '[\\u180B-\\u180E]', // mongolian selectors + vowel separator
+  '\\u2800', // braille pattern blank
+  '\\u3164', // HANGUL FILLER — category Lo, i.e. a LETTER
+  '[\\uFE00-\\uFE0F]', // variation selectors
+  '\\uFFA0', // halfwidth hangul filler
+  '[\\uFFF9-\\uFFFB]', // interlinear annotation
+  '[\\u{E0100}-\\u{E01EF}]', // variation selectors supplement
+].join('|');
+
+const ZERO_GLYPH_RE = new RegExp(ZERO_GLYPH_SOURCE, 'gu');
+
+/** The same rule without `g`. `RegExp.prototype.test` on a GLOBAL regex advances
+ *  `lastIndex` and so alternates true/false across calls on the same instance —
+ *  a one-shot predicate must never share the `g` instance. */
+const ZERO_GLYPH_ONESHOT_RE = new RegExp(ZERO_GLYPH_SOURCE, 'u');
 
 /** Tab / newline / carriage return are legitimate content — never stripped. */
 const KEEP_WHITESPACE_RE = /[\t\n\r]/;

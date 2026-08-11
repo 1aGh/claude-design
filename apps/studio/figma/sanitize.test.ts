@@ -7,16 +7,20 @@
 
 import { describe, expect, test } from 'bun:test';
 
+import { ASSET_DISPOSITIONS } from './assets.ts';
 import {
   attrValue,
   clampIntoBounds,
   cleanText,
   contrastRatio,
+  DISPOSITIONS,
   ensureContrast,
   ensureFontSize,
   hexToRgb01,
   ImportReport,
   identifierFromNodeId,
+  isCodeOwnedDetail,
+  isDisposition,
   jsxStringLiteral,
   MIN_FONT_SIZE,
   rgb01ToHex,
@@ -252,5 +256,70 @@ describe('D6a covers blank-glyph LETTERS, not just format characters (review F10
     const out = cleanText(`Nadpis${payload}`, 1000);
     expect(out.text).toBe('Nadpis');
     expect(out.strippedHidden).toBe(true);
+  });
+});
+
+// ── DDR-219 D9 — the fixed-enum promise is a CONTROL, not a comment ──────────
+//
+// `Disposition` was a bare union, i.e. a compile-time promise, in a repo that
+// runs no `tsc` gate. `assets.ts` shipped an off-enum `'asset-degraded'` to
+// main — onto the wire, into verb stdout an agent reads (DDR-216 D10) and into
+// the panel. These tests are what makes the promise true at runtime.
+
+describe('DDR-219 D9 — disposition enum is enforced, not asserted', () => {
+  test('every disposition assets.ts declares is a member', () => {
+    // The drift that shipped: ASSET_DISPOSITIONS and the union disagreed, and
+    // nothing compared them.
+    for (const d of ASSET_DISPOSITIONS) expect(isDisposition(d)).toBe(true);
+  });
+
+  test('asset-degraded is a member — the specific drift found in main', () => {
+    expect(isDisposition('asset-degraded')).toBe(true);
+    expect(() => new ImportReport().add('1:2', 'ASSET', 'asset-degraded')).not.toThrow();
+  });
+
+  test('an invented disposition throws rather than reaching the wire', () => {
+    const r = new ImportReport();
+    // @ts-expect-error — the runtime backstop for exactly what tsc would catch
+    expect(() => r.add('1:2', 'ASSET', 'asset-vanished')).toThrow(/unknown disposition/);
+    expect(r.entries).toHaveLength(0);
+  });
+
+  test('DISPOSITIONS is frozen — a caller cannot widen the set at runtime', () => {
+    expect(Object.isFrozen(DISPOSITIONS)).toBe(true);
+  });
+
+  test('every real detail in the codebase satisfies the code-owned rule', () => {
+    // Non-ASCII is legitimate here — real notes carry em-dash and arrow. What
+    // separates a code-owned note from interpolated node text is length and the
+    // absence of a zero-glyph payload.
+    for (const d of [
+      'vector unavailable — rasterized',
+      'group → groupIds tag',
+      'page has no frames — rendered whole',
+      'loose content wrapped in one artboard',
+    ])
+      expect(isCodeOwnedDetail(d)).toBe(true);
+  });
+
+  test('detail rejects an interpolated upstream string', () => {
+    const r = new ImportReport();
+    // A Figma layer name is exactly what must never ride out in `detail`.
+    const layerName = 'V4 — Airy / light — Property 1=Cisty-a-zeleny-kraj 1 — Úprava 3d modelu';
+    expect(() => r.add('1:2', 'FRAME', 'imported', layerName)).toThrow(/code-owned/);
+  });
+
+  test('detail rejects a zero-glyph payload even when short', () => {
+    const r = new ImportReport();
+    expect(() => r.add('1:2', 'FRAME', 'imported', `ok\u{E0041}`)).toThrow(/code-owned/);
+  });
+
+  test('the zero-glyph predicate is not stateful across calls', () => {
+    // ZERO_GLYPH_RE carries `g`, so `.test()` on THAT instance alternates
+    // true/false via lastIndex. The one-shot predicate must not share it.
+    const dirty = 'a​b';
+    expect(isCodeOwnedDetail(dirty)).toBe(false);
+    expect(isCodeOwnedDetail(dirty)).toBe(false);
+    expect(isCodeOwnedDetail(dirty)).toBe(false);
   });
 });
