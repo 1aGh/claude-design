@@ -12,6 +12,8 @@
 //   HUB_INSECURE_HTTP       if '1', allow plaintext HTTP to a public host (testing)
 //   HUB_PUBLIC_URL          base URL printed in admin / bootstrap logs
 //   HUB_ADMIN_RATE_LIMIT    'off' disables the per-IP rate limiter (dev only)
+//   HUB_CONN_RATE_LIMIT     valid-token WS auths per label per minute (default 600)
+//   HUB_ASSET_WRITE_RATE_LIMIT  authenticated asset writes per label per minute (default 600)
 //
 // Auth: the SQLite token store (tokens.db, HMAC-SHA256 at rest — Task 6) is
 // checked first; HUB_SECRET is a fallback for headless / scripted setups. With
@@ -136,6 +138,15 @@ const RATE_LIMIT_MAX = 5;
 //     control the old bucket was meant to be.
 export const CONN_RATE_LIMIT_MAX = 600;
 export const INVALID_CONN_RATE_LIMIT_MAX = 100;
+// The same split, one lane over: AUTHENTICATED asset writes (DDR-217 desktop
+// push). The 2026-08-10 security review correctly demanded metering the valid
+// PUT, but wired it to the 5/min per-IP admin bucket — so a first link of a
+// real project (alligators: 182 assets, HEAD-first) 429'd after ~5 files and
+// the persisted window meant rebooting did not help (RCA 2026-08-11). Per
+// LABEL, generous: a peer must be able to finish its own sweep in one boot.
+// Byte volume is bounded elsewhere (MAX_PUT_BYTES + PUT_SESSION_BUDGET in
+// assets.mjs) — this bucket bounds REQUEST RATE, nothing else.
+export const ASSET_WRITE_RATE_LIMIT_MAX = 600;
 // Activity feed (admin console): bounded in-memory ring buffer. Ephemeral —
 // lost on restart, NOT a persisted audit trail (DDR-097). Caps memory.
 export const ACTIVITY_CAP = 200;
@@ -151,6 +162,7 @@ export const ACTIVITY_CAP = 200;
  * @property {boolean} [rateLimit]  default true; set false in tests/dev
  * @property {number} [connRateLimit]  valid-token auths per label per minute (default CONN_RATE_LIMIT_MAX; env HUB_CONN_RATE_LIMIT)
  * @property {number} [invalidConnRateLimit]  invalid-token attempts per IP per minute (default INVALID_CONN_RATE_LIMIT_MAX; tests only)
+ * @property {number} [assetWriteRateLimit]  authenticated asset writes per label per minute (default ASSET_WRITE_RATE_LIMIT_MAX; env HUB_ASSET_WRITE_RATE_LIMIT)
  */
 
 /**
@@ -219,6 +231,8 @@ export function createHub(config = {}) {
   // DDR-102 — valid-token auth ceiling (per label per minute).
   const connRateLimitMax = config.connRateLimit ?? CONN_RATE_LIMIT_MAX;
   const invalidConnRateLimitMax = config.invalidConnRateLimit ?? INVALID_CONN_RATE_LIMIT_MAX;
+  // RCA 2026-08-11 — authenticated asset-write ceiling (per label per minute).
+  const assetWriteRateLimitMax = config.assetWriteRateLimit ?? ASSET_WRITE_RATE_LIMIT_MAX;
   const startedAt = Date.now();
 
   // DDR-053 §5: refuse to boot if publicUrl can be weaponized into shell
@@ -310,6 +324,9 @@ export function createHub(config = {}) {
 
   /** Per-token rate limit buckets (valid WS auth): label → { count, windowStart } */
   const connBuckets = new Map();
+
+  /** Per-token rate limit buckets (authenticated asset writes): label → { count, windowStart } */
+  const assetWriteBuckets = new Map();
 
   /** Activity feed ring buffer (newest last). Bounded to ACTIVITY_CAP. */
   const activity = [];
@@ -672,6 +689,11 @@ export function createHub(config = {}) {
           checkRateLimit: rateLimit
             ? (req) => checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
             : undefined,
+          // The authenticated write lane gets its OWN, generous per-label
+          // bucket — see ASSET_WRITE_RATE_LIMIT_MAX.
+          checkWriteRateLimit: rateLimit
+            ? (label) => checkConnRateLimit(assetWriteBuckets, label, assetWriteRateLimitMax)
+            : undefined,
         });
         if (handled) bailFromOnRequest();
       }
@@ -696,6 +718,9 @@ export function createHub(config = {}) {
               : null,
           checkRateLimit: rateLimit
             ? (req) => checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
+            : undefined,
+          checkWriteRateLimit: rateLimit
+            ? (label) => checkConnRateLimit(assetWriteBuckets, label, assetWriteRateLimitMax)
             : undefined,
         });
         if (handled) bailFromOnRequest();
@@ -2141,10 +2166,24 @@ async function runAsMain() {
   // DDR-102 — valid-token auth ceiling override (per label per minute).
   const connRateLimitEnv = Number.parseInt(process.env.HUB_CONN_RATE_LIMIT ?? '', 10);
   const connRateLimit = Number.isFinite(connRateLimitEnv) ? connRateLimitEnv : undefined;
+  // RCA 2026-08-11 — authenticated asset-write ceiling override (per label).
+  const assetWriteRateLimitEnv = Number.parseInt(process.env.HUB_ASSET_WRITE_RATE_LIMIT ?? '', 10);
+  const assetWriteRateLimit = Number.isFinite(assetWriteRateLimitEnv)
+    ? assetWriteRateLimitEnv
+    : undefined;
 
   let built;
   try {
-    built = createHub({ port, dataDir, secret, publicUrl, rateLimit, insecureHttp, connRateLimit });
+    built = createHub({
+      port,
+      dataDir,
+      secret,
+      publicUrl,
+      rateLimit,
+      insecureHttp,
+      connRateLimit,
+      assetWriteRateLimit,
+    });
   } catch (err) {
     console.error('[hub] config error:', err.message);
     process.exit(1);

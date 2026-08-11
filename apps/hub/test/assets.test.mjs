@@ -27,6 +27,7 @@ import {
   parseAssetPath,
   parseCheckoutAssetPath,
 } from '../src/assets.mjs';
+import { checkConnRateLimit } from '../src/server.mjs';
 import { addToken } from '../src/tokens.mjs';
 
 let dataDir;
@@ -78,6 +79,8 @@ async function call({
   onWritten,
   maxPutBytes,
   putBudget,
+  checkRateLimit,
+  checkWriteRateLimit,
 }) {
   const captured = { status: 0, headers: {}, body: null };
   const response = {
@@ -109,6 +112,8 @@ async function call({
     onWritten,
     maxPutBytes,
     putBudget,
+    checkRateLimit,
+    checkWriteRateLimit,
   });
   return { handled, ...captured };
 }
@@ -403,6 +408,7 @@ async function callCheckout({
   designRoot = null,
   body = null,
   checkRateLimit,
+  checkWriteRateLimit,
 }) {
   const captured = { status: 0, headers: {}, body: null };
   const response = {
@@ -431,6 +437,7 @@ async function callCheckout({
     secret: '',
     designRoot,
     checkRateLimit,
+    checkWriteRateLimit,
   });
   return { handled, ...captured };
 }
@@ -570,9 +577,155 @@ test('HEAD is rate-limited too — no unmetered existence oracle (F4)', async ()
       method: 'HEAD',
       token: minted.value,
       designRoot,
-      checkRateLimit: () => false, // over the limit
+      checkWriteRateLimit: () => false, // over the limit
     });
     assert.equal(res.status, 429, 'HEAD is metered, not a free oracle');
+    assert.equal(res.headers['Retry-After'], '60', 'a 429 must say when to come back');
+  } finally {
+    rmSync(designRoot, { recursive: true, force: true });
+  }
+});
+
+/* ------------------- RCA 2026-08-11 — the write lane has its OWN bucket */
+
+test('a real 182-asset sweep is not throttled by the per-IP admin bucket', async () => {
+  // The regression in one line: the authenticated write lane consumed the tight
+  // per-IP admin bucket (5/min), so a first link of a real project 429'd after
+  // ~5 files. `checkRateLimit` here is PINNED SHUT — the write path must not
+  // read it at all; only the generous per-label write bucket applies.
+  const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-put-'));
+  const writeBuckets = new Map();
+  try {
+    for (let i = 0; i < 25; i++) {
+      const bucket = await call({
+        pathname: `/assets/sweep-${i}.png`,
+        method: 'PUT',
+        token: minted.value,
+        designRoot,
+        body: Buffer.from('x'),
+        checkRateLimit: () => false,
+        checkWriteRateLimit: (label) => checkConnRateLimit(writeBuckets, label, 600),
+      });
+      assert.equal(bucket.status, 200, `bucket-route write #${i + 1} must pass`);
+      const checkout = await callCheckout({
+        pathname: `/_asset-file/system/ds/assets/logos/mark-${i}.svg`,
+        method: 'PUT',
+        token: minted.value,
+        designRoot,
+        body: Buffer.from('<svg/>'),
+        checkRateLimit: () => false,
+        checkWriteRateLimit: (label) => checkConnRateLimit(writeBuckets, label, 600),
+      });
+      assert.equal(checkout.status, 200, `checkout-route write #${i + 1} must pass`);
+    }
+    // …and every one of them is metered — the bucket is generous, not absent.
+    assert.equal(writeBuckets.get('peer-a').count, 50);
+  } finally {
+    rmSync(designRoot, { recursive: true, force: true });
+  }
+});
+
+test('the write bucket still has a ceiling — the (max+1)th write is 429', async () => {
+  const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-put-'));
+  const writeBuckets = new Map();
+  const checkWriteRateLimit = (label) => checkConnRateLimit(writeBuckets, label, 3);
+  try {
+    for (let i = 0; i < 3; i++) {
+      const ok = await call({
+        pathname: `/assets/burst-${i}.png`,
+        method: 'PUT',
+        token: minted.value,
+        designRoot,
+        body: Buffer.from('x'),
+        checkWriteRateLimit,
+      });
+      assert.equal(ok.status, 200);
+    }
+    const over = await call({
+      pathname: '/assets/burst-3.png',
+      method: 'PUT',
+      token: minted.value,
+      designRoot,
+      body: Buffer.from('x'),
+      checkWriteRateLimit,
+    });
+    assert.equal(over.status, 429, 'the ceiling is real');
+    assert.equal(over.headers['Retry-After'], '60');
+    assert.equal(
+      existsSync(join(designRoot, 'assets/burst-3.png')),
+      false,
+      'a refused write touches no disk'
+    );
+  } finally {
+    rmSync(designRoot, { recursive: true, force: true });
+  }
+});
+
+test('the write bucket is PER LABEL — one peer cannot starve another', async () => {
+  const a = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  const b = addToken(dataDir, { label: 'peer-b', scope: '*' });
+  const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-put-'));
+  const writeBuckets = new Map();
+  const checkWriteRateLimit = (label) => checkConnRateLimit(writeBuckets, label, 1);
+  try {
+    const first = await call({
+      pathname: '/assets/a.png',
+      method: 'PUT',
+      token: a.value,
+      designRoot,
+      body: Buffer.from('x'),
+      checkWriteRateLimit,
+    });
+    assert.equal(first.status, 200);
+    const aAgain = await call({
+      pathname: '/assets/a2.png',
+      method: 'PUT',
+      token: a.value,
+      designRoot,
+      body: Buffer.from('x'),
+      checkWriteRateLimit,
+    });
+    assert.equal(aAgain.status, 429, 'peer-a spent its own budget');
+    const other = await call({
+      pathname: '/assets/b.png',
+      method: 'PUT',
+      token: b.value,
+      designRoot,
+      body: Buffer.from('x'),
+      checkWriteRateLimit,
+    });
+    assert.equal(other.status, 200, "peer-b's budget is its own");
+  } finally {
+    rmSync(designRoot, { recursive: true, force: true });
+  }
+});
+
+test('the UNAUTHENTICATED path keeps the tight per-IP bucket (and says Retry-After)', async () => {
+  // The brute-force control the write lane was wrongly sharing. It stays.
+  const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-put-'));
+  try {
+    const bucket = await call({
+      pathname: '/assets/x.png',
+      method: 'PUT',
+      designRoot,
+      body: Buffer.from('x'),
+      checkRateLimit: () => false,
+      checkWriteRateLimit: () => true,
+    });
+    assert.equal(bucket.status, 429, 'an unauthenticated storm is still throttled');
+    assert.equal(bucket.headers['Retry-After'], '60');
+    const checkout = await callCheckout({
+      pathname: '/_asset-file/system/ds/assets/logos/x.svg',
+      method: 'PUT',
+      designRoot,
+      body: Buffer.from('x'),
+      checkRateLimit: () => false,
+      checkWriteRateLimit: () => true,
+    });
+    assert.equal(checkout.status, 429);
+    assert.equal(existsSync(join(designRoot, 'assets/x.png')), false);
   } finally {
     rmSync(designRoot, { recursive: true, force: true });
   }

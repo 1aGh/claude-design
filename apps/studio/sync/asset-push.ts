@@ -97,6 +97,27 @@ export interface AssetPushProgress {
  *  the payload reaches `_sync.json` + every open tab, so it stays bounded). */
 export const MAX_LISTED_FAILURES = 20;
 
+/** Longest single pause the hub can ask for. Matches the hub's rate-limit
+ *  window (60 s) — a `Retry-After` larger than that is either a typo or a hub
+ *  we should not be blocking a boot sweep on. */
+const MAX_RETRY_DELAY_MS = 60_000;
+
+/** Where an absent/unparsable `Retry-After` lands. Old hubs (pre-fix) send a
+ *  bare 429 with no header, and their window is the same 60 s. */
+const DEFAULT_RETRY_DELAY_MS = 60_000;
+
+/** Total time ONE sweep may spend waiting out 429s. The paced retry exists to
+ *  keep an un-upgraded hub livable, not to turn a boot into an hour-long
+ *  background stall — past this, the remaining refusals fail fast and the
+ *  next-boot backstop takes them. */
+const MAX_SWEEP_BACKOFF_MS = 5 * 60_000;
+
+/** How much of an error body reaches `failed[].reason`. Enough to tell "rate
+ *  limit exceeded" from a Cloudflare error page — the distinction the 2026-08-11
+ *  RCA had to reconstruct from edge logs because the client kept only a status
+ *  code. Hub-supplied text ⇒ bounded and stripped before it reaches the UI. */
+const ERROR_SNIPPET_CHARS = 80;
+
 /** Min ms between mid-flight progress emits. A 90-file DS at LAN speed would
  *  otherwise broadcast 90 payloads in a couple of seconds; failures and the
  *  final emit always go out regardless. */
@@ -160,6 +181,86 @@ function routeFor(rel: string): { url: string } {
   return { url: `/_asset-file/${rel.split('/').map(encodeURIComponent).join('/')}` };
 }
 
+/** `Retry-After: <seconds>` → ms, clamped. Only the delta-seconds form is
+ *  parsed; the HTTP-date form is not something our hub emits. */
+function retryAfterMs(header: string | null): number {
+  const secs = Number(String(header ?? '').trim());
+  if (!Number.isFinite(secs) || secs <= 0) return DEFAULT_RETRY_DELAY_MS;
+  return Math.min(secs * 1000, MAX_RETRY_DELAY_MS);
+}
+
+/**
+ * Why an upload was refused, in words — status PLUS a bounded snippet of the
+ * body. The hub says `{"error":"rate limit exceeded"}`; an edge that never
+ * reached the hub says HTML. Those are different bugs and the Sync panel should
+ * not make a person read logs to tell them apart.
+ *
+ * The body is hub-supplied ⇒ untrusted (DDR-054): control characters stripped,
+ * whitespace collapsed, hard length cap, and it only ever renders as text.
+ */
+async function failureReason(res: Response): Promise<string> {
+  let snippet = '';
+  try {
+    snippet = (await res.text())
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping them is the point.
+      .replace(/[\u0000-\u001f\u007f]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, ERROR_SNIPPET_CHARS);
+  } catch {
+    /* a body we cannot read tells us nothing — the status still does */
+  }
+  return snippet ? `HTTP ${res.status} — ${snippet}` : `HTTP ${res.status}`;
+}
+
+/**
+ * One upload, with the two retries that are worth having in-boot.
+ *
+ * 429 — the hub tells us when to come back (`Retry-After`), so come back then,
+ * ONCE. Before the 2026-08-11 fix the write lane sat in a 5/min per-IP bucket
+ * and the sweep ignored the header entirely, so a 182-asset project burned the
+ * window and moved ~5 files per boot. The hub half of the fix is the real
+ * one — this half is what keeps a not-yet-upgraded hub (the fleet rolls only on
+ * a release tag) finishing a sweep instead of grinding.
+ *
+ * 5xx — one immediate retry, because a transient edge/proxy hiccup on a 30 MB
+ * body should not need a whole new boot to get past.
+ *
+ * A second refusal is a real failure: report it and move on (the next-boot
+ * backstop is unchanged).
+ */
+async function putWithRetry(ctx: {
+  fetchImpl: typeof fetch;
+  url: string;
+  headers: Record<string, string>;
+  file: string;
+  sleep: (ms: number) => Promise<void>;
+  /** Mutable per-sweep pause budget, shared across every asset. */
+  backoff: { remainingMs: number };
+}): Promise<Response> {
+  const send = (): Promise<Response> => {
+    const body = Bun.file(ctx.file);
+    return ctx.fetchImpl(ctx.url, {
+      method: 'PUT',
+      // An explicit length keeps the request out of chunked encoding — which
+      // is the live hypothesis for the one 29.7 MB `.mov` that got a 503 from
+      // the edge with no hub invocation logged at all (RCA §Secondary).
+      headers: { ...ctx.headers, 'content-length': String(body.size) },
+      body,
+    });
+  };
+  const first = await send();
+  if (first.status === 429) {
+    const wait = retryAfterMs(first.headers?.get?.('retry-after') ?? null);
+    if (wait > ctx.backoff.remainingMs) return first;
+    ctx.backoff.remainingMs -= wait;
+    await ctx.sleep(wait);
+    return send();
+  }
+  if (first.status >= 500) return send();
+  return first;
+}
+
 /**
  * Mirror local assets up to the hub. Idempotent and skip-first (one HEAD per
  * asset per boot; upload only on a miss), sequential on purpose — assets run
@@ -179,11 +280,21 @@ export async function pushAssets(opts: {
   onProgress?: (progress: AssetPushProgress) => void;
   /** Injectable clock for the throttle (tests). */
   now?: () => number;
+  /** Injectable pause for the 429 backoff (tests — a fake clock, not a wait). */
+  sleep?: (ms: number) => Promise<void>;
 }): Promise<AssetPushResult> {
   const { designRoot, hubUrl } = opts;
   const fetchImpl = opts.fetchImpl ?? fetch;
   const log = opts.log ?? console;
   const now = opts.now ?? Date.now;
+  const sleep =
+    opts.sleep ??
+    ((ms: number) =>
+      new Promise<void>((res) => {
+        setTimeout(res, ms);
+      }));
+  // Shared across the whole sweep — see MAX_SWEEP_BACKOFF_MS.
+  const backoff = { remainingMs: MAX_SWEEP_BACKOFF_MS };
   const base = hubUrl.replace(/\/+$/, '');
   const out: AssetPushResult = { pushed: [], skipped: 0, failed: [] };
 
@@ -221,14 +332,17 @@ export async function pushAssets(opts: {
         out.skipped += 1;
         continue;
       }
-      const put = await fetchImpl(url, {
-        method: 'PUT',
+      const put = await putWithRetry({
+        fetchImpl,
+        url,
         headers,
-        body: Bun.file(path.join(designRoot, rel)),
+        file: path.join(designRoot, rel),
+        sleep,
+        backoff,
       });
       if (put.ok) out.pushed.push(rel);
       else {
-        out.failed.push({ key: rel, reason: `HTTP ${put.status}` });
+        out.failed.push({ key: rel, reason: await failureReason(put) });
         emitProgress(rel, false, true);
       }
     } catch (err) {

@@ -154,6 +154,217 @@ describe('pushAssets — routes each class to the right hub endpoint', () => {
   });
 });
 
+describe('pushAssets — 429 pacing, 5xx retry, honest failure reasons (RCA 2026-08-11)', () => {
+  /** One asset, and a fetch that answers HEAD 404 (nothing on the cloud yet). */
+  function oneAsset(): string {
+    const designRoot = scratchDesignRoot();
+    mkdirSync(join(designRoot, 'assets'), { recursive: true });
+    writeFileSync(join(designRoot, 'assets/one.png'), 'bytes');
+    return designRoot;
+  }
+
+  test('a 429 with Retry-After is waited out once, then the asset lands', async () => {
+    const designRoot = oneAsset();
+    const slept: number[] = [];
+    let puts = 0;
+    const fetchImpl = (async (_i: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'HEAD') return new Response(null, { status: 404 });
+      puts += 1;
+      return puts === 1
+        ? new Response('{"error":"rate limit exceeded"}', {
+            status: 429,
+            headers: { 'retry-after': '30' },
+          })
+        : new Response('{"ok":true}', { status: 200 });
+    }) as typeof fetch;
+
+    const r = await pushAssets({
+      designRoot,
+      hubUrl: 'https://x.example',
+      token: () => 't',
+      fetchImpl,
+      log: { log: () => {}, warn: () => {} },
+      sleep: async (ms) => {
+        slept.push(ms);
+      },
+    });
+    expect(r.pushed).toEqual(['assets/one.png']);
+    expect(r.failed).toEqual([]);
+    expect(slept).toEqual([30_000]); // the hub's own number, not a guess
+    expect(puts).toBe(2);
+  });
+
+  test('an absent Retry-After falls back to the 60 s window; a huge one is clamped', async () => {
+    for (const [header, expected] of [
+      [null, 60_000],
+      ['9999', 60_000],
+      ['bogus', 60_000],
+    ] as const) {
+      const designRoot = oneAsset();
+      const slept: number[] = [];
+      let puts = 0;
+      const fetchImpl = (async (_i: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === 'HEAD') return new Response(null, { status: 404 });
+        puts += 1;
+        return puts === 1
+          ? new Response(null, { status: 429, headers: header ? { 'retry-after': header } : {} })
+          : new Response(null, { status: 200 });
+      }) as typeof fetch;
+      const r = await pushAssets({
+        designRoot,
+        hubUrl: 'https://x.example',
+        token: () => 't',
+        fetchImpl,
+        log: { log: () => {}, warn: () => {} },
+        sleep: async (ms) => {
+          slept.push(ms);
+        },
+      });
+      expect(slept).toEqual([expected]);
+      expect(r.pushed).toEqual(['assets/one.png']);
+    }
+  });
+
+  test('a second 429 fails the asset and the sweep keeps going', async () => {
+    const designRoot = scratchDesignRoot();
+    mkdirSync(join(designRoot, 'assets'), { recursive: true });
+    writeFileSync(join(designRoot, 'assets/a-limited.png'), 'x');
+    writeFileSync(join(designRoot, 'assets/b-fine.png'), 'x');
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'HEAD') return new Response(null, { status: 404 });
+      return String(input).includes('a-limited')
+        ? new Response('{"error":"rate limit exceeded"}', {
+            status: 429,
+            headers: { 'retry-after': '1' },
+          })
+        : new Response(null, { status: 200 });
+    }) as typeof fetch;
+    const r = await pushAssets({
+      designRoot,
+      hubUrl: 'https://x.example',
+      token: () => 't',
+      fetchImpl,
+      log: { log: () => {}, warn: () => {} },
+      sleep: async () => {},
+    });
+    expect(r.pushed).toEqual(['assets/b-fine.png']);
+    expect(r.failed).toEqual([
+      { key: 'assets/a-limited.png', reason: 'HTTP 429 — {"error":"rate limit exceeded"}' },
+    ]);
+  });
+
+  test('a 5xx gets one immediate retry — no wait, no whole new boot', async () => {
+    const designRoot = oneAsset();
+    const slept: number[] = [];
+    let puts = 0;
+    const fetchImpl = (async (_i: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'HEAD') return new Response(null, { status: 404 });
+      puts += 1;
+      return new Response(null, { status: puts === 1 ? 503 : 200 });
+    }) as typeof fetch;
+    const r = await pushAssets({
+      designRoot,
+      hubUrl: 'https://x.example',
+      token: () => 't',
+      fetchImpl,
+      log: { log: () => {}, warn: () => {} },
+      sleep: async (ms) => {
+        slept.push(ms);
+      },
+    });
+    expect(r.pushed).toEqual(['assets/one.png']);
+    expect(puts).toBe(2);
+    expect(slept).toEqual([]);
+  });
+
+  test('a 4xx that is not 429 is final — one attempt, reported as-is', async () => {
+    const designRoot = oneAsset();
+    let puts = 0;
+    const fetchImpl = (async (_i: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'HEAD') return new Response(null, { status: 404 });
+      puts += 1;
+      return new Response(null, { status: 413 });
+    }) as typeof fetch;
+    const r = await pushAssets({
+      designRoot,
+      hubUrl: 'https://x.example',
+      token: () => 't',
+      fetchImpl,
+      log: { log: () => {}, warn: () => {} },
+      sleep: async () => {},
+    });
+    expect(puts).toBe(1);
+    expect(r.failed).toEqual([{ key: 'assets/one.png', reason: 'HTTP 413' }]);
+  });
+
+  test('the failure reason carries the body — a Cloudflare page is not our 429', async () => {
+    const designRoot = oneAsset();
+    const page = `<html>\n  <head><title>503 Service Unavailable</title></head>\n  <body>error 1016 — origin DNS error, and a great deal more text than we keep</body>\n</html>`;
+    const fetchImpl = (async (_i: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'HEAD') return new Response(null, { status: 404 });
+      return new Response(page, { status: 503 });
+    }) as typeof fetch;
+    const r = await pushAssets({
+      designRoot,
+      hubUrl: 'https://x.example',
+      token: () => 't',
+      fetchImpl,
+      log: { log: () => {}, warn: () => {} },
+      sleep: async () => {},
+    });
+    const reason = r.failed[0].reason;
+    expect(reason.startsWith('HTTP 503 — <html> <head><title>503 Service Unavailable')).toBe(true);
+    expect(reason.includes('\n')).toBe(false); // collapsed, never multi-line in the panel
+    expect(reason.length).toBeLessThanOrEqual('HTTP 503 — '.length + 80);
+  });
+
+  test('every PUT carries an explicit Content-Length (the .mov chunked-503 probe)', async () => {
+    const designRoot = scratchDesignRoot();
+    mkdirSync(join(designRoot, 'assets'), { recursive: true });
+    writeFileSync(join(designRoot, 'assets/sized.png'), 'twelve bytes');
+    const lengths: string[] = [];
+    const fetchImpl = (async (_i: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'HEAD') return new Response(null, { status: 404 });
+      const sent = (init?.headers ?? {}) as Record<string, string>;
+      lengths.push(String(sent['content-length']));
+      return new Response(null, { status: 200 });
+    }) as typeof fetch;
+    await pushAssets({
+      designRoot,
+      hubUrl: 'https://x.example',
+      token: () => 't',
+      fetchImpl,
+      log: { log: () => {}, warn: () => {} },
+    });
+    expect(lengths).toEqual([String('twelve bytes'.length)]);
+  });
+
+  test('the per-sweep backoff budget is finite — a 429 wall stops costing time', async () => {
+    // 10 assets, every one 429 with a 60 s Retry-After: the 5-minute sweep
+    // budget buys 5 paced retries, the rest fail fast for the next boot.
+    const designRoot = scratchDesignRoot();
+    mkdirSync(join(designRoot, 'assets'), { recursive: true });
+    for (let i = 0; i < 10; i++) writeFileSync(join(designRoot, `assets/a${i}.png`), 'x');
+    const slept: number[] = [];
+    const fetchImpl = (async (_i: RequestInfo | URL, init?: RequestInit) =>
+      init?.method === 'HEAD'
+        ? new Response(null, { status: 404 })
+        : new Response(null, { status: 429, headers: { 'retry-after': '60' } })) as typeof fetch;
+    const r = await pushAssets({
+      designRoot,
+      hubUrl: 'https://x.example',
+      token: () => 't',
+      fetchImpl,
+      log: { log: () => {}, warn: () => {} },
+      sleep: async (ms) => {
+        slept.push(ms);
+      },
+    });
+    expect(r.failed).toHaveLength(10);
+    expect(slept).toEqual([60_000, 60_000, 60_000, 60_000, 60_000]);
+  });
+});
+
 describe('pushAssets — incremental progress (feature-sync-progress-modal)', () => {
   test('emits a first, per-failure and final progress; the final has finished:true', async () => {
     const designRoot = scratchDesignRoot();

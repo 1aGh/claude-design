@@ -112,7 +112,8 @@ export function parseAssetPath(pathname) {
  * @param {string} ctx.dataDir
  * @param {string} ctx.secret
  * @param {import('./s3.mjs').S3Config|null} ctx.s3
- * @param {(request: any) => boolean} [ctx.checkRateLimit]
+ * @param {(request: any) => boolean} [ctx.checkRateLimit]  UNAUTHENTICATED paths only (tight per-IP)
+ * @param {(label: string) => boolean} [ctx.checkWriteRateLimit]  authenticated write lane (generous per-label)
  */
 export async function handleAssetRoute(ctx) {
   const { request, response, pathname, method, dataDir, secret, s3 } = ctx;
@@ -130,9 +131,10 @@ export async function handleAssetRoute(ctx) {
 
   const auth = request.headers?.authorization;
   const token = typeof auth === 'string' ? auth.replace(/^Bearer\s+/i, '').trim() : '';
-  if (!token || !verifyToken(dataDir, token, secret)) {
+  const match = token ? verifyToken(dataDir, token, secret) : null;
+  if (!match) {
     if (ctx.checkRateLimit && !ctx.checkRateLimit(request)) {
-      respond(response, 429, 'rate limit exceeded');
+      respondRateLimited(response);
       return true;
     }
     respond(response, 401, 'unauthorized');
@@ -153,12 +155,20 @@ export async function handleAssetRoute(ctx) {
       respond(response, 405, 'this hub does not accept asset writes');
       return true;
     }
-    // Rate-limit the AUTHENTICATED write too (security review 2026-08-10, F2).
-    // The GET/HEAD proxy only rate-limits its 401 path — but a write is the
-    // expensive, disk-touching verb, so a valid token must not stream at line
-    // rate unthrottled. Same bucket as the auth-failure path.
-    if (ctx.checkRateLimit && !ctx.checkRateLimit(request)) {
-      respond(response, 429, 'rate limit exceeded');
+    // Rate-limit the AUTHENTICATED write too (security review 2026-08-10, F2):
+    // a write is the expensive, disk-touching verb, so a valid token must not
+    // stream at line rate unthrottled.
+    //
+    // But in its OWN bucket, not the 401 path's (RCA 2026-08-11). Reusing the
+    // tight per-IP admin bucket (5/min, DDR-053 §6) made a legitimate 182-asset
+    // push 429 after its first ~5 writes — the DDR-102 mistake, reintroduced on
+    // the asset lane. The split is the same one DDR-102 settled: valid
+    // credentials get a generous per-LABEL ceiling (a peer cannot starve its own
+    // sync), brute force stays a per-IP control on the INVALID path above.
+    // Bytes were never this bucket's job — MAX_PUT_BYTES + PUT_SESSION_BUDGET
+    // are the disk-fill defence.
+    if (ctx.checkWriteRateLimit && !ctx.checkWriteRateLimit(match.label)) {
+      respondRateLimited(response);
       return true;
     }
     return handleAssetPut({
@@ -437,9 +447,10 @@ export async function handleCheckoutAssetRoute(ctx) {
   }
   const auth = request.headers?.authorization;
   const token = typeof auth === 'string' ? auth.replace(/^Bearer\s+/i, '').trim() : '';
-  if (!token || !verifyToken(dataDir, token, secret)) {
+  const match = token ? verifyToken(dataDir, token, secret) : null;
+  if (!match) {
     if (ctx.checkRateLimit && !ctx.checkRateLimit(request)) {
-      respond(response, 429, 'rate limit exceeded');
+      respondRateLimited(response);
       return true;
     }
     respond(response, 401, 'unauthorized');
@@ -503,8 +514,11 @@ export async function handleCheckoutAssetRoute(ctx) {
 
   // Rate-limit BEFORE the HEAD branch too (F4) — otherwise the weakest role
   // gets an unmetered filesystem existence oracle with realpath amplification.
-  if (ctx.checkRateLimit && !ctx.checkRateLimit(request)) {
-    respond(response, 429, 'rate limit exceeded');
+  // Same per-label write bucket as the bucket route's PUT (RCA 2026-08-11): the
+  // desktop sweep is HEAD-first, so metering HEAD in the 5/min per-IP bucket
+  // burned the whole budget on presence PROBES before a single byte moved.
+  if (ctx.checkWriteRateLimit && !ctx.checkWriteRateLimit(match.label)) {
+    respondRateLimited(response);
     return true;
   }
 
@@ -567,7 +581,7 @@ function cacheHeadersFor(key) {
     : { ...BASE_HEADERS, 'Cache-Control': 'no-cache' };
 }
 
-function respond(response, status, message) {
+function respond(response, status, message, extraHeaders = null) {
   const body = JSON.stringify({ error: message });
   response
     .writeHead(status, {
@@ -575,6 +589,18 @@ function respond(response, status, message) {
       'Cache-Control': 'no-store',
       'Content-Length': Buffer.byteLength(body),
       'X-Content-Type-Options': 'nosniff',
+      ...(extraHeaders ?? {}),
     })
     .end(body);
+}
+
+/**
+ * A 429 that TELLS the caller when to come back. The admin API has always sent
+ * `Retry-After` (`respondRateLimited`, server.mjs); the asset routes did not,
+ * so the desktop push had nothing to pace itself with even if it wanted to —
+ * it just burned the rest of the window into instant refusals (RCA 2026-08-11).
+ * 60 s == RATE_LIMIT_WINDOW_MS, the widest either bucket makes you wait.
+ */
+function respondRateLimited(response) {
+  respond(response, 429, 'rate limit exceeded', { 'Retry-After': '60' });
 }
