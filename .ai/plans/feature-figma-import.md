@@ -39,22 +39,37 @@ Build a **Figma ingestion spine** whose network/decoding layer is swappable and 
 
 ```
                  ┌─────────────────────────────────────┐
-  PAT + URL ───▶ │ figma-client.ts   (REST, Phase 1)   │──┐
+  PAT + URL ───▶ │ figma/client.ts   (REST, Phase 1)   │──┐
                  └─────────────────────────────────────┘  │   normalized
                  ┌─────────────────────────────────────┐  ├──▶ Figma node tree
-  .fig / .jam ─▶ │ fig-decode.ts     (binary, Phase 6) │──┘    (one shape)
+  .fig / .jam ─▶ │ figma/fig-decode.ts (binary, Ph. 6) │──┘    (one shape)
                  └─────────────────────────────────────┘                │
                                                                         ▼
         ┌───────────────────────┬───────────────────────┬───────────────────────┐
-        │ figjam-to-strokes.ts  │ figma-to-artboard.ts  │ figma-to-tokens.ts    │
+        │ to-strokes.ts         │ to-artboard.ts        │ to-tokens.ts          │
         │  → .annotations.svg   │  → .tsx + .meta.json  │  → W3C tokens JSON    │
         │    (Stroke model)     │    (DCArtboard)       │    → import-tokens    │
         └───────────────────────┴───────────────────────┴───────────────────────┘
+
+  ── Phase 7, added 2026-08-11 — a THIRD door that skips the node tree ──
+
+                 ┌─────────────────────────────────────┐
+  Dev Mode  ───▶ │ get_design_context (Figma MCP)      │──▶ React + Tailwind
+  codegen        └─────────────────────────────────────┘    + exported assets
+                                                                        │
+                                                                        ▼
+                                    ┌───────────────────────────────────────┐
+                                    │ figma/from-codegen.ts                 │
+                                    │  Tailwind → inline styles / DS tokens │
+                                    │  → .tsx + .meta.json (DCArtboard)     │
+                                    └───────────────────────────────────────┘
 ```
 
-Doing the **REST path first** is what makes the `.fig` path cheap later: by the time Phase 6 starts, a decoder only has to emit the same normalized node shape and it inherits all three translators for free. Building `.fig` first would mean building a translator against an undocumented, reverse-engineered format and then re-validating all of it against the documented one.
+Doing the **REST path first** is what makes the `.fig` path cheap later: by the time Phase 6 starts, a decoder only has to emit the same normalized node shape and it inherits all three translators for free.
 
-**Recommended scope for the first shipping increment: Phases 0–5 (REST API, all three translators, one-click UI).** Phase 6 (`.fig`/`.jam`) ships behind its own DDR because it introduces a reverse-engineered-format dependency with a real supply-chain and robustness cost — see § Open forks.
+**The third door does not share the node tree, and that is the point.** Phase 3's translator reads Figma's tree and reimplements its layout engine in CSS; Phase 7 asks Figma for the layout already resolved. The REST client stays — Phase 7 still needs it for page enumeration, comments, and the raster/annotation lanes — but for `--pages` the frame body comes from codegen.
+
+**Shipping increment as of 2026-08-11: Phase 7.** Phases 0–5 shipped and are measured below; Phase 3's own output is the thing being replaced.
 
 ---
 
@@ -134,24 +149,40 @@ The MCP response is **structurally lossy in exactly the ways the translators nee
 
 ## Governing principle — editability is the acceptance bar, fidelity is subordinate
 
-> **AMENDED 2026-08-10 for `--pages`, after the first real file — see [DDR-216 D12](../archive/decisions/DDR-216-figma-ingestion-architecture-and-trust-boundary.md).**
+> **SUPERSEDED for `--pages` — 2026-08-11. Two routes were tried against the
+> live file and both failed; the third is measured in § Phase 7 below.**
 >
-> This principle was set from measurement of *fixtures*. Run against a live
-> 6-page product file (115 frames) the editability-first path produced five
-> independent classes of visible defect — a canvas that would not parse, frames
-> stacked in DOM order, sections split from their contents, missing assets, and
-> white screens rendering black — because translating a Figma frame into CSS
-> means reimplementing Figma's layout engine, and the bug surface is unbounded.
+> This principle was set from measurement of *fixtures*. Against a live 6-page
+> product file (`2H6a9YUgPAu0AGdEiwP895`, 115 frames) it did not survive contact.
 >
-> **`--pages` is now render-first**: each artboard is Figma's own render,
-> referenced from `<img>`. `--editable` opts back into the translation below,
-> which is unchanged and still governs `--frames`. The user's ask — *"nestačí
-> prostě jen převést vše ... a importovat artboardy tak jak jsou?"* — is the
-> resolution: the acceptance bar for a **whole-file import** is faithfulness,
-> and editability is bought per-artboard on demand, not paid for up front
-> across every frame.
+> **Route 1 — translate the node tree to JSX (Phase 3, shipped).** Five
+> independent classes of visible defect: a canvas that would not parse
+> (`background-image`, a kebab-case key in a JSX style *object*), frames stacked
+> in DOM order (Figma frames are absolutely positioned; the emitter mapped them
+> to `flex-col`), sections split from their contents, missing assets, white
+> screens rendering black. Not five bugs — one: translating a Figma frame into
+> CSS means reimplementing auto-layout, constraints, clipping, blend modes,
+> vector networks and text auto-resize, and the bug surface grows with the
+> fidelity of the source.
 >
-> The rest of this section describes the `--editable` / `--frames` path.
+> **Route 2 — render each frame with `/v1/images` and reference it from `<img>`
+> (2026-08-10).** Faithful by construction, and dead on arrival for real
+> screens: Figma exports every raster fill as
+> `<path fill=url(#a)>` → `<pattern>` → `<use xlink:href>` → `<image
+> xlink:href="data:image/png…">`, and **Chromium does not paint that chain**.
+> Verified with the only control that settles it — Figma's own untouched export,
+> fetched from `/v1/images` and loaded directly, shows no image either. PNG
+> instead of SVG saves the photos and turns all text into pixels. A flat image
+> per artboard is also inert: the Inspector shows `img {width:100%;height:100%}`
+> and there is nothing to select, edit, or lift from the design system.
+>
+> **Route 3 — Dev Mode codegen → HTML → canvas.** Measured 2026-08-11, § Phase 7.
+> It does not have Route 2's failure class (an image is `<img src>` pointing at a
+> separately exported asset) and it does not have Route 1's (Figma resolves its
+> own layout). The editability bar below is *met*, not abandoned — but it is met
+> by taking Figma's resolved DOM rather than by deriving one.
+>
+> The rest of this section still governs `--frames` and `--editable`.
 
 **User decision, 2026-08-03:** *"chci určitě vždy editovatelný annotations i canvas artboards."* Both outputs — the whiteboard annotation layer AND the `DCArtboard` canvas — must land **editable**, always. This resolves the open question the measurement exposed (is an imported frame *a canvas you edit* or *a reference you build next to*?) in favour of the first, and it converts the three Phase-3 mitigations from recommendations into **acceptance criteria**.
 
@@ -501,6 +532,75 @@ Five findings that change the implementation:
 
 ---
 
+### Phase 7 — Dev Mode codegen → HTML → canvas (added 2026-08-11)
+
+**This phase exists because Phases 3 and its render-first successor both failed on the live file.** See § Governing principle for the two autopsies. Everything below was measured, not assumed — the numbers are from `2H6a9YUgPAu0AGdEiwP895` on 2026-08-11.
+
+#### What codegen actually returns — measured
+
+`get_design_context` on `417:10793` (Onboarding-Step-1) returns React + Tailwind:
+
+| Property | Measured |
+|---|---|
+| Semantics | a bullet list arrives as `<ul>/<li>`, not nine positioned divs |
+| Layout | flex that matches Figma auto-layout — the thing Route 1 tried to derive |
+| Tokens | CSS variables **with fallbacks** — `var(--black,#0f161e)`, `var(--black-10,rgba(15,22,30,0.1))` |
+| Provenance | `data-node-id` on every element |
+| Images | separate exported assets + plain `<img src>` — **not** the pattern chain that killed Route 2 |
+| Extras | per-frame type scale, `data-content-annotations` (designer notes), component descriptions |
+| Size | ~90 lines of flex per frame, against ~250 lines of absolute positioning from Route 1 |
+
+Verified end-to-end on the exact frame Route 2 lost: Cover `6:907`'s logo came back as a 1028×1331 PNG and rendered.
+
+#### Costs — measured, and each one is a task below
+
+1. **Asset URLs are not content-addressed on Figma's side.** The same battery icon returned four different UUIDs across four calls. A naive import pays network cost per *occurrence*; our content-addressed write dedupes only on disk, after download.
+2. **URLs expire.** Bytes must be fetched at import time. (Note the § Tasks correction table: the ~7-day figure the MCP prints disagrees with Figma's documented ~30 days. Download-first regardless; don't tune to either number.)
+3. **The output is React + Tailwind and must be converted.** That is a new translator to write and own — from Tailwind this time instead of from the Figma tree.
+4. **Fonts do not survive a copy.** Measured on this machine: Inter installed; **Nunito, SF Pro, Hanken Grotesk, General Sans absent** — and the DS declares `--font-body: 'Hanken Grotesk','Inter',…` while loading no webfont at all (no `@font-face`, no import). Copying the family name through lands on a serif fallback.
+
+#### Unknown, and gating
+
+- Behaviour across 272 nodes. Four parallel calls succeeded; that is a **weak signal** and is treated as one.
+- How the converter grows on frames harder than a sign-in screen.
+
+#### The open decision this phase forces
+
+**Route 3 contradicts [DDR-216 D1](../archive/decisions/DDR-216-figma-ingestion-architecture-and-trust-boundary.md)** — *"the ingestion path is deterministic code end to end; no LLM ever reads Figma-sourced content in this feature"*. That invariant is the premise the whole in-house translator was built on. Codegen puts a **remote, opaque generator** in the path. The content was untrusted either way; what changes is that the **structure** is no longer produced by auditable local code, and the output is not reproducible from our source alone.
+
+**T16 must settle this before T17 writes a line.** Do not smuggle it in as an implementation detail.
+
+---
+
+**T16: RECORD the codegen-route DDR** — supersedes DDR-216 D1 for `--pages`.
+- **Do**: a new DDR stating (a) which route each verb takes and why, with both autopsies; (b) the trust posture for service-generated structure — what is still verified locally (charset grammars, caps, asset gate, sanitize lane) and what is now taken on faith; (c) whether a codegen import is marked differently from a deterministic one in `.meta.json` and in the UI badge; (d) the fallback when codegen is unavailable (no edit seat, MCP absent, headless/cron run — the ACP/cron case is real: interactively-authenticated MCP servers may not exist there).
+- **Validate**: the DDR names the D1 conflict explicitly. A reader must not have to infer that an invariant was dropped.
+
+**T17: CREATE `figma/from-codegen.ts`** — Tailwind → Maude.
+- **Do**: parse the returned JSX, map Tailwind utilities to inline styles, hoist the common font family to the artboard root, wrap in `DCArtboard` at the frame's size, carry `data-node-id` through as `data-figma-node`. Reuse `sanitize.ts` for every string that lands in output — the codegen text is still third-party.
+- **Gotcha**: the mapping is mechanical (`px-[20px] py-[12px]` → `padding: 12px 20px`) but the arbitrary-value syntax (`inset-[37.5%_18.75%_26.56%_18.75%]`, `drop-shadow-[4px_4px_30px_rgba(0,0,0,0.15)]`) is where it will get long. Bound it: an unmapped utility is **reported**, never silently dropped.
+- **Validate**: unit tests per utility family; one full frame round-trips to a canvas that parses.
+
+**T18: RESOLVE fonts against what the project can render — and report substitutions.**
+- **Do**: map the Figma family onto a DS token when one matches, else onto the literal family with a system fallback. Detect availability rather than assuming it.
+- **Every substitution emits a `font-substituted` disposition** naming the requested and the used family.
+- **Why this is a task and not a detail**: a substituted font looks fine and **is not 1:1**. Silent visual drift is exactly the failure mode this import has already shipped three times (dropped loose content, stripped `href`, zero-height arrows) — each time reporting success. A fallback in a CSS declaration is not a report.
+- **Validate**: importing a frame using an absent family produces the entry; a frame using only available families produces none.
+
+**T19: DEDUPE asset fetches by node, not by URL.**
+- **Do**: one download per distinct source node per import, cached across frames — the same icon must not cross the network 272 times because it got 272 UUIDs.
+- **Validate**: a page whose frames share a status bar downloads its battery icon once.
+
+**T20: MEASURE the full-file run before enabling it.**
+- **Do**: instrument calls, wall-clock, and failures across one whole page, then the file. If sustained throughput does not support 272 nodes, ship codegen as **opt-in per page or per frame** rather than as the default for `--pages`.
+- **Validate**: the decision is made on the measurement, not on the four-call sample.
+
+**T21: RETIRE or SCOPE the superseded routes.**
+- **Do**: decide per verb — `--pages` on codegen; `--frames` keeps the tree translator; the render-first SVG path either goes or becomes an explicit `--flat` for reference-only imports. Delete what nothing reaches; the repo already carries two translators for one job.
+- **Validate**: `check-import-coherence.sh`; no unreferenced module left behind.
+
+---
+
 ## Validation
 
 1. **Lint**: `pnpm lint`
@@ -528,7 +628,9 @@ Five findings that change the implementation:
 
 ## Open forks (decide before Phase 6 starts — not blocking Phases 0–5)
 
-0. ~~Is an imported frame a canvas you edit, or a reference you build next to?~~ **Resolved 2026-08-03 — a canvas you edit, always.** See § Governing principle. Kept here so a later reader sees the fork existed and was decided, not overlooked.
+0. ~~Is an imported frame a canvas you edit, or a reference you build next to?~~ **Resolved 2026-08-03 — a canvas you edit, always.** See § Governing principle. Kept here so a later reader sees the fork existed and was decided, not overlooked. **Still the answer as of 2026-08-11, but the means changed:** editability is now obtained from Figma's resolved DOM (Phase 7), not derived from its node tree — after deriving it was tried, shipped, and measured broken.
+
+0b. **Does a remote code generator belong in the ingestion path?** ⚠️ **OPEN — this is T16 and it blocks Phase 7.** DDR-216 D1 forbids it in as many words. The alternatives on the table are all worse for fidelity and all measured (§ Governing principle). Deciding "no" means accepting that whole-file import stays flat-image or stays broken; deciding "yes" means an import is no longer reproducible from our source alone. Do not let this get settled by whoever writes T17 first.
 1. ~~Is `.fig` / `.jam` in scope, and do we vendor a decoder or write one?~~ **Resolved 2026-08-03 — in scope, and we write our own.** `fig-kiwi` on npm is `0.0.1`, ~4 years stale, and pins a stale schema; a `.fig` *carries its own schema*, so an in-house decoder reads whatever the file brings and cannot rot the same way. Kiwi itself is documented with a reference implementation. See Phase 6. **Now `.fig`/`.jam` samples ARE wanted** — small, purpose-built, ours (T15's fixture note). It is the only door that works with no Figma seat and no network, and the user asked for it by name. It is also a reverse-engineered format that Figma can silently break, plus a new dependency in a repo that reviews every dep individually. The plan's position: **build it, but last and behind its own DDR**, so the translators are already proven against the documented API before a fragile decoder is layered underneath. If the answer is "skip it", Phases 0–5 stand alone with nothing to unpick.
 2. **A published Figma plugin (push-from-Figma).** Out of scope here; genuinely the highest-fidelity door and the one that needs no token. Worth its own plan if the REST path's fidelity turns out to disappoint in dogfooding.
 3. **PAT vs OAuth.** This plan assumes a personal access token — one paste, no callback server, no app registration. OAuth would be nicer for a multi-user hub/cloud deployment and is the only sane option if this ever runs server-side for other people. Deferred deliberately; `keys.ts` custody is identical either way.
@@ -543,6 +645,10 @@ Five findings that change the implementation:
 - [ ] `design-system-keeper` + critic panel + `a11y-auditor`: 0 blockers on the new UI
 - [ ] **Editability gate (the governing principle):** every imported canvas clears `design-system-keeper` Pass A.10 with no untagged-absolute findings; the imported whiteboard's connectors are live and re-routable (not frozen); the Layers panel shows readable names, not `Group NNNN` × N; `/design:edit` can load and edit an imported canvas end-to-end
 - [ ] Per-import summary names every node that took an editability-over-fidelity degradation
+- [ ] **(Phase 7) Every font substitution is a reported `font-substituted` entry** naming requested and used family — a CSS fallback is not a report
+- [ ] **(Phase 7) An unmapped Tailwind utility is reported, never silently dropped**
+- [ ] **(Phase 7) One source node = one download per import**, regardless of how many frames reference it or how many URLs Figma minted for it
+- [ ] **(Phase 7) Verified by rendered comparison, not by count agreement.** Every prior round of this feature reported success while losing content; screenshot the frame in Figma and in Maude and compare the pictures
 - [ ] **(Phase 6) All four smoke tiers green — Tier 2 (differential `.fig` vs REST on the same document) is the gate.** No `.fig` import ships without a passing differential run; an unknown container version refuses loudly rather than decoding approximately
 - [ ] `desktop-e2e` scenarios green against the built `.app`
 - [ ] DDR recorded and ingested into kgai; What's-New entry appended via the `whats-new-entry` skill
