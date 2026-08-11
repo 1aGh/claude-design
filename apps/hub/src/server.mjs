@@ -52,7 +52,7 @@ import {
   writeAdminSecret,
 } from './admin-auth.mjs';
 import { createAssetSweeper } from './asset-lane.mjs';
-import { handleAssetRoute } from './assets.mjs';
+import { handleAssetRoute, handleCheckoutAssetRoute } from './assets.mjs';
 import {
   handleAuthRoutes,
   handleUserAdminRoutes,
@@ -669,6 +669,31 @@ export function createHub(config = {}) {
               console.error(`[assets] post-push mirror failed: ${err.message}`);
             });
           },
+          checkRateLimit: rateLimit
+            ? (req) => checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
+            : undefined,
+        });
+        if (handled) bailFromOnRequest();
+      }
+      // DDR-217 addendum (2026-08-11) — the CHECKOUT half of the desktop asset
+      // push. Brand/DS assets under `system/<ds>/assets/…` are referenced by
+      // their full designRoot path and served from the checkout by the studio
+      // child, NOT the bucket `/assets/` proxy — so they land on the checkout
+      // at their real relative path (which the bucket-keyed route can't
+      // address). Same peer-token + rate-limit + workspace gate; no bucket
+      // mirror. See handleCheckoutAssetRoute.
+      if (authPath.startsWith('/_asset-file/')) {
+        const handled = await handleCheckoutAssetRoute({
+          request,
+          response,
+          pathname: authPath,
+          method,
+          dataDir,
+          secret,
+          designRoot:
+            workspaceMode && repoDir
+              ? join(repoDir, process.env.MAUDE_DESIGN_ROOT ?? '.design')
+              : null,
           checkRateLimit: rateLimit
             ? (req) => checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
             : undefined,

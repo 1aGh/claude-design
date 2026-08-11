@@ -11035,13 +11035,30 @@ function App() {
 
   // ----- WebSocket -----
   useEffect(() => {
+    // KEEPALIVE. The inspector feed only pushes on events (a comment, a
+    // selection, sync:status), so an idle designer's socket exchanges nothing
+    // for minutes — and Bun.serve closes a WebSocket after `idleTimeout` (120s
+    // default) with no message in EITHER direction. The client then reconnected
+    // in a 1 s loop, so the status bar read `reconnecting` every couple of
+    // minutes on a perfectly healthy link ("porad reconnecting" while HUB SYNC
+    // said synced — the two are different sockets). A cheap app-level ping every
+    // 25 s keeps the socket active (Bun resets the idle timer on any frame,
+    // inbound OR outbound); the server ignores an unknown message type.
+    let pingTimer = null;
     function connect() {
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
       const ws = new WebSocket(proto + '//' + location.host + '/_ws');
       wsRef.current = ws;
-      ws.addEventListener('open', () => setWsConnected(true));
+      ws.addEventListener('open', () => {
+        setWsConnected(true);
+        clearInterval(pingTimer);
+        pingTimer = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) ws.send('{"type":"ping"}');
+        }, 25000);
+      });
       ws.addEventListener('close', () => {
         setWsConnected(false);
+        clearInterval(pingTimer);
         setTimeout(connect, 1000);
       });
       ws.addEventListener('error', () => {});
@@ -11161,7 +11178,10 @@ function App() {
       });
     }
     connect();
-    return () => wsRef.current && wsRef.current.close();
+    return () => {
+      clearInterval(pingTimer);
+      if (wsRef.current) wsRef.current.close();
+    };
     // loadTree + loadServerConfig are stable useCallback([])s; listed so the
     // canvas-list-update / config-updated handlers always call the live refs.
   }, [loadTree, loadServerConfig]);

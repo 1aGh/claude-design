@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "cloud-brand-assets-and-steady-link",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "Brand logos load in the cloud (and a steadier status bar)",
+      "summary": "Your design system's own logos, signs, fonts and photos now show up in the cloud copy instead of grey placeholders — the last piece of \"the cloud copy matches your desktop\". And the desktop status bar no longer flickers to \"reconnecting\" when you step away for a minute; an idle link stays live.",
+      "surface": "design-ui"
+    },
+    {
       "id": "cloud-sync-matches-your-desktop",
       "version": "0.58.3",
       "date": "2026-08-11",

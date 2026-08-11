@@ -1,32 +1,67 @@
-// Desktop→cell asset push — DDR-217 (fix 6 of the 2026-08-10 sync RCA).
+// Desktop→cell asset push — DDR-217 + the 2026-08-11 addendum (fix 6 of the
+// 2026-08-10 sync RCA, completed).
 //
 // The sync lanes are text-only (`html`/`css`/`meta`/`syncMeta`), so a
-// desktop-linked project's `<designRoot>/assets/*` never reached the cell: its
-// `/assets/` proxy and its studio child both served bytes they did not have —
-// the grey boxes. The desktop is the one peer that HAS the bytes and already
-// holds an authenticated channel to the hub, so it pushes them over the asset
-// route: `HEAD /assets/<key>` to skip what the cloud already holds, then a
-// streamed `PUT /assets/<key>` for the rest. The hub writes into its checkout
-// and mirrors to the bucket (the browser-upload precedent) — see
-// `apps/hub/src/assets.mjs`.
+// desktop-linked project's binary assets never reached the cell — the grey
+// boxes. The desktop is the one peer that HAS the bytes and already holds an
+// authenticated channel to the hub, so it pushes them. There are TWO asset
+// classes, served two different ways, so they push to two different routes:
 //
-// The key-shape rules here MIRROR the hub's `ASSET_KEY` (assets.mjs) — a file
-// this pushes but the hub refuses is a wasted upload, and one this skips but
-// the proxy would serve is a broken image. The HUB's validation stays the
-// authoritative gate (each trust boundary validates its own input); this list
-// is the courtesy filter that keeps junk off the wire.
+//   1. TOP-LEVEL content-addressed uploads (`<designRoot>/assets/<sha8>.<ext>`)
+//      — referenced by the `/assets/<key>` shortcut, served on the cloud from
+//      the BUCKET proxy. Push → `PUT /assets/<key>` (bucket + checkout mirror).
+//   2. DS / BRAND assets (`<designRoot>/system/<ds>/assets/logos/x.svg`, fonts,
+//      photos) — referenced by their FULL designRoot path
+//      (`/.design/system/<ds>/assets/…`) and served from the CHECKOUT by the
+//      studio child, never the bucket. The original fix only swept class 1, so
+//      these stayed grey (alligators has 93 of them). Push → `PUT
+//      /_asset-file/<designRoot-rel>` (checkout only, no bucket).
+//
+// Both are HEAD-first (skip what the cloud already holds) and streamed. The
+// HUB's validation is the authoritative gate at each trust boundary; the
+// filters here are the courtesy layer that keeps junk off the wire.
 
 import { type Dirent, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 
-/** One path segment of a pushable key — the hub's `ASSET_KEY` charset. */
-const KEY_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+/** One path segment charset — matches the hub's component regexes. */
+const SEGMENT = /^[A-Za-z0-9][A-Za-z0-9 ._-]*$/;
 
-/** `ASSET_KEY` allows the name plus up to 4 directory segments. */
-const MAX_SEGMENTS = 5;
+/** Max designRoot-relative depth (matches the hub's 8-segment cap). */
+const MAX_SEGMENTS = 8;
 
-/** Mirror of the sweeper's implausibility bound — a 2 GB file in `assets/` is
- *  a mistake, and paying to move it silently is the wrong response. */
+/** Max relative-path length (matches the hub's 512 cap). */
+const MAX_REL_LEN = 512;
+
+/**
+ * The binary asset extensions that actually render — images, fonts, media.
+ * Deliberately NOT `.json`/`.meta.json`/`.photo.json`/`.tsx`/`.css`: a
+ * `.photo.json` sidecar is edit metadata, not a served asset, and the checkout
+ * route refuses non-asset extensions anyway (so pushing them would just waste
+ * the wire and 400). Case-insensitive — a DS ships `…P1020428.JPG`.
+ */
+const ASSET_EXTS = new Set([
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'avif',
+  'svg',
+  'mp4',
+  'webm',
+  'mov',
+  'mp3',
+  'wav',
+  'm4a',
+  'ogg',
+  'woff2',
+  'woff',
+  'ttf',
+  'otf',
+]);
+
+/** A 2 GB file in an assets dir is a mistake — don't move it silently. */
 const MAX_PUSH_BYTES = 512 * 1024 * 1024;
 
 export interface AssetPushResult {
@@ -35,11 +70,21 @@ export interface AssetPushResult {
   failed: { key: string; reason: string }[];
 }
 
-/** Pushable keys under `<designRoot>/assets/`, relative to it. Missing dir → []. */
+function extOf(name: string): string {
+  const dot = name.lastIndexOf('.');
+  return dot < 0 ? '' : name.slice(dot + 1).toLowerCase();
+}
+
+/**
+ * Every pushable binary asset under designRoot, as a designRoot-relative path.
+ * Walks into any directory named `assets` at any level (top-level `assets/`,
+ * `system/<ds>/assets/`, …) and collects the asset-extension files inside it.
+ * Skips runtime-state (`_*`), `.git`, `node_modules`. Missing root → [].
+ */
 export function listPushableAssets(designRoot: string): string[] {
-  const root = path.join(designRoot, 'assets');
   const out: string[] = [];
-  const walk = (dir: string, prefix: string, depth: number): void => {
+  // Walk the tree; once inside an `assets` dir, collect asset files below it.
+  const walk = (dir: string, rel: string, insideAssets: boolean): void => {
     let entries: Dirent[];
     try {
       entries = readdirSync(dir, { withFileTypes: true });
@@ -47,22 +92,40 @@ export function listPushableAssets(designRoot: string): string[] {
       return;
     }
     for (const entry of entries) {
-      if (!KEY_SEGMENT.test(entry.name)) continue; // dotfiles fail the leading-alnum rule
-      const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+      const name = entry.name;
+      if (name.startsWith('_') || name === '.git' || name === 'node_modules') continue;
+      if (!SEGMENT.test(name)) continue; // dotfiles + odd charset
+      const childRel = rel ? `${rel}/${name}` : name;
+      if (childRel.length > MAX_REL_LEN || childRel.split('/').length > MAX_SEGMENTS) continue;
       if (entry.isDirectory()) {
-        if (depth + 1 < MAX_SEGMENTS) walk(path.join(dir, entry.name), rel, depth + 1);
+        walk(path.join(dir, name), childRel, insideAssets || name === 'assets');
       } else if (entry.isFile()) {
+        if (!insideAssets) continue; // only files under some assets/ dir
+        if (!ASSET_EXTS.has(extOf(name))) continue;
         try {
-          if (statSync(path.join(dir, entry.name)).size > MAX_PUSH_BYTES) continue;
+          if (statSync(path.join(dir, name)).size > MAX_PUSH_BYTES) continue;
         } catch {
           continue;
         }
-        out.push(rel);
+        out.push(childRel);
       }
     }
   };
-  walk(root, '', 1);
+  walk(designRoot, '', false);
   return out.sort();
+}
+
+/** Where a given asset pushes: the bucket-backed route (top-level `assets/`) or
+ *  the checkout route (a nested `…/assets/…` served from disk). */
+function routeFor(rel: string): { url: string } {
+  const parts = rel.split('/');
+  if (parts[0] === 'assets') {
+    // Top-level content-addressed → the bucket `/assets/<key>` route.
+    return { url: `/assets/${parts.slice(1).join('/')}` };
+  }
+  // DS / brand asset served from the checkout → the checkout-file route, keyed
+  // by its FULL designRoot-relative path.
+  return { url: `/_asset-file/${rel.split('/').map(encodeURIComponent).join('/')}` };
 }
 
 /**
@@ -86,8 +149,8 @@ export async function pushAssets(opts: {
   const base = hubUrl.replace(/\/+$/, '');
   const out: AssetPushResult = { pushed: [], skipped: 0, failed: [] };
 
-  for (const key of listPushableAssets(designRoot)) {
-    const url = `${base}/assets/${key}`;
+  for (const rel of listPushableAssets(designRoot)) {
+    const url = `${base}${routeFor(rel).url}`;
     const headers = { authorization: `Bearer ${opts.token()}` };
     try {
       const head = await fetchImpl(url, { method: 'HEAD', headers });
@@ -98,12 +161,12 @@ export async function pushAssets(opts: {
       const put = await fetchImpl(url, {
         method: 'PUT',
         headers,
-        body: Bun.file(path.join(designRoot, 'assets', key)),
+        body: Bun.file(path.join(designRoot, rel)),
       });
-      if (put.ok) out.pushed.push(key);
-      else out.failed.push({ key, reason: `HTTP ${put.status}` });
+      if (put.ok) out.pushed.push(rel);
+      else out.failed.push({ key: rel, reason: `HTTP ${put.status}` });
     } catch (err) {
-      out.failed.push({ key, reason: (err as Error).message });
+      out.failed.push({ key: rel, reason: (err as Error).message });
     }
   }
 

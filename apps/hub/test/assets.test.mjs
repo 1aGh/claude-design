@@ -13,13 +13,20 @@ import {
   readFileSync,
   rmSync,
   symlinkSync,
+  writeFileSync,
 } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
 
-import { assetContentType, handleAssetRoute, parseAssetPath } from '../src/assets.mjs';
+import {
+  assetContentType,
+  handleAssetRoute,
+  handleCheckoutAssetRoute,
+  parseAssetPath,
+  parseCheckoutAssetPath,
+} from '../src/assets.mjs';
 import { addToken } from '../src/tokens.mjs';
 
 let dataDir;
@@ -384,4 +391,189 @@ test('a non-asset path is not handled at all (the router keeps dispatching)', as
   const res = await call({ pathname: '/health' });
   assert.equal(res.handled, false);
   assert.equal(res.status, 0);
+});
+
+/* -------------------------- DDR-217 addendum — checkout asset route (DS/brand) */
+
+/** Drive the checkout-file route with a fake req/res (mirrors `call`). */
+async function callCheckout({
+  pathname,
+  method = 'PUT',
+  token,
+  designRoot = null,
+  body = null,
+  checkRateLimit,
+}) {
+  const captured = { status: 0, headers: {}, body: null };
+  const response = {
+    writeHead(status, headers) {
+      captured.status = status;
+      captured.headers = headers ?? {};
+      return this;
+    },
+    end(body) {
+      captured.body = body ?? null;
+      return this;
+    },
+  };
+  const chunks = body === null ? [] : Array.isArray(body) ? body : [body];
+  const handled = await handleCheckoutAssetRoute({
+    request: {
+      headers: token ? { authorization: `Bearer ${token}` } : {},
+      async *[Symbol.asyncIterator]() {
+        yield* chunks;
+      },
+    },
+    response,
+    pathname,
+    method,
+    dataDir,
+    secret: '',
+    designRoot,
+    checkRateLimit,
+  });
+  return { handled, ...captured };
+}
+
+test('parseCheckoutAssetPath admits nested DS assets, refuses everything dangerous', () => {
+  // The shapes real DS assets take — under some `assets/` segment, binary ext.
+  assert.equal(
+    parseCheckoutAssetPath('/_asset-file/system/alligators/assets/logos/horizontal-green.svg'),
+    'system/alligators/assets/logos/horizontal-green.svg'
+  );
+  assert.equal(
+    parseCheckoutAssetPath('/_asset-file/system/ds/assets/fonts/Gators-Bold.woff2'),
+    'system/ds/assets/fonts/Gators-Bold.woff2'
+  );
+  assert.equal(parseCheckoutAssetPath('/_asset-file/assets/x.png'), 'assets/x.png');
+
+  for (const bad of [
+    '/_asset-file/system/ds/preview/logo.tsx', // no assets/ segment → refused (can't touch a canvas)
+    '/_asset-file/system/ds/assets/config.json', // json is not an asset ext
+    '/_asset-file/system/ds/assets/logo.css', // css is not an asset ext
+    '/_asset-file/../etc/passwd', // traversal
+    '/_asset-file/system/ds/assets/../../../../etc/x.png', // traversal with a valid tail
+    '/_asset-file//assets/x.png', // empty component
+    '/_asset-file/assets/x', // no extension
+    '/_asset-file/config.json', // top-level, no assets/ segment
+    '/_asset-file/', // empty
+  ]) {
+    assert.equal(parseCheckoutAssetPath(bad), null, `expected null for ${bad}`);
+  }
+});
+
+test('an authenticated PUT writes a DS asset to the checkout at its real path', async () => {
+  const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-ck-'));
+  try {
+    const res = await callCheckout({
+      pathname: '/_asset-file/system/alligators/assets/logos/horizontal-green.svg',
+      token: minted.value,
+      designRoot,
+      body: [Buffer.from('<svg'), Buffer.from('/>')],
+    });
+    assert.equal(res.status, 200, res.body);
+    assert.deepEqual(JSON.parse(res.body), {
+      ok: true,
+      path: 'system/alligators/assets/logos/horizontal-green.svg',
+      bytes: 6,
+    });
+    assert.equal(
+      readFileSync(join(designRoot, 'system/alligators/assets/logos/horizontal-green.svg'), 'utf8'),
+      '<svg/>'
+    );
+  } finally {
+    rmSync(designRoot, { recursive: true, force: true });
+  }
+});
+
+test('HEAD is the desktop skip-probe: 200 when present, 404 when not', async () => {
+  const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-ck-'));
+  try {
+    mkdirSync(join(designRoot, 'system/ds/assets/logos'), { recursive: true });
+    writeFileSync(join(designRoot, 'system/ds/assets/logos/there.svg'), 'x');
+    const present = await callCheckout({
+      pathname: '/_asset-file/system/ds/assets/logos/there.svg',
+      method: 'HEAD',
+      token: minted.value,
+      designRoot,
+    });
+    assert.equal(present.status, 200);
+    const missing = await callCheckout({
+      pathname: '/_asset-file/system/ds/assets/logos/nope.svg',
+      method: 'HEAD',
+      token: minted.value,
+      designRoot,
+    });
+    assert.equal(missing.status, 404);
+  } finally {
+    rmSync(designRoot, { recursive: true, force: true });
+  }
+});
+
+test('an unauthenticated checkout PUT is 401 and writes nothing', async () => {
+  const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-ck-'));
+  try {
+    const res = await callCheckout({
+      pathname: '/_asset-file/system/ds/assets/logos/x.svg',
+      designRoot,
+      body: Buffer.from('x'),
+    });
+    assert.equal(res.status, 401);
+    assert.equal(existsSync(join(designRoot, 'system/ds/assets/logos/x.svg')), false);
+  } finally {
+    rmSync(designRoot, { recursive: true, force: true });
+  }
+});
+
+test('a symlink-escaping checkout PUT is refused (same guard as the bucket PUT)', async () => {
+  const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-ck-'));
+  try {
+    mkdirSync(join(designRoot, 'system/ds/assets'), { recursive: true });
+    mkdirSync(join(designRoot, 'ui'), { recursive: true });
+    // A peer-committed symlink: system/ds/assets/escape -> ../../../ui
+    symlinkSync(join(designRoot, 'ui'), join(designRoot, 'system/ds/assets/escape'));
+    const res = await callCheckout({
+      pathname: '/_asset-file/system/ds/assets/escape/pwn.svg',
+      token: minted.value,
+      designRoot,
+      body: Buffer.from('<svg/>'),
+    });
+    assert.equal(res.status, 400, 'symlink escape refused');
+    assert.equal(existsSync(join(designRoot, 'ui', 'pwn.svg')), false);
+  } finally {
+    rmSync(designRoot, { recursive: true, force: true });
+  }
+});
+
+test('a checkout PUT to a hub with no checkout is 405 (not an upload endpoint)', async () => {
+  const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  const res = await callCheckout({
+    pathname: '/_asset-file/system/ds/assets/logos/x.svg',
+    token: minted.value,
+    designRoot: null,
+    body: Buffer.from('x'),
+  });
+  assert.equal(res.status, 405);
+});
+
+test('HEAD is rate-limited too — no unmetered existence oracle (F4)', async () => {
+  const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-ck-'));
+  try {
+    mkdirSync(join(designRoot, 'system/ds/assets/logos'), { recursive: true });
+    writeFileSync(join(designRoot, 'system/ds/assets/logos/there.svg'), 'x');
+    const res = await callCheckout({
+      pathname: '/_asset-file/system/ds/assets/logos/there.svg',
+      method: 'HEAD',
+      token: minted.value,
+      designRoot,
+      checkRateLimit: () => false, // over the limit
+    });
+    assert.equal(res.status, 429, 'HEAD is metered, not a free oracle');
+  } finally {
+    rmSync(designRoot, { recursive: true, force: true });
+  }
 });
