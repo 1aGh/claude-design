@@ -100,3 +100,24 @@ Resolved open questions: **dock** (ne modal — GitPanel treatment, chip zůstá
 - Changing sync behaviour — this is pure surfacing of existing state + an asset
   progress emit. No new sync semantics.
 - History of past syncs — the panel shows the CURRENT session's state, not a log.
+
+## Retro (2026-08-11)
+
+- **Executing straight from the sketch worked** — the 5 task bullets were
+  concrete enough that a separate /flow:plan expansion would have added a
+  ceremony pass without changing the shape. Keep "sketch is executable" as a
+  valid fast path when the tasks already name files and contracts.
+- **Riding the existing payload paid off immediately**: zero new channels, the
+  panel had live data on first boot — and it surfaced a REAL production bug the
+  same afternoon (asset push mass-429s; RCA in
+  `.ai/logs/rca/issue-asset-push-429-rate-limit.md`). Surfacing state is a bug
+  detector, not just UX.
+- **What bit:** the DDR-021 "read every smoke PNG" rule collides with a 71-canvas
+  full sweep on infra-shape diffs that touch zero canvases — resolved by reading
+  the report + a targeted cross-section and declaring the deviation. Worth a
+  rule refinement (scope the mandatory full-read to diffs that mutate canvases/
+  canvas-lib/templates).
+- **Follow-ups spawned:** hub asset-write rate-limit bucket split + client
+  Retry-After handling (the RCA above); per-asset byte %; retry affordance on
+  rejected rows; a `sync-panel` scenario for coverage; `maude kg record-log`
+  ENOENT bug (tmp JSON path) hit while archiving the RCA.

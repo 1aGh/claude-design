@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-11T11:53:13.517Z",
+  "generated": "2026-08-11T13:10:33.226Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1103,6 +1103,17 @@
       "phaseKey": null
     },
     {
+      "id": "feature-sync-progress-modal",
+      "title": "Feature: Sync progress modal — per-file sync state you can watch",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "As someone who just linked a project to Maude Cloud, I want to open a panel and watch each canvas/asset move from queued → syncing → synced (and see which ones were rejected or are stuck), so that...",
+      "planPath": ".ai/plans/archive/feature-sync-progress-modal.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
       "id": "feature-unified-settings-modal",
       "title": "Feature: Unified Settings modal (vertical tabs + internal scroll)",
       "status": "done",
@@ -2012,17 +2023,6 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-production-grade-hardening.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-sync-progress-modal",
-      "title": "Feature: Sync progress modal — per-file sync state you can watch",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "As someone who just linked a project to Maude Cloud, I want to open a panel and watch each canvas/asset move from queued → syncing → synced (and see which ones were rejected or are stuck), so that...",
-      "planPath": ".ai/plans/feature-sync-progress-modal.md",
       "archived": false,
       "phaseKey": null
     },
