@@ -94,6 +94,13 @@ export function collectImports(entryFile) {
       // alternative can otherwise span statements and capture junk.
       if (!spec || /[\s,]/.test(spec) || spec.startsWith('node:') || spec.startsWith('bun:'))
         continue;
+      // `@maude/*` is never an npm package here: `@maude/canvas-lib` is the
+      // dev-server's VIRTUAL specifier (canvas-build resolves it to
+      // apps/studio/canvas-lib.tsx — DDR-025), and it reaches this scrape only
+      // from generated-canvas source inside template strings (e.g.
+      // _import-figma.mjs boardHostCanvas). Staging it would hard-fail on a
+      // package.json that can't exist.
+      if (spec.startsWith('@maude/')) continue;
       if (spec.startsWith('.') || spec.startsWith('/')) {
         const local = resolveLocal(file, spec);
         if (local) stack.push(local);
