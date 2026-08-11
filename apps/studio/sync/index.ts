@@ -969,7 +969,10 @@ export function createSyncRuntime(
     ): void => {
       if (stopped) return;
       const reasonClass = classifyAuthFailure(rawReason);
-      mon.noteDocState(canvas.slug, 'auth-rejected');
+      // feature-sync-progress-modal — the class rides into the per-item list so
+      // a rejected row in the Sync panel can say WHY (our vocabulary, not the
+      // hub's raw message).
+      mon.noteDocState(canvas.slug, 'auth-rejected', reasonClass);
       rejectedReasons.set(canvas.slug, reasonClass);
       // Aggregate console output: ONE debounced warn for the whole burst.
       if (!pendingAuthWarn.has(reasonClass)) pendingAuthWarn.set(reasonClass, new Set());
@@ -1547,6 +1550,12 @@ export function createSyncRuntime(
           designRoot: ctx.paths.designRoot,
           hubUrl: linkedHub.url,
           token: () => token,
+          // feature-sync-progress-modal — ride the same `sync:status` payload
+          // the doc counts use, so the Sync panel has one source. Guarded on
+          // `stopped`: a late emit must not write `_sync.json` post-teardown.
+          onProgress: (p) => {
+            if (!stopped) store.updateAssets?.(p);
+          },
         }).catch((err) => {
           console.warn(`[sync/assets] asset push failed: ${(err as Error).message}`);
         });

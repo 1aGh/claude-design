@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-11T05:41:05.662Z",
+  "generated": "2026-08-11T11:53:13.517Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1972,6 +1972,17 @@
       "phaseKey": null
     },
     {
+      "id": "feature-figma-import",
+      "title": "Feature: Figma / FigJam import",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-figma-import.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
       "id": "feature-goal-unattended-pipelines",
       "title": "Feature: /goal-aware unattended pipelines for flow + design commands",
       "status": "planned",
@@ -2005,6 +2016,17 @@
       "phaseKey": null
     },
     {
+      "id": "feature-sync-progress-modal",
+      "title": "Feature: Sync progress modal — per-file sync state you can watch",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "As someone who just linked a project to Maude Cloud, I want to open a panel and watch each canvas/asset move from queued → syncing → synced (and see which ones were rejected or are stuck), so that...",
+      "planPath": ".ai/plans/feature-sync-progress-modal.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
       "id": "feature-video-tracking-and-stabilization",
       "title": "Feature: Video tracking & stabilization — a solve you can trust, as data",
       "status": "planned",
@@ -2012,17 +2034,6 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-video-tracking-and-stabilization.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-figma-import",
-      "title": "Feature: Figma / FigJam import",
-      "status": "icebox",
-      "shipTarget": "ICEBOX",
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-figma-import.md",
       "archived": false,
       "phaseKey": null
     }

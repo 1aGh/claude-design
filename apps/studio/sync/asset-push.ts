@@ -70,6 +70,38 @@ export interface AssetPushResult {
   failed: { key: string; reason: string }[];
 }
 
+/**
+ * feature-sync-progress-modal — incremental asset-push progress, emitted onto
+ * the sync bus so the Sync panel can show assets moving instead of a silent
+ * gap between "canvases synced" and a log line at the end. Keys are LOCAL
+ * designRoot-relative paths (never hub-supplied); `failures` is capped at
+ * MAX_LISTED_FAILURES with `failedCount` carrying the true number.
+ */
+export interface AssetPushProgress {
+  /** Total pushable assets found this boot. */
+  total: number;
+  /** Files settled so far (pushed + skipped + failed). */
+  done: number;
+  pushed: number;
+  skipped: number;
+  failedCount: number;
+  /** First MAX_LISTED_FAILURES failures — enough to name the broken paths. */
+  failures: { key: string; reason: string }[];
+  /** The designRoot-relative path on the wire right now, null when finished. */
+  active: string | null;
+  /** True exactly once, on the final emit (also fires when total is 0). */
+  finished: boolean;
+}
+
+/** Cap on `failures` in a progress emit (same spirit as MAX_REJECTED_SLUGS —
+ *  the payload reaches `_sync.json` + every open tab, so it stays bounded). */
+export const MAX_LISTED_FAILURES = 20;
+
+/** Min ms between mid-flight progress emits. A 90-file DS at LAN speed would
+ *  otherwise broadcast 90 payloads in a couple of seconds; failures and the
+ *  final emit always go out regardless. */
+const PROGRESS_INTERVAL_MS = 200;
+
 function extOf(name: string): string {
   const dot = name.lastIndexOf('.');
   return dot < 0 ? '' : name.slice(dot + 1).toLowerCase();
@@ -142,14 +174,45 @@ export async function pushAssets(opts: {
   token: () => string;
   fetchImpl?: typeof fetch;
   log?: Pick<Console, 'log' | 'warn'>;
+  /** feature-sync-progress-modal — incremental progress (throttled; failures
+   *  and the final emit always fire). Never throws into the push loop. */
+  onProgress?: (progress: AssetPushProgress) => void;
+  /** Injectable clock for the throttle (tests). */
+  now?: () => number;
 }): Promise<AssetPushResult> {
   const { designRoot, hubUrl } = opts;
   const fetchImpl = opts.fetchImpl ?? fetch;
   const log = opts.log ?? console;
+  const now = opts.now ?? Date.now;
   const base = hubUrl.replace(/\/+$/, '');
   const out: AssetPushResult = { pushed: [], skipped: 0, failed: [] };
 
-  for (const rel of listPushableAssets(designRoot)) {
+  const assets = listPushableAssets(designRoot);
+  // -Infinity seeds the throttle open, so the first emit always passes.
+  let lastEmit = -Infinity;
+  const emitProgress = (active: string | null, finished: boolean, force = false): void => {
+    if (!opts.onProgress) return;
+    const t = now();
+    if (!force && t - lastEmit < PROGRESS_INTERVAL_MS) return;
+    lastEmit = t;
+    try {
+      opts.onProgress({
+        total: assets.length,
+        done: out.pushed.length + out.skipped + out.failed.length,
+        pushed: out.pushed.length,
+        skipped: out.skipped,
+        failedCount: out.failed.length,
+        failures: out.failed.slice(0, MAX_LISTED_FAILURES),
+        active,
+        finished,
+      });
+    } catch {
+      /* a broken listener must never break the push */
+    }
+  };
+
+  for (const rel of assets) {
+    emitProgress(rel, false);
     const url = `${base}${routeFor(rel).url}`;
     const headers = { authorization: `Bearer ${opts.token()}` };
     try {
@@ -164,11 +227,18 @@ export async function pushAssets(opts: {
         body: Bun.file(path.join(designRoot, rel)),
       });
       if (put.ok) out.pushed.push(rel);
-      else out.failed.push({ key: rel, reason: `HTTP ${put.status}` });
+      else {
+        out.failed.push({ key: rel, reason: `HTTP ${put.status}` });
+        emitProgress(rel, false, true);
+      }
     } catch (err) {
       out.failed.push({ key: rel, reason: (err as Error).message });
+      emitProgress(rel, false, true);
     }
   }
+  // No assets → no emits at all: a project without an assets/ dir should not
+  // grow an empty assets section in its Sync panel.
+  if (assets.length > 0) emitProgress(null, true, true);
 
   if (out.pushed.length > 0) {
     log.log?.(

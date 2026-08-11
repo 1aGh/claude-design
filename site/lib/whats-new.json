@@ -1,11 +1,37 @@
 {
-  "generated": "2026-08-10T14:15:53.073Z",
-  "version": "0.58.2",
+  "generated": "2026-08-11T11:22:52.229Z",
+  "version": "0.58.3",
   "entries": [
     {
-      "id": "cloud-sync-matches-your-desktop",
+      "id": "sync-panel-per-file",
       "version": null,
       "date": null,
+      "kind": "feature",
+      "title": "Watch your project sync, file by file",
+      "summary": "Click the hub sync chip in the status bar to open the new Sync panel: every canvas with its own live state (syncing, synced, or refused and why), plus your images and fonts as they upload to the cloud. “Is my work actually up there?” now has a per-file answer.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": "[data-testid=\"open-sync\"]",
+          "title": "Per-file sync progress",
+          "body": "The hub sync chip is now a button — click it to see every canvas and asset move to the cloud, and which ones need attention.",
+          "placement": "top"
+        }
+      ]
+    },
+    {
+      "id": "cloud-brand-assets-and-steady-link",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "Brand logos load in the cloud (and a steadier status bar)",
+      "summary": "Your design system's own logos, signs, fonts and photos now show up in the cloud copy instead of grey placeholders — the last piece of \"the cloud copy matches your desktop\". And the desktop status bar no longer flickers to \"reconnecting\" when you step away for a minute; an idle link stays live.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "cloud-sync-matches-your-desktop",
+      "version": "0.58.3",
+      "date": "2026-08-11",
       "kind": "fix",
       "title": "The cloud copy matches your desktop",
       "summary": "A project you connect to the cloud now looks exactly like it does on your machine: no duplicated files, every canvas opens instead of breaking, and your images show up instead of grey boxes. The cloud picker says \"Connected\" for the project this folder is linked to, with a Disconnect right there — and once you're connected, the cloud saves every change automatically, so there's one place your work is saved, not two.",
@@ -13,8 +39,8 @@
     },
     {
       "id": "cloud-link-self-renews",
-      "version": null,
-      "date": null,
+      "version": "0.58.3",
+      "date": "2026-08-11",
       "kind": "fix",
       "title": "Cloud sync keeps itself signed in",
       "summary": "A workspace you connect to the cloud stays synced — the session refreshes itself in the background instead of quietly expiring after a few hours and stranding your canvases on \"connecting…\". If a link ever can't sync for a few minutes it now says so and points you to reconnect, instead of spinning forever.",
@@ -22,8 +48,8 @@
     },
     {
       "id": "figma-import",
-      "version": null,
-      "date": null,
+      "version": "0.58.3",
+      "date": "2026-08-11",
       "kind": "feature",
       "title": "Bring your Figma work in",
       "summary": "Paste a Figma link and get the real thing, not a picture of it: design frames become editable canvases, a FigJam board becomes your whiteboard with its sticky notes and arrows still attached, and your colour and text styles become design tokens. Add a Figma access token once in Settings to get started.",

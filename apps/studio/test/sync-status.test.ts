@@ -144,3 +144,31 @@ describe('sync status store — DDR-102 additive fields', () => {
     expect(p.state).toBe('online');
   });
 });
+
+describe('sync status store — asset lane (feature-sync-progress-modal)', () => {
+  test('updateAssets() merges progress into the payload + flushes', () => {
+    const { store, writes, broadcasts } = makeStore();
+    const progress = {
+      total: 10,
+      done: 4,
+      pushed: 3,
+      skipped: 1,
+      failedCount: 0,
+      failures: [],
+      active: 'assets/hero.png',
+      finished: false,
+    };
+    store.updateAssets(progress);
+    expect(writes[writes.length - 1].assets).toEqual(progress);
+    expect(broadcasts[broadcasts.length - 1].assets).toEqual(progress);
+    // …and a later monitor update keeps the asset lane (separate slices).
+    store.update(snap({ state: 'online' }));
+    expect(store.get().assets).toEqual(progress);
+  });
+
+  test('payloads before the first asset emit carry no assets field', () => {
+    const { store } = makeStore();
+    store.update(snap());
+    expect('assets' in store.get()).toBe(false);
+  });
+});

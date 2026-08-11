@@ -33,6 +33,7 @@ import { useTreeDrag } from './use-tree-drag.js';
 import ChatPanel from './panels/ChatPanel.jsx';
 import DiffView from './panels/DiffView.jsx';
 import GitPanel from './panels/GitPanel.jsx';
+import SyncPanel from './panels/SyncPanel.jsx';
 import CloudBar from './panels/CloudBar.jsx';
 import IdentityBar from './panels/IdentityBar.jsx';
 import OnboardingWizard from './panels/OnboardingWizard.jsx';
@@ -149,6 +150,7 @@ const DOCK_PANELS = [
   { id: 'inspector', label: 'Inspector' },
   { id: 'comments', label: 'Comments' },
   { id: 'changes', label: 'Changes' },
+  { id: 'sync', label: 'Sync' }, // feature-sync-progress-modal — linked projects only
   { id: 'assistant', label: 'Assistant' },
 ];
 const PANEL_SIDES_DEFAULTS = {
@@ -157,6 +159,7 @@ const PANEL_SIDES_DEFAULTS = {
   inspector: 'right',
   comments: 'right',
   changes: 'right',
+  sync: 'right',
   assistant: 'right',
 };
 const PANEL_SIDES_STORE = 'mdcc-panel-sides';
@@ -4687,6 +4690,8 @@ function StatusBar({
   onClearSelected,
   syncStatus,
   syncProject,
+  syncOpen = false,
+  onOpenSync,
   changesCount = 0,
   unpushed = 0,
   changesOpen = false,
@@ -4727,6 +4732,19 @@ function StatusBar({
       title: `${p.title}${detail}${p.next ? ` — ${p.next}` : ''}`,
     };
   })();
+  // One body for both chip forms (button vs plain span) below.
+  const syncSlotBody = syncSlot && (
+    <>
+      <span
+        className={'st-sb-sync-dot' + (syncSlot.online ? ' is-online' : '')}
+        aria-hidden="true"
+      />
+      <span className="lbl">hub sync</span>
+      <span className="val" title={syncSlot.title}>
+        {syncSlot.label}
+      </span>
+    </>
+  );
 
   return (
     <footer className="st-statusbar" role="contentinfo" data-testid="statusbar">
@@ -4801,19 +4819,29 @@ function StatusBar({
 
       {/* P5 (Plan C) — always-on hub-sync slot (was notSyncable-only per DDR-060
           / 9.1-D). Now also surfaces the connection-state machine's queued/synced
-          counter for the common linked case. Solo projects render nothing. */}
-      {syncSlot && (
-        <span className="st-sb-slot st-sb-sync" role="group" aria-label="Hub sync">
-          <span
-            className={'st-sb-sync-dot' + (syncSlot.online ? ' is-online' : '')}
-            aria-hidden="true"
-          />
-          <span className="lbl">hub sync</span>
-          <span className="val" title={syncSlot.title}>
-            {syncSlot.label}
+          counter for the common linked case. Solo projects render nothing.
+          feature-sync-progress-modal — a BUTTON that toggles the per-file Sync
+          panel (like the Changes chip toggles GitPanel); the plain-span form
+          stays for servers/sessions that pass no handler. */}
+      {syncSlot &&
+        (onOpenSync ? (
+          <button
+            type="button"
+            className={'st-sb-slot st-sb-sync st-sb-sync--btn' + (syncOpen ? ' is-open' : '')}
+            onClick={onOpenSync}
+            data-testid="open-sync"
+            data-tip="Open Sync panel"
+            data-tip-pos="top"
+            aria-label="Open Sync panel"
+            aria-pressed={syncOpen}
+          >
+            {syncSlotBody}
+          </button>
+        ) : (
+          <span className="st-sb-slot st-sb-sync" role="group" aria-label="Hub sync">
+            {syncSlotBody}
           </span>
-        </span>
-      )}
+        ))}
 
       {/* Which release this is. Reading it used to mean probing production by
           hand — and the desktop, the browser and a cloud tab all serve the same
@@ -9495,6 +9523,10 @@ function App() {
   // tick, and after each git action — never on the per-edit WS path.
   const [remoteSync, setRemoteSync] = useState(null); // { remoteAhead, behind } | null
   const [changesOpen, setChangesOpen] = useState(false);
+  // feature-sync-progress-modal — the per-file Sync panel; toggled from the
+  // status-bar HUB SYNC chip. Only available while `syncStatus` is non-null
+  // (a linked project), mirroring how `changes` gates on `gitStatus.repo`.
+  const [syncPanelOpen, setSyncPanelOpen] = useState(false);
   const [diffTarget, setDiffTarget] = useState(null);
   const [search, setSearch] = useState('');
   const [systemData, setSystemData] = useState(null);
@@ -9876,8 +9908,8 @@ function App() {
   const anyRightPanelOpenRef = useRef(false);
   useEffect(() => {
     anyRightPanelOpenRef.current =
-      inspectorOpen || commentsPanelOpen || changesOpen || assistantOpen;
-  }, [inspectorOpen, commentsPanelOpen, changesOpen, assistantOpen]);
+      inspectorOpen || commentsPanelOpen || changesOpen || syncPanelOpen || assistantOpen;
+  }, [inspectorOpen, commentsPanelOpen, changesOpen, syncPanelOpen, assistantOpen]);
   // The right dock holds exactly ONE panel (Changes / Inspector / Comments) at
   // a time — opening any panel REPLACES whatever was there. These two helpers
   // are the single source of that invariant; every open/toggle path routes
@@ -9899,6 +9931,7 @@ function App() {
       inspector: inspectorOpen,
       comments: commentsPanelOpen,
       changes: changesOpen,
+      sync: syncPanelOpen,
       assistant: assistantOpen,
     },
     side: panelSide,
@@ -9909,6 +9942,7 @@ function App() {
     else if (id === 'inspector') setInspectorOpen(val);
     else if (id === 'comments') setCommentsPanelOpen(val);
     else if (id === 'changes') setChangesOpen(val);
+    else if (id === 'sync') setSyncPanelOpen(val);
     else if (id === 'assistant') setAssistantOpen(val);
   }, []);
   const sideOf = useCallback(
@@ -14260,6 +14294,9 @@ function App() {
     // CHANGE, not cannot SEE: a reviewer needs structure and measured values,
     // which is the whole reason C1 exists.
     if (viewerMode && id === 'assistant') return false;
+    // feature-sync-progress-modal — the Sync panel only exists for a linked
+    // project (solo has no hub, so the tab would open onto nothing).
+    if (id === 'sync') return !!syncStatus;
     return id === 'assistant' ? isNativeApp() : id === 'layers' ? layersMode === 'separate' : true;
   };
   const idsForSide = (side) =>
@@ -14272,6 +14309,7 @@ function App() {
     inspector: inspectorOpen,
     comments: commentsPanelOpen,
     changes: changesOpen,
+    sync: syncPanelOpen,
     assistant: assistantOpen,
   };
   // Per-shell overrides for the dock tab strip. In a cell the `changes` panel
@@ -14387,6 +14425,16 @@ function App() {
           activeCanvas={activeCanvasFile}
           onPreviewVersion={(sha) => setDiffTarget({ file: activePath, beforeSha: sha, conflict: false })}
           designRel={(cfg?.designRel || cfg?.designRoot || '.design').replace(/^\/+|\/+$/g, '')}
+        />
+      );
+    if (id === 'sync')
+      return (
+        <SyncPanel
+          status={syncStatus}
+          project={cfg?.cloud?.projectName || project}
+          groupPaths={(groups || []).map((g) => g.path).filter(Boolean)}
+          resizing={resizingFor('sync')}
+          onClose={() => setSyncPanelOpen(false)}
         />
       );
     if (id === 'inspector' || id === 'layers')
@@ -15424,6 +15472,10 @@ function App() {
           onClearSelected={clearSelected}
           syncStatus={syncStatus}
           syncProject={cfg?.cloud?.projectName || project}
+          syncOpen={syncPanelOpen}
+          // Toggle through the dock helpers so the one-panel-per-side invariant
+          // holds (opening Sync closes whatever else the right slot shows).
+          onOpenSync={syncStatus ? () => toggleRightPanel('sync') : undefined}
           changesCount={unsavedCount}
           unpushed={gitStatus?.unpushed || 0}
           changesOpen={changesOpen}

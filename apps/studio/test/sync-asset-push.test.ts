@@ -153,3 +153,114 @@ describe('pushAssets — routes each class to the right hub endpoint', () => {
     expect(r).toEqual({ pushed: [], skipped: 0, failed: [] });
   });
 });
+
+describe('pushAssets — incremental progress (feature-sync-progress-modal)', () => {
+  test('emits a first, per-failure and final progress; the final has finished:true', async () => {
+    const designRoot = scratchDesignRoot();
+    mkdirSync(join(designRoot, 'assets'), { recursive: true });
+    writeFileSync(join(designRoot, 'assets/ok.png'), 'x');
+    writeFileSync(join(designRoot, 'assets/skipme.png'), 'x');
+    writeFileSync(join(designRoot, 'assets/zz-bad.png'), 'x');
+    // HEAD: only skipme.png is already there. PUT: zz-bad.png fails.
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === 'HEAD')
+        return new Response(null, { status: url.includes('skipme') ? 200 : 404 });
+      return new Response(null, { status: url.includes('zz-bad') ? 500 : 200 });
+    }) as typeof fetch;
+    const emits: import('../sync/asset-push.ts').AssetPushProgress[] = [];
+    let t = 0;
+    const r = await pushAssets({
+      designRoot,
+      hubUrl: 'https://x.example',
+      token: () => 't',
+      fetchImpl,
+      log: { log: () => {}, warn: () => {} },
+      onProgress: (p) => emits.push(p),
+      now: () => (t += 1), // 1ms apart — inside the throttle window
+    });
+    expect(r.pushed).toEqual(['assets/ok.png']);
+    // First emit fires before anything settles (total known, push visible).
+    expect(emits[0]).toMatchObject({ total: 3, done: 0, finished: false });
+    // The failure force-emits through the throttle.
+    expect(emits.some((p) => p.failedCount === 1 && !p.finished)).toBe(true);
+    // Final emit always fires, with the full tally and no active file.
+    const last = emits[emits.length - 1];
+    expect(last).toEqual({
+      total: 3,
+      done: 3,
+      pushed: 1,
+      skipped: 1,
+      failedCount: 1,
+      failures: [{ key: 'assets/zz-bad.png', reason: 'HTTP 500' }],
+      active: null,
+      finished: true,
+    });
+  });
+
+  test('mid-flight emits are throttled; a slow clock lets them through', async () => {
+    const designRoot = scratchDesignRoot();
+    mkdirSync(join(designRoot, 'assets'), { recursive: true });
+    for (let i = 0; i < 5; i++) writeFileSync(join(designRoot, `assets/a${i}.png`), 'x');
+    const fetchImpl = (async (_i: RequestInfo | URL, init?: RequestInit) =>
+      new Response(null, { status: init?.method === 'HEAD' ? 404 : 200 })) as typeof fetch;
+    // Fast clock: everything inside 200ms → first + final only.
+    const fast: number[] = [];
+    await pushAssets({
+      designRoot,
+      hubUrl: 'https://x.example',
+      token: () => 't',
+      fetchImpl,
+      log: { log: () => {}, warn: () => {} },
+      onProgress: (p) => fast.push(p.done),
+      now: () => 1,
+    });
+    expect(fast).toHaveLength(2);
+    // Slow clock: 300ms between files → every per-file emit passes.
+    let t = 0;
+    const slow: number[] = [];
+    await pushAssets({
+      designRoot,
+      hubUrl: 'https://x.example',
+      token: () => 't',
+      fetchImpl,
+      log: { log: () => {}, warn: () => {} },
+      onProgress: (p) => slow.push(p.done),
+      now: () => (t += 300),
+    });
+    expect(slow.length).toBeGreaterThanOrEqual(6);
+  });
+
+  test('no assets → no progress emits at all (no empty section in the panel)', async () => {
+    const designRoot = scratchDesignRoot();
+    const emits: unknown[] = [];
+    await pushAssets({
+      designRoot,
+      hubUrl: 'https://x.example',
+      token: () => 't',
+      fetchImpl: (async () => new Response(null, { status: 200 })) as typeof fetch,
+      log: { log: () => {}, warn: () => {} },
+      onProgress: (p) => emits.push(p),
+    });
+    expect(emits).toEqual([]);
+  });
+
+  test('a throwing progress listener never breaks the push', async () => {
+    const designRoot = scratchDesignRoot();
+    mkdirSync(join(designRoot, 'assets'), { recursive: true });
+    writeFileSync(join(designRoot, 'assets/ok.png'), 'x');
+    const fetchImpl = (async (_i: RequestInfo | URL, init?: RequestInit) =>
+      new Response(null, { status: init?.method === 'HEAD' ? 404 : 200 })) as typeof fetch;
+    const r = await pushAssets({
+      designRoot,
+      hubUrl: 'https://x.example',
+      token: () => 't',
+      fetchImpl,
+      log: { log: () => {}, warn: () => {} },
+      onProgress: () => {
+        throw new Error('boom');
+      },
+    });
+    expect(r.pushed).toEqual(['assets/ok.png']);
+  });
+});

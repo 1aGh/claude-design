@@ -269,3 +269,57 @@ describe('what this run pulled down', () => {
     expect(pulled?.count).toBe(50);
   });
 });
+
+describe('per-item list (feature-sync-progress-modal)', () => {
+  test('items carries every doc with its state, actionable states first', () => {
+    const { monitor } = makeMonitor();
+    monitor.noteDocState('ui-a', 'connected');
+    monitor.noteDocState('ui-b', 'pending');
+    monitor.noteDocState('ui-c', 'auth-rejected', 'not-authorized');
+    const items = monitor.snapshot().items;
+    expect(items).toEqual([
+      { slug: 'ui-c', state: 'auth-rejected', reason: 'not-authorized' },
+      { slug: 'ui-b', state: 'pending' },
+      { slug: 'ui-a', state: 'connected' },
+    ]);
+  });
+
+  test('a recovered doc drops its stale reason', () => {
+    const { monitor } = makeMonitor();
+    monitor.noteDocState('ui-a', 'auth-rejected', 'invalid-token');
+    monitor.noteDocState('ui-a', 'connected');
+    expect(monitor.snapshot().items).toEqual([{ slug: 'ui-a', state: 'connected' }]);
+  });
+
+  test('a reason CHANGE on an already-rejected doc still emits (the row must update)', () => {
+    const { monitor, changes } = makeMonitor();
+    monitor.noteDocState('ui-a', 'auth-rejected', 'rate-limit');
+    const emitted = changes.length;
+    monitor.noteDocState('ui-a', 'auth-rejected', 'invalid-token');
+    expect(changes.length).toBe(emitted + 1);
+    // …and a true no-op still doesn't.
+    monitor.noteDocState('ui-a', 'auth-rejected', 'invalid-token');
+    expect(changes.length).toBe(emitted + 1);
+  });
+
+  test('the cap truncates only the connected tail, and itemsTruncated says how much', () => {
+    const { monitor } = makeMonitor();
+    // 210 connected + 1 rejected + 1 pending: the interesting rows must
+    // survive the 200-row cap; the dropped tail is all `connected`.
+    for (let i = 0; i < 210; i++) monitor.noteDocState(`ui-ok-${i}`, 'connected');
+    monitor.noteDocState('ui-refused', 'auth-rejected', 'generic');
+    monitor.noteDocState('ui-waiting', 'pending');
+    const snap = monitor.snapshot();
+    expect(snap.items).toHaveLength(200);
+    expect(snap.itemsTruncated).toBe(12);
+    expect(snap.items?.[0]).toEqual({ slug: 'ui-refused', state: 'auth-rejected', reason: 'generic' });
+    expect(snap.items?.[1]).toEqual({ slug: 'ui-waiting', state: 'pending' });
+    expect(snap.items?.slice(2).every((i) => i.state === 'connected')).toBe(true);
+  });
+
+  test('under the cap, itemsTruncated is absent (additive-payload hygiene)', () => {
+    const { monitor } = makeMonitor();
+    monitor.noteDocState('ui-a', 'connected');
+    expect(monitor.snapshot().itemsTruncated).toBeUndefined();
+  });
+});

@@ -52,6 +52,16 @@ synced item with a live per-item state:
 - **Depends on**: the sync fixes 4–8 (shipped 0.58.3) + the DDR-217 asset addendum (0.58.4) for the asset lane
 - **Design**: dock/modal — reuse GitPanel's `st-rpanel` chrome + the sync-status vocabulary already in `presentation.ts` (queued/syncing/synced/stalled/rejected); do NOT invent new sync words
 
+## Execution checklist (2026-08-11 — /flow:execute, direct from the sketch)
+
+- [x] Task 1: Server — per-item `items` list (+ `itemsTruncated`, per-row rejection reason) in the monitor snapshot / `sync:status` payload, capped at `MAX_SYNC_ITEMS=200`, actionable states sorted first
+- [x] Task 2: Server — `pushAssets` emits throttled `AssetPushProgress` (200 ms, failures + final always) → `store.updateAssets()` → same `sync:status` bus; state-only v1, no byte %
+- [x] Task 3: Client — `SyncPanel.jsx` right-dock panel (GitPanel chrome, `syncPresentation` vocabulary, needs-attention + per-group canvas rows + asset lane, `role="status"` live region)
+- [x] Task 4: Client — HUB SYNC chip is a toggle button (`data-testid="open-sync"`, `aria-pressed`, via `toggleRightPanel` so the one-panel-per-side invariant holds); dock tab gated on linked projects
+- [x] Task 5: Tests (connection-state items, asset-push progress, status-store asset lane, sync-panel-surface source assertions) + What's New entry (`sync-panel-per-file`, with tour step)
+
+Resolved open questions: **dock** (ne modal — GitPanel treatment, chip zůstává agregátem); **state-only** asset progress (byte % follow-up); rejected rows show the reason class, retry je follow-up.
+
 ## Sketch of tasks (to be expanded by /flow:plan)
 
 1. **Server: per-item snapshot in `sync:status`.** The monitor already holds

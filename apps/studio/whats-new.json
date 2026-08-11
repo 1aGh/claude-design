@@ -2,6 +2,23 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "sync-panel-per-file",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Watch your project sync, file by file",
+      "summary": "Click the hub sync chip in the status bar to open the new Sync panel: every canvas with its own live state (syncing, synced, or refused and why), plus your images and fonts as they upload to the cloud. “Is my work actually up there?” now has a per-file answer.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": "[data-testid=\"open-sync\"]",
+          "title": "Per-file sync progress",
+          "body": "The hub sync chip is now a button — click it to see every canvas and asset move to the cloud, and which ones need attention.",
+          "placement": "top"
+        }
+      ]
+    },
+    {
       "id": "cloud-brand-assets-and-steady-link",
       "version": null,
       "date": null,

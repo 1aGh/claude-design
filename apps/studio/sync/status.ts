@@ -12,6 +12,7 @@
 // git-pull divergence). Writes are best-effort + atomic-ish (tmp + rename via
 // the injected writer); a failed write never throws into the sync hot path.
 
+import type { AssetPushProgress } from './asset-push.ts';
 import type { SyncStatusSnapshot } from './connection-state.ts';
 
 // `cold-start-hub-wins` stays in the union for OLD payload readers (additive
@@ -46,6 +47,12 @@ export interface SyncStatusPayload extends SyncStatusSnapshot {
    * show which collaboration model is running. Absent/false = the two-doc path.
    */
   sharedDoc?: boolean;
+  /**
+   * feature-sync-progress-modal — the DDR-217 asset push's live progress
+   * (additive; absent until the first push emit of a boot). Rides the same
+   * payload as the doc counts so the Sync panel has one source, not two.
+   */
+  assets?: AssetPushProgress;
 }
 
 export interface SyncStatusStoreOptions {
@@ -67,6 +74,10 @@ export interface SyncStatusStore {
   update(snapshot: SyncStatusSnapshot): void;
   /** Record a conflict notification + persist + broadcast. */
   addConflict(conflict: Omit<SyncConflict, 'at'>): void;
+  /** feature-sync-progress-modal — merge asset-push progress + persist +
+   *  broadcast. Kept in the store (not the monitor): assets are a push lane,
+   *  not a connection, and the monitor's state machine must not learn them. */
+  updateAssets(progress: AssetPushProgress): void;
   /** Current payload (defensive copy). */
   get(): SyncStatusPayload;
 }
@@ -90,6 +101,8 @@ export function createSyncStatusStore(opts: SyncStatusStoreOptions): SyncStatusS
     updatedAt: now(),
   };
 
+  let assets: AssetPushProgress | undefined;
+
   function payload(): SyncStatusPayload {
     return {
       ...snapshot,
@@ -97,6 +110,7 @@ export function createSyncStatusStore(opts: SyncStatusStoreOptions): SyncStatusS
       canvases: opts.canvases,
       conflicts: conflicts.slice(),
       ...(opts.sharedDoc ? { sharedDoc: true } : {}),
+      ...(assets ? { assets } : {}),
     };
   }
 
@@ -122,6 +136,10 @@ export function createSyncStatusStore(opts: SyncStatusStoreOptions): SyncStatusS
     addConflict(conflict) {
       conflicts.push({ ...conflict, at: now() });
       if (conflicts.length > maxConflicts) conflicts.splice(0, conflicts.length - maxConflicts);
+      flush();
+    },
+    updateAssets(progress) {
+      assets = progress;
       flush();
     },
     get: payload,

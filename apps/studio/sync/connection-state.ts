@@ -28,6 +28,15 @@ export type SyncState = 'online' | 'connecting' | 'offline' | 'offline-long';
  *  refused auth for this documentName (scope / invalid token / rate limit). */
 export type DocSyncState = 'pending' | 'connected' | 'auth-rejected';
 
+/** feature-sync-progress-modal — one row of the per-document list the Sync
+ *  panel renders. `reason` is OUR OWN classification vocabulary (the
+ *  AuthFailureClass strings), never hub-supplied text. */
+export interface SyncDocItem {
+  slug: string;
+  state: DocSyncState;
+  reason?: string;
+}
+
 export interface SyncStatusSnapshot {
   state: SyncState;
   /** Local edits made since the hub went unreachable (replayed on reconnect). */
@@ -55,6 +64,18 @@ export interface SyncStatusSnapshot {
   /** DDR-102 — slugs currently auth-rejected, capped at 20 (see docs.rejected
    *  for the true count). Treat as text, never HTML. */
   rejectedSlugs?: string[];
+  /**
+   * feature-sync-progress-modal — the per-document list behind `docs`, so the
+   * Sync panel can render rows without a second fetch. Bounded at
+   * MAX_SYNC_ITEMS with the INTERESTING states first (rejected, then pending,
+   * then connected): the truncated tail is then always the already-summarised
+   * happy case, and `itemsTruncated` says how many rows it holds. Slugs are
+   * local canvas identifiers; `reason` is our own classification vocabulary.
+   * Absent in pre-existing payloads.
+   */
+  items?: SyncDocItem[];
+  /** Rows dropped by the MAX_SYNC_ITEMS cap (all `connected` by the sort). */
+  itemsTruncated?: number;
   /**
    * Canvases this run brought DOWN from the project — documents that existed
    * only on the hub and are now real local files.
@@ -94,8 +115,10 @@ export interface ConnectionMonitor {
   noteProviderStatus(providerId: string, status: ProviderStatus): void;
   /** A local edit happened — counts toward queuedOps while not online. */
   noteLocalEdit(): void;
-  /** DDR-102 — record a document's sync state (pending/connected/auth-rejected). */
-  noteDocState(slug: string, state: DocSyncState): void;
+  /** DDR-102 — record a document's sync state (pending/connected/auth-rejected).
+   *  `reason` (feature-sync-progress-modal) is the classification for an
+   *  auth-rejected doc — our own vocabulary, ignored for other states. */
+  noteDocState(slug: string, state: DocSyncState, reason?: string): void;
   /** DDR-102 — real sync activity for a slug (reconcile done, hub-pushed flush
    *  applied): bumps `lastSyncAt` to now. */
   noteSyncActivity(slug: string): void;
@@ -112,6 +135,21 @@ const DEFAULT_ESCALATE_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_FLASH_MS = 3_000;
 /** Cap on rejectedSlugs in the snapshot (the rollup carries the true count). */
 export const MAX_REJECTED_SLUGS = 20;
+/**
+ * Cap on the per-document `items` list. Every emit synchronously writes
+ * `_sync.json` and fans out over WS, so the list must stay bounded no matter
+ * how many canvases a project grows — 200 rows ≈ a few KB, and the sort keeps
+ * everything a person must ACT on (rejected, pending) inside the cap.
+ */
+export const MAX_SYNC_ITEMS = 200;
+
+/** Sort weight: the states a person must act on come first, so the cap only
+ *  ever truncates the already-summarised happy tail. */
+const ITEM_STATE_ORDER: Record<DocSyncState, number> = {
+  'auth-rejected': 0,
+  pending: 1,
+  connected: 2,
+};
 
 export function createConnectionMonitor(opts: ConnectionMonitorOptions = {}): ConnectionMonitor {
   const graceMs = opts.graceMs ?? DEFAULT_GRACE_MS;
@@ -125,6 +163,11 @@ export function createConnectionMonitor(opts: ConnectionMonitorOptions = {}): Co
   const providerStatuses = new Map<string, ProviderStatus>();
   // DDR-102 — per-doc states (pending/connected/auth-rejected).
   const docStates = new Map<string, DocSyncState>();
+  // feature-sync-progress-modal — rejection classifications, keyed by slug.
+  // Held separately from docStates so the state machine above is untouched;
+  // dropped the moment a doc leaves auth-rejected (a re-probe that succeeds
+  // must not leave a stale reason on a connected row).
+  const docReasons = new Map<string, string>();
 
   // NOT born connected. The monitor used to start `online`, so from the instant
   // a link was created — before a socket, before a token was accepted, before a
@@ -175,6 +218,19 @@ export function createConnectionMonitor(opts: ConnectionMonitorOptions = {}): Co
         if (rejectedSlugs.length < MAX_REJECTED_SLUGS) rejectedSlugs.push(slug);
       } else docs.pending++;
     }
+    // The per-row list, actionable states first so the cap only ever drops
+    // rows the aggregate counts already describe (see MAX_SYNC_ITEMS).
+    const allItems: SyncDocItem[] = [...docStates]
+      .map(([slug, st]) => {
+        const reason = docReasons.get(slug);
+        return reason ? { slug, state: st, reason } : { slug, state: st };
+      })
+      .sort(
+        (a, b) =>
+          ITEM_STATE_ORDER[a.state] - ITEM_STATE_ORDER[b.state] || a.slug.localeCompare(b.slug)
+      );
+    const items = allItems.slice(0, MAX_SYNC_ITEMS);
+    const itemsTruncated = allItems.length - items.length;
     return {
       state,
       queuedOps,
@@ -185,6 +241,8 @@ export function createConnectionMonitor(opts: ConnectionMonitorOptions = {}): Co
       startedAt,
       docs,
       rejectedSlugs,
+      items,
+      ...(itemsTruncated > 0 ? { itemsTruncated } : {}),
       ...(pulled ? { pulled } : {}),
     };
   }
@@ -347,10 +405,15 @@ export function createConnectionMonitor(opts: ConnectionMonitorOptions = {}): Co
       emit();
     },
 
-    noteDocState(slug, docState) {
+    noteDocState(slug, docState, reason) {
       if (stopped) return;
-      if (docStates.get(slug) === docState) return;
+      // Reasons only mean something on a rejection; any other state clears
+      // whatever was recorded so a recovered doc never shows a stale one.
+      const nextReason = docState === 'auth-rejected' ? reason : undefined;
+      if (docStates.get(slug) === docState && docReasons.get(slug) === nextReason) return;
       docStates.set(slug, docState);
+      if (nextReason === undefined) docReasons.delete(slug);
+      else docReasons.set(slug, nextReason);
       emit();
     },
 
