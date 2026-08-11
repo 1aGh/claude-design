@@ -203,7 +203,25 @@ const ALLOWED_PLAIN_ATTRS = new Set([
   'stop-color',
   'stop-opacity',
   'patternUnits',
+  // Required by spec for pattern CONTENT, and we were stripping it. A
+  // `<pattern>` whose children are authored in the 0..1 unit box — which is what
+  // `<use transform="scale(0.00097 0.00075)">` (1/1028 × 1/1331) means — is read
+  // in user space without it, so its content collapses to about a pixel.
+  //
+  // HONEST SCOPE: this is an allowlist bug, NOT the cause of Figma's raster
+  // fills failing to appear. That was chased here first and the diagnosis was
+  // wrong: Figma's OWN UNTOUCHED export, fetched straight from `/v1/images` and
+  // loaded directly, does not paint its `<pattern>`/`<use>`/`<image
+  // xlink:href="data:…">` chain either. Allowing this attribute fixes nothing
+  // user-visible; it just stops us corrupting a pattern that would otherwise
+  // have worked. Same enum-valued, no-URL, no-script risk class as
+  // `patternUnits` directly above.
+  'patternContentUnits',
   'patternTransform',
+  // Presentational text metrics. Their absence is not fatal the way the pattern
+  // one is, but it silently drifts imported type away from the source.
+  'letter-spacing',
+  'xml:space',
   'version',
 ]);
 
