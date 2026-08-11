@@ -16,7 +16,7 @@ Validate docs and codebase patterns before implementing. Pay attention to existi
 > | 4 Styles → tokens | T10 | ✅ shipped — `figma/to-tokens.ts` |
 > | 5 One-click UI | T11–T12 | ✅ shipped |
 > | 6 `.fig` decoder | T13–T15 | ⬜ not started, deliberately last |
-> | **7 Codegen → HTML** | T16 ✅ · **T16b–T16d** 🔜 · T17–T21 | ⚠️ **RESCOPED by DDR-219 — read it before T17** |
+> | **7 Codegen → HTML** | T16 ✅ · T16b–T16d ✅ · **T17** 🔜 · T18–T21 | ⚠️ **RESCOPED by DDR-219 — read it before T17** |
 >
 > **T16 is answered — [DDR-219](../archive/decisions/DDR-219-codegen-is-a-per-frame-tool-not-an-ingestion-route.md)
 > (2026-08-11), after a security round that returned 30 blockers + 3 exploit
@@ -26,9 +26,11 @@ Validate docs and codebase patterns before implementing. Pay attention to existi
 > **not** the remote MCP via an agent, which closed the trifecta inside a single
 > turn. `--pages` is untouched.
 >
-> **T17 is BLOCKED on T16b–T16d** (new, from the review — see Phase 7 below).
-> Two DDR-216 controls turned out never to have been built, and one Disposition
-> drift is live in `main`. Do not layer a third control on prose.
+> **T16b–T16d are DONE (2026-08-11); T17 is unblocked.** Two DDR-216 controls
+> turned out never to have been built and one `Disposition` drift was live in
+> `main` — all three are closed, each behind a test that fails when the control
+> is removed. A fourth, unrelated red test in `main` was found and fixed on the
+> way (T16c). Do not layer a further control on prose.
 >
 > **What already works and must not be rebuilt:** the REST client and its SSRF
 > chokepoints, PAT custody, resource caps, the charset grammars, the asset
@@ -623,15 +625,16 @@ What it decided, and what changed between draft and accepted:
 | **T20 answered** | From documentation, not measurement — 200 calls/day on Pro; 115 frames = 57 % of a day. |
 | **T19 absorbed** | Into DDR-219 D6: discard codegen's asset URLs, re-fetch by `data-node-id` through the existing `/v1/images` lane. Dedupe falls out for free and the frozen host allowlist is untouched. |
 
-**T16b: LAND the two DDR-216 controls that were never built** — 🔜 **blocks T17.**
+**T16b: LAND the two DDR-216 controls that were never built** — ✅ **DONE.** `/design:edit` step **1.4** banners an `imported-figma` canvas before any file content enters context; keeper Pass A.10 gains an **imported-canvas exception to its skip condition** (the translator picks the kind, so the gate was satisfied by the very code it audits — DDR-216 D8's Round-1 correction) and promotes findings to **blocker** with `category = "imported-flow-drift"`. Guarded by `cli/lib/figma-import-controls.test.mjs`, which is the anti-recurrence measure: three consecutive DDRs asserted controls nobody built, and one `grep -rn "imported-figma" plugins/` was all it took to find out. Two honesty notes carried into the agent doc — the justification comment is a mechanical escape a generator satisfies forever, and A.10 is **near-silent on the codegen route** (measured flex 142 : absolute 42), so it is run because DDR-216 promised it, not because it is sufficient.
 - **Do**: `grep -rn "imported-figma" plugins/` returns **zero matches**. DDR-216 D7's `/design:edit` pre-flight untrusted-content banner and D8's A.10 promotion-to-blocker for `imported-figma` canvases are both unimplemented — and DDR-219's own first draft cited the A.10 promotion as an existing control. Ship both.
 - **Gotcha**: land them because DDR-216 promised them, **not** because they gate codegen. A.10 audits unjustified *absolute* positioning and codegen's headline property is that it emits *flex* — it is near-silent on this route. Likewise D8's "≥1 asset per logical mark" is pinned to node-tree fixture ids a codegen route never touches.
 
-**T16c: MAKE the `Disposition` enum enforceable + fix the live drift** — 🔜 **blocks T17.**
+**T16c: MAKE the `Disposition` enum enforceable + fix the live drift** — ✅ **DONE.** `Disposition` is now derived from a frozen `DISPOSITIONS` array; `ImportReport.add` **throws** on a non-member (a programming error, never bad input — silent acceptance is how `asset-degraded` reached main) and on a `detail` that fails `isCodeOwnedDetail`. `asset-degraded` is admitted as the legitimate outcome it always was, in the union **and** in `ASSET_DISPOSITIONS`, which had drifted too. `detail` is bounded by **length + zero-glyph**, deliberately not by ASCII — real notes carry `—` and `→`, and what separates a code-owned note from interpolated node text is that it is short and carries no hidden payload. Also fixed a **stateful-regex trap**: `ZERO_GLYPH_RE` carries `g`, so `.test()` on it alternates via `lastIndex`; the one-shot predicate compiles its own non-global instance from the shared source, with a test that calls it three times.
+- **Also fixed, pre-existing and unrelated to this task**: `test/import-figma.test.ts:455` was **red in `main`** (verified by stashing — 23 pass / 1 fail without any of my changes). Its stub returns `{ '2:1': null }`, i.e. Figma declining to render, which the newer SVG→PNG degradation answers with a second, legitimate `/v1/images/` call; the assertion conflated "the collapse batched the cluster" with "nothing retried". Now asserted **per format** — one SVG call for the collapsed id, one PNG retry for the same id, never one per leaf. Same incomplete landing as the enum drift.
 - **Do**: `assets.ts:291` emits `'asset-degraded'`, which is **not** in the union (`sanitize.ts:45–63`); it survives because there is no `typecheck` gate. Add a frozen runtime array + membership assertion in `ImportReport.add` (or `tsc --noEmit` scoped to `apps/studio/figma/**` in `quality`), and fix the drift.
 - **Also**: `detail` must never carry an upstream string (`sanitize.ts:70`). Extend `test/figma-provenance.test.ts:87` — today it asserts the no-node-text rule against `/_index-data` **only**, not the `dispositions` payload or verb stdout.
 
-**T16d: ADD the reachability controls** — 🔜 **blocks T17.**
+**T16d: ADD the reachability controls** — ✅ **DONE.** `cli/lib/figma-codegen-reachability.test.mjs`: no `mcp.figma.com` in `apps/studio`/`cli`/`plugins`; `:3845` only in the designated `apps/studio/figma/codegen-client.ts` (T17 creates it); no codegen route near `CANVAS_SAFE_API`. Source-only (`-I`, excluding `node_modules`/`dist`) — the first run flagged a vendored agent-sdk binary, and a guard that cries wolf gets deleted. **Verified it actually fails**: injecting a file naming both endpoints turned 2 of 3 tests red naming the offender; removing it went back green.
 - **Do**: standing grep test (shape of `cli/lib/plugin-cli-reachability.test.mjs`) banning `mcp.figma.com` under `apps/studio/**`, `cli/**`, `plugins/*/hooks/**`, and `3845` outside the one designated codegen-client module. The codegen route goes in **neither** canvas allowlist, with the `GET → 405` assertion in `test/canvas-origin-gate.test.ts`.
 - **Note**: DDR-185's `curl-local` *permits* `127.0.0.1:3845` by construction and its own header (ř. 46–49) already names that hazard. No new denial is added there — the control is the grep test.
 

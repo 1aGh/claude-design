@@ -317,6 +317,23 @@ Zero hits → **finding** (`css-import-contract`).
 
 **Skip entirely (no-op) when:** the candidate declares no `kind="web"` artboard (`grep -qE '<DCArtboard\b[^>]*\bkind="web"' "$CANVAS_PATH"` — zero hits).
 
+**EXCEPTION — an imported canvas never skips (DDR-216 D8 / DDR-219 D11).** When the
+candidate's `.meta.json` carries `kind: "imported-figma"`, run this pass over
+**every** artboard regardless of its declared `kind`:
+
+```bash
+META="${CANVAS_PATH%.*}.meta.json"
+IMPORTED=$(jq -r '.kind // ""' "$META" 2>/dev/null)
+# IMPORTED = "imported-figma" → no kind gate, and findings are blockers.
+```
+
+The skip condition is written for a **hand-authored** canvas, where declaring
+`kind="web"` is a statement of intent by the person who will maintain it. On an
+import, *the translator picks the kind* — so the gate would be satisfied by the
+very code it is meant to audit. That is the specific hole DDR-216 D8's Round-1
+correction named, and leaving it open is what made the promotion below
+unreachable in practice.
+
 **Step 1 — Isolate each web-kind artboard's body span.** Find each `<DCArtboard … kind="web" …>` opening tag's line and its matching `</DCArtboard>` closing line; a simple line-range slice between the two is sufficient (this is an advisory heuristic over source text, not a source-editing operation, so exact JSX-tree balancing isn't required).
 
 **Step 2 — Scan each span for absolute positioning:**
@@ -337,6 +354,26 @@ grep -nE 'position:\s*["'"'"']?absolute|className="[^"]*\babsolute\b' <span>
 ```
 
 **Severity:** **warning** by default (same ladder as A.7); never self-promotes to blocker on its own — it contributes one to the existing `pattern-mass-reinvention` stack only when ≥ 3 unjustified absolute-positioned elements are found on the same web-kind artboard.
+
+**BLOCKER on an imported canvas** (`.meta.json` `kind: "imported-figma"`) — every
+A.10 finding is a blocker directly, `top_blockers[].category = "imported-flow-drift"`,
+no stacking threshold. An import is machine-authored at volume: the mass-drift
+ladder exists to avoid nagging a human over one deliberate overlay, and neither
+half of that reasoning survives when a generator emitted the whole file.
+
+**Two honesty notes, so this is not over-trusted (DDR-219 D11):**
+
+- **The justification comment is a mechanical escape.** Step 3 deliberately does
+  not parse the comment's wording, so a generator satisfies it by emitting
+  `{/* imported: absolute per Figma layout */}` above every absolutely-positioned
+  node, forever. The standing grep test that bans a blanket generator-emitted
+  justification is what closes that, not this pass.
+- **This pass is near-silent on the codegen route.** It audits unjustified
+  *absolute* positioning, and the Dev Mode codegen route's headline property is
+  that it emits **flex** (measured 2026-08-11: flex 142 : absolute 42 on a real
+  screen). A.10 is therefore a real gate for the tree-translator route and close
+  to a no-op for the codegen one. It is run because DDR-216 promised it, not
+  because it is sufficient.
 
 ## Pass B — Token-usage audit
 
