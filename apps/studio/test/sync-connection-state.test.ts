@@ -291,15 +291,23 @@ describe('per-item list (feature-sync-progress-modal)', () => {
     expect(monitor.snapshot().items).toEqual([{ slug: 'ui-a', state: 'connected' }]);
   });
 
-  test('a reason CHANGE on an already-rejected doc still emits (the row must update)', () => {
+  test('the reason is LATCHED per rejection episode — reason flips never emit', () => {
+    // The rejection text is hub-controlled. If a reason change emitted, a hub
+    // alternating messages on an open socket would force a full emit (items
+    // rebuild + synchronous _sync.json write + WS fanout) per frame — the
+    // amplification the security review flagged (2026-08-11). Repeat frames
+    // for an already-rejected doc must stay a no-op, whatever their text.
     const { monitor, changes } = makeMonitor();
     monitor.noteDocState('ui-a', 'auth-rejected', 'rate-limit');
     const emitted = changes.length;
     monitor.noteDocState('ui-a', 'auth-rejected', 'invalid-token');
-    expect(changes.length).toBe(emitted + 1);
-    // …and a true no-op still doesn't.
     monitor.noteDocState('ui-a', 'auth-rejected', 'invalid-token');
-    expect(changes.length).toBe(emitted + 1);
+    expect(changes.length).toBe(emitted);
+    expect(monitor.snapshot().items?.[0]?.reason).toBe('rate-limit');
+    // A NEW episode (re-probe cleared the state) records a fresh reason.
+    monitor.noteDocState('ui-a', 'pending');
+    monitor.noteDocState('ui-a', 'auth-rejected', 'invalid-token');
+    expect(monitor.snapshot().items?.[0]?.reason).toBe('invalid-token');
   });
 
   test('the cap truncates only the connected tail, and itemsTruncated says how much', () => {
@@ -312,7 +320,11 @@ describe('per-item list (feature-sync-progress-modal)', () => {
     const snap = monitor.snapshot();
     expect(snap.items).toHaveLength(200);
     expect(snap.itemsTruncated).toBe(12);
-    expect(snap.items?.[0]).toEqual({ slug: 'ui-refused', state: 'auth-rejected', reason: 'generic' });
+    expect(snap.items?.[0]).toEqual({
+      slug: 'ui-refused',
+      state: 'auth-rejected',
+      reason: 'generic',
+    });
     expect(snap.items?.[1]).toEqual({ slug: 'ui-waiting', state: 'pending' });
     expect(snap.items?.slice(2).every((i) => i.state === 'connected')).toBe(true);
   });

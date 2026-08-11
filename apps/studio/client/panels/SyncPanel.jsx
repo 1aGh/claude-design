@@ -54,6 +54,28 @@ function groupOf(slug, groupPaths) {
   return null;
 }
 
+// FAIL CLOSED, like presentation.ts `readCounts`: this payload is JSON.parse
+// of `_sync.json` with no schema, so a partial write / older producer must
+// degrade to "nothing to show", never crash the render or print NaN.
+
+const isCount = (n) => typeof n === 'number' && Number.isInteger(n) && n >= 0;
+
+/** The per-doc rows, or [] when the shape can't be trusted. */
+function readItems(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((i) => i && typeof i.slug === 'string' && typeof i.state === 'string');
+}
+
+/** The asset lane, or null when any count is unreadable. */
+function readAssets(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  if (![raw.total, raw.done, raw.pushed, raw.skipped, raw.failedCount].every(isCount)) return null;
+  const failures = Array.isArray(raw.failures)
+    ? raw.failures.filter((f) => f && typeof f.key === 'string')
+    : [];
+  return { ...raw, failures };
+}
+
 export default function SyncPanel({
   status, // the live `sync:status` payload (never null while mounted)
   project, // display name for the header sentence (hub-supplied → safeName'd)
@@ -62,9 +84,9 @@ export default function SyncPanel({
   onClose,
 }) {
   const p = syncPresentation(status, { project });
-  const items = Array.isArray(status?.items) ? status.items : [];
-  const truncated = status?.itemsTruncated || 0;
-  const assets = status?.assets;
+  const items = readItems(status?.items);
+  const truncated = isCount(status?.itemsTruncated) ? status.itemsTruncated : 0;
+  const assets = readAssets(status?.assets);
   const assetFailures = assets?.failures || [];
 
   const { attention, byGroup } = useMemo(() => {
@@ -79,7 +101,13 @@ export default function SyncPanel({
     return { attention, byGroup };
   }, [items, groupPaths]);
 
-  const docs = status?.docs;
+  // Same fail-closed rule for the header chip — readCounts-shaped, so the
+  // chip can never say "NaN synced" while the note below fails closed.
+  const rawDocs = status?.docs;
+  const docs =
+    rawDocs && [rawDocs.synced, rawDocs.pending, rawDocs.rejected].every(isCount)
+      ? rawDocs
+      : null;
   const counts =
     docs &&
     [

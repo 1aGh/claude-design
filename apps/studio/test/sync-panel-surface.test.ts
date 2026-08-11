@@ -58,7 +58,7 @@ describe('the Sync panel speaks the presentation vocabulary, safely', () => {
   test('every name that reaches the DOM goes through safeName', () => {
     // Slugs and asset keys are local, but the payload is read back off disk —
     // bounded text-only rendering is the house rule (DDR-054).
-    expect(PANEL).toContain("import { safeName, syncPresentation }");
+    expect(PANEL).toContain('import { safeName, syncPresentation }');
     expect(PANEL).not.toMatch(/dangerouslySetInnerHTML/);
   });
 
@@ -69,5 +69,22 @@ describe('the Sync panel speaks the presentation vocabulary, safely', () => {
   test('the asset lane renders from the payload, with the retry promise', () => {
     expect(PANEL).toContain('data-testid="sync-assets"');
     expect(PANEL).toContain('retry on the next launch');
+  });
+});
+
+describe('the panel reads the off-disk payload fail-closed (DDR-102 discipline)', () => {
+  test('items, assets and the header counts all pass a readCounts-style gate', () => {
+    // `_sync.json` is JSON.parse with no schema — a partial write or older
+    // producer must degrade to "nothing to show", never crash or print NaN
+    // (security review 2026-08-11, defender W1).
+    expect(PANEL).toContain('function readItems(');
+    expect(PANEL).toContain('function readAssets(');
+    expect(PANEL).toContain('readItems(status?.items)');
+    expect(PANEL).toContain('readAssets(status?.assets)');
+    expect(PANEL).toMatch(/Number\.isInteger/);
+    // The header chip validates the same counts the note fails closed on.
+    expect(PANEL).toMatch(
+      /\[rawDocs\.synced, rawDocs\.pending, rawDocs\.rejected\]\.every\(isCount\)/
+    );
   });
 });

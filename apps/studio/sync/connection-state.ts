@@ -407,13 +407,18 @@ export function createConnectionMonitor(opts: ConnectionMonitorOptions = {}): Co
 
     noteDocState(slug, docState, reason) {
       if (stopped) return;
-      // Reasons only mean something on a rejection; any other state clears
-      // whatever was recorded so a recovered doc never shows a stale one.
-      const nextReason = docState === 'auth-rejected' ? reason : undefined;
-      if (docStates.get(slug) === docState && docReasons.get(slug) === nextReason) return;
+      // STATE-ONLY dedupe. This briefly compared `reason` too, which handed a
+      // hostile hub an amplifier: the rejection text is hub-controlled, so
+      // alternating it on an open socket forced a full emit — items rebuild +
+      // synchronous `_sync.json` write + WS fanout — per frame (security
+      // review 2026-08-11, sync-progress-modal defender). The reason is
+      // LATCHED for the life of a rejection episode instead: the first
+      // classification wins, leaving the rejected state clears the latch, and
+      // a NEW episode records a fresh reason. Repeat frames stay a no-op.
+      if (docStates.get(slug) === docState) return;
       docStates.set(slug, docState);
-      if (nextReason === undefined) docReasons.delete(slug);
-      else docReasons.set(slug, nextReason);
+      if (docState !== 'auth-rejected') docReasons.delete(slug);
+      else if (reason !== undefined) docReasons.set(slug, reason);
       emit();
     },
 
