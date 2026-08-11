@@ -89,6 +89,16 @@ So this DDR closes two different families:
 
 ### D1 — No model reads Figma content during ingestion; every consumption sink is enumerated, and the semantic residual is named rather than argued away
 
+> **⚠️ AMENDED for one operation — [DDR-219](DDR-219-codegen-is-a-per-frame-tool-not-an-ingestion-route.md)
+> (2026-08-11).** The invariant below is stated absolutely and is **conditional**
+> for the per-frame `--explode` codegen operation, where **one** of the four
+> prohibitions breaks: the artboard's structure is produced by Figma's remote
+> generator, not by auditable local code, so it is not reproducible from our
+> sources. The other three hold — DDR-219 D2 routes codegen over the **local**
+> Dev Mode server with `apps/studio` as the MCP client, so no model reads Figma
+> content there either. Every other route in this feature satisfies D1 unqualified.
+> DDR-219 D3 carries the scorecard. Do not read D1 as absolute without it.
+
 **The invariant, stated precisely (Round-1 revision — the first draft's wording
 overreached):** from the moment a Figma document enters this feature to the moment
 an artifact lands on disk, **every step is deterministic code.** No subagent is

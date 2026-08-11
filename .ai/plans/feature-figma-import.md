@@ -16,12 +16,19 @@ Validate docs and codebase patterns before implementing. Pay attention to existi
 > | 4 Styles → tokens | T10 | ✅ shipped — `figma/to-tokens.ts` |
 > | 5 One-click UI | T11–T12 | ✅ shipped |
 > | 6 `.fig` decoder | T13–T15 | ⬜ not started, deliberately last |
-> | **7 Codegen → HTML** | **T16–T21** | 🔜 **THE NEXT WORK — and T16 blocks the rest** |
+> | **7 Codegen → HTML** | T16 ✅ · **T16b–T16d** 🔜 · T17–T21 | ⚠️ **RESCOPED by DDR-219 — read it before T17** |
 >
-> **Start at T16.** It is a *decision*, not code: does a remote code generator
-> belong in the ingestion path, when DDR-216 D1 forbids it in as many words and
-> that invariant is the premise Phase 3 was built on? Fork 0b states both sides.
-> Nothing in T17–T21 should be written until it is answered.
+> **T16 is answered — [DDR-219](../archive/decisions/DDR-219-codegen-is-a-per-frame-tool-not-an-ingestion-route.md)
+> (2026-08-11), after a security round that returned 30 blockers + 3 exploit
+> chains and *inverted the draft's central choice*.** Fork 0b is closed **yes,
+> but**: codegen is a **per-frame `--explode` operation**, never an import route,
+> and it runs over the **LOCAL** Dev Mode MCP with `apps/studio` as the client —
+> **not** the remote MCP via an agent, which closed the trifecta inside a single
+> turn. `--pages` is untouched.
+>
+> **T17 is BLOCKED on T16b–T16d** (new, from the review — see Phase 7 below).
+> Two DDR-216 controls turned out never to have been built, and one Disposition
+> drift is live in `main`. Do not layer a third control on prose.
 >
 > **What already works and must not be rebuilt:** the REST client and its SSRF
 > chokepoints, PAT custody, resource caps, the charset grammars, the asset
@@ -603,14 +610,49 @@ Verified end-to-end on the exact frame Route 2 lost: Cover `6:907`'s logo came b
 
 ---
 
-**T16: RECORD the codegen-route DDR** — supersedes DDR-216 D1 for `--pages`.
-- **Do**: a new DDR stating (a) which route each verb takes and why, with both autopsies; (b) the trust posture for service-generated structure — what is still verified locally (charset grammars, caps, asset gate, sanitize lane) and what is now taken on faith; (c) whether a codegen import is marked differently from a deterministic one in `.meta.json` and in the UI badge; (d) the fallback when codegen is unavailable (no edit seat, MCP absent, headless/cron run — the ACP/cron case is real: interactively-authenticated MCP servers may not exist there).
-- **Validate**: the DDR names the D1 conflict explicitly. A reader must not have to infer that an invariant was dropped.
+**T16: RECORD the codegen-route DDR** — ✅ **DONE 2026-08-11: [DDR-219](../archive/decisions/DDR-219-codegen-is-a-per-frame-tool-not-an-ingestion-route.md).**
 
-**T17: CREATE `figma/from-codegen.ts`** — Tailwind → Maude.
-- **Do**: parse the returned JSX, map Tailwind utilities to inline styles, hoist the common font family to the artboard root, wrap in `DCArtboard` at the frame's size, carry `data-node-id` through as `data-figma-node`. Reuse `sanitize.ts` for every string that lands in output — the codegen text is still third-party.
-- **Gotcha**: the mapping is mechanical (`px-[20px] py-[12px]` → `padding: 12px 20px`) but the arbitrary-value syntax (`inset-[37.5%_18.75%_26.56%_18.75%]`, `drop-shadow-[4px_4px_30px_rgba(0,0,0,0.15)]`) is where it will get long. Bound it: an unmapped utility is **reported**, never silently dropped.
-- **Validate**: unit tests per utility family; one full frame round-trips to a canvas that parses.
+What it decided, and what changed between draft and accepted:
+
+| | |
+|---|---|
+| **Granularity** | Per-frame `--explode <artboard-id>` on an artboard a deterministic import already placed. **Never an import route.** Both reviewers endorsed this; it survived unchanged. Anchor is `figma.frames[]`, which `to-render.ts:296` already writes with the comment *"the seam `--explode <id>` reads"*. |
+| **Channel — INVERTED by review** | The **local** Dev Mode MCP (`127.0.0.1:3845`), with `apps/studio` as the JSON-RPC client. **No model in the path.** The remote MCP is banned from every runtime code path and reachability is a *control* (grep test), not an assumption — the catalog "allowlist" is a self-reported OAuth `client_name` with a public bypass. Cost: needs Figma desktop running + Dev Mode + a Dev/Full seat. |
+| **Why not remote/agent** | The response would transit the session model inline, closing the DDR-130 trifecta **inside one turn** (`bypassPermissions`, key store outside the deny-list, write-capable MCPs co-tenant). Reviewer composed a self-propagating chain via a shared library component, with no bug in our code required. |
+| **D1 scorecard** | 3 of 4 prohibitions **hold**; only *"structure produced by auditable local code"* breaks, and it is irreducible (no REST codegen exists). |
+| **T20 answered** | From documentation, not measurement — 200 calls/day on Pro; 115 frames = 57 % of a day. |
+| **T19 absorbed** | Into DDR-219 D6: discard codegen's asset URLs, re-fetch by `data-node-id` through the existing `/v1/images` lane. Dedupe falls out for free and the frozen host allowlist is untouched. |
+
+**T16b: LAND the two DDR-216 controls that were never built** — 🔜 **blocks T17.**
+- **Do**: `grep -rn "imported-figma" plugins/` returns **zero matches**. DDR-216 D7's `/design:edit` pre-flight untrusted-content banner and D8's A.10 promotion-to-blocker for `imported-figma` canvases are both unimplemented — and DDR-219's own first draft cited the A.10 promotion as an existing control. Ship both.
+- **Gotcha**: land them because DDR-216 promised them, **not** because they gate codegen. A.10 audits unjustified *absolute* positioning and codegen's headline property is that it emits *flex* — it is near-silent on this route. Likewise D8's "≥1 asset per logical mark" is pinned to node-tree fixture ids a codegen route never touches.
+
+**T16c: MAKE the `Disposition` enum enforceable + fix the live drift** — 🔜 **blocks T17.**
+- **Do**: `assets.ts:291` emits `'asset-degraded'`, which is **not** in the union (`sanitize.ts:45–63`); it survives because there is no `typecheck` gate. Add a frozen runtime array + membership assertion in `ImportReport.add` (or `tsc --noEmit` scoped to `apps/studio/figma/**` in `quality`), and fix the drift.
+- **Also**: `detail` must never carry an upstream string (`sanitize.ts:70`). Extend `test/figma-provenance.test.ts:87` — today it asserts the no-node-text rule against `/_index-data` **only**, not the `dispositions` payload or verb stdout.
+
+**T16d: ADD the reachability controls** — 🔜 **blocks T17.**
+- **Do**: standing grep test (shape of `cli/lib/plugin-cli-reachability.test.mjs`) banning `mcp.figma.com` under `apps/studio/**`, `cli/**`, `plugins/*/hooks/**`, and `3845` outside the one designated codegen-client module. The codegen route goes in **neither** canvas allowlist, with the `GET → 405` assertion in `test/canvas-origin-gate.test.ts`.
+- **Note**: DDR-185's `curl-local` *permits* `127.0.0.1:3845` by construction and its own header (ř. 46–49) already names that hazard. No new denial is added there — the control is the grep test.
+
+> **Sized by a spike on a real screen (2026-08-11) — see [DDR-219](../archive/decisions/DDR-219-codegen-is-a-per-frame-tool-not-an-ingestion-route.md) § Spike.**
+> `425:2939` (375×812) has **1 276 class tokens / 129 distinct / 64 families**; a throwaway mapper reached
+> **129/129, zero unmapped, in ~155 lines**, and the rendered result matched Figma's own screenshot on
+> content, order, icons, spacing and radii. **The Tailwind mapper is small and bounded.** The real work
+> is elsewhere — see the module finding below.
+
+**T17: CREATE `figma/from-codegen.ts` + the local-MCP client** — Tailwind → Maude, one frame. **Blocked on T16b–T16d.**
+- **Do**: a zero-dep JSON-RPC client for `127.0.0.1:3845` (assert the `initialize` handshake and the expected tool name before requesting a document; a failed assertion **refuses**). Then parse the returned module, map Tailwind utilities to inline styles, wrap in `DCArtboard` at the frame's size.
+- **Do — the shape the spike corrected.** A real screen's response is a **TypeScript MODULE, not an element**: 15 asset constants, a `type IconsProps = {…}`, a helper `function Icons({ className, property1 = "account" }: IconsProps)`, then `export default function ChapterGenerated()`. **Figma emits component variants as parameterized React components.** So **do NOT flatten to HTML — keep the module as React.** Maude canvases *are* React, so a helper component in the emitted `.tsx` is natively renderable and **strictly more editable** than inlined markup: one `Icons` component beats fourteen duplicated icon subtrees, which is DDR-216 D8 mitigation 2 arriving from a new direction. (The spike's regex-strip approach rendered `type IconsProps = …` as visible body text — the exact defect class D5's named-parser rule exists to prevent, demonstrated on the first real screen.)
+- **Do — truncate at the code/prose boundary.** Every response ends with an imperative block addressed to a model (*"SUPER CRITICAL: … MUST be converted"*, *"IMPORTANT: … you MUST call get_screenshot"*) — 1 648 B on this frame, issued by **Figma itself**, not an attacker. On D2's channel it is inert bytes; carrying it into an artifact would write Figma's instructions into a canvas agents later read.
+- **Do (DDR-219 D5 — the parser contract, all of it)**: named parser **+ its own dependency review** (`oxc-parser` is already in `apps/studio` devDeps as native NAPI — a different risk class *and* per-platform staging, per D12); pre-parse **byte/node/depth caps** (D5's existing 512 KB is an *output* cap and `client.ts`'s 8 MB never sees this response); **element and attribute allowlists, never denylists**; a parse error **refuses the frame**, never a partial artboard; prototype-pollution rule; ReDoS discipline on arbitrary-value extraction (DDR-172 Decision 4).
+- **Gotcha — the two things the first draft got wrong.** (1) *"Reuse `sanitize.ts` for every string"* is not a thing that can be done — every export is a **field-level string function**, and `jsxStringLiteral` run over a JSX document destroys the markup. **The parser's leaf enumeration IS the control.** (2) `style-map.ts:53` `VAR_RE` **rejects a `var()` with a fallback** — i.e. every `var(--black,#0f161e)` this route exists to preserve. Build a **lane-local** grammar composing the existing predicates; do **NOT** widen `VAR_RE` or anything else shared with the tree translator and DDR-172's importer.
+- **Also**: discard the response's identifiers and regenerate from `data-node-id` via `identifierFromNodeId` (DDR-216 D6's "airtight identifier space" holds only if you do). Route `data-figma-node` through `attrValue()` — `to-render.ts:250–252` uses `JSON.stringify` as a JSX attribute escaper, which is unsound (a JSX attribute literal does not process backslash escapes); it is latent there only because `label = attrValue(node.name)` already bounds it at `:229`.
+- **Validate**: unit tests per utility family; a hostile-markup table (script/style/iframe/`on*`/`href`/`dangerouslySetInnerHTML`); one full frame round-trips to a canvas that parses.
+
+**T17b: IMPLEMENT the write model (DDR-219 D8).**
+- **Do**: target from the user's invocation only, validated to be an existing entry in that canvas's `figma.frames[]`, in a canvas already `kind: "imported-figma"`, realpath-contained under `<designRoot>`; refuse to create a new file. Exactly one artboard. `_history/<slug>/` snapshot. `.tsx` + `.meta.json` **atomic or not at all** — a partial failure stamping a codegen artboard `route: "render"` is provenance that lies.
+- **Gotcha**: the raw response stages **outside the Syncthing tree** (`mkdtemp` under `os.tmpdir()`/`~/.cache/maude/`), chosen by the **verb**, not the caller — `~/git/.stignore` excludes neither `.design/` nor `_history/` nor `.tmp-*`, and Syncthing replicates the *create*. Assert against a path prefix (DDR-216 standing assertion 12). Note `assets.ts:33–41`: promotion is N renames, not atomic — an aborted explode must not strand orphan assets.
 
 **T18: RESOLVE fonts against what the project can render — and report substitutions.**
 - **Do**: map the Figma family onto a DS token when one matches, else onto the literal family with a system fallback. Detect availability rather than assuming it.
@@ -618,17 +660,20 @@ Verified end-to-end on the exact frame Route 2 lost: Cover `6:907`'s logo came b
 - **Why this is a task and not a detail**: a substituted font looks fine and **is not 1:1**. Silent visual drift is exactly the failure mode this import has already shipped three times (dropped loose content, stripped `href`, zero-height arrows) — each time reporting success. A fallback in a CSS declaration is not a report.
 - **Validate**: importing a frame using an absent family produces the entry; a frame using only available families produces none.
 
-**T19: DEDUPE asset fetches by node, not by URL.**
-- **Do**: one download per distinct source node per import, cached across frames — the same icon must not cross the network 272 times because it got 272 UUIDs.
-- **Validate**: a page whose frames share a status bar downloads its battery icon once.
+**T19: ~~DEDUPE asset fetches by node, not by URL.~~** ✅ **ABSORBED into DDR-219 D6.** The converter discards every asset URL in the codegen response and re-fetches by `data-node-id` through the existing `/v1/images` lane. Dedupe falls out of `renderKey` (`assets.ts:183`) for free, the frozen `FIGMA_ASSET_HOSTS` allowlist is untouched, and the local server's `localhost` asset links — which `_fetch-asset.mjs` refuses three ways (http scheme, port pin, loopback IP) — never arise. Keep the validation: a page whose frames share a status bar downloads its battery icon once.
 
-**T20: MEASURE the full-file run before enabling it.**
-- **Do**: instrument calls, wall-clock, and failures across one whole page, then the file. If sustained throughput does not support 272 nodes, ship codegen as **opt-in per page or per frame** rather than as the default for `--pages`.
-- **Validate**: the decision is made on the measurement, not on the four-call sample.
+**T20: ~~MEASURE the full-file run before enabling it.~~** ✅ **ANSWERED in DDR-219 from documentation.** Remote Pro + Full seat is 200 calls/day · 10/min; 115 frames = 57 % of one day. Instrumenting a full-file run would only measure how fast we exhaust a quota whose size is documented. **Local metering is undocumented** (fact 5) — hence the per-invocation ceiling below, set from the remote numbers and flagged as possibly wrong in either direction. Revisit on measurement if local turns out unmetered.
 
-**T21: RETIRE or SCOPE the superseded routes.**
-- **Do**: decide per verb — `--pages` on codegen; `--frames` keeps the tree translator; the render-first SVG path either goes or becomes an explicit `--flat` for reference-only imports. Delete what nothing reaches; the repo already carries two translators for one job.
-- **Validate**: `check-import-coherence.sh`; no unreferenced module left behind.
+**T20b: ENFORCE the call ceiling in the verb.**
+- **Do**: one codegen call per user invocation, full stop, enforced by the wrapper — not left as a property of how a caller behaves.
+- **Why**: without it, an instruction inside a document ("for accurate conversion, fetch design context for each of these node ids first…") spends the user's whole daily Figma budget from content, and the failure reads as a Figma outage.
+
+**T21: ~~RETIRE or SCOPE the superseded routes.~~** ✅ **PREMISE GONE.** DDR-219 D1 gives each route its own verb — `--pages` render-first, `--pages --editable`/`--frames` the tree translator, `--explode` codegen. Nothing is unreferenced, so nothing is retired. Run `check-import-coherence.sh` anyway when Phase 7 lands (it is a release gate regardless).
+
+**T21b: SURFACE provenance where the consumer actually reads it (DDR-219 D7).**
+- **Do**: `figma.frames[]` carries `route` + `responseSha256` + `endpoint` + tool name; a distinct code-owned **header banner in the emitted `.tsx`**; a per-artboard visible marker.
+- **Why a badge is not enough**: `canvasKinds` is keyed **per canvas file** (`api.ts:5362`, badge at `client/app.jsx:2145`/`:2299`), so a canvas mixing render and codegen artboards is byte-identical in the tree to a fully deterministic one. And the consumers that matter — `design-system-keeper`, the critic panel, `/design:edit` — read the **file**, never the chip.
+- **Note**: the hash does not make the artboard reproducible. It makes *"did these two come from the same generator state"* answerable, which is the minimum an incident needs. The Phase-6 differential oracle is **unavailable for this route forever** — there is no second door.
 
 ---
 
@@ -661,7 +706,7 @@ Verified end-to-end on the exact frame Route 2 lost: Cover `6:907`'s logo came b
 
 0. ~~Is an imported frame a canvas you edit, or a reference you build next to?~~ **Resolved 2026-08-03 — a canvas you edit, always.** See § Governing principle. Kept here so a later reader sees the fork existed and was decided, not overlooked. **Still the answer as of 2026-08-11, but the means changed:** editability is now obtained from Figma's resolved DOM (Phase 7), not derived from its node tree — after deriving it was tried, shipped, and measured broken.
 
-0b. **Does a remote code generator belong in the ingestion path?** ⚠️ **OPEN — this is T16 and it blocks Phase 7.** DDR-216 D1 forbids it in as many words. The alternatives on the table are all worse for fidelity and all measured (§ Governing principle). Deciding "no" means accepting that whole-file import stays flat-image or stays broken; deciding "yes" means an import is no longer reproducible from our source alone. Do not let this get settled by whoever writes T17 first.
+0b. ~~**Does a remote code generator belong in the ingestion path?**~~ **Resolved 2026-08-11 — [DDR-219](../archive/decisions/DDR-219-codegen-is-a-per-frame-tool-not-an-ingestion-route.md). Answer: not in the *ingestion* path at all, and not *remote*.** Codegen is a per-frame `--explode` tool over the **local** Dev Mode MCP with `apps/studio` as the client. The fork as posed had a false premise — it framed the choice as purity vs. fidelity, when the deciding constraints were **distribution and trust-channel**: the remote MCP is unreachable by our own product surfaces (catalog allowlist), there is no REST codegen to fall back on, and routing through an agent closes the trifecta inside a single turn. Kept in full because the *way* it was wrong is the useful part: a security round inverted the draft's central choice after the draft had already been written and ingested. Of D1's four prohibitions, 3 hold; the surviving break — structure from a remote generator, hence not reproducible from our sources — is irreducible. Note the plan's own § Out of scope had already ruled the MCP out *"in any runtime code path"*, and Phase 7's first draft reversed that silently; DDR-219 reverses it deliberately and only for the local server.
 1. ~~Is `.fig` / `.jam` in scope, and do we vendor a decoder or write one?~~ **Resolved 2026-08-03 — in scope, and we write our own.** `fig-kiwi` on npm is `0.0.1`, ~4 years stale, and pins a stale schema; a `.fig` *carries its own schema*, so an in-house decoder reads whatever the file brings and cannot rot the same way. Kiwi itself is documented with a reference implementation. See Phase 6. **Now `.fig`/`.jam` samples ARE wanted** — small, purpose-built, ours (T15's fixture note). It is the only door that works with no Figma seat and no network, and the user asked for it by name. It is also a reverse-engineered format that Figma can silently break, plus a new dependency in a repo that reviews every dep individually. The plan's position: **build it, but last and behind its own DDR**, so the translators are already proven against the documented API before a fragile decoder is layered underneath. If the answer is "skip it", Phases 0–5 stand alone with nothing to unpick.
 2. **A published Figma plugin (push-from-Figma).** Out of scope here; genuinely the highest-fidelity door and the one that needs no token. Worth its own plan if the REST path's fidelity turns out to disappoint in dogfooding.
 3. **PAT vs OAuth.** This plan assumes a personal access token — one paste, no callback server, no app registration. OAuth would be nicer for a multi-user hub/cloud deployment and is the only sane option if this ever runs server-side for other people. Deferred deliberately; `keys.ts` custody is identical either way.
@@ -676,9 +721,13 @@ Verified end-to-end on the exact frame Route 2 lost: Cover `6:907`'s logo came b
 - [ ] `design-system-keeper` + critic panel + `a11y-auditor`: 0 blockers on the new UI
 - [ ] **Editability gate (the governing principle):** every imported canvas clears `design-system-keeper` Pass A.10 with no untagged-absolute findings; the imported whiteboard's connectors are live and re-routable (not frozen); the Layers panel shows readable names, not `Group NNNN` × N; `/design:edit` can load and edit an imported canvas end-to-end
 - [ ] Per-import summary names every node that took an editability-over-fidelity degradation
-- [ ] **(Phase 7) Every font substitution is a reported `font-substituted` entry** naming requested and used family — a CSS fallback is not a report
-- [ ] **(Phase 7) An unmapped Tailwind utility is reported, never silently dropped**
+- [ ] **(Phase 7) Every font substitution is a reported `font-substituted` entry** naming requested and used family — a CSS fallback is not a report. **Bounded, not verbatim** (DDR-219 D9): the family is `attrValue(name, 32)` + a count, because `detail` is the one field no sanitizer touches and it reaches verb stdout, the HTTP route and the UI
+- [ ] **(Phase 7) An unmapped Tailwind utility is reported, never silently dropped** — same bounding rule
 - [ ] **(Phase 7) One source node = one download per import**, regardless of how many frames reference it or how many URLs Figma minted for it
+- [ ] **(Phase 7) T16b–T16d are green before T17 starts** — the two unbuilt DDR-216 controls landed, the `Disposition` enum enforceable with `asset-degraded` fixed, the reachability grep tests in place
+- [ ] **(Phase 7) `mcp.figma.com` appears in no runtime code path**, and `3845` only in the designated codegen-client module — asserted by test, not by intent
+- [ ] **(Phase 7) The codegen response never enters a model's context** — `apps/studio` is the MCP client; the invoking agent sees only code-owned stdout (DDR-216 D10)
+- [ ] **(Phase 7) A parse error refuses the frame** — never a partial artboard; `.tsx` + `.meta.json` land atomically or not at all
 - [ ] **(Phase 7) Verified by rendered comparison, not by count agreement.** Every prior round of this feature reported success while losing content; screenshot the frame in Figma and in Maude and compare the pictures
 - [ ] **(Phase 6) All four smoke tiers green — Tier 2 (differential `.fig` vs REST on the same document) is the gate.** No `.fig` import ships without a passing differential run; an unknown container version refuses loudly rather than decoding approximately
 - [ ] `desktop-e2e` scenarios green against the built `.app`
