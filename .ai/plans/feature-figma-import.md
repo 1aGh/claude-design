@@ -2,6 +2,37 @@
 
 Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.
 
+> ## ⛔ STATUS — READ BEFORE EXECUTING ANY TASK (2026-08-11)
+>
+> **Do NOT run this plan from the top.** Phases 0–5 are SHIPPED and on `main`.
+> Re-running them would rebuild working code.
+>
+> | Phase | Tasks | State |
+> |---|---|---|
+> | 0 Contract | T1 | ✅ shipped — [DDR-216](../archive/decisions/DDR-216-figma-ingestion-architecture-and-trust-boundary.md), 3 review rounds |
+> | 1 REST spine | T2–T4 | ✅ shipped — `figma/url.ts`, `figma/client.ts`, privileged routes |
+> | 2 FigJam → whiteboard | T5–T6 | ✅ shipped — `figma/to-strokes.ts`, `maude design import-figma` |
+> | 3 Frames → canvas | T7–T9 | ⚠️ shipped **and superseded for `--pages`** — see § Governing principle. Still governs `--frames`. |
+> | 4 Styles → tokens | T10 | ✅ shipped — `figma/to-tokens.ts` |
+> | 5 One-click UI | T11–T12 | ✅ shipped |
+> | 6 `.fig` decoder | T13–T15 | ⬜ not started, deliberately last |
+> | **7 Codegen → HTML** | **T16–T21** | 🔜 **THE NEXT WORK — and T16 blocks the rest** |
+>
+> **Start at T16.** It is a *decision*, not code: does a remote code generator
+> belong in the ingestion path, when DDR-216 D1 forbids it in as many words and
+> that invariant is the premise Phase 3 was built on? Fork 0b states both sides.
+> Nothing in T17–T21 should be written until it is answered.
+>
+> **What already works and must not be rebuilt:** the REST client and its SSRF
+> chokepoints, PAT custody, resource caps, the charset grammars, the asset
+> download + content-addressed write, the DDR-167 SVG sanitize lane, Figma
+> comments → annotations, section/annotation classification, `absoluteRenderBounds`
+> geometry, and the whole report/disposition machinery. Phase 7 consumes all of it.
+>
+> **Two dead ends are documented, not hidden** (§ Governing principle). Read
+> them before proposing either again — both were shipped and both were measured
+> broken on a live file.
+
 ## Description
 
 Bring **real Figma content** into Maude — not a screenshot of it. Two entry doors:
