@@ -36,6 +36,16 @@ export function classifyHelpers(binDir) {
   return out;
 }
 
+// Strip `/* … */` and `// …` comments before scraping. Without this, prose that
+// merely QUOTES a name after the word "from" (e.g. a doc comment reading
+// `from "serif" to …`) is captured by the greedy `from` alternative below and
+// staged as a phantom npm dep — which does not just add dead weight, it FAILS
+// the packaging build (`missing serif (design helper)`, 2026-08-12). Not an AST
+// walk (see the note on collectImports), just the cheap 90 % of it.
+function stripComments(text) {
+  return text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+}
+
 // Match import/export…from, bare import, and static/dynamic require/import().
 const SPEC_RE =
   /(?:import|export)[\s\S]*?from\s*['"]([^'"]+)['"]|import\s*['"]([^'"]+)['"]|(?:import|require)\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
@@ -88,7 +98,7 @@ export function collectImports(entryFile) {
     } catch {
       continue;
     }
-    for (const m of text.matchAll(SPEC_RE)) {
+    for (const m of stripComments(text).matchAll(SPEC_RE)) {
       const spec = (m[1] || m[2] || m[3] || '').trim();
       // A real module specifier has no whitespace/comma — the greedy `from`
       // alternative can otherwise span statements and capture junk.
