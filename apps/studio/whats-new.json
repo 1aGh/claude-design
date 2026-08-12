@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "video-export-degraded-visible",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "A video export tells you when it's missing audio",
+      "summary": "If an MP4/WebM export can't get audio — an unsupported media element, or the fast renderer had to fall back to a frame-by-frame capture — the export no longer quietly reports \"done\" with a clean checkmark. The Exports panel now shows a degraded pill and a completion toast explaining exactly what was dropped and how to fix it, and it's recorded in your export history too.",
+      "surface": "design-ui"
+    },
+    {
       "id": "sync-panel-per-file",
       "version": null,
       "date": null,

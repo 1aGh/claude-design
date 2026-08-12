@@ -113,12 +113,16 @@ Neither candidate this plan weighed was right. Not `compId === null`; not the re
 
 ### Task A1: Make `degraded` a first-class outcome (kills the silence)
 
+**✅ Shipped** (commit `3becccd9`) — `ExportDegradation` on `ExportResult`/`ExportJob`, propagated through `jobs.ts` to `_export-history.json`, rendered by `export-center.jsx`'s `DegradedNote` (panel row + toast).
+
 - **Do**: `degraded?: {audioDropped: boolean; reason: string}` on `ExportResult` (`exporters/index.ts`); set it from the summary `video.ts` already parses (`:161-185`) instead of only `console.error`; carry it onto the job record, the WS `export:job` emit, and `_export-history.json` (`jobs.ts:49-62,328`); render a warning row + completion toast in `client/export-center.jsx`.
 - **Keep `status: 'done'`** — the file is real. Make the degradation *machine-readable*, not a status change.
 - **Rejected**: encoding the remediation into the download filename — it breaks the handoff contract. The job row + toast are enough.
 - **Why it matters beyond this bug**: today the artifact and its ledger entry are **indistinguishable from a clean export**. The only place the warning lands is the desktop app's stderr, which is not surfaced in-product and is not where a user or an agent looks.
 
 ### Task A2: Pre-flight the unsupported elements before launching Chromium
+
+**✅ Shipped** (commit `3becccd9`) — `exporters/unsupported-media.ts` (`scanUnsupportedMedia`, one barrel-hop-aware), refuses `<Audio>` from `'remotion'` up front, pre-stamps `degraded` for `<OffthreadVideo>`.
 
 - **Do**: In the mp4/webm path, statically scan the target canvas source for `Audio` / `OffthreadVideo` imported from `'remotion'`. **Refuse** for `<Audio>` with the exact one-line remedy (a music bed silently vanishing is worse than a refused export); **pre-stamp `degraded`** for `OffthreadVideo` (often legitimately silent b-roll).
 - **Pattern**: mirrors the existing "refused with remediation, never silently truncated" posture of `resolveMaxFrames` (`video.ts:44-49`).
@@ -127,20 +131,28 @@ Neither candidate this plan weighed was right. Not `compId === null`; not the re
 
 ### Task A3: Stop generating the broken pattern
 
+**✅ Shipped** (commit `e48896d2` + earlier) — `video-comp/SKILL.md`'s "Audio in exports" section covers both elements with the correct import table; `clip-ops.ts:350` no longer rewrites `<Video>` → `<OffthreadVideo>` (aliases instead); `clip-addressing.test.ts`, `canvas-create-api.test.ts`, `clip-ops.test.ts` assert the fixed shape.
+
 - **`plugins/design/skills/video-comp/SKILL.md`** — move `Audio` from the `remotion` import list (`:42`) to the `@remotion/media` list (`:43`); retitle the `:152` section ("Audio in exports") to cover **both** elements, not just `OffthreadVideo`; fix the canonical example at `:235`/`:278`. Add the `disallowFallbackToHtml5Audio` note — `@remotion/media`'s `Audio` can itself fall back to `Html5Audio` under some conditions, which would reopen this exact failure.
 - **`apps/studio/clip-ops.ts:350-353`** — stop rewriting `<Video>` → `<OffthreadVideo>`. The name collision it guards against (a canvas component called `Video`) is real, but it belongs in the **import alias**, not in a rewrite that silently destroys the audio track behind the author's back.
 - **Scaffold + tests** — `test/clip-addressing.test.ts:711`, `test/canvas-create-api.test.ts:156`, `test/clip-ops.test.ts:758` currently *assert* the broken shape.
 
 ### Task A4: Post-export artifact assertion
 
+**✅ Shipped** (commit `3becccd9`) — `hasAudioStream()` in `exporters/video.ts` is the bytes-level backstop when audio was requested but the container has no audio stream.
+
 - **Do**: when audio was requested and the produced container has **no audio stream**, that is by definition a degraded result — independent of whether the shim noticed. Cheap, and it catches audio-loss classes we have not met yet.
 - **Note**: the `video-comp` skill already tells authors to `ffprobe` after every export (`SKILL.md:171-175`) — a human-only instruction that this makes the exporter's job.
 
 ### Task A5: Codemod the existing canvases
 
+**✅ Shipped** — `.design/ui/Photo Editor Trailer.tsx` imports `Audio`/`Video` from `@remotion/media`. (An unrelated `.claude/worktrees/ft-video-editing/` worktree still has the old copy — a different feature branch's own working tree, out of scope here.)
+
 - **Do**: at minimum `maude/.design/ui/Photo Editor Trailer.tsx:1-10` — **Maude's own trailer cannot export with sound.** (`Maude Video Intro.tsx` and `Maude Native Launch.tsx` already import from `@remotion/media` and are fine — the correct pattern exists in practice, just not in the docs.) The same one-line swap applies downstream.
 
 ### Task 1: ADD in-shim per-stage timing + path telemetry
+
+**✅ Shipped** (commit `354ec5c4`) — `stageMs` accumulators (seek/settle/screenshot/encode) + `MAUDE_TIMING` line on both capture paths; `MAUDE_TIMING` filtered out of the summary line in `_runtime.ts`.
 
 - **Do**: Per-stage accumulators (seek / settle / screenshot / transfer+encode) in the existing loop (`_video-playwright.mjs:401-427`); emit ONE `MAUDE_TIMING {…}` stdout line. Propagate the already-computed `path` / `degraded` / `fallbackReason` (`_video-playwright.mjs:433-435`, `video.ts:171-177`) into the job record and `_export-history.json`.
 - **Gotcha**: `video.ts:163` parses `stdoutLines.at(-1)` as the summary — an unfiltered trailing line **breaks every video export**. Filter `MAUDE_TIMING` in `_runtime.ts` beside `PROGRESS_LINE`, not in `video.ts`.
@@ -149,12 +161,16 @@ Neither candidate this plan weighed was right. Not `compId === null`; not the re
 
 ### Task 2: UPDATE — bump `@remotion/*` and disable page responsiveness
 
+**✅ Shipped** — `package.json` pins `@remotion/*` at `4.0.507`; `pageResponsiveness: 'disabled'` set in `video-render-lib.ts`'s `renderMediaOnWeb` call; `check-runtime-bundles.sh` verified green (24/24 bundles above floor) 2026-08-12.
+
 - **Do**: Bump all six pinned `@remotion/*` packages (`apps/studio/package.json:40-63`) from 4.0.486 to ≥4.0.491 (prefer 4.0.507); regenerate the 10 committed `dist/runtime/*.js` bundles with `MAUDE_FORCE_RUNTIME_BUILD=1 bun run build.ts --release`; set `pageResponsiveness: 'disabled'` in the `renderMediaOnWeb({…})` call (`video-render-lib.ts:76-95`).
 - **Gotcha**: those same bundles drive the **live Player preview**, not just export. 4.0.499's "opacity leaking between layers" fix is evidence that rendering **output** changed across this delta. Budget a visual re-check of existing video canvases, not just an export check.
 - **Gotcha**: PR #9101 **removed** `allowHtmlInCanvas` (option, CLI flag, Studio toggle); `Config.setAllowHtmlInCanvasEnabled()` is a deprecated no-op that warns.
 - **Validate**: `check-runtime-bundles.sh` green; export AND scrub an existing video comp; Task 0's repro re-run.
 
 ### Task 3: FIX the silently-muted export (correctness, ships regardless of speed)
+
+**Superseded, see DDR-220.** The separate-audio-render-pass design below is NOT what shipped — it turned out unnecessary once Task 0's actual root cause (the `<Html5Audio>` rejection) is refused at pre-flight (Task A2) before the renderer ever runs; `video-render-lib.ts` already renders video+audio in ONE `renderMediaOnWeb` pass (pre-dates this plan, DDR-148 addendum). The `degraded`/`audioDropped` UI surfacing this task also asked for **is** shipped (Task A1). DDR-220 records why the separate pass was deliberately not built.
 
 - **Do**: When the compositor path runs, render audio in a **separate `renderMediaOnWeb` pass** — audio has no DOM rasterization, so it cannot hit the composer cliff at all — and mux that single track into the mediabunny output. One track, one pass, **no seam, no re-encode** (research: Remotion's single biggest distributed-render win was eliminating an AAC re-encode at the audio join; this design has no join). If an audio-only render proves unexpressible in the web-renderer API, **refuse the export with an explanation** rather than shipping a silent file behind a progress bar.
 - **Do**: Surface `degraded` / `audioDropped` in the UI, reusing the existing notice pattern (`app.jsx:1769`, `data-testid="export-long-comp-notice"`).
@@ -163,11 +179,15 @@ Neither candidate this plan weighed was right. Not `compId === null`; not the re
 
 ### Task 4: FIX the seek bridge — a failed seek must not report success
 
+**✅ Shipped** (commit `354ec5c4`) — `video-comp.tsx`'s empty catch replaced with `seekEntryWithRetry` (bounded retries) + `__maude_seek_failures__` counter + `strict` mode that throws; the capture shim refuses to encode when `seekFailures > 0`.
+
 - **Do**: Remove the empty catch at `video-comp.tsx:158-164`. A failed `seekTo` must reject, or increment a failure counter the shim reads and hard-fails on.
 - **Gotcha**: this sits **below** any shim-level handshake and is invisible to it. Serially benign, which is why it has survived; it is the first thing parallelism would break.
 - **Gate (source-shape, per `test/export-shim-multi-capture.test.ts`)**: assert the empty-catch shape is gone. **This gate precedes all others — without it a handshake is decorative.**
 
 ### Task 5: BUILD the readiness handshake (a feature, not a one-line refactor)
+
+**Deferred — see DDR-220 § 5.** Gated behind Task 7 (parallel capture), which is itself deferred pending the frame-purity contract (BREAKER's held dissent). Not built.
 
 - **Do**: A ready-count registry in Maude's own source (there is none today), a canvas-lib API to register/release handles, and a shim-side wait that polls it **before and after** the frame is set (Remotion's stated reason: setting the frame can itself register new handles). Await `document.fonts.ready` **per frame**, not once at `:82`. Replace `setTimeout(finish, 1500)` (`_video-playwright.mjs:517`) with it.
 - **Gotcha**: the 1500 ms timer is a **backstop that only fires when `seeked` never arrives** — it does *not* explain 1.05 s/frame in the common case (SHIPPER's correction). It explains why per-frame cost is **bimodal**, and why parallel capture is unsafe today. Treat it as correctness work, not perf work.
@@ -176,10 +196,14 @@ Neither candidate this plan weighed was right. Not `compId === null`; not the re
 
 ### Task 6: ADD the guards Rev 1 never mentioned
 
+**✅ Shipped.** (a)–(d) shipped in commit `354ec5c4` (`assertRenderOutputSizeOk` call in `_video-playwright.mjs`; `addVideoFrame` rejects mismatched dimensions; content-hashed bundle cache filenames in `_browser-bundles.ts`; `latencyMode: 'quality'` pinned on `CanvasSource`). (e) closed 2026-08-12 — `test/video-encode-lib.test.ts` pins the current no-clear behavior deliberately (source-shape test; live pixel behavior needs a real browser, out of `bun:test` scope).
+
 - **Do**: (a) `assertRenderOutputSizeOk(clip.width, clip.height, deviceScaleFactor, '_video-playwright')` — it exists in `_pw-launch.mjs:151`, is enforced by `_pdf-playwright.mjs:130`, and the video path (the only one holding a full-resolution surface across thousands of frames) has **no guard at all**. (b) Make `addVideoFrame` **reject** a bitmap whose dimensions differ from the encoder canvas instead of silently rescaling (`video-encode-lib.ts:135`). (c) Content-hash the bundle cache filenames — `getEncodeLibBundle()`/`getWebRendererBundle()` write **fixed, unversioned** tmp paths (`_browser-bundles.ts:91`, `:131`) that concurrent Maude servers at different versions race-write. (d) Pin `latencyMode: 'quality'` explicitly and never route frames through a MediaStream-backed source. (e) Decide `drawImage` clearing between frames deliberately — it never clears today, so a transparent artboard ghosts the previous frame; pin current behavior in a test first.
 - **Validate**: unit-testable in `bun` without a browser — which is the point, since CI has no browser.
 
 ### Task 7: SPIKE + GATE parallelism at the encoded-segment boundary
+
+**Spike done, build deferred — see § Measured findings and DDR-220 § 5.** The falsification spike survived (re-encode-free remux confirmed, `encodersConstructedDuringJoin: 0`), but none of the gates below are built. Decision: viable, not yet built.
 
 - **Falsify first (standalone, touches nothing)**: run the existing in-page encoder twice against the same comp — frames 0-29, then 30-59 with a forced keyframe on the segment's first frame — and attempt a **re-encode-free join** via mediabunny demux → packet-passthrough into one `Output`. Assert: the join decodes to exactly 60 frames; frame 30 is pixel-identical to segment 2's own frame 0; **no `VideoEncoder` was constructed during the join**. If mediabunny exposes no encoded-packet source, **that is the falsification and segment parallelism dies there**, before a line of shim code moves. (The OBS "soft remux" pattern — fragmented output with a placeholder `free` box rewritten at finalize — is documented as a pattern but its preconditions for this library are **unverified**; nobody has published them.)
 - **Then, if it survives**: N pages, each owning an in-page encoder, each returning one encoded segment; cap at `min(8, cpus/2)`. Raw pixels never cross the boundary, which makes JPEG, the frame-sink, and the overlap loop **unnecessary rather than cheaper**.
@@ -191,17 +215,23 @@ Neither candidate this plan weighed was right. Not `compId === null`; not the re
 
 ### Task 8: SPIKE the GPU question honestly
 
+**✅ Shipped** (commit `6b1b7a63`) — measured (see § Measured findings below); `MAUDE_CAPTURE_GPU=1` opt-in, off by default; no `hardwareAcceleration`/`--enable-features` flags added.
+
 - **Do**: (a) Test whether leaving `chrome-headless-shell` for `channel: 'chromium'` and/or `--enable-gpu` actually exposes hardware encode on this machine — confirm in `chrome://gpu` → "Video Encode", and by differential probe (`prefer-hardware` → `supported:false` while `no-preference` → `true` proves hardware is genuinely absent). (b) Measure `captureScreenshot` PNG vs JPEG vs WebP with and without `optimizeForSpeed: true` — no published number exists.
 - **Do NOT**: ship `hardwareAcceleration: 'prefer-hardware'` as a setting (spec: an ignorable hint, and it can render a config *unsupported*); ship `--enable-features=AcceleratedVideoEncoder` (Linux-only); or add flags to `_pw-launch.mjs`, which 11 other shims call with no opts — anything kept goes in the video shim's own `launchChromium({args})` call.
 - **Report the measured truth**, including "no hardware encoder is reachable headless on this platform" if that is the answer.
 
 ### Task 9: JPEG as a knob, defaulting to PNG
 
+**✅ Shipped 2026-08-12.** `options.frameFormat === 'jpeg'` → `--frame-format jpeg` → `page.screenshot({type:'jpeg', quality:90})`, scoped to plain video only (never `--dump-frames`, never gif). Default stays `png` — the settling measurement (ΔE2000 + Task 1 telemetry showing transport > 30%) has not been run, so nothing flips the default yet.
+
 - **Do**: `--frame-format jpeg|png`, **default `png`**. Zero-risk opt-in; the default flips only if measurement earns it. If Task 7 lands, the intermediate disappears entirely — which is the strongest argument for treating this as a knob and not a contract.
 - **Settling measurement** (SHIPPER's, after conceding his "below the noise floor" claim was asserted rather than measured): export the same DS canvas twice, PNG vs JPEG q90 intermediate, decode the **final MP4** both times — the intermediates are irrelevant, only the post-H.264 delta matters — and compute ΔE2000 restricted to a **high-contrast-edge mask** (accent-on-dark text, flat-color boundaries) plus full-frame SSIM. Ship JPEG only if max ΔE2000 on the edge mask is **< 2.0** AND Task 1's timing shows transport owning **> 30%** of per-frame cost.
 - **Note the mechanism correctly**: the artifact that shows on this repo's DS is **DCT ringing and blocking at hard edges**, not the second chroma subsample (resampling already-half-resolution chroma on an aligned grid is close to identity).
 
 ### Task 10: RECORD
+
+**✅ Shipped 2026-08-12.** DDR-220 records the resolved architecture (ingested into the graph). RCA addendum added to `issue-video-mp4-rendermediaonweb-stack-overflow.md` with Task 0's attribution. `whats-new.json` entry `video-export-degraded-visible` added (version: null, pending).
 
 - **Do**: A DDR for the resolved architecture (both paths retained, segment boundary if Task 7 survives, audio as a separate render pass) and one for the frame-purity contract. Ingest into the graph. Add an RCA addendum to `issue-video-mp4-rendermediaonweb-stack-overflow` with Task 0's attribution. `whats-new-entry` when user-visible.
 
@@ -282,11 +312,11 @@ was to decide whether that work is worth starting. It is.
 
 ## Acceptance Criteria
 
-- [ ] Task 0 has answered "which path, and why" for the reported export **before** any optimization landed
-- [ ] No export can produce a silent file without telling the user
-- [ ] A failed seek can no longer report success (`video-comp.tsx` empty catch gone, asserted by a source-shape test)
-- [ ] No wall-clock escape hatch remains in the comp-mode capture wait; a ready timeout fails the export loudly
-- [ ] Every gate is a source-shape or unit assertion that runs **without a browser** (CI has none), or is explicitly recorded as a manual/nightly ritual with its result written down
-- [ ] Parallel capture, if built: falsification spike passed, codec negotiated once, clip equality asserted, frame-purity contract written and linted, worker count derived from measured RSS, 3× byte-identical under load with zero ready-timeouts
-- [ ] Speed target stated per path and measured, not asserted: the one-pass renderer path in seconds-to-low-tens-of-seconds; the frame-step path **< 60 s only if Task 7 lands**, otherwise ~2× today's and said so plainly
-- [ ] GPU findings reported as measured, including a negative result
+- [x] Task 0 has answered "which path, and why" for the reported export **before** any optimization landed — settled by the RCA, no spike needed
+- [x] No export can produce a silent file without telling the user — Task A1/A2/A4 (`degraded` first-class, pre-flight refusal, artifact-level backstop)
+- [x] A failed seek can no longer report success (`video-comp.tsx` empty catch gone, asserted by a source-shape test) — Task 4
+- [ ] No wall-clock escape hatch remains in the comp-mode capture wait; a ready timeout fails the export loudly — **partially true.** The `__maude_seek__`/Player-level wait is fixed (Task 4: bounded retry, counted, throws under `strict`). The `<video>`-element seeked-wait inside `seekFrame` (comp mode) still has a silent-resolve `setTimeout(finish, 1500)` backstop — this is Task 5's readiness handshake, which is deliberately deferred (DDR-220 § 5) behind the frame-purity contract. Low practical exposure today (`@remotion/media`'s `<Video>` decodes to canvas, no `<video>` tag — SKILL.md steers authors away from the classic `remotion` elements that would hit this), but the criterion is not literally met until Task 5 lands.
+- [x] Every gate is a source-shape or unit assertion that runs **without a browser** (CI has none), or is explicitly recorded as a manual/nightly ritual with its result written down — Task 6's guards are source/unit-level; Task 7/8's live-Chromium findings are written down in § Measured findings
+- [ ] Parallel capture, if built: falsification spike passed, codec negotiated once, clip equality asserted, frame-purity contract written and linted, worker count derived from measured RSS, 3× byte-identical under load with zero ready-timeouts — **not built** (deliberate deferral, DDR-220 § 5); falsification spike passed, the rest is unbuilt by design
+- [x] Speed target stated per path and measured, not asserted — § Measured findings + RCA: renderer path ~45 s (858-frame comparable comp), frame-step path unchanged (~2×) since Task 7 didn't land
+- [x] GPU findings reported as measured, including a negative result — § Measured findings: no hardware encoder reachable on the shipped `chrome-headless-shell` engine

@@ -47,6 +47,7 @@ const {
   out, // encoded file destination
   mode = 'comp', // 'comp' | 'ordinary'
   audio, // '1' | '0' — include audio in the render-lib path (default on; presence-checked below)
+  'frame-format': frameFormatArg, // 'jpeg' | 'png' (default) — the frame-step screenshot intermediate, Task 9
   'license-key': licenseKeyArg,
   timeout = '60',
   scale = '1',
@@ -67,6 +68,8 @@ const deviceScaleFactor = Math.max(1, Math.min(4, Number(scale) || 1));
 // always passes an explicit '0'/'1'.
 const wantAudio = audio !== '0';
 const licenseKey = licenseKeyArg || 'free-license';
+// Task 9 — opt-in JPEG frame-step intermediate; unrecognized/absent value is PNG.
+const frameFormat = frameFormatArg === 'jpeg' ? 'jpeg' : 'png';
 
 /** Wait a real turn of the event loop + a frame so a seek settles before shot. */
 const SETTLE_MS = 16;
@@ -267,6 +270,7 @@ try {
         mode,
         deviceScaleFactor,
         timeoutMs,
+        frameFormat,
         fallbackReason: renderFallbackReason,
       });
     } catch (fallbackErr) {
@@ -308,6 +312,10 @@ async function frameStepCapture({
   mode,
   deviceScaleFactor,
   timeoutMs,
+  // Task 9 — 'jpeg' | 'png' (default). Only ever affects the encode transport,
+  // never a --dump-frames debug dump (that always stays lossless PNG) and
+  // never gif (video.ts refuses to pass 'jpeg' through for gif).
+  frameFormat = 'png',
   // Set (to the renderer's error message) only when this run is the
   // graceful-degradation fallback for a failed renderMediaOnWeb path; stamps
   // `degraded`/`audioDropped` onto the stdout summary so video.ts can warn.
@@ -438,6 +446,10 @@ async function frameStepCapture({
   // Per-stage accumulators. "The export takes 15 minutes" was, for a long time,
   // answerable only by guessing which stage owned the second — so every
   // optimization was aimed at a suspicion. One line at the end fixes that.
+  // Task 9 — a debug dump must stay lossless (it's for human inspection), and
+  // gif never gets a lossy intermediate stacked under its own quantization —
+  // so the knob only actually applies to a plain video encode.
+  const useJpeg = frameFormat === 'jpeg' && !isGif && !dump;
   const stageMs = { seek: 0, settle: 0, screenshot: 0, encode: 0 };
   for (let f = 0; f < frameCount; f += 1) {
     const tSeek = Date.now();
@@ -447,7 +459,7 @@ async function frameStepCapture({
     await page.waitForTimeout(SETTLE_MS);
     stageMs.settle += Date.now() - tSettle;
     const tShot = Date.now();
-    const shot = await page.screenshot({ clip });
+    const shot = await page.screenshot(useJpeg ? { clip, type: 'jpeg', quality: 90 } : { clip });
     stageMs.screenshot += Date.now() - tShot;
     if (dump) {
       const p = join(dump, `frame-${String(f).padStart(5, '0')}.png`);
@@ -458,11 +470,11 @@ async function frameStepCapture({
       const tEnc = Date.now();
       const b64 = shot.toString('base64');
       await page.evaluate(
-        async ({ b64, isGif }) => {
+        async ({ b64, isGif, format }) => {
           if (isGif) return window.__maudeEnc.addGifFrame(b64);
-          return window.__maudeEnc.addVideoFrame(b64);
+          return window.__maudeEnc.addVideoFrame(b64, format);
         },
-        { b64, isGif }
+        { b64, isGif, format: useJpeg ? 'jpeg' : 'png' }
       );
       // NB: this stage is the double CDP crossing — the screenshot bytes go out
       // to node as base64 and straight back into the same page, to an encoder

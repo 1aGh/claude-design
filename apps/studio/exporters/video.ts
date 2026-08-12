@@ -166,6 +166,16 @@ async function runVideo(
     if (colors) args.push('--gifColors', String(colors));
   }
 
+  // Frame-step screenshot intermediate — opt-in only, default stays PNG. Task
+  // 9's own measurement (ΔE2000 on a high-contrast-edge mask, post-H.264, plus
+  // Task 1's telemetry showing transport owning > 30% of per-frame cost) has
+  // not run yet, so nothing here flips the default on its own. GIF ignores
+  // this — its own palette quantization already loses precision, so stacking
+  // a lossy JPEG intermediate under it is pure downside with no measured case.
+  if (options.frameFormat === 'jpeg' && format !== 'gif') {
+    args.push('--frame-format', 'jpeg');
+  }
+
   try {
     const stdoutLines = await runShim(args, {
       cwd: path.dirname(VIDEO_PLAYWRIGHT),

@@ -48,7 +48,7 @@ interface EncodeResult {
 
 interface MaudeEnc {
   startVideo(opts: StartVideoOpts): Promise<{ container: string; codec: string }>;
-  addVideoFrame(b64png: string): Promise<void>;
+  addVideoFrame(b64png: string, format?: 'png' | 'jpeg'): Promise<void>;
   finishVideo(): Promise<EncodeResult>;
   startGif(opts: StartGifOpts): void;
   addGifFrame(b64png: string): Promise<void>;
@@ -72,8 +72,11 @@ function bytesToB64(buf: ArrayBuffer | Uint8Array): string {
   return btoa(bin);
 }
 
-async function decodeToBitmap(b64: string): Promise<ImageBitmap> {
-  return createImageBitmap(new Blob([b64ToBytes(b64)], { type: 'image/png' }));
+async function decodeToBitmap(
+  b64: string,
+  mime: 'image/png' | 'image/jpeg' = 'image/png'
+): Promise<ImageBitmap> {
+  return createImageBitmap(new Blob([b64ToBytes(b64)], { type: mime }));
 }
 
 let vstate: {
@@ -140,9 +143,9 @@ const api: MaudeEnc = {
     return { container, codec };
   },
 
-  async addVideoFrame(b64png) {
+  async addVideoFrame(b64png, format = 'png') {
     if (!vstate) throw new Error('startVideo not called');
-    const bmp = await decodeToBitmap(b64png);
+    const bmp = await decodeToBitmap(b64png, format === 'jpeg' ? 'image/jpeg' : 'image/png');
     // REJECT a mismatched frame instead of rescaling it. `drawImage` with
     // explicit dimensions silently resamples anything that does not match the
     // encoder canvas, so a capture whose clip drifted by a pixel produced an
