@@ -154,7 +154,13 @@ import {
 } from './annotations-snap.ts';
 import { arrowPrimitives, type SvgPrimitive } from './canvas-arrowheads.ts';
 import { IconLineThick, IconLineThin } from './canvas-icons.tsx';
-import { useViewportControllerContext, useWorldRefContext } from './canvas-lib.tsx';
+import {
+  countRender,
+  getLiveViewport,
+  useLiveViewport,
+  useViewportControllerContext,
+  useWorldRefContext,
+} from './canvas-lib.tsx';
 import { buildAnnotationStrokesRecord } from './commands/annotation-strokes-command.ts';
 import { ensureMenuStyles as ensureCtxMenuStyles } from './context-menu.tsx';
 import { crossedDragThreshold, type Tool } from './input-router.tsx';
@@ -948,6 +954,7 @@ function scaleStrokeInGroup(
 // Component
 
 export function AnnotationsLayer() {
+  countRender('annotationRenders');
   ensureAnnotStyles();
   const { tool, setTool, sticky, tools, shapeKind } = useToolMode();
   const theme = useCanvasChromeTheme();
@@ -1011,8 +1018,22 @@ export function AnnotationsLayer() {
   // endpoint free). Tracked here because endStroke (pointerup) carries no
   // modifier state of its own.
   const cmdHeldRef = useRef(false);
-  const vpRef = useRef(vp);
-  vpRef.current = vp;
+  const vpFallbackRef = useRef(vp);
+  vpFallbackRef.current = vp;
+  // Reads the LIVE viewport, not the published one. Publishing is settle-only
+  // (gesture-static React), so mirroring the published value here would freeze
+  // this ref for the whole gesture and every zoom-scaled threshold computed
+  // from it — bind distance, snap tolerance, hit-test slop, sticker placement —
+  // would silently use the pre-gesture zoom. Shaped as a ref so the ~40 existing
+  // `vpRef.current` call sites keep working unchanged.
+  const vpRef = useMemo(
+    () => ({
+      get current() {
+        return getLiveViewport() ?? vpFallbackRef.current;
+      },
+    }),
+    []
+  );
   const visibilityCtx = useAnnotationsVisibility();
   const chrome = useChromeVisibility();
   // Presentation Mode hides annotations without mutating the user's own
@@ -1655,7 +1676,9 @@ export function AnnotationsLayer() {
 
   const screenToWorld = useCallback(
     (cx: number, cy: number): [number, number] => {
-      const v = vp ?? { x: 0, y: 0, zoom: 1 };
+      // Live: this runs at event time (drop/placement), where the published
+      // viewport can be a whole gesture behind.
+      const v = vpRef.current ?? { x: 0, y: 0, zoom: 1 };
       const z = v.zoom || 1;
       return [(cx - v.x) / z, (cy - v.y) / z];
     },
@@ -1826,7 +1849,7 @@ export function AnnotationsLayer() {
 
   const eraseAt = useCallback(
     (wx: number, wy: number) => {
-      const zoom = vp?.zoom || 1;
+      const zoom = vpRef.current?.zoom || 1;
       const tol = 8 / zoom;
       const prev = strokesRef.current;
       for (let i = prev.length - 1; i >= 0; i--) {
@@ -4750,8 +4773,15 @@ function AddTextHint({ strokes, hintId }: { strokes: readonly Stroke[]; hintId: 
  * marquee/drag handler yields).
  */
 function ConnectorDots({ stroke }: { stroke: Stroke }) {
-  const controller = useViewportControllerContext();
-  const zoom = controller?.viewport?.zoom || 1;
+  // LIVE zoom, deliberately not the published one. These are the counter-scaled
+  // chrome elements (connector dots, selection bbox, section-label chips): they
+  // must hold a constant SCREEN size while the world scales. Publishing is
+  // settle-only since the gesture-static change, so reading published zoom here
+  // would let this chrome grow and shrink with the world through a pinch and
+  // then jump back at settle — the visible fidelity-pop a previous LOD attempt
+  // was reverted for. These components render only for selected/hovered
+  // strokes, so tracking the gesture frame-by-frame stays cheap.
+  const zoom = useLiveViewport().zoom || 1;
   if (!isBindable(stroke)) return null;
   const center = strokeCenter(stroke);
   if (!center) return null;
@@ -4942,8 +4972,9 @@ function SelectionHalo({
   anchorsById: Map<string, AnchorHost>;
   multi: boolean;
 }) {
-  const controller = useViewportControllerContext();
-  const zoom = controller?.viewport?.zoom || 1;
+  // Counter-scaled chrome — must hold a constant screen size while the world
+  // scales, so it needs the live zoom, not the settle-cadence published one.
+  const zoom = useLiveViewport().zoom || 1;
   const bbox = strokeBBox(stroke, anchorsById);
   if (!bbox) return null;
   // T17 + post-Wave-2 fix — annotation halo idioms:
@@ -4990,8 +5021,9 @@ function AnnotGroupBbox({
   selectedStrokes: readonly Stroke[];
   anchorsById: Map<string, AnchorHost>;
 }) {
-  const controller = useViewportControllerContext();
-  const zoom = controller?.viewport?.zoom || 1;
+  // Counter-scaled chrome — must hold a constant screen size while the world
+  // scales, so it needs the live zoom, not the settle-cadence published one.
+  const zoom = useLiveViewport().zoom || 1;
   if (selectedStrokes.length < 2) return null;
   let xMin = Number.POSITIVE_INFINITY;
   let yMin = Number.POSITIVE_INFINITY;
@@ -5225,8 +5257,9 @@ function SectionLabelChip({
   y: number;
   hitMode: 'visiblePainted' | 'none';
 }) {
-  const controller = useViewportControllerContext();
-  const zoom = controller?.viewport?.zoom || 1;
+  // Counter-scaled chrome — must hold a constant screen size while the world
+  // scales, so it needs the live zoom, not the settle-cadence published one.
+  const zoom = useLiveViewport().zoom || 1;
   const fontSize = SECTION_LABEL_FONT / zoom;
   const chipH = SECTION_LABEL_H / zoom;
   const gap = 4 / zoom;
@@ -5279,8 +5312,9 @@ function SectionTitleEditor({
   onCommit: (text: string, fmt?: EditorFmt) => void;
   onCancel: () => void;
 }) {
-  const controller = useViewportControllerContext();
-  const zoom = controller?.viewport?.zoom || 1;
+  // Counter-scaled chrome — must hold a constant screen size while the world
+  // scales, so it needs the live zoom, not the settle-cadence published one.
+  const zoom = useLiveViewport().zoom || 1;
   const fontSize = SECTION_LABEL_FONT / zoom;
   const chipH = SECTION_LABEL_H / zoom;
   const gap = 4 / zoom;

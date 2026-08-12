@@ -234,6 +234,37 @@ const IS_WEBKIT =
     (typeof window !== 'undefined' && 'GestureEvent' in window));
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Render instrumentation (feature-canvas-render-performance).
+//
+// The whole point of this work is the invariant "a pan/zoom gesture triggers no
+// React render", and an invariant nothing measures is just an intention. The
+// counter is OFF unless a probe installs `window.__dcPerf` first, so the
+// production cost is one property read per render — far below the reconciliation
+// it exists to count. `maude design perf` installs the object, drives a scripted
+// gesture, and reports the count; an uninstrumented build reports null rather
+// than 0, because "not measured" must never read as "measured zero".
+type DcPerfCounters = {
+  artboardRenders: number;
+  annotationRenders: number;
+  instrumented?: boolean;
+};
+
+export function countRender(key: keyof DcPerfCounters): void {
+  if (typeof window === 'undefined') return;
+  const perf = (window as unknown as { __dcPerf?: DcPerfCounters }).__dcPerf;
+  if (!perf) return;
+  // Never let instrumentation break rendering. The page owns this object, so a
+  // canvas could hand back a frozen one — assigning to it throws in strict-mode
+  // ESM, and that would take out every DCArtboard render with it.
+  try {
+    perf.instrumented = true;
+    perf[key] = ((perf[key] as number) || 0) + 1;
+  } catch {
+    /* frozen or exotic object — measuring is optional, rendering is not */
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Engine CSS (Phase 4) — injected once per iframe inside DesignCanvas's mount.
 // The visual chrome of `.dc-artboard` (borders, label strip, SKU type) still
 // lives in the DS's _components.css. Engine CSS ONLY covers positioning + the
@@ -917,6 +948,84 @@ export function getLiveViewport(): ViewportState | null {
   return liveViewport ? { ...liveViewport } : null;
 }
 
+/**
+ * Viewport for the few consumers that must track a gesture AS IT HAPPENS —
+ * the minimap indicator and the zoom % readout. Everything else reads the
+ * published (settle-cadence) viewport and stays still while the user moves.
+ *
+ * Polls the live mirror on rAF, but only while a gesture is in flight, and
+ * only re-renders when the value actually changed and at most every
+ * `minIntervalMs`. That keeps these two small components on the same ~20 Hz
+ * cadence they had when EVERY component was re-rendering at 20 Hz — the
+ * difference is that now it is two of them instead of all 128 artboards.
+ */
+// ONE rAF ticker for every live-viewport subscriber. Each mounted consumer
+// running its own loop would multiply with the UI: a board with N sections
+// renders N label chips, and N independent rAF callbacks per frame is a cost
+// that grows with content while measuring the same single value.
+const liveVpSubs = new Set<(v: ViewportState) => void>();
+let liveVpRaf = 0;
+let liveVpLastAt = 0;
+let liveVpLastKey = '';
+
+function liveVpTick(t: number): void {
+  liveVpRaf = requestAnimationFrame(liveVpTick);
+  if (t - liveVpLastAt < PUBLISH_MS) return;
+  liveVpLastAt = t;
+  const cur = liveViewport;
+  if (!cur) return;
+  const key = `${cur.x}|${cur.y}|${cur.zoom}`;
+  if (key === liveVpLastKey) return;
+  liveVpLastKey = key;
+  for (const fn of liveVpSubs) fn({ ...cur });
+}
+
+function subscribeLiveViewport(fn: (v: ViewportState) => void): () => void {
+  liveVpSubs.add(fn);
+  if (liveVpRaf === 0 && typeof requestAnimationFrame === 'function') {
+    liveVpLastKey = '';
+    liveVpRaf = requestAnimationFrame(liveVpTick);
+  }
+  return () => {
+    liveVpSubs.delete(fn);
+    if (liveVpSubs.size === 0 && liveVpRaf !== 0) {
+      cancelAnimationFrame(liveVpRaf);
+      liveVpRaf = 0;
+    }
+  };
+}
+
+/**
+ * Viewport for the few consumers that must track a gesture AS IT HAPPENS —
+ * the minimap indicator, the zoom % readout, and the counter-scaled annotation
+ * chrome that has to hold a constant screen size while the world scales.
+ * Everything else reads the published (settle-cadence) viewport and stays still
+ * while the user moves.
+ *
+ * Subscribes to the shared ticker only while a gesture is in flight, and only
+ * re-renders when the value actually changed — the same ~20 Hz cadence these
+ * components had back when EVERY component re-rendered at 20 Hz. The difference
+ * is that it is now a handful of them instead of all 128 artboards.
+ */
+export function useLiveViewport(): ViewportState {
+  const controller = useViewportControllerContext();
+  const published = controller?.viewport;
+  const interacting = !!controller?.isInteracting;
+  const [live, setLive] = useState<ViewportState | null>(null);
+
+  useEffect(() => {
+    if (!interacting) {
+      // Settled: the published value is authoritative again. Dropping the local
+      // copy avoids rendering a stale mid-gesture frame forever.
+      setLive(null);
+      return;
+    }
+    return subscribeLiveViewport(setLive);
+  }, [interacting]);
+
+  return live ?? published ?? { x: 0, y: 0, zoom: 1 };
+}
+
 export function useViewportController(opts: ViewportControllerOptions): ViewportControllerHandle {
   const {
     hostRef,
@@ -999,6 +1108,14 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
       el.style.transform = `translate(${v.x / z}px, ${v.y / z}px)`;
       el.style.zoom = String(z);
     }
+    // Live zoom for counter-scaled chrome (section labels, connector dots,
+    // selection bboxes — anything that must stay a constant number of SCREEN px
+    // while the world scales). It has to be written per frame, right here: the
+    // published viewport is settle-only now, so chrome sized from React state
+    // would scale with the world through a pinch and snap back at the end —
+    // reintroducing exactly the fidelity-pop that was removed once already
+    // (RCA addendum: the LOD toggle was reverted for visible flicker).
+    el.style.setProperty('--dc-zoom', String(z));
     el.style.visibility = 'visible';
   }, []);
 
@@ -1047,11 +1164,16 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
       if (vpRef.current.zoom !== zoomAtInteractStartRef.current) {
         writeTransform(vpRef.current, { crisp: true });
       }
+      // The gesture is over — NOW publish. Everything that reads the published
+      // viewport (LOD banding, collab awareness, the active-artboard pick) is
+      // settle-cadence by design; deferring the publish to here is what keeps
+      // the whole React tree still while the user is actually moving.
+      setViewportPublished({ ...vpRef.current });
     }, 220);
   }, [writeTransform]);
 
   const applyViewport = useCallback(
-    (next: ViewportState) => {
+    (next: ViewportState, opts?: { defer?: boolean }) => {
       const clamped: ViewportState = {
         x: Number.isFinite(next.x) ? next.x : 0,
         y: Number.isFinite(next.y) ? next.y : 0,
@@ -1060,7 +1182,17 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
       vpRef.current = clamped;
       liveViewport = clamped; // RC3 — survives the soft-reload remount
       writeTransform(clamped);
-      schedulePublish();
+      // `defer` is what makes a gesture render-free. A wheel/pinch/drag burst
+      // writes the transform imperatively every frame (above) and publishes to
+      // React only once the motion settles; a programmatic move (fit, reset,
+      // jumpTo, animateTo) publishes immediately, because nothing follows it to
+      // trigger the settle and consumers would sit on a stale value.
+      //
+      // Measured reason: at 20 Hz publishing, one pan+zoom over a 128-artboard
+      // canvas re-rendered DCArtboard 6272 times (128 boards x ~49 publishes),
+      // and every published value was one the drag/hit-test paths already read
+      // live from a ref. See `maude design perf` and the plan's findings table.
+      if (!opts?.defer) schedulePublish();
       scheduleSettle();
       markInteracting();
     },
@@ -1074,7 +1206,7 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
   const panBy = useCallback(
     (dx: number, dy: number) => {
       const v = vpRef.current;
-      applyViewport({ x: v.x + dx, y: v.y + dy, zoom: v.zoom });
+      applyViewport({ x: v.x + dx, y: v.y + dy, zoom: v.zoom }, { defer: true });
     },
     [applyViewport]
   );
@@ -1091,7 +1223,7 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
         y: cy - wy * newZoom,
         zoom: newZoom,
       };
-      applyViewport(next);
+      applyViewport(next, { defer: true });
     },
     [applyViewport]
   );
@@ -2062,6 +2194,7 @@ export function DCArtboard({
   print?: ArtboardPrintProp;
   children: ReactNode;
 }) {
+  countRender('artboardRenders');
   const ctx = useWorldContext();
   const _controller = useViewportControllerContext();
   const toolMode = useToolModeOptional();
@@ -2105,6 +2238,8 @@ export function DCArtboard({
     rectFor: (rid) => (ctx ? ctx.rectFor(rid) : null),
     allRects: ctx?.artboards ?? [],
     viewport: ctx?.viewport ?? null,
+    // Event-time zoom (publishing is settle-only — see applyViewport's `defer`).
+    liveZoom: () => getLiveViewport()?.zoom ?? ctx?.viewport?.zoom ?? 1,
     // Cloud Phase 25 C2 — a read-only canvas keeps the Move tool for
     // selection, but artboards don't drag (editing is absent, not hidden).
     enabled: !!ctx && (toolMode?.tool ?? 'move') === 'move' && !isReadOnlyCanvas(),
@@ -3308,6 +3443,11 @@ export function DCMiniMap() {
     active: false,
     pointerId: -1,
   });
+  // Live, not published: the minimap indicator is one of the two things that
+  // must follow the gesture frame by frame (the other is the zoom readout).
+  // Everything else in the tree deliberately sits still until settle.
+  // Called before the early returns below — hooks cannot sit behind a branch.
+  const vp = useLiveViewport();
 
   if (!world || !controller) return null;
   // Menubar "View ▸ Minimap" toggle + Presentation Mode (which hides ALL
@@ -3316,7 +3456,6 @@ export function DCMiniMap() {
 
   const geometry = computeMiniMapGeometry(world.artboards, MAP_W, MAP_BODY_H);
   const host = world.hostRef.current;
-  const vp = controller.viewport;
 
   // Visible-area rect in world coords, then projected into map coords.
   let vpRect: { left: number; top: number; w: number; h: number } | null = null;
@@ -3434,10 +3573,13 @@ export function DCZoomToolbar() {
   ensureOverlayStyles();
   const controller = useViewportControllerContext();
   const chrome = useChromeVisibility();
+  // Before the early returns — hooks cannot sit behind a branch. Live, because
+  // a zoom readout that only updates on settle reads as a frozen UI.
+  const liveVp = useLiveViewport();
   if (!controller) return null;
   // Menubar "View ▸ Zoom controls" toggle + Presentation Mode.
   if (chrome && (!chrome.zoom || chrome.present)) return null;
-  const pct = Math.round(controller.viewport.zoom * 100);
+  const pct = Math.round(liveVp.zoom * 100);
   return (
     <div className="dc-zoom-tb" role="toolbar" aria-label="Zoom">
       <button type="button" onClick={controller.zoomOut} aria-label="Zoom out">

@@ -26,6 +26,9 @@
 #            [--changed-only]         (default off — screenshot only canvases changed
 #                                      since the last smoke run; escalates to the full
 #                                      set when dev-server / canvas-lib / templates changed)
+#            [--perf]                 (also benchmark the heaviest canvas after the sweep
+#                                      and append the frame-time / render-count delta to
+#                                      the report — see perf.sh)
 #
 # Reads:
 #   $DESIGN_ROOT/_server.json   (must exist — caller runs server-up.sh first)
@@ -53,6 +56,7 @@ INCLUDE_SYSTEM=1
 TIMEOUT=8
 ENGINE="auto"
 CHANGED_ONLY=0
+PERF=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -62,6 +66,7 @@ while [ $# -gt 0 ]; do
     --timeout)        TIMEOUT="$2"; shift 2 ;;
     --engine)         ENGINE="$2"; shift 2 ;;
     --changed-only)   CHANGED_ONLY=1; shift ;;
+    --perf)           PERF=1; shift ;;
     --help|-h)
       sed -n '2,30p' "$0" | sed 's/^# \?//'
       exit 0
@@ -536,6 +541,33 @@ TOTAL_FAIL=$((FAILED + LINT_FAILED))
     echo "> ⚠ **Artboard isolation:** $ISO_WARN ui/ file(s) use viewport-escaping CSS (\`@media\`/\`vw\`/\`vh\`/\`*-screen\`) that reflows with the studio chrome. Advisory — not a failure. Replace with fixed px / \`%\` / \`@container\`+\`cqw\`."
   fi
 } >> "$MD"
+
+# ---------- optional perf pass (--perf) ----------
+# Smoke answers "does it still render"; this answers "is it still fast", against
+# the same canvases, in the same run. The heaviest canvas (most artboards) is the
+# one worth timing — a 1-artboard specimen has nothing to say about pan/zoom.
+if [ "$PERF" = "1" ]; then
+  HEAVIEST=""
+  HEAVIEST_N=0
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    n=$(grep -c 'DCArtboard' "$f" 2>/dev/null || echo 0)
+    if [ "$n" -gt "$HEAVIEST_N" ]; then HEAVIEST_N="$n"; HEAVIEST="$f"; fi
+  done <<< "$CANVASES"
+  if [ -n "$HEAVIEST" ]; then
+    REL_PERF="${HEAVIEST#"$REPO"/}"
+    echo "→ perf: benchmarking heaviest canvas ($HEAVIEST_N artboards): $REL_PERF" >&2
+    {
+      echo ""
+      echo "## Perf"
+      echo ""
+      echo '```'
+      bash "$(dirname "${BASH_SOURCE[0]}")/perf.sh" --root "$REPO" --canvas "$REL_PERF" 2>&1 || \
+        echo "(perf run failed — see stderr; smoke result above is unaffected)"
+      echo '```'
+    } >> "$MD"
+  fi
+fi
 
 echo "→ report: $MD" >&2
 echo "→ tsv:    $TSV" >&2

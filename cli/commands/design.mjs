@@ -126,6 +126,13 @@ const BIN_VERBS = new Set([
   // host — see DDR-185's rejected alternatives). No dev server dependency —
   // pure Node, no `<designRoot>` involvement.
   'curl-local',
+  // feature-canvas-render-performance (Task 1 + 11). `perf` drives a scripted
+  // pan/zoom against a live canvas and reports frame-time percentiles plus the
+  // React render count during the gesture, delta'd against the previous run of
+  // the same (canvas, engine) pair. It is a benchmark a human reads, never a CI
+  // gate — headless frame timings swing with GPU load, so an absolute threshold
+  // would go red for reasons unrelated to the code.
+  'perf',
   // DDR-185 security addendum. `agent-browser-safe` replaces the bare
   // `Bash(agent-browser:*)` allow-list entry a security review found was a
   // zero-confirmation session-hijack primitive (agent-browser's own bundled

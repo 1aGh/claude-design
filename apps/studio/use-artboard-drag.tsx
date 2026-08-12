@@ -268,8 +268,16 @@ export interface UseArtboardDragOptions {
   rectFor: (id: string) => Rect | null;
   /** Every artboard's rect in render order. */
   allRects: Rect[];
-  /** Live viewport — `null` before first layout. */
+  /** Published viewport — `null` before first layout. Settle-cadence. */
   viewport: { zoom: number } | null;
+  /**
+   * Current zoom, read imperatively at event time. Supplied by the canvas so
+   * this hook never imports canvas-lib (which imports it — that would be a
+   * cycle). Load-bearing: `viewport` above only updates when a gesture settles,
+   * so a drag started inside the settle window would divide its deltas by the
+   * pre-gesture zoom and track the cursor at the wrong speed.
+   */
+  liveZoom?: () => number;
   /** False short-circuits all event handling (e.g. activeTool !== "move"). */
   enabled: boolean;
   /** Called on drop with final positions for leader + followers. */
@@ -293,6 +301,7 @@ export function useArtboardDrag(opts: UseArtboardDragOptions): UseArtboardDragHa
     rectFor,
     allRects,
     viewport,
+    liveZoom,
     enabled,
     onCommit,
     gridSize = DEFAULT_GRID_SIZE,
@@ -304,8 +313,28 @@ export function useArtboardDrag(opts: UseArtboardDragOptions): UseArtboardDragHa
   // Keep stable refs for callbacks that close over fast-changing inputs.
   const stateRef = useRef<DragState>(dragState);
   stateRef.current = dragState;
-  const zoomRef = useRef<number>(viewport?.zoom ?? 1);
-  zoomRef.current = viewport?.zoom ?? 1;
+  // The zoom a drag divides by must be the CURRENT one. `viewport` here is the
+  // published (settle-cadence) value, so mirroring it alone would leave this
+  // ref a gesture behind: pan, then grab an artboard within the settle window,
+  // and every delta would be divided by the pre-pan zoom — the board would
+  // track the cursor at the wrong speed. getLiveViewport() is the imperative
+  // mirror the viewport controller writes every frame; the prop is the fallback
+  // for mounts that have no controller (bare DS specimens).
+  // Stable identity across renders (useMemo, empty deps): recreating the object
+  // every render would make it look like a changing dependency to anything that
+  // closed over it. It reads through refs, so it never goes stale.
+  const liveZoomRef = useRef(liveZoom);
+  liveZoomRef.current = liveZoom;
+  const viewportRef = useRef(viewport);
+  viewportRef.current = viewport;
+  const zoomRef = useMemo(
+    () => ({
+      get current(): number {
+        return liveZoomRef.current?.() ?? viewportRef.current?.zoom ?? 1;
+      },
+    }),
+    []
+  );
   const onCommitRef = useRef(onCommit);
   onCommitRef.current = onCommit;
   const enabledRef = useRef(enabled);
@@ -392,6 +421,11 @@ export function useArtboardDrag(opts: UseArtboardDragOptions): UseArtboardDragHa
 
   // Global pointermove / pointerup while a drag is in flight. Bound at the
   // window level so a fast drag past any element still feeds the reducer.
+  //
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `zoomRef` is a live
+  // getter (stable identity, reads through refs), not state — the handlers must
+  // read the CURRENT zoom at event time. Listing it would re-subscribe these
+  // listeners whenever zoom changed, tearing the pointer stream down mid-drag.
   useEffect(() => {
     if (dragState.kind === 'idle') return;
     if (typeof window === 'undefined') return;

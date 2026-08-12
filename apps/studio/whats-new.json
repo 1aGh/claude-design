@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "canvas-perf-benchmark",
+      "version": null,
+      "date": null,
+      "kind": "improvement",
+      "title": "Measure a canvas's pan/zoom performance",
+      "summary": "A new `maude design perf` command drives a scripted pan and zoom over a canvas and reports frame timings plus how much React work the gesture caused — with a delta against your previous run, so a change is either faster or it isn't. It can measure Chrome or Safari (WebKit, the engine the desktop app uses), and `/design:smoke --perf` folds it into a smoke sweep. Under the hood, pan and zoom no longer re-render the canvas tree while you're moving: on a 128-artboard canvas that removed about 90% of the renders a gesture used to trigger.",
+      "surface": "design-ui"
+    },
+    {
       "id": "video-export-degraded-visible",
       "version": null,
       "date": null,
