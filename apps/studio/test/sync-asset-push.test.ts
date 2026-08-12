@@ -167,7 +167,8 @@ describe('pushAssets — 429 pacing, 5xx retry, honest failure reasons (RCA 2026
     const designRoot = oneAsset();
     const slept: number[] = [];
     let puts = 0;
-    const fetchImpl = (async (_i: RequestInfo | URL, init?: RequestInit) => {
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/_asset-probe')) return new Response(null, { status: 404 });
       if (init?.method === 'HEAD') return new Response(null, { status: 404 });
       puts += 1;
       return puts === 1
@@ -203,7 +204,8 @@ describe('pushAssets — 429 pacing, 5xx retry, honest failure reasons (RCA 2026
       const designRoot = oneAsset();
       const slept: number[] = [];
       let puts = 0;
-      const fetchImpl = (async (_i: RequestInfo | URL, init?: RequestInit) => {
+      const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).endsWith('/_asset-probe')) return new Response(null, { status: 404 });
         if (init?.method === 'HEAD') return new Response(null, { status: 404 });
         puts += 1;
         return puts === 1
@@ -231,6 +233,7 @@ describe('pushAssets — 429 pacing, 5xx retry, honest failure reasons (RCA 2026
     writeFileSync(join(designRoot, 'assets/a-limited.png'), 'x');
     writeFileSync(join(designRoot, 'assets/b-fine.png'), 'x');
     const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/_asset-probe')) return new Response(null, { status: 404 });
       if (init?.method === 'HEAD') return new Response(null, { status: 404 });
       return String(input).includes('a-limited')
         ? new Response('{"error":"rate limit exceeded"}', {
@@ -257,7 +260,8 @@ describe('pushAssets — 429 pacing, 5xx retry, honest failure reasons (RCA 2026
     const designRoot = oneAsset();
     const slept: number[] = [];
     let puts = 0;
-    const fetchImpl = (async (_i: RequestInfo | URL, init?: RequestInit) => {
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/_asset-probe')) return new Response(null, { status: 404 });
       if (init?.method === 'HEAD') return new Response(null, { status: 404 });
       puts += 1;
       return new Response(null, { status: puts === 1 ? 503 : 200 });
@@ -280,7 +284,8 @@ describe('pushAssets — 429 pacing, 5xx retry, honest failure reasons (RCA 2026
   test('a 4xx that is not 429 is final — one attempt, reported as-is', async () => {
     const designRoot = oneAsset();
     let puts = 0;
-    const fetchImpl = (async (_i: RequestInfo | URL, init?: RequestInit) => {
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/_asset-probe')) return new Response(null, { status: 404 });
       if (init?.method === 'HEAD') return new Response(null, { status: 404 });
       puts += 1;
       return new Response(null, { status: 413 });
@@ -300,7 +305,8 @@ describe('pushAssets — 429 pacing, 5xx retry, honest failure reasons (RCA 2026
   test('the failure reason carries the body — a Cloudflare page is not our 429', async () => {
     const designRoot = oneAsset();
     const page = `<html>\n  <head><title>503 Service Unavailable</title></head>\n  <body>error 1016 — origin DNS error, and a great deal more text than we keep</body>\n</html>`;
-    const fetchImpl = (async (_i: RequestInfo | URL, init?: RequestInit) => {
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/_asset-probe')) return new Response(null, { status: 404 });
       if (init?.method === 'HEAD') return new Response(null, { status: 404 });
       return new Response(page, { status: 503 });
     }) as typeof fetch;
@@ -323,7 +329,8 @@ describe('pushAssets — 429 pacing, 5xx retry, honest failure reasons (RCA 2026
     mkdirSync(join(designRoot, 'assets'), { recursive: true });
     writeFileSync(join(designRoot, 'assets/sized.png'), 'twelve bytes');
     const lengths: string[] = [];
-    const fetchImpl = (async (_i: RequestInfo | URL, init?: RequestInit) => {
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/_asset-probe')) return new Response(null, { status: 404 });
       if (init?.method === 'HEAD') return new Response(null, { status: 404 });
       const sent = (init?.headers ?? {}) as Record<string, string>;
       lengths.push(String(sent['content-length']));
@@ -365,6 +372,145 @@ describe('pushAssets — 429 pacing, 5xx retry, honest failure reasons (RCA 2026
   });
 });
 
+describe('pushAssets — one batch probe replaces N per-file probes (RCA 2026-08-11 part 2)', () => {
+  function twoAssets(): string {
+    const designRoot = scratchDesignRoot();
+    mkdirSync(join(designRoot, 'assets'), { recursive: true });
+    writeFileSync(join(designRoot, 'assets/there.png'), 'x');
+    mkdirSync(join(designRoot, 'system/ds/assets/logos'), { recursive: true });
+    writeFileSync(join(designRoot, 'system/ds/assets/logos/missing.svg'), '<svg/>');
+    return designRoot;
+  }
+
+  test('the probe answers once; present files are skipped without any HEAD', async () => {
+    const designRoot = twoAssets();
+    const calls: string[] = [];
+    let probedPaths: string[] = [];
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const method = init?.method ?? 'GET';
+      calls.push(`${method} ${new URL(String(input)).pathname}`);
+      if (String(input).endsWith('/_asset-probe')) {
+        probedPaths = JSON.parse(String(init?.body)).paths;
+        return new Response(JSON.stringify({ present: ['assets/there.png'] }), { status: 200 });
+      }
+      return new Response(null, { status: 200 });
+    }) as typeof fetch;
+
+    const r = await pushAssets({
+      designRoot,
+      hubUrl: 'https://x.example',
+      token: () => 't',
+      fetchImpl,
+      log: { log: () => {}, warn: () => {} },
+      sleep: async () => {},
+    });
+    expect(r.skipped).toBe(1);
+    expect(r.pushed).toEqual(['system/ds/assets/logos/missing.svg']);
+    expect(probedPaths.sort()).toEqual(['assets/there.png', 'system/ds/assets/logos/missing.svg']);
+    // One probe, one upload — and NOT a single HEAD.
+    expect(calls).toEqual([
+      'POST /_asset-probe',
+      'PUT /_asset-file/system/ds/assets/logos/missing.svg',
+    ]);
+  });
+
+  test('a hub that does not know the probe falls back to per-file HEAD', async () => {
+    // Old-hub interop: 404 means "ask the old way", never "it holds nothing" —
+    // reading it as an empty set would re-upload everything against every hub
+    // older than this change.
+    const designRoot = twoAssets();
+    const methods: string[] = [];
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const method = init?.method ?? 'GET';
+      methods.push(method);
+      if (String(input).endsWith('/_asset-probe')) return new Response(null, { status: 404 });
+      if (method === 'HEAD') {
+        return new Response(null, { status: String(input).includes('there.png') ? 200 : 404 });
+      }
+      return new Response(null, { status: 200 });
+    }) as typeof fetch;
+    const r = await pushAssets({
+      designRoot,
+      hubUrl: 'https://x.example',
+      token: () => 't',
+      fetchImpl,
+      log: { log: () => {}, warn: () => {} },
+      sleep: async () => {},
+    });
+    expect(methods.filter((m) => m === 'HEAD')).toHaveLength(2);
+    expect(r.skipped).toBe(1);
+    expect(r.pushed).toEqual(['system/ds/assets/logos/missing.svg']);
+  });
+
+  test('a 405 on the per-file probe means "cannot answer", never "absent"', async () => {
+    // The bug in one line: a cell turns our HEAD into a GET and answers 405.
+    // Treating that as a refusal would strand the file; treating it as "absent"
+    // is right — upload it — but it must not be reported as a failure.
+    const designRoot = twoAssets();
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/_asset-probe')) return new Response(null, { status: 404 });
+      if (init?.method === 'HEAD') return new Response(null, { status: 405 });
+      return new Response(null, { status: 200 });
+    }) as typeof fetch;
+    const r = await pushAssets({
+      designRoot,
+      hubUrl: 'https://x.example',
+      token: () => 't',
+      fetchImpl,
+      log: { log: () => {}, warn: () => {} },
+      sleep: async () => {},
+    });
+    expect(r.failed).toEqual([]);
+    expect(r.pushed.sort()).toEqual(['assets/there.png', 'system/ds/assets/logos/missing.svg']);
+  });
+
+  test('a hostile probe answer cannot make the sweep skip a file it never named', async () => {
+    const designRoot = twoAssets();
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/_asset-probe')) {
+        return new Response(
+          JSON.stringify({ present: ['../../etc/passwd', 42, 'assets/never-asked.png'] }),
+          { status: 200 }
+        );
+      }
+      return new Response(null, { status: 200 });
+    }) as typeof fetch;
+    const r = await pushAssets({
+      designRoot,
+      hubUrl: 'https://x.example',
+      token: () => 't',
+      fetchImpl,
+      log: { log: () => {}, warn: () => {} },
+      sleep: async () => {},
+    });
+    expect(r.skipped).toBe(0);
+    expect(r.pushed.sort()).toEqual(['assets/there.png', 'system/ds/assets/logos/missing.svg']);
+  });
+
+  test('a probe that hangs or errors degrades to the per-file path', async () => {
+    const designRoot = twoAssets();
+    let heads = 0;
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/_asset-probe')) throw new Error('connection reset');
+      if (init?.method === 'HEAD') {
+        heads += 1;
+        return new Response(null, { status: 404 });
+      }
+      return new Response(null, { status: 200 });
+    }) as typeof fetch;
+    const r = await pushAssets({
+      designRoot,
+      hubUrl: 'https://x.example',
+      token: () => 't',
+      fetchImpl,
+      log: { log: () => {}, warn: () => {} },
+      sleep: async () => {},
+    });
+    expect(heads).toBe(2);
+    expect(r.pushed).toHaveLength(2);
+  });
+});
+
 describe('pushAssets — a refused upload must not wedge the sweep (2026-08-11, second pass)', () => {
   test('every PUT closes its connection — the keep-alive desync that killed the sidecar', async () => {
     // A peer that refuses a PUT before reading the body leaves unread bytes in
@@ -375,7 +521,8 @@ describe('pushAssets — a refused upload must not wedge the sweep (2026-08-11, 
     mkdirSync(join(designRoot, 'assets'), { recursive: true });
     writeFileSync(join(designRoot, 'assets/one.png'), 'x');
     const seen: Array<Record<string, string>> = [];
-    const fetchImpl = (async (_i: RequestInfo | URL, init?: RequestInit) => {
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/_asset-probe')) return new Response(null, { status: 404 });
       if (init?.method === 'HEAD') return new Response(null, { status: 404 });
       seen.push((init?.headers ?? {}) as Record<string, string>);
       return new Response(null, { status: 503 }); // refused → the retry re-sends
@@ -398,6 +545,7 @@ describe('pushAssets — a refused upload must not wedge the sweep (2026-08-11, 
     writeFileSync(join(designRoot, 'assets/a-hangs.png'), 'x');
     writeFileSync(join(designRoot, 'assets/b-fine.png'), 'x');
     const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/_asset-probe')) return new Response(null, { status: 404 });
       if (init?.method === 'HEAD') return new Response(null, { status: 404 });
       if (!String(input).includes('a-hangs')) return new Response(null, { status: 200 });
       // Wedged: answers only when the caller's own budget aborts it.
@@ -439,7 +587,8 @@ describe('pushAssets — a refused upload must not wedge the sweep (2026-08-11, 
       log: { log: () => {}, warn: () => {} },
       sleep: async () => {},
     });
-    expect(methods).toEqual(['HEAD']); // no PUT at all
+    expect(methods.filter((m) => m === 'PUT')).toEqual([]); // no body streamed at it
+    expect(methods).toContain('HEAD');
     expect(r.failed).toEqual([
       {
         key: 'system/ds/assets/logos/mark.svg',

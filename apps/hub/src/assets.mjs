@@ -406,6 +406,20 @@ export function parseCheckoutAssetPath(pathname) {
   } catch {
     return null;
   }
+  return checkoutAssetRel(rel);
+}
+
+/**
+ * The shape rules for a checkout-relative asset path, independent of how it
+ * arrived — a URL segment on `/_asset-file/`, or an entry in the batch probe's
+ * JSON list. Returns the path, or null.
+ *
+ * Extracted so the probe cannot admit a path the write route would refuse
+ * (a probe that answers about paths the writer rejects is an oracle for a
+ * surface that does not exist).
+ */
+export function checkoutAssetRel(rel) {
+  if (typeof rel !== 'string') return null;
   if (!rel || rel.length > 512) return null;
   // biome-ignore lint/suspicious/noControlCharactersInRegex: refusing them is the point.
   if (/[\u0000-\u001f\u007f]/.test(rel)) return null;
@@ -429,6 +443,47 @@ export function parseCheckoutAssetPath(pathname) {
 }
 
 /**
+ * Where a checkout-relative asset path is allowed to land on disk, or `{ok:false}`.
+ *
+ * Two guards, both load-bearing, and this is their ONE home — the write route
+ * and the presence probes must agree byte-for-byte about what is reachable, or
+ * the probe becomes an oracle for paths the writer would refuse:
+ *
+ *   1. Containment, lexically AND through symlinks. `rel` already passed the
+ *      shape rules (no `..`), but that is purely textual — a peer can COMMIT a
+ *      symlink under `assets/` into the shared repo (DDR-054), so the on-disk
+ *      resolution is what actually decides.
+ *   2. The RESOLVED parent must still sit under an `assets/` directory. A
+ *      committed `system/ds/assets/escape -> ../../ui` stays inside designRoot
+ *      yet leaves the assets semantic this route is scoped to.
+ *
+ * Every filesystem op then uses `realParent/<basename>` — never the lexical
+ * path (F1, attacker review 2026-08-11). `streamToFile`'s mkdir/create/rename
+ * would otherwise re-traverse the lexical path and follow whatever symlink sits
+ * there at WRITE time, reopening the TOCTOU the realpath check just closed.
+ */
+export function resolveCheckoutAssetTarget(designRootRaw, rel) {
+  if (!designRootRaw) return { ok: false };
+  const designRoot = resolve(designRootRaw);
+  const abs = resolve(designRoot, rel);
+  if (
+    (abs !== designRoot && !abs.startsWith(designRoot + sep)) ||
+    !isContainedReal(designRoot, abs)
+  ) {
+    return { ok: false };
+  }
+  try {
+    const realRoot = realpathOfDeepestExisting(designRoot);
+    const realParent = realpathOfDeepestExisting(dirname(abs));
+    if (realParent !== realRoot && !realParent.startsWith(realRoot + sep)) return { ok: false };
+    if (!realParent.slice(realRoot.length).split(sep).includes('assets')) return { ok: false };
+    return { ok: true, writeAbs: join(realParent, basename(abs)) };
+  } catch {
+    return { ok: false };
+  }
+}
+
+/**
  * `PUT /_asset-file/<designRoot-rel>` — the checkout half of the desktop asset
  * push (DDR-217 addendum). Writes a DS/brand asset to the cell's checkout at
  * its real designRoot-relative path so the studio child's static serve finds
@@ -441,7 +496,18 @@ export async function handleCheckoutAssetRoute(ctx) {
   const rel = parseCheckoutAssetPath(pathname);
   if (rel === null) return false;
 
-  if (method !== 'PUT' && method !== 'HEAD') {
+  // GET is admitted as a PRESENCE PROBE, and answers nothing else (RCA
+  // 2026-08-11 part 2). On a Cloud cell a `HEAD` never arrives as one — proven
+  // three ways: `HEAD /health` answers 200 although the hub matches that path
+  // for GET only; `HEAD` here answered 405, the status only the non-PUT branch
+  // can produce; and both hold under curl, so it is not a client artifact. The
+  // sweep is HEAD-first, so on the cloud its skip-probe could never say "already
+  // there" and every boot re-uploaded the entire DS asset set.
+  //
+  // It returns EXISTENCE, never bytes. Serving the file here would turn a write
+  // route into a read surface for the checkout — a different trust question
+  // than the one this route was reviewed for, and not one the sweep needs asked.
+  if (method !== 'PUT' && method !== 'HEAD' && method !== 'GET') {
     respond(response, 405, 'method not allowed');
     return true;
   }
@@ -461,57 +527,12 @@ export async function handleCheckoutAssetRoute(ctx) {
     return true;
   }
 
-  const designRoot = resolve(ctx.designRoot);
-  const abs = resolve(designRoot, rel);
-  // Lexical containment, then the on-disk symlink resolution — the peer chose
-  // the directory, so a committed symlink under an assets/ dir must not let the
-  // write escape the design root (same guard as the bucket PUT + relocation).
-  if (
-    (abs !== designRoot && !abs.startsWith(designRoot + sep)) ||
-    !isContainedReal(designRoot, abs)
-  ) {
+  const target = resolveCheckoutAssetTarget(ctx.designRoot, rel);
+  if (!target.ok) {
     respond(response, 400, 'invalid path');
     return true;
   }
-  // AND the resolved parent must STILL be under an `assets/` directory. Path
-  // containment alone only proves "inside designRoot" — a committed symlink
-  // `system/ds/assets/escape -> ../../ui` stays inside designRoot, so it would
-  // redirect the write into a canvas group (an inert image there, but still
-  // outside the assets semantic this route is scoped to). Resolving the parent
-  // and requiring an `assets` segment closes that.
-  // Resolve the parent through symlinks ONCE, and (F1, attacker review
-  // 2026-08-11) do every subsequent filesystem op against the RESOLVED parent —
-  // never the lexical `abs`. `streamToFile`'s mkdirSync/createWriteStream/rename
-  // would otherwise re-traverse the lexical path and follow whatever symlink is
-  // there at WRITE time, reopening the TOCTOU the realpath check just closed.
-  // Writing to `realParent/<basename>` means the ancestry is already resolved,
-  // so there is no lexical symlink left to follow.
-  let realParent;
-  let realParentRel;
-  try {
-    const realRoot = realpathOfDeepestExisting(designRoot);
-    realParent = realpathOfDeepestExisting(dirname(abs));
-    if (realParent !== realRoot && !realParent.startsWith(realRoot + sep)) {
-      respond(response, 400, 'invalid path');
-      return true;
-    }
-    realParentRel = realParent.slice(realRoot.length);
-  } catch {
-    respond(response, 400, 'invalid path');
-    return true;
-  }
-  // AND the resolved parent must STILL be under an `assets/` directory — a
-  // committed symlink that stays inside designRoot but redirects out of the
-  // assets semantic (`system/ds/assets/escape -> ../../ui`) is refused here.
-  // (Defence-in-depth: the binary-extension allowlist is the primary backstop
-  // against a data→code write; a peer authors their own tree, so this segment
-  // check bounds WHERE, not WHAT.)
-  if (!realParentRel.split(sep).includes('assets')) {
-    respond(response, 400, 'invalid path');
-    return true;
-  }
-  const writeAbs = join(realParent, basename(abs));
-
+  const writeAbs = target.writeAbs;
   // Rate-limit BEFORE the HEAD branch too (F4) — otherwise the weakest role
   // gets an unmetered filesystem existence oracle with realpath amplification.
   // Same per-label write bucket as the bucket route's PUT (RCA 2026-08-11): the
@@ -522,11 +543,18 @@ export async function handleCheckoutAssetRoute(ctx) {
     return true;
   }
 
-  // HEAD is the desktop's skip-first presence probe (idempotent sweep — don't
-  // re-push a large photo every boot).
-  if (method === 'HEAD') {
+  // The desktop's skip-first presence probe (idempotent sweep — don't re-push a
+  // large photo every boot). GET answers identically and with an empty body:
+  // see the method gate above for why GET has to be one of these.
+  if (method === 'HEAD' || method === 'GET') {
     if (existsSync(writeAbs)) {
-      response.writeHead(200, { 'Cache-Control': 'no-store' }).end();
+      response
+        .writeHead(200, {
+          'Cache-Control': 'no-store',
+          'Content-Length': 0,
+          'X-Content-Type-Options': 'nosniff',
+        })
+        .end();
     } else {
       respond(response, 404, 'not found');
     }
@@ -551,6 +579,141 @@ export async function handleCheckoutAssetRoute(ctx) {
       'X-Content-Type-Options': 'nosniff',
     })
     .end(body);
+  return true;
+}
+
+/** The most paths one probe may ask about. A real project's whole asset set in
+ *  one request (alligators: 182) with room to spare, and a bound on the work a
+ *  single call can order. */
+const MAX_PROBE_PATHS = 1000;
+
+/** Cap on the probe's request body — MAX_PROBE_PATHS × a 512-char path, plus
+ *  JSON overhead, rounded up. Read incrementally and abandoned the moment it is
+ *  exceeded, so an oversized body is never buffered whole. */
+const MAX_PROBE_BODY_BYTES = 768 * 1024;
+
+/** Concurrent bucket lookups inside one probe. The point of the batch is to
+ *  spend ONE round trip from the desktop; answering it must not become a
+ *  thundering herd against the object store. */
+const PROBE_CONCURRENCY = 8;
+
+async function readBoundedJson(request, cap) {
+  let total = 0;
+  const chunks = [];
+  for await (const chunk of request) {
+    total += chunk.length;
+    if (total > cap) return { ok: false, tooLarge: true };
+    chunks.push(chunk);
+  }
+  try {
+    return { ok: true, value: JSON.parse(Buffer.concat(chunks).toString('utf8')) };
+  } catch {
+    return { ok: false };
+  }
+}
+
+/**
+ * `POST /_asset-probe` — "which of these do you already have?"
+ *
+ * WHY A BATCH, AND WHY POST (RCA 2026-08-11 part 2). The desktop sweep asked
+ * per file, with HEAD. On a Cloud cell a HEAD does not survive the trip — it
+ * arrives as GET — so the DS half of the sweep could never skip anything and
+ * re-uploaded its whole asset set every boot, while the bucket half's converted
+ * probe took the GET branch and pulled entire objects out of R2 to answer an
+ * existence question (~428 MB per boot on a real project). A POST carrying the
+ * list fixes both at once: the method it needs is the one that demonstrably
+ * survives, and 182 round trips collapse into one.
+ *
+ * Both asset classes answer here, because the sweep does not want to care:
+ * a top-level `assets/<key>` is looked up in the BUCKET (where that class
+ * lives), anything else in the CHECKOUT (where the DS class lives) — the same
+ * split, and the same validators, the write routes use.
+ *
+ * Paths are UNTRUSTED (DDR-054): each is re-validated with the very functions
+ * the writers use, and one that fails validation is simply reported absent —
+ * never an error the caller can use to map the filesystem, and never a path the
+ * writer would refuse.
+ *
+ * Returns true when handled.
+ */
+export async function handleAssetProbeRoute(ctx) {
+  const { request, response, pathname, method, dataDir, secret } = ctx;
+  if (pathname !== '/_asset-probe') return false;
+  if (method !== 'POST') {
+    respond(response, 405, 'method not allowed');
+    return true;
+  }
+  const auth = request.headers?.authorization;
+  const token = typeof auth === 'string' ? auth.replace(/^Bearer\s+/i, '').trim() : '';
+  const match = token ? verifyToken(dataDir, token, secret) : null;
+  if (!match) {
+    if (ctx.checkRateLimit && !ctx.checkRateLimit(request)) {
+      respondRateLimited(response);
+      return true;
+    }
+    respond(response, 401, 'unauthorized');
+    return true;
+  }
+  // The same generous per-label bucket the writes use: this replaces the HEADs
+  // that lane already metered, so it must not be tighter than what it replaces.
+  if (ctx.checkWriteRateLimit && !ctx.checkWriteRateLimit(match.label)) {
+    respondRateLimited(response);
+    return true;
+  }
+
+  const body = await readBoundedJson(request, MAX_PROBE_BODY_BYTES);
+  if (!body.ok) {
+    respond(response, body.tooLarge ? 413 : 400, body.tooLarge ? 'body too large' : 'invalid body');
+    return true;
+  }
+  const paths = body.value?.paths;
+  if (!Array.isArray(paths)) {
+    respond(response, 400, 'expected { paths: string[] }');
+    return true;
+  }
+  if (paths.length > MAX_PROBE_PATHS) {
+    respond(response, 413, `at most ${MAX_PROBE_PATHS} paths per probe`);
+    return true;
+  }
+
+  const s3 = ctx.s3;
+  const prefix = ctx.assetPrefix ?? assetPrefixFromEnv();
+  const present = [];
+  const holds = async (rel) => {
+    if (typeof rel !== 'string') return false;
+    if (rel.startsWith('assets/')) {
+      // Class 1 — content-addressed, lives in the bucket.
+      const key = rel.slice('assets/'.length);
+      if (!ASSET_KEY.test(key) || !s3) return false;
+      try {
+        return (await headObject(s3, assetObjectKey(key, prefix))) !== null;
+      } catch {
+        // A bucket that cannot answer is not the same as "absent", but the only
+        // safe report is the conservative one: re-uploading is idempotent,
+        // wrongly skipping leaves a grey box no one ever retries.
+        return false;
+      }
+    }
+    // Class 2 — DS/brand, lives in the checkout.
+    if (checkoutAssetRel(rel) === null) return false;
+    const target = resolveCheckoutAssetTarget(ctx.designRoot, rel);
+    return target.ok && existsSync(target.writeAbs);
+  };
+  for (let i = 0; i < paths.length; i += PROBE_CONCURRENCY) {
+    const slice = paths.slice(i, i + PROBE_CONCURRENCY);
+    const answers = await Promise.all(slice.map(holds));
+    for (let j = 0; j < slice.length; j++) if (answers[j]) present.push(slice[j]);
+  }
+
+  const payload = JSON.stringify({ present });
+  response
+    .writeHead(200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+      'Content-Length': Buffer.byteLength(payload),
+      'X-Content-Type-Options': 'nosniff',
+    })
+    .end(payload);
   return true;
 }
 

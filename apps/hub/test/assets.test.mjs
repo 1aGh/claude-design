@@ -702,6 +702,74 @@ test('the write bucket is PER LABEL — one peer cannot starve another', async (
   }
 });
 
+/* -------- RCA 2026-08-11 part 2 — a HEAD does not reach a cell as a HEAD */
+
+test('GET is a presence probe on the checkout route — existence, never bytes', async () => {
+  // On a Cloud cell a HEAD arrives as GET, so GET has to answer the same
+  // question. What it must NOT do is serve the file: that would turn a write
+  // route into a read surface for the checkout.
+  const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-ck-'));
+  try {
+    mkdirSync(join(designRoot, 'system/ds/assets/logos'), { recursive: true });
+    writeFileSync(join(designRoot, 'system/ds/assets/logos/there.svg'), '<svg>secret</svg>');
+    const present = await callCheckout({
+      pathname: '/_asset-file/system/ds/assets/logos/there.svg',
+      method: 'GET',
+      token: minted.value,
+      designRoot,
+    });
+    assert.equal(present.status, 200);
+    assert.equal(present.body, null, 'the probe answers existence, not the file');
+    assert.equal(present.headers['Content-Length'], 0);
+    const missing = await callCheckout({
+      pathname: '/_asset-file/system/ds/assets/logos/nope.svg',
+      method: 'GET',
+      token: minted.value,
+      designRoot,
+    });
+    assert.equal(missing.status, 404);
+  } finally {
+    rmSync(designRoot, { recursive: true, force: true });
+  }
+});
+
+test('a GET probe is refused for an unauthenticated peer, like every other verb', async () => {
+  const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-ck-'));
+  try {
+    mkdirSync(join(designRoot, 'system/ds/assets/logos'), { recursive: true });
+    writeFileSync(join(designRoot, 'system/ds/assets/logos/there.svg'), 'x');
+    const res = await callCheckout({
+      pathname: '/_asset-file/system/ds/assets/logos/there.svg',
+      method: 'GET',
+      designRoot,
+    });
+    assert.equal(res.status, 401);
+  } finally {
+    rmSync(designRoot, { recursive: true, force: true });
+  }
+});
+
+test('a GET probe cannot follow a symlink out of the assets semantic', async () => {
+  const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-ck-'));
+  try {
+    mkdirSync(join(designRoot, 'system/ds/assets'), { recursive: true });
+    mkdirSync(join(designRoot, 'ui'), { recursive: true });
+    writeFileSync(join(designRoot, 'ui/welcome.png'), 'x');
+    symlinkSync(join(designRoot, 'ui'), join(designRoot, 'system/ds/assets/escape'));
+    const res = await callCheckout({
+      pathname: '/_asset-file/system/ds/assets/escape/welcome.png',
+      method: 'GET',
+      token: minted.value,
+      designRoot,
+    });
+    assert.equal(res.status, 400, 'the probe obeys the same containment as the write');
+  } finally {
+    rmSync(designRoot, { recursive: true, force: true });
+  }
+});
+
 test('the UNAUTHENTICATED path keeps the tight per-IP bucket (and says Retry-After)', async () => {
   // The brute-force control the write lane was wrongly sharing. It stays.
   const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-put-'));

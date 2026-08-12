@@ -140,6 +140,11 @@ const UPLOAD_CONNECTION_HEADERS = { connection: 'close' } as const;
  *  about to. */
 const HEAD_TIMEOUT_MS = 30_000;
 
+/** The batch probe asks about a whole project at once, and the hub may have to
+ *  reach the object store for a few hundred keys — but it is still one small
+ *  request, so a minute is generous. */
+const PROBE_TIMEOUT_MS = 60_000;
+
 /**
  * How long one upload may take before the sweep abandons it: a fixed floor plus
  * an allowance for the bytes at a deliberately pessimistic 100 kB/s, capped.
@@ -212,6 +217,48 @@ function routeFor(rel: string): { url: string } {
   // DS / brand asset served from the checkout → the checkout-file route, keyed
   // by its FULL designRoot-relative path.
   return { url: `/_asset-file/${rel.split('/').map(encodeURIComponent).join('/')}` };
+}
+
+/**
+ * Ask the hub, in ONE request, which of these it already holds — or null when
+ * this hub cannot answer (then the caller falls back to per-file probes).
+ *
+ * WHY THIS EXISTS (RCA 2026-08-11 part 2). The sweep used to ask per file with
+ * `HEAD`, and on a Cloud cell a HEAD never arrives as a HEAD — it is converted
+ * to GET before it reaches the hub. So the DS half's probe answered `405` and
+ * the sweep re-uploaded that project's ENTIRE asset set on every boot, while
+ * the bucket half's converted probe took the hub's GET branch and pulled whole
+ * objects out of R2 to answer an existence question. `POST` survives the trip,
+ * and one request replaces N.
+ *
+ * A hub that does not know this route answers 404/405 — that is NOT "it holds
+ * nothing", it is "ask the old way", so it returns null rather than an empty
+ * set. Getting that backwards would skip every upload against every hub older
+ * than this change.
+ */
+async function probePresent(ctx: {
+  fetchImpl: typeof fetch;
+  base: string;
+  headers: Record<string, string>;
+  paths: string[];
+}): Promise<Set<string> | null> {
+  try {
+    const res = await ctx.fetchImpl(`${ctx.base}/_asset-probe`, {
+      method: 'POST',
+      headers: { ...ctx.headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ paths: ctx.paths }),
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { present?: unknown };
+    // Hub-supplied (DDR-054): keep only strings we actually asked about, so a
+    // malformed or hostile answer can never make us skip a file we never named.
+    if (!Array.isArray(data?.present)) return null;
+    const asked = new Set(ctx.paths);
+    return new Set(data.present.filter((p): p is string => typeof p === 'string' && asked.has(p)));
+  } catch {
+    return null;
+  }
 }
 
 /** `Retry-After: <seconds>` → ms, clamped. Only the delta-seconds form is
@@ -363,17 +410,39 @@ export async function pushAssets(opts: {
     }
   };
 
+  // One question for the whole set, when the hub can answer it. Null = this hub
+  // predates the route, so every file falls back to its own probe below.
+  const known =
+    assets.length > 0
+      ? await probePresent({
+          fetchImpl,
+          base,
+          headers: { authorization: `Bearer ${opts.token()}` },
+          paths: assets,
+        })
+      : null;
+
   for (const rel of assets) {
     emitProgress(rel, false);
     const url = `${base}${routeFor(rel).url}`;
     const headers = { authorization: `Bearer ${opts.token()}` };
+    if (known) {
+      if (known.has(rel)) {
+        out.skipped += 1;
+        continue;
+      }
+      // The batch answered, and it said this one is missing — no per-file probe
+      // can add anything, so go straight to the upload.
+    }
     try {
-      const head = await fetchImpl(url, {
-        method: 'HEAD',
-        headers,
-        signal: AbortSignal.timeout(HEAD_TIMEOUT_MS),
-      });
-      if (head.ok) {
+      const head = known
+        ? null
+        : await fetchImpl(url, {
+            method: 'HEAD',
+            headers,
+            signal: AbortSignal.timeout(HEAD_TIMEOUT_MS),
+          });
+      if (head?.ok) {
         out.skipped += 1;
         continue;
       }
@@ -381,7 +450,12 @@ export async function pushAssets(opts: {
       // anyway just streams megabytes at a door that already said no. The
       // cloud studio door answers exactly this for a route the deployed hub
       // does not have yet, once per asset, for the whole DS asset set.
-      if (head.status === 401 || head.status === 403) {
+      //
+      // Only 401/403 mean that. Every OTHER refusal — notably the 405 a cell
+      // returns when it turned our HEAD into a GET — means "I cannot answer",
+      // NOT "I do not have it", so it falls through to the upload rather than
+      // being read as a refusal.
+      if (head && (head.status === 401 || head.status === 403)) {
         out.failed.push({ key: rel, reason: await failureReason(head) });
         emitProgress(rel, false, true);
         continue;

@@ -54,7 +54,7 @@ import {
   writeAdminSecret,
 } from './admin-auth.mjs';
 import { createAssetSweeper } from './asset-lane.mjs';
-import { handleAssetRoute, handleCheckoutAssetRoute } from './assets.mjs';
+import { handleAssetProbeRoute, handleAssetRoute, handleCheckoutAssetRoute } from './assets.mjs';
 import {
   handleAuthRoutes,
   handleUserAdminRoutes,
@@ -712,6 +712,34 @@ export function createHub(config = {}) {
           method,
           dataDir,
           secret,
+          designRoot:
+            workspaceMode && repoDir
+              ? join(repoDir, process.env.MAUDE_DESIGN_ROOT ?? '.design')
+              : null,
+          checkRateLimit: rateLimit
+            ? (req) => checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
+            : undefined,
+          checkWriteRateLimit: rateLimit
+            ? (label) => checkConnRateLimit(assetWriteBuckets, label, assetWriteRateLimitMax)
+            : undefined,
+        });
+        if (handled) bailFromOnRequest();
+      }
+      // The batch presence probe (RCA 2026-08-11 part 2). A HEAD does not reach
+      // a cell as a HEAD — it arrives as GET — so the sweep's per-file
+      // skip-probe could never say "already there" for DS assets, and pulled
+      // whole objects out of R2 for the bucket ones. This asks about the whole
+      // set in ONE request, with the method that survives. Same gates as the
+      // writes it replaces. See handleAssetProbeRoute.
+      if (authPath === '/_asset-probe') {
+        const handled = await handleAssetProbeRoute({
+          request,
+          response,
+          pathname: authPath,
+          method,
+          dataDir,
+          secret,
+          s3: await s3Source.config(),
           designRoot:
             workspaceMode && repoDir
               ? join(repoDir, process.env.MAUDE_DESIGN_ROOT ?? '.design')
