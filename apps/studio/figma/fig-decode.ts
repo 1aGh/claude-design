@@ -295,6 +295,42 @@ function guidOf(v: unknown): string | undefined {
  * schema, so a generic copy would let them choose which REST field each value
  * lands in (`absoluteBoundingBox`, `characters`, `children`).
  */
+/**
+ * `.fig` carries Figma's INTERNAL node vocabulary; REST reports the public one,
+ * and the translators are written against REST. Measured by the Tier-2
+ * differential on the fixtures — the unit tests could not have found this,
+ * because both sides of an internal-vocabulary mismatch look perfectly valid.
+ *
+ * A GROUP is internally a FRAME with `resizeToFit` (shrink-wrap to children);
+ * that flag is the discriminator, 5/5 on the design fixture and 1/1 on the
+ * board. `ROUNDED_RECTANGLE` collapses to `RECTANGLE` (the radius survives in
+ * `cornerRadius`), and `SYMBOL` is Figma's internal name for a `COMPONENT`.
+ */
+function restType(change: Record<string, unknown>): string | undefined {
+  const type = str(change.type);
+  if (type === 'FRAME' && change.resizeToFit === true) return 'GROUP';
+  if (type === 'ROUNDED_RECTANGLE') return 'RECTANGLE';
+  if (type === 'SYMBOL') return 'COMPONENT';
+  return type;
+}
+
+/**
+ * Pull a FigJam node's text out of its template overrides. Reads only the
+ * hardcoded `nodeGenerationData.overrides[].textData.characters` path (A8/F5) —
+ * the override list is attacker-controlled, so it is walked, never spread — and
+ * takes the first entry that carries characters, which is what REST reports as
+ * the node's own `characters`.
+ */
+function overrideText(change: Record<string, unknown>): string | undefined {
+  const overrides = obj(change.nodeGenerationData)?.overrides;
+  if (!Array.isArray(overrides)) return undefined;
+  for (const entry of overrides) {
+    const characters = str(obj(obj(entry)?.textData)?.characters);
+    if (characters !== undefined) return characters;
+  }
+  return undefined;
+}
+
 function toRestNode(change: Record<string, unknown>, absolute: Matrix): Record<string, unknown> {
   const size = obj(change.size);
   const w = num(size?.x) ?? 0;
@@ -302,7 +338,7 @@ function toRestNode(change: Record<string, unknown>, absolute: Matrix): Record<s
 
   const raw: Record<string, unknown> = {
     id: guidOf(change.guid),
-    type: str(change.type),
+    type: restType(change),
     name: str(change.name) ?? '',
     visible: change.visible !== false,
     absoluteBoundingBox: absoluteBox(absolute, w, h),
@@ -342,9 +378,15 @@ function toRestNode(change: Record<string, unknown>, absolute: Matrix): Record<s
     if (counter) raw.counterAxisAlignItems = counter;
   }
 
-  // Text.
-  const textData = obj(change.textData);
-  const characters = str(textData?.characters);
+  // Text. Two storage locations, and the second one is not optional:
+  //  - a design-file TEXT node carries `textData.characters` directly;
+  //  - a FigJam STICKY / SHAPE_WITH_TEXT is an instance of an internal
+  //    template, and its text is an OVERRIDE on a sub-node, under
+  //    `nodeGenerationData.overrides[].textData.characters`.
+  // Missing the second path lost the text of every sticky and every shape on
+  // the board while the tree still looked perfect — found by the Tier-2
+  // differential (20 nodes), invisible to every unit test.
+  const characters = str(obj(change.textData)?.characters) ?? overrideText(change);
   if (characters !== undefined) raw.characters = characters;
   const fontSize = num(change.fontSize);
   const fontName = obj(change.fontName);

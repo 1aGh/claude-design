@@ -362,16 +362,18 @@ describe('tier 3 — the fixture vocabulary survives the door', () => {
     expect(JSON.stringify(report)).not.toContain('Maude import fixture');
   });
 
-  test('an unmapped node type degrades and is REPORTED, bounded', async () => {
-    const { report } = decodeFigArchive(await fixture('design.fig'), { fileKey: KEY });
-    // The design fixture carries a SYMBOL, which FigmaNodeType has no member
-    // for. `reportToken` lowercases — the report trades exact casing for the
-    // one-token-no-spaces guarantee, which is the property that matters.
-    expect(report.unmappedTypes.map((u) => u.type)).toContain('symbol');
-    for (const u of report.unmappedTypes) {
-      expect(u.type.length).toBeLessThanOrEqual(24);
-      expect(u.type).not.toContain(' ');
-    }
+  test('the internal vocabulary is mapped to REST, so a clean file reports nothing', async () => {
+    const { document, report } = decodeFigArchive(await fixture('design.fig'), { fileKey: KEY });
+    // SYMBOL/ROUNDED_RECTANGLE/FRAME-with-resizeToFit are Figma INTERNAL names.
+    // They are mapped to the public REST vocabulary (COMPONENT/RECTANGLE/GROUP),
+    // so a legitimate file has no vocabulary gap at all. Measured by the Tier-2
+    // differential; before the mapping this fixture reported `symbol`.
+    expect(report.unmappedTypes).toEqual([]);
+    const types = new Set<string>();
+    walkNodes(document.root, (n) => types.add(n.type));
+    expect(types).toContain('COMPONENT');
+    expect(types).toContain('GROUP');
+    expect(types).not.toContain('UNKNOWN');
   });
 
   test("Figma's internal-only canvas is skipped and counted", async () => {

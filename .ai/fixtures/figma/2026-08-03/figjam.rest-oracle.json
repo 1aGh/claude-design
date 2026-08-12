@@ -1,0 +1,1227 @@
+{
+ "fileKey": "Em6NOwaOFTYV7NlQT4NK8l",
+ "surface": "board",
+ "origin": "rest",
+ "root": {
+  "id": "0:0",
+  "type": "DOCUMENT",
+  "name": "Document",
+  "visible": true,
+  "children": [
+   {
+    "id": "0:1",
+    "type": "CANVAS",
+    "name": "Page 1",
+    "visible": true,
+    "children": [
+     {
+      "id": "1:2",
+      "type": "SECTION",
+      "name": "Sekce vnější",
+      "visible": true,
+      "absoluteBoundingBox": {
+       "x": 0,
+       "y": 0,
+       "width": 1200,
+       "height": 900
+      },
+      "absoluteRenderBounds": {
+       "x": 0,
+       "y": 0,
+       "width": 1200,
+       "height": 1278
+      },
+      "fills": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 1,
+         "g": 1,
+         "b": 1,
+         "a": 1
+        }
+       }
+      ],
+      "strokes": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 0.9019607901573181,
+         "g": 0.9019607901573181,
+         "b": 0.9019607901573181,
+         "a": 1
+        }
+       }
+      ],
+      "strokeWeight": 2,
+      "children": [
+       {
+        "id": "1:3",
+        "type": "SECTION",
+        "name": "Sekce vnitřní (nested)",
+        "visible": true,
+        "absoluteBoundingBox": {
+         "x": 60,
+         "y": 140,
+         "width": 560,
+         "height": 700
+        },
+        "absoluteRenderBounds": {
+         "x": 60,
+         "y": 140,
+         "width": 560,
+         "height": 1138
+        },
+        "fills": [
+         {
+          "type": "SOLID",
+          "visible": true,
+          "color": {
+           "r": 1,
+           "g": 1,
+           "b": 1,
+           "a": 1
+          }
+         }
+        ],
+        "strokes": [
+         {
+          "type": "SOLID",
+          "visible": true,
+          "color": {
+           "r": 0.9019607901573181,
+           "g": 0.9019607901573181,
+           "b": 0.9019607901573181,
+           "a": 1
+          }
+         }
+        ],
+        "strokeWeight": 2,
+        "children": [
+         {
+          "id": "1:8",
+          "type": "STICKY",
+          "name": "Žlutá — palette yellow",
+          "visible": true,
+          "absoluteBoundingBox": {
+           "x": 100,
+           "y": 180,
+           "width": 240,
+           "height": 240
+          },
+          "absoluteRenderBounds": {
+           "x": 90,
+           "y": 178,
+           "width": 260,
+           "height": 260
+          },
+          "blendMode": "PASS_THROUGH",
+          "fills": [
+           {
+            "type": "SOLID",
+            "visible": true,
+            "color": {
+             "r": 1,
+             "g": 0.886274516582489,
+             "b": 0.6000000238418579,
+             "a": 1
+            }
+           }
+          ],
+          "effects": [
+           {
+            "type": "DROP_SHADOW",
+            "visible": true,
+            "color": {
+             "r": 0,
+             "g": 0,
+             "b": 0,
+             "a": 0.019999999552965164
+            },
+            "offset": {
+             "x": 0,
+             "y": 2.5
+            },
+            "radius": 2
+           },
+           {
+            "type": "DROP_SHADOW",
+            "visible": true,
+            "color": {
+             "r": 0,
+             "g": 0,
+             "b": 0,
+             "a": 0.03999999910593033
+            },
+            "offset": {
+             "x": 0,
+             "y": 3
+            },
+            "radius": 5
+           },
+           {
+            "type": "DROP_SHADOW",
+            "visible": true,
+            "color": {
+             "r": 0,
+             "g": 0,
+             "b": 0,
+             "a": 0.07999999821186066
+            },
+            "offset": {
+             "x": 0,
+             "y": 8
+            },
+            "radius": 10
+           }
+          ],
+          "characters": "Žlutá — palette yellow"
+         },
+         {
+          "id": "1:12",
+          "type": "STICKY",
+          "name": "Zelená — palette green",
+          "visible": true,
+          "absoluteBoundingBox": {
+           "x": 100,
+           "y": 460,
+           "width": 240,
+           "height": 240
+          },
+          "absoluteRenderBounds": {
+           "x": 90,
+           "y": 458,
+           "width": 260,
+           "height": 260
+          },
+          "blendMode": "PASS_THROUGH",
+          "fills": [
+           {
+            "type": "SOLID",
+            "visible": true,
+            "color": {
+             "r": 0.7019608020782471,
+             "g": 0.9372549057006836,
+             "b": 0.7411764860153198,
+             "a": 1
+            }
+           }
+          ],
+          "effects": [
+           {
+            "type": "DROP_SHADOW",
+            "visible": true,
+            "color": {
+             "r": 0,
+             "g": 0,
+             "b": 0,
+             "a": 0.019999999552965164
+            },
+            "offset": {
+             "x": 0,
+             "y": 2.5
+            },
+            "radius": 2
+           },
+           {
+            "type": "DROP_SHADOW",
+            "visible": true,
+            "color": {
+             "r": 0,
+             "g": 0,
+             "b": 0,
+             "a": 0.03999999910593033
+            },
+            "offset": {
+             "x": 0,
+             "y": 3
+            },
+            "radius": 5
+           },
+           {
+            "type": "DROP_SHADOW",
+            "visible": true,
+            "color": {
+             "r": 0,
+             "g": 0,
+             "b": 0,
+             "a": 0.07999999821186066
+            },
+            "offset": {
+             "x": 0,
+             "y": 8
+            },
+            "radius": 10
+           }
+          ],
+          "characters": "Zelená — palette green"
+         },
+         {
+          "id": "1:16",
+          "type": "STICKY",
+          "name": "Modrá — palette blue",
+          "visible": true,
+          "absoluteBoundingBox": {
+           "x": 100,
+           "y": 740,
+           "width": 240,
+           "height": 240
+          },
+          "absoluteRenderBounds": {
+           "x": 90,
+           "y": 738,
+           "width": 260,
+           "height": 260
+          },
+          "blendMode": "PASS_THROUGH",
+          "fills": [
+           {
+            "type": "SOLID",
+            "visible": true,
+            "color": {
+             "r": 0.658823549747467,
+             "g": 0.8549019694328308,
+             "b": 1,
+             "a": 1
+            }
+           }
+          ],
+          "effects": [
+           {
+            "type": "DROP_SHADOW",
+            "visible": true,
+            "color": {
+             "r": 0,
+             "g": 0,
+             "b": 0,
+             "a": 0.019999999552965164
+            },
+            "offset": {
+             "x": 0,
+             "y": 2.5
+            },
+            "radius": 2
+           },
+           {
+            "type": "DROP_SHADOW",
+            "visible": true,
+            "color": {
+             "r": 0,
+             "g": 0,
+             "b": 0,
+             "a": 0.03999999910593033
+            },
+            "offset": {
+             "x": 0,
+             "y": 3
+            },
+            "radius": 5
+           },
+           {
+            "type": "DROP_SHADOW",
+            "visible": true,
+            "color": {
+             "r": 0,
+             "g": 0,
+             "b": 0,
+             "a": 0.07999999821186066
+            },
+            "offset": {
+             "x": 0,
+             "y": 8
+            },
+            "radius": 10
+           }
+          ],
+          "characters": "Modrá — palette blue"
+         },
+         {
+          "id": "1:20",
+          "type": "STICKY",
+          "name": "Wide sticky — 416 x 240. Geometry must survive the import unchanged, not be normalised to Maude default width.",
+          "visible": true,
+          "absoluteBoundingBox": {
+           "x": 100,
+           "y": 1020,
+           "width": 416,
+           "height": 240
+          },
+          "absoluteRenderBounds": {
+           "x": 90,
+           "y": 1018,
+           "width": 436,
+           "height": 260
+          },
+          "blendMode": "PASS_THROUGH",
+          "fills": [
+           {
+            "type": "SOLID",
+            "visible": true,
+            "color": {
+             "r": 1,
+             "g": 0.658823549747467,
+             "b": 0.8588235378265381,
+             "a": 1
+            }
+           }
+          ],
+          "effects": [
+           {
+            "type": "DROP_SHADOW",
+            "visible": true,
+            "color": {
+             "r": 0,
+             "g": 0,
+             "b": 0,
+             "a": 0.019999999552965164
+            },
+            "offset": {
+             "x": 0,
+             "y": 2.5
+            },
+            "radius": 2
+           },
+           {
+            "type": "DROP_SHADOW",
+            "visible": true,
+            "color": {
+             "r": 0,
+             "g": 0,
+             "b": 0,
+             "a": 0.03999999910593033
+            },
+            "offset": {
+             "x": 0,
+             "y": 3
+            },
+            "radius": 5
+           },
+           {
+            "type": "DROP_SHADOW",
+            "visible": true,
+            "color": {
+             "r": 0,
+             "g": 0,
+             "b": 0,
+             "a": 0.07999999821186066
+            },
+            "offset": {
+             "x": 0,
+             "y": 8
+            },
+            "radius": 10
+           }
+          ],
+          "characters": "Wide sticky — 416 x 240. Geometry must survive the import unchanged, not be normalised to Maude default width."
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "2:17",
+      "type": "SHAPE_WITH_TEXT",
+      "name": "Příliš žluťoučký — \"test\" / <b> & 'x'",
+      "visible": true,
+      "absoluteBoundingBox": {
+       "x": 0,
+       "y": 1100,
+       "width": 260,
+       "height": 160
+      },
+      "absoluteRenderBounds": {
+       "x": -2,
+       "y": 1098,
+       "width": 264,
+       "height": 164
+      },
+      "blendMode": "PASS_THROUGH",
+      "fills": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 0.7607843279838562,
+         "g": 0.8980392217636108,
+         "b": 1,
+         "a": 1
+        }
+       }
+      ],
+      "strokes": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 0.239215686917305,
+         "g": 0.6784313917160034,
+         "b": 1,
+         "a": 1
+        }
+       }
+      ],
+      "strokeWeight": 4,
+      "cornerRadius": 6,
+      "characters": "SQUARE",
+      "shapeType": "SQUARE"
+     },
+     {
+      "id": "2:21",
+      "type": "SHAPE_WITH_TEXT",
+      "name": "ELLIPSE",
+      "visible": true,
+      "absoluteBoundingBox": {
+       "x": 320,
+       "y": 1100,
+       "width": 340,
+       "height": 220
+      },
+      "absoluteRenderBounds": {
+       "x": 318,
+       "y": 1098,
+       "width": 344,
+       "height": 224
+      },
+      "blendMode": "PASS_THROUGH",
+      "fills": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 0.7607843279838562,
+         "g": 0.8980392217636108,
+         "b": 1,
+         "a": 1
+        }
+       }
+      ],
+      "strokes": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 0.239215686917305,
+         "g": 0.6784313917160034,
+         "b": 1,
+         "a": 1
+        }
+       }
+      ],
+      "strokeWeight": 4,
+      "characters": "ELLIPSE",
+      "shapeType": "ELLIPSE"
+     },
+     {
+      "id": "2:24",
+      "type": "SHAPE_WITH_TEXT",
+      "name": "ROUNDED_RECTANGLE",
+      "visible": true,
+      "absoluteBoundingBox": {
+       "x": 720,
+       "y": 1100,
+       "width": 260,
+       "height": 160
+      },
+      "absoluteRenderBounds": {
+       "x": 718,
+       "y": 1098,
+       "width": 264,
+       "height": 164
+      },
+      "blendMode": "PASS_THROUGH",
+      "fills": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 0.7607843279838562,
+         "g": 0.8980392217636108,
+         "b": 1,
+         "a": 1
+        }
+       }
+      ],
+      "strokes": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 0.239215686917305,
+         "g": 0.6784313917160034,
+         "b": 1,
+         "a": 1
+        }
+       }
+      ],
+      "strokeWeight": 4,
+      "cornerRadius": 64,
+      "characters": "ROUNDED_RECTANGLE",
+      "shapeType": "ROUNDED_RECTANGLE"
+     },
+     {
+      "id": "2:28",
+      "type": "SHAPE_WITH_TEXT",
+      "name": "DIAMOND",
+      "visible": true,
+      "absoluteBoundingBox": {
+       "x": 1040,
+       "y": 1100,
+       "width": 340,
+       "height": 220
+      },
+      "absoluteRenderBounds": {
+       "x": 1038,
+       "y": 1098,
+       "width": 344,
+       "height": 224
+      },
+      "blendMode": "PASS_THROUGH",
+      "fills": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 0.8039215803146362,
+         "g": 0.95686274766922,
+         "b": 0.8274509906768799,
+         "a": 1
+        }
+       }
+      ],
+      "strokes": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 0.4000000059604645,
+         "g": 0.8352941274642944,
+         "b": 0.4588235318660736,
+         "a": 1
+        }
+       }
+      ],
+      "strokeWeight": 4,
+      "cornerRadius": 6,
+      "characters": "DIAMOND",
+      "shapeType": "DIAMOND"
+     },
+     {
+      "id": "2:32",
+      "type": "SHAPE_WITH_TEXT",
+      "name": "TRIANGLE_UP",
+      "visible": true,
+      "absoluteBoundingBox": {
+       "x": 1440,
+       "y": 1100,
+       "width": 340,
+       "height": 220
+      },
+      "absoluteRenderBounds": {
+       "x": 1437.9949951171875,
+       "y": 1098,
+       "width": 344.010009765625,
+       "height": 224
+      },
+      "blendMode": "PASS_THROUGH",
+      "fills": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 0.8039215803146362,
+         "g": 0.95686274766922,
+         "b": 0.8274509906768799,
+         "a": 1
+        }
+       }
+      ],
+      "strokes": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 0.4000000059604645,
+         "g": 0.8352941274642944,
+         "b": 0.4588235318660736,
+         "a": 1
+        }
+       }
+      ],
+      "strokeWeight": 4,
+      "cornerRadius": 6,
+      "characters": "TRIANGLE_UP",
+      "shapeType": "TRIANGLE_UP"
+     },
+     {
+      "id": "2:36",
+      "type": "SHAPE_WITH_TEXT",
+      "name": "TRIANGLE_DOWN",
+      "visible": true,
+      "absoluteBoundingBox": {
+       "x": 1840,
+       "y": 1100,
+       "width": 340,
+       "height": 220
+      },
+      "absoluteRenderBounds": {
+       "x": 1837.9949951171875,
+       "y": 1098,
+       "width": 344.0098876953125,
+       "height": 224
+      },
+      "blendMode": "PASS_THROUGH",
+      "fills": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 0.8039215803146362,
+         "g": 0.95686274766922,
+         "b": 0.8274509906768799,
+         "a": 1
+        }
+       }
+      ],
+      "strokes": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 0.4000000059604645,
+         "g": 0.8352941274642944,
+         "b": 0.4588235318660736,
+         "a": 1
+        }
+       }
+      ],
+      "strokeWeight": 4,
+      "cornerRadius": 6,
+      "characters": "TRIANGLE_DOWN",
+      "shapeType": "TRIANGLE_DOWN"
+     },
+     {
+      "id": "2:40",
+      "type": "SHAPE_WITH_TEXT",
+      "name": "PARALLELOGRAM_RIGHT (unmappable)",
+      "visible": true,
+      "absoluteBoundingBox": {
+       "x": 2240,
+       "y": 1100,
+       "width": 260,
+       "height": 160
+      },
+      "absoluteRenderBounds": {
+       "x": 2237.998046875,
+       "y": 1098,
+       "width": 264.00390625,
+       "height": 164
+      },
+      "blendMode": "PASS_THROUGH",
+      "fills": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 1,
+         "g": 0.8039215803146362,
+         "b": 0.7607843279838562,
+         "a": 1
+        }
+       }
+      ],
+      "strokes": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 1,
+         "g": 0.4588235318660736,
+         "b": 0.33725491166114807,
+         "a": 1
+        }
+       }
+      ],
+      "strokeWeight": 4,
+      "cornerRadius": 6,
+      "characters": "PARALLELOGRAM_RIGHT (unmappable)",
+      "shapeType": "PARALLELOGRAM_RIGHT"
+     },
+     {
+      "id": "2:44",
+      "type": "SHAPE_WITH_TEXT",
+      "name": "ENG_DATABASE (unmappable)",
+      "visible": true,
+      "absoluteBoundingBox": {
+       "x": 2560,
+       "y": 1100,
+       "width": 260,
+       "height": 160
+      },
+      "absoluteRenderBounds": {
+       "x": 2558,
+       "y": 1098,
+       "width": 264,
+       "height": 164
+      },
+      "blendMode": "PASS_THROUGH",
+      "fills": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 1,
+         "g": 0.8039215803146362,
+         "b": 0.7607843279838562,
+         "a": 1
+        }
+       }
+      ],
+      "strokes": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 1,
+         "g": 0.4588235318660736,
+         "b": 0.33725491166114807,
+         "a": 1
+        }
+       }
+      ],
+      "strokeWeight": 4,
+      "characters": "ENG_DATABASE (unmappable)",
+      "shapeType": "ENG_DATABASE"
+     },
+     {
+      "id": "2:50",
+      "type": "TEXT",
+      "name": "TEXT endpoint — Maude isBindable() must widen to reach this",
+      "visible": true,
+      "absoluteBoundingBox": {
+       "x": 0,
+       "y": 1500,
+       "width": 718,
+       "height": 29
+      },
+      "absoluteRenderBounds": {
+       "x": 1.0568182468414307,
+       "y": 1504.8465576171875,
+       "width": 714.8778076171875,
+       "height": 23.0625
+      },
+      "blendMode": "PASS_THROUGH",
+      "fills": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 0.11764705926179886,
+         "g": 0.11764705926179886,
+         "b": 0.11764705926179886,
+         "a": 1
+        }
+       }
+      ],
+      "strokeWeight": 1,
+      "characters": "TEXT endpoint — Maude isBindable() must widen to reach this",
+      "style": {
+       "fontFamily": "Inter",
+       "fontWeight": 500,
+       "fontSize": 24,
+       "lineHeightPx": 29.045454025268555,
+       "letterSpacing": 0,
+       "textAlignHorizontal": "LEFT",
+       "textAlignVertical": "TOP"
+      }
+     },
+     {
+      "id": "2:62",
+      "type": "GROUP",
+      "name": "GROUP endpoint (must degrade)",
+      "visible": true,
+      "absoluteBoundingBox": {
+       "x": 900,
+       "y": 1500,
+       "width": 440,
+       "height": 140
+      },
+      "absoluteRenderBounds": {
+       "x": 898,
+       "y": 1498,
+       "width": 444,
+       "height": 144
+      },
+      "blendMode": "PASS_THROUGH",
+      "clipsContent": false,
+      "strokeWeight": 1,
+      "cornerRadius": 6,
+      "children": [
+       {
+        "id": "2:54",
+        "type": "SHAPE_WITH_TEXT",
+        "name": "grouped A",
+        "visible": true,
+        "absoluteBoundingBox": {
+         "x": 900,
+         "y": 1500,
+         "width": 200,
+         "height": 140
+        },
+        "absoluteRenderBounds": {
+         "x": 898,
+         "y": 1498,
+         "width": 204,
+         "height": 144
+        },
+        "blendMode": "PASS_THROUGH",
+        "fills": [
+         {
+          "type": "SOLID",
+          "visible": true,
+          "color": {
+           "r": 0.8627451062202454,
+           "g": 0.800000011920929,
+           "b": 1,
+           "a": 1
+          }
+         }
+        ],
+        "strokes": [
+         {
+          "type": "SOLID",
+          "visible": true,
+          "color": {
+           "r": 0.529411792755127,
+           "g": 0.30980393290519714,
+           "b": 1,
+           "a": 1
+          }
+         }
+        ],
+        "strokeWeight": 4,
+        "cornerRadius": 6,
+        "characters": "grouped A",
+        "shapeType": "SQUARE"
+       },
+       {
+        "id": "2:58",
+        "type": "SHAPE_WITH_TEXT",
+        "name": "grouped B",
+        "visible": true,
+        "absoluteBoundingBox": {
+         "x": 1140,
+         "y": 1500,
+         "width": 200,
+         "height": 140
+        },
+        "absoluteRenderBounds": {
+         "x": 1138,
+         "y": 1498,
+         "width": 204,
+         "height": 144
+        },
+        "blendMode": "PASS_THROUGH",
+        "fills": [
+         {
+          "type": "SOLID",
+          "visible": true,
+          "color": {
+           "r": 0.8627451062202454,
+           "g": 0.800000011920929,
+           "b": 1,
+           "a": 1
+          }
+         }
+        ],
+        "strokes": [
+         {
+          "type": "SOLID",
+          "visible": true,
+          "color": {
+           "r": 0.529411792755127,
+           "g": 0.30980393290519714,
+           "b": 1,
+           "a": 1
+          }
+         }
+        ],
+        "strokeWeight": 4,
+        "cornerRadius": 6,
+        "characters": "grouped B",
+        "shapeType": "SQUARE"
+       }
+      ]
+     },
+     {
+      "id": "2:63",
+      "type": "SHAPE_WITH_TEXT",
+      "name": "rotated 15°",
+      "visible": true,
+      "absoluteBoundingBox": {
+       "x": 1500,
+       "y": 1443.0598038434982,
+       "width": 251.32655292749405,
+       "height": 201.82907700538635
+      },
+      "absoluteRenderBounds": {
+       "x": 1499.346435546875,
+       "y": 1442.40625,
+       "width": 252.6336669921875,
+       "height": 203.1361083984375
+      },
+      "rotation": -0.26179940325453416,
+      "blendMode": "PASS_THROUGH",
+      "fills": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 1,
+         "g": 0.9254902005195618,
+         "b": 0.7411764860153198,
+         "a": 1
+        }
+       }
+      ],
+      "strokes": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 1,
+         "g": 0.7882353067398071,
+         "b": 0.26274511218070984,
+         "a": 1
+        }
+       }
+      ],
+      "strokeWeight": 4,
+      "cornerRadius": 6,
+      "characters": "rotated 15°",
+      "shapeType": "SQUARE"
+     },
+     {
+      "id": "2:67",
+      "type": "CONNECTOR",
+      "name": "C1 shape-to-shape",
+      "visible": true,
+      "absoluteBoundingBox": {
+       "x": 239,
+       "y": 1174.5,
+       "width": 102,
+       "height": 41
+      },
+      "absoluteRenderBounds": {
+       "x": 239,
+       "y": 1174.5,
+       "width": 102,
+       "height": 41
+      },
+      "blendMode": "PASS_THROUGH",
+      "strokes": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 0.239215686917305,
+         "g": 0.6784313917160034,
+         "b": 1,
+         "a": 1
+        }
+       }
+      ],
+      "strokeWeight": 4,
+      "characters": "happy path",
+      "connectorStart": "2:17",
+      "connectorEnd": "2:21",
+      "connectorLineType": "ELBOWED"
+     },
+     {
+      "id": "2:71",
+      "type": "CONNECTOR",
+      "name": "C2 shape-to-TEXT",
+      "visible": true,
+      "absoluteBoundingBox": {
+       "x": 724.5,
+       "y": 1210,
+       "width": 307.5,
+       "height": 304.5
+      },
+      "absoluteRenderBounds": {
+       "x": 722.5,
+       "y": 1208,
+       "width": 311.5,
+       "height": 321.2279052734375
+      },
+      "blendMode": "PASS_THROUGH",
+      "strokes": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 0.9725490212440491,
+         "g": 0.2862745225429535,
+         "b": 0.7568627595901489,
+         "a": 1
+        }
+       }
+      ],
+      "strokeWeight": 4,
+      "characters": "end = TEXT",
+      "connectorStart": "2:28",
+      "connectorEnd": "2:50",
+      "connectorLineType": "ELBOWED"
+     },
+     {
+      "id": "2:75",
+      "type": "CONNECTOR",
+      "name": "C3 shape-to-GROUP",
+      "visible": true,
+      "absoluteBoundingBox": {
+       "x": 790,
+       "y": 1268,
+       "width": 120,
+       "height": 302
+      },
+      "absoluteRenderBounds": {
+       "x": 790,
+       "y": 1266,
+       "width": 120,
+       "height": 314.3955078125
+      },
+      "blendMode": "PASS_THROUGH",
+      "strokes": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 1,
+         "g": 0.4588235318660736,
+         "b": 0.33725491166114807,
+         "a": 1
+        }
+       }
+      ],
+      "strokeWeight": 4,
+      "characters": "end = GROUP",
+      "connectorStart": "2:24",
+      "connectorEnd": "2:62",
+      "connectorLineType": "ELBOWED"
+     },
+     {
+      "id": "2:79",
+      "type": "CONNECTOR",
+      "name": "C4 sticky-to-shape",
+      "visible": true,
+      "absoluteBoundingBox": {
+       "x": 107.5,
+       "y": 426,
+       "width": 135,
+       "height": 665.5
+      },
+      "absoluteRenderBounds": {
+       "x": 107.5,
+       "y": 424,
+       "width": 135,
+       "height": 669.5
+      },
+      "blendMode": "PASS_THROUGH",
+      "strokes": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 0.4000000059604645,
+         "g": 0.8352941274642944,
+         "b": 0.4588235318660736,
+         "a": 1
+        }
+       }
+      ],
+      "strokeWeight": 4,
+      "characters": "crosses section",
+      "connectorStart": "1:8",
+      "connectorEnd": "2:17",
+      "connectorLineType": "ELBOWED"
+     },
+     {
+      "id": "2:83",
+      "type": "CONNECTOR",
+      "name": "C5 no-caps pinned-magnets",
+      "visible": true,
+      "absoluteBoundingBox": {
+       "x": 1703,
+       "y": 1210,
+       "width": 214,
+       "height": 0
+      },
+      "absoluteRenderBounds": {
+       "x": 1701,
+       "y": 1208,
+       "width": 218,
+       "height": 4
+      },
+      "blendMode": "PASS_THROUGH",
+      "strokes": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 0.4588235318660736,
+         "g": 0.4588235318660736,
+         "b": 0.4588235318660736,
+         "a": 1
+        }
+       }
+      ],
+      "strokeWeight": 4,
+      "characters": "",
+      "connectorStart": "2:32",
+      "connectorEnd": "2:36",
+      "connectorLineType": "STRAIGHT"
+     },
+     {
+      "id": "2:87",
+      "type": "CONNECTOR",
+      "name": "C6 two-way curved",
+      "visible": true,
+      "absoluteBoundingBox": {
+       "x": 1740.4151611328125,
+       "y": 1180,
+       "width": 811.0848999023438,
+       "height": 335.5042419433594
+      },
+      "absoluteRenderBounds": {
+       "x": 1738.4151611328125,
+       "y": 1165.2720947265625,
+       "width": 815.0848388671875,
+       "height": 364.9600830078125
+      },
+      "blendMode": "PASS_THROUGH",
+      "strokes": [
+       {
+        "type": "SOLID",
+        "visible": true,
+        "color": {
+         "r": 0.529411792755127,
+         "g": 0.30980393290519714,
+         "b": 1,
+         "a": 1
+        }
+       }
+      ],
+      "strokeWeight": 4,
+      "characters": "two-way",
+      "connectorStart": "2:44",
+      "connectorEnd": "2:63",
+      "connectorLineType": "CURVED"
+     }
+    ]
+   }
+  ]
+ },
+ "nodeCount": 27,
+ "maxDepth": 4
+}
