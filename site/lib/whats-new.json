@@ -1,7 +1,16 @@
 {
-  "generated": "2026-08-12T11:40:08.847Z",
+  "generated": "2026-08-12T13:32:43.974Z",
   "version": "0.58.3",
   "entries": [
+    {
+      "id": "cloud-asset-push-completes",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "Every asset reaches the cloud, in one go",
+      "summary": "A project with a lot of images, fonts and video used to trickle a handful of files to the cloud per boot and never catch up. Now the whole set uploads in one pass, and a file the hub refuses is named with the real reason instead of a bare error code.",
+      "surface": "design-ui"
+    },
     {
       "id": "figma-explode-artboard",
       "version": null,
