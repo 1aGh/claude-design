@@ -300,7 +300,15 @@ function safeLabel(v) {
   let out = '';
   for (const ch of String(v).slice(0, 200)) {
     const code = ch.codePointAt(0);
-    out += code < 0x20 || code === 0x7f ? ' ' : ch;
+    const unsafe =
+      code < 0x20 || // C0 — newline and friends: the line-injection case
+      code === 0x7f || // DEL
+      (code >= 0x80 && code <= 0x9f) || // C1 — some terminals still act on these
+      (code >= 0x202a && code <= 0x202e) || // bidi embedding / override
+      (code >= 0x2066 && code <= 0x2069); // bidi isolates
+    // Bidi controls can't break a line, but they can visually reorder one, so a
+    // filename could make a report read differently than it is.
+    out += unsafe ? ' ' : ch;
   }
   return out;
 }
