@@ -553,7 +553,7 @@ Five findings that change the implementation:
 - **Gotcha**: the schema chunk is **raw deflate** — `inflateRawSync` / `windowBits: -15`. A plain `zlib.inflateSync` throws on it. The data chunk is zstd. Both, every file.
 - **Also**: resolve image fills from the archive's own `images/` directory, not through `/v1/images` — no expiry, no rate limit, no SSRF. This path is *better* than the REST one and should not simply mirror it.
 
-> ### ✅ Phase 6 status (2026-08-12) — T13 + T14 landed, T15 partial, **ship gate NOT met**
+> ### ✅ Phase 6 status (2026-08-12) — T13 + T14 landed, T15 substantially done, **ship gate MET**
 >
 > [DDR-221](../archive/decisions/DDR-221-fig-container-decoder-fails-loud-and-adds-no-dependency.md)
 > recorded (T13), decoder built and green on both fixtures (T14), 32 tests
@@ -571,12 +571,23 @@ Five findings that change the implementation:
 > | DDR-221 A8/F1: bound report labels with `attrValue` | **Insufficient** — `attrValue` maps rejected characters to SPACES, so a 32-char bound still reads as prose. `reportToken` (one token, no spaces) moved into `sanitize.ts`. |
 > | Tier 1 is the fast offline gate | **Tier 1 cannot be a gate for correctness.** A wrong Kiwi float rotation kept the stream byte-exact and zeroed every coordinate — "decodes and consumes every byte" passes it. Tests assert concrete fixture geometry instead. |
 >
+> **✅ Tier 2 landed 2026-08-12 (`78d106c7`) — the ship gate is MET.** Oracle
+> captured live from the two fixture documents (moved to the studyfi account;
+> keys survived) and committed, so CI runs it offline. It justified itself on
+> the first run by finding **two defects 34 unit tests could not see**: the
+> decoder was emitting Figma's INTERNAL vocabulary (FRAME-with-`resizeToFit`
+> vs GROUP, ROUNDED_RECTANGLE vs RECTANGLE, SYMBOL vs COMPONENT — 11 nodes, and
+> the translators are written against the REST names), and **every FigJam
+> sticky and shape had lost its text** (20 nodes: a sticky is an internal
+> template instance whose text is an override at
+> `nodeGenerationData.overrides[].textData.characters`, not the direct path a
+> design TEXT node uses). Both fixed. The trees now agree exactly — 0 type,
+> 0 name, 0 text diffs and **0.000px** geometry, asserted as `== 0`. The single
+> lossy delta (REST expands INSTANCE children with `I<inst>;<child>` ids) is
+> asserted AS lossy, with a test that fails if the allowlist ever covers nothing.
+>
 > **Still open before `--fig` is exposed to a user:**
-> 1. 🔴 **Tier 2 differential** — the ship gate. Not started. Needs a recorded
->    REST normalization of the two fixture documents committed as the oracle,
->    plus a documented live run (the recorded form catches decoder regressions;
->    only the live run catches *Figma* changing — they are not the same test).
-> 2. Tier 3 end-to-end through `to-strokes` / `to-artboard` + the A.10 gate.
+> 1. Tier 3 end-to-end through `to-strokes` / `to-artboard` + the A.10 gate.
 > 3. The `maude design import-figma --fig <path>` verb (T6's mode set).
 > 4. A third fixture **with images** — `images/` is empty in both committed
 >    ones, so D6's archive-image path has no coverage at all.

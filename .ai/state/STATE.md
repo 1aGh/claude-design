@@ -3,11 +3,11 @@
 > **kgai-active repo** — working state and history live in the knowledge graph, not this file.
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
-**Status:** in-progress — Figma import **Phase 6** (`.fig` decoder): T13 + T14 landed, T15 partial. **Tier 2 (the differential vs REST) is the ship gate and is NOT done**, so the door must not be wired to a user-facing verb yet.
+**Status:** in-progress — Figma import **Phase 6** (`.fig` decoder): T13 + T14 + Tier 2 landed. **The ship gate is MET** — the same document through both doors normalizes identically (0 type / 0 name / 0 text diffs, 0.000px geometry). Remaining: Tier 3, the `--fig` verb, an images fixture, the independent security round.
 **Active plan:** `.ai/plans/feature-figma-import.md`
-**Active task:** T15 — Tier 2 differential, then the `--fig` verb
+**Active task:** Tier 3 + the `--fig` verb
 
-_2026-08-12:_ **Figma import Phase 6 — decoder LANDED, ship gate NOT met.** `.fig`/`.jam` now decodes
+_2026-08-12:_ **Figma import Phase 6 — decoder LANDED and the ship gate is MET.** `.fig`/`.jam` now decodes
 end to end offline: a hand-written ZIP reader, a Kiwi schema+data decoder ported from the documented
 reference, tree rebuild from `parentIndex`, absolute bbox composed down the parent chain, then
 **REST-shaped raw into the EXISTING `normalizeDocument(raw, {origin:'fig'})`** so the caps and the
@@ -31,7 +31,14 @@ type. **The mandated independent security round did NOT run** — both subagents
 reporting; the self-review that replaced it found 2 HIGH + 3 MEDIUM (all schema-hostility: the attacker
 supplies the SCHEMA, not just the data) and all five are implemented and regression-tested, but a
 self-review is blind to exactly the seam DDR-219 was caught in.
-Open: **Tier 2 differential (the ship gate)**; Tier 3 end-to-end through `to-strokes`/`to-artboard`;
+**Tier 2 landed the same day and paid for itself immediately** — it found two defects the 34 unit tests
+could not, because each side looked valid alone: the decoder was emitting Figma's INTERNAL node
+vocabulary (GROUP is internally a FRAME with `resizeToFit`; ROUNDED_RECTANGLE is REST's RECTANGLE;
+SYMBOL is COMPONENT — 11 nodes, and the translators are written against the REST names), and **every
+FigJam sticky and shape had silently lost its text** (20 nodes — a sticky is an internal template
+instance whose text lives in `nodeGenerationData.overrides[].textData.characters`). Trees now agree
+exactly, geometry to 0.000px asserted as `== 0`.
+Open: Tier 3 end-to-end through `to-strokes`/`to-artboard`;
 the `--fig` CLI verb; `images/` is EMPTY in both fixtures so D6's archive-image path has zero coverage;
 the independent security round; known container versions is `{106}`, n=2, one export date.
 
