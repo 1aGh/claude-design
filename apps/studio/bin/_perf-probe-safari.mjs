@@ -156,6 +156,10 @@ async function main() {
       `_perf-probe-safari.mjs: could not create a Safari session — ${err.message}\n` +
         'If it says "already paired", quit Safari (or `pkill -x safaridriver`) and retry.'
     );
+    // This exit bypasses the `finally` below, so the driver has to be cleaned up
+    // here: session-refused ("already paired") is exactly the path a retry loop
+    // hits, and each attempt would otherwise leave another driver behind.
+    if (driverChild) driverChild.kill();
     process.exit(1);
   }
 
