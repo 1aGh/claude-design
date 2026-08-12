@@ -27,6 +27,7 @@
 import { createHash } from 'node:crypto';
 import { inflateRawSync, zstdDecompressSync } from 'node:zlib';
 
+import { styleToWeight } from './codegen-fonts.ts';
 import { decodeKiwi, findRootDefinition, type KiwiSchema, parseKiwiSchema } from './fig-kiwi.ts';
 import { FigZipError, readFigZip } from './fig-zip.ts';
 import { reportToken } from './sanitize.ts';
@@ -99,6 +100,12 @@ export interface FigDecodeReport {
   unmappedTypes: Array<{ type: string; count: number }>;
   /** Nodes dropped because Figma marks them internal (e.g. the hidden canvas). */
   internalNodesSkipped: number;
+  /**
+   * Fields this door CANNOT reproduce from a local file, with how many nodes
+   * each affected. Reported rather than left implicit: the plan's bar is that
+   * known-lossy fields are named, never silently degraded.
+   */
+  lossyFields: Array<{ field: string; count: number; why: string }>;
 }
 
 export interface FigDecodeResult {
@@ -321,17 +328,41 @@ function restType(change: Record<string, unknown>): string | undefined {
  * takes the first entry that carries characters, which is what REST reports as
  * the node's own `characters`.
  */
+function overrides(change: Record<string, unknown>): unknown[] {
+  const list = obj(change.nodeGenerationData)?.overrides;
+  return Array.isArray(list) ? list : [];
+}
+
+/**
+ * First override carrying `key`. The template's own root comes first, so this
+ * resolves to the node's own paint/text rather than a sub-part's.
+ *
+ * The ordering is an OBSERVED property, not a documented one — which is exactly
+ * why the Tier-3 comparison is the guard: if Figma ever reorders these, the
+ * translator diff against REST fails loudly instead of quietly picking the
+ * wrong colour. Only hardcoded keys are read (A8/F5).
+ */
+function fromOverrides(change: Record<string, unknown>, key: string): unknown {
+  for (const entry of overrides(change)) {
+    const value = obj(entry)?.[key];
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
 function overrideText(change: Record<string, unknown>): string | undefined {
-  const overrides = obj(change.nodeGenerationData)?.overrides;
-  if (!Array.isArray(overrides)) return undefined;
-  for (const entry of overrides) {
+  for (const entry of overrides(change)) {
     const characters = str(obj(obj(entry)?.textData)?.characters);
     if (characters !== undefined) return characters;
   }
   return undefined;
 }
 
-function toRestNode(change: Record<string, unknown>, absolute: Matrix): Record<string, unknown> {
+function toRestNode(
+  change: Record<string, unknown>,
+  absolute: Matrix,
+  lossy: { lineHeights: number }
+): Record<string, unknown> {
   const size = obj(change.size);
   const w = num(size?.x) ?? 0;
   const h = num(size?.y) ?? 0;
@@ -352,8 +383,13 @@ function toRestNode(change: Record<string, unknown>, absolute: Matrix): Record<s
   if (cornerRadius !== undefined) raw.cornerRadius = cornerRadius;
   const strokeWeight = num(change.strokeWeight);
   if (strokeWeight !== undefined) raw.strokeWeight = strokeWeight;
-  if (Array.isArray(change.fillPaints)) raw.fills = change.fillPaints;
-  if (Array.isArray(change.strokePaints)) raw.strokes = change.strokePaints;
+  // A FigJam STICKY / SHAPE_WITH_TEXT is a template instance: its own paint is
+  // an override, not a top-level field. Reading only the top level left every
+  // board node on the translator's default colour (found by Tier 3).
+  const fills = change.fillPaints ?? fromOverrides(change, 'fillPaints');
+  if (Array.isArray(fills)) raw.fills = fills;
+  const strokes = change.strokePaints ?? fromOverrides(change, 'strokePaints');
+  if (Array.isArray(strokes)) raw.strokes = strokes;
   if (Array.isArray(change.effects)) raw.effects = change.effects;
 
   // Auto-layout. `.fig` calls it `stack*`; REST calls it `layout*`.
@@ -390,13 +426,27 @@ function toRestNode(change: Record<string, unknown>, absolute: Matrix): Record<s
   if (characters !== undefined) raw.characters = characters;
   const fontSize = num(change.fontSize);
   const fontName = obj(change.fontName);
-  const align = str(change.textAlignHorizontal);
-  if (fontSize !== undefined || fontName || align) {
+  if (fontSize !== undefined || fontName || characters !== undefined) {
+    // `.fig` encodes typography sparsely and semantically; REST reports it
+    // resolved. Three deltas, all found by the Tier-3 translator comparison:
+    //  - weight lives in the font STYLE name ("Bold"), not a number — reuse the
+    //    codegen lane's map rather than keeping a second one;
+    //  - a default alignment is OMITTED, where REST always states it;
+    //  - lineHeight is authored ({value, units}), and REST reports the RESOLVED
+    //    pixel value. A PERCENT line-height cannot be resolved to px without
+    //    font metrics we do not have offline, so it is carried only when the
+    //    file already states pixels. This is the local door's one genuinely
+    //    lossy typography field and it is asserted as lossy in the Tier-3 test.
+    const lineHeight = obj(change.lineHeight);
+    const lineHeightPx = str(lineHeight?.units) === 'PIXELS' ? num(lineHeight?.value) : undefined;
+    if (lineHeight && lineHeightPx === undefined) lossy.lineHeights++;
     raw.style = {
       fontSize,
       fontFamily: str(fontName?.family),
       fontPostScriptName: str(fontName?.postscript),
-      textAlignHorizontal: align,
+      fontWeight: styleToWeight(str(fontName?.style) ?? null) ?? undefined,
+      textAlignHorizontal: str(change.textAlignHorizontal) ?? 'LEFT',
+      ...(lineHeightPx !== undefined ? { lineHeightPx } : {}),
     };
   }
 
@@ -421,11 +471,22 @@ function toRestNode(change: Record<string, unknown>, absolute: Matrix): Record<s
   return raw;
 }
 
+/**
+ * A PERCENT line-height cannot be resolved to pixels without font metrics, and
+ * REST reports the resolved value. Counted per node so the import summary can
+ * say so out loud (the only lossy typography field — Tier 3 asserts it is).
+ */
+const LOSSY_LINE_HEIGHT = {
+  field: 'style.lineHeightPx',
+  why: 'a percent line-height needs font metrics the local file does not carry',
+};
+
 interface RebuildResult {
   root: Record<string, unknown>;
   unmapped: Map<string, number>;
   internalSkipped: number;
   nodeCount: number;
+  lossyLineHeights: number;
 }
 
 /**
@@ -496,6 +557,7 @@ function rebuildTree(changes: unknown[]): RebuildResult {
 
   const unmapped = new Map<string, number>();
   const onStack = new Set<string>();
+  const lossy = { lineHeights: 0 };
   let nodeCount = 0;
   let internalSkipped = 0;
 
@@ -515,7 +577,7 @@ function rebuildTree(changes: unknown[]): RebuildResult {
 
     const change = byId.get(id) as Record<string, unknown>;
     const absolute = compose(parentAbsolute, matrixOf(change.transform));
-    const node = toRestNode(change, absolute);
+    const node = toRestNode(change, absolute, lossy);
     nodeCount++;
 
     const type = node.type;
@@ -556,7 +618,7 @@ function rebuildTree(changes: unknown[]): RebuildResult {
     throw new FigDecodeError('the document root is marked internal-only');
   }
   const root = build(roots[0], IDENTITY, 0);
-  return { root, unmapped, internalSkipped, nodeCount };
+  return { root, unmapped, internalSkipped, nodeCount, lossyLineHeights: lossy.lineHeights };
 }
 
 // ── The door ────────────────────────────────────────────────────────────────
@@ -603,7 +665,7 @@ export function decodeFigArchive(archive: Uint8Array, opts: DecodeFigOptions): F
     throw new FigDecodeError('canvas.fig carries no node changes');
   }
 
-  const { root, unmapped, internalSkipped, nodeCount } = rebuildTree(changes);
+  const { root, unmapped, internalSkipped, nodeCount, lossyLineHeights } = rebuildTree(changes);
 
   const document = normalizeDocument(root, {
     fileKey: opts.fileKey,
@@ -622,6 +684,7 @@ export function decodeFigArchive(archive: Uint8Array, opts: DecodeFigOptions): F
         .map(([type, count]) => ({ type, count }))
         .sort((a, b) => b.count - a.count),
       internalNodesSkipped: internalSkipped,
+      lossyFields: lossyLineHeights > 0 ? [{ ...LOSSY_LINE_HEIGHT, count: lossyLineHeights }] : [],
     },
   };
 }
