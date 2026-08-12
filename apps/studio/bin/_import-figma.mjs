@@ -436,8 +436,8 @@ export async function importBoard({
  * came through as.
  *
  * The fix is a fallback, not a substitution: the requested family still wins
- * wherever it resolves, and only the empty case changes — from "serif" to
- * "the platform's sans". Deliberately in the FIGMA lane and not in
+ * wherever it resolves, and only the empty case changes — a serif default
+ * becomes the platform's sans. Deliberately in the FIGMA lane and not in
  * `_import-asset.mjs`'s shared DDR-167 SVG path, which serves every SVG import
  * in the product and has no business rewriting a hand-authored asset's type.
  */
@@ -1209,7 +1209,8 @@ export async function explodeArtboard({
   // (DDR-027), the user may have resized the board since the import, and
   // canvases written before `figma.frames[]` carried `w`/`h` have no stored size
   // at all. `.meta.json` is the fallback, not the source.
-  const { convertCodegenModule, readArtboardBox, spliceArtboard } = await loadConverter();
+  const { convertCodegenModule, parsesAsModule, readArtboardBox, spliceArtboard } =
+    await loadConverter();
   const canvasSourceBefore = readFileSync(tsxPath, 'utf8');
   const box = readArtboardBox(canvasSourceBefore, artboardId);
   if (!box) throw new ImportFigmaError(3, 'that artboard is not in the canvas source');
@@ -1224,17 +1225,52 @@ export async function explodeArtboard({
       artboardId,
     width: Number.isFinite(frame.w) ? frame.w : box.width,
     height: Number.isFinite(frame.h) ? frame.h : box.height,
-    kind: typeof meta.kindHint === 'string' ? meta.kindHint : 'digital',
+    // The artboard's OWN kind, read from the canvas and allowlisted against the
+    // closed `ArtboardKind` set by `readArtboardBox`. The first version read a
+    // `meta.kindHint` field with no bound and no charset filter — and that field
+    // has ZERO writers anywhere in the repo, so it could only ever have been put
+    // there by a peer-authored or hand-edited sidecar. It reached an emitted JSX
+    // opening tag through `JSON.stringify`, which DDR-219's own review already
+    // declared unsound as a JSX attribute escaper. Response-derived attributes
+    // obeyed that finding; this one slipped it by arriving from `.meta.json`
+    // instead (post-implementation review F1).
+    kind: box.kind,
     tokens,
     fontTokens,
     report,
   });
 
   // ── The open-document cross-check (probe finding 1). ──
+  // FAIL CLOSED ON AN UNPROVABLE IDENTITY. Both halves of this check used to be
+  // `if (value && mismatch)`, which let the UPSTREAM decide whether the check
+  // ran at all: a response whose root carries no `data-node-id`/`data-name`, or
+  // whose component returns a fragment, produced `{nodeId: null, name: ''}` and
+  // sailed through. D8 says the operation "refuses when it cannot be proven",
+  // and this is the only control standing between residual 8 (right id, wrong
+  // document) or residual 3 (a port squatter) and a write into a versioned,
+  // peer-synced tree (post-implementation review F2).
+  if (!confirmDocument && !converted.rootNodeId) {
+    throw new ImportFigmaError(
+      3,
+      'the response carries no node identity, so the open document cannot be verified — pass --confirm-document to accept it anyway'
+    );
+  }
   if (converted.rootNodeId && converted.rootNodeId !== frame.nodeId) {
     throw new ImportFigmaError(3, 'Figma returned a different node than the one requested');
   }
+  // The node-id half above catches "Figma answered with a different node". It
+  // does NOT catch the hazard that motivated the check — the SAME id in a
+  // DIFFERENT file, which passes by construction (probe finding 1). Only the
+  // name comparison can see that, so an absent stored label is not a pass: it is
+  // a check that cannot run, and it now costs an explicit confirmation instead
+  // of being skipped silently (post-implementation review F3).
   const storedLabel = typeof frame.label === 'string' ? attrValue(frame.label, 64) : '';
+  if (!confirmDocument && !storedLabel) {
+    throw new ImportFigmaError(
+      3,
+      'this canvas predates the frame-name record, so the open document cannot be verified — re-import the page, or pass --confirm-document'
+    );
+  }
   if (!confirmDocument && storedLabel && converted.rootName && converted.rootName !== storedLabel) {
     // Deliberately a FIXED message: the two names are upstream strings and
     // printing them to compare would put document text on stdout, which D10
@@ -1313,6 +1349,16 @@ export async function explodeArtboard({
     // Both files are built and validated OUT OF TREE, then promoted. A `.tsx`
     // that landed while the `.meta.json` still said `route: "render"` would be
     // provenance that lies, so nothing is written until both are complete.
+    //
+    // The re-parse is the VALIDATION this comment used to merely assert. D8 says
+    // "build out-of-tree, validate it parses, then write"; the first version
+    // spliced by byte range and renamed straight onto the live path, so the one
+    // sink that would catch a malformed splice or an identifier collision did
+    // not exist (post-implementation review F2 — the same "comment claims a
+    // control the code does not implement" class the DDR draft had five of).
+    if (!parsesAsModule(tsxOut)) {
+      throw new ImportFigmaError(3, 'refusing to write a canvas that does not parse');
+    }
     //
     // HONEST LIMIT: promotion is TWO renames, not one atomic operation — the
     // same gap `assets.ts:33–41` documents for asset promotion. Both targets are

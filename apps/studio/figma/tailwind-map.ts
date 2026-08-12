@@ -56,6 +56,7 @@ import {
   normalizeCalc,
   unescapeArbitrary,
 } from './codegen-values.ts';
+import { ensureFontSize } from './sanitize.ts';
 import { type DsToken, resolveColor } from './style-map.ts';
 
 /** A class list longer than this is not a design, it is a payload. */
@@ -307,6 +308,20 @@ function colorValue(raw: string, ctx: TailwindContext): string | null {
 }
 
 /**
+ * Clamp a parsed font size to D6b's readable floor, preserving the unit.
+ * A size below the floor is not a design choice, it is a hiding mechanism.
+ */
+function clampFontSize(value: string): string {
+  const m = /^(-?[\d.]+)(px|rem|em|%)?$/.exec(value);
+  if (!m) return value;
+  const n = Number.parseFloat(m[1]);
+  const unit = m[2] ?? 'px';
+  if (unit !== 'px') return value; // rem/em/% floors are not comparable to a px one
+  const { size, changed } = ensureFontSize(n);
+  return changed ? `${size}px` : value;
+}
+
+/**
  * Map ONE utility. Returns `null` when the table does not know it or its value
  * fails a grammar — the caller reports that, it is never swallowed here.
  */
@@ -363,7 +378,13 @@ function mapOne(
     // family, disambiguated by the value. Tailwind's own `color:` hint wins when
     // present, which is what Figma emits for `text-[color:var(--black,#0f161e)]`.
     if (family === 'text' && hint !== 'color' && isCodegenLength(value, 512)) {
-      out.fontSize = value;
+      // D6b's readable floor. `sanitize.ts` exports `ensureFontSize` and this
+      // lane never called it, so `text-[0px]` passed the grammar and shipped —
+      // while the same file already closes both neighbours (`leading-[0]` and a
+      // hiding opacity). D4 pre-accepts that D6b "degrades to clamp what we can
+      // parse"; a font size IS parseable, so this one is closable rather than
+      // residual (post-implementation review F4).
+      out.fontSize = clampFontSize(value);
       return true;
     }
     if (family === 'border' && hint !== 'color' && isCodegenLength(value, 64)) {
@@ -502,7 +523,9 @@ function mapOne(
  * last-wins, which is also how the cascade would have resolved it.
  */
 export function mapClassName(classList: string, ctx: TailwindContext = {}): MappedClasses {
-  const declarations: Record<string, string> = {};
+  // `Object.create(null)` per this file's own header rule — the one plain
+  // literal that slipped it (post-implementation review, warning tier).
+  const declarations: Record<string, string> = Object.create(null);
   const unmapped: string[] = [];
   const substitutedFonts: string[] = [];
   const transforms: string[] = [];

@@ -779,12 +779,7 @@ export function convertCodegenModule(source: string, opts: ConvertOptions): Conv
 
   fonts.flush(opts.report, opts.nodeId);
   for (const u of [...unmapped].sort().slice(0, 40)) {
-    opts.report.add(
-      opts.nodeId,
-      'CSS',
-      'codegen-utility-unmapped',
-      attrValue(u, 48) || 'unprintable'
-    );
+    opts.report.add(opts.nodeId, 'CSS', 'codegen-utility-unmapped', reportToken(u));
   }
   if (unmapped.size > 40) {
     opts.report.add(
@@ -801,7 +796,7 @@ export function convertCodegenModule(source: string, opts: ConvertOptions): Conv
         label=${JSON.stringify(`${opts.label} · codegen`)}
         width={${Math.max(1, Math.round(opts.width))}}
         height={${Math.max(1, Math.round(opts.height))}}
-        kind=${JSON.stringify(opts.kind)}
+        kind=${JSON.stringify(ARTBOARD_KINDS.has(opts.kind) ? opts.kind : 'digital')}
         layout="block"
       >
 ${indent(rootJsx, 2)}
@@ -862,14 +857,41 @@ function rootIdentity(decl: ComponentDecl): { nodeId: string | null; name: strin
  * carried `w`/`h` have no stored size at all. Returns `null` when the artboard
  * is absent — the caller turns that into a refusal.
  */
+/**
+ * Does this source parse as a TSX module?
+ *
+ * Exported so the WRITE path can gate on it. DDR-219 D8 says "build out-of-tree,
+ * validate it parses, then write", and the first implementation spliced by byte
+ * range and renamed straight onto the live path — the validation existed only in
+ * the comment (post-implementation review F2).
+ */
+export function parsesAsModule(source: string): boolean {
+  try {
+    return parseSync('canvas.tsx', source, { sourceType: 'module' }).errors.length === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The closed set of artboard kinds (`canvas-lib.tsx`'s `ArtboardKind`).
+ *
+ * An ALLOWLIST, because `kind` lands in an emitted JSX opening tag. The first
+ * version took it from a `.meta.json` field with no bound at all, which made a
+ * peer-authored sidecar an injection vector into canvas source — see
+ * `explodeArtboard`'s note. A closed enum is the whole vocabulary, so nothing
+ * legitimate is lost by refusing everything else.
+ */
+export const ARTBOARD_KINDS: ReadonlySet<string> = new Set(['digital', 'print', 'web', 'video']);
+
 export function readArtboardBox(
   canvasSource: string,
   artboardId: string
-): { width: number; height: number; label: string } | null {
+): { width: number; height: number; label: string; kind: string } | null {
   const parsed = parseSync('canvas.tsx', canvasSource, { sourceType: 'module' });
   if (parsed.errors && parsed.errors.length > 0) return null;
 
-  let found: { width: number; height: number; label: string } | null = null;
+  let found: { width: number; height: number; label: string; kind: string } | null = null;
   const numeric = (a: Node): number | null => {
     const v = a?.value;
     if (v?.type === 'JSXExpressionContainer') {
@@ -890,15 +912,21 @@ export function readArtboardBox(
       let width: number | null = null;
       let height: number | null = null;
       let label = '';
+      // Default, not a passthrough: an unrecognised kind is refused rather than
+      // carried, because this value is re-emitted into a JSX opening tag.
+      let kind = 'digital';
       for (const a of (n.openingElement?.attributes ?? []) as Node[]) {
         const k = attrName(a);
         if (k === 'id' && isStringLiteral(a.value)) id = String(a.value.value);
         if (k === 'label' && isStringLiteral(a.value)) label = attrValue(String(a.value.value), 64);
+        if (k === 'kind' && isStringLiteral(a.value) && ARTBOARD_KINDS.has(String(a.value.value))) {
+          kind = String(a.value.value);
+        }
         if (k === 'width') width = numeric(a);
         if (k === 'height') height = numeric(a);
       }
       if (id === artboardId && width !== null && height !== null) {
-        found = { width, height, label };
+        found = { width, height, label, kind };
         return;
       }
     }
@@ -1055,6 +1083,25 @@ function paramList(decl: ComponentDecl): string {
     parts.push(def ? `${renamed} = ${def}` : renamed);
   }
   return `{ ${parts.join(', ')} }`;
+}
+
+/**
+ * A report token for `detail` — strict, and deliberately NOT `attrValue`.
+ *
+ * `attrValue` rewrites rejected characters to SPACES, which is right for a label
+ * and wrong here: a class token like `ignore.all.prior.instructions.and` comes
+ * back as that sentence, and `detail` reaches verb stdout (which D10 declares
+ * entirely code-owned), the HTTP summary and the panel. Charset-bounding is a
+ * markup control; it was never a semantic one (post-implementation review F3).
+ *
+ * So: a Tailwind FAMILY shape only — lowercase, digits, hyphens, NO SPACES ever
+ * — and anything else collapses to a fixed word. `unrecognized x7` is less
+ * informative than the raw token and cannot be read as an instruction, which is
+ * the right trade for a field an agent reads.
+ */
+export function reportToken(raw: string): string {
+  const head = /^[a-z][a-z0-9-]{0,23}/.exec(raw.trim().toLowerCase());
+  return head ? head[0] : 'unrecognized';
 }
 
 function indent(text: string, levels: number): string {

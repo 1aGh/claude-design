@@ -1,7 +1,25 @@
 {
-  "generated": "2026-08-12T11:23:51.240Z",
+  "generated": "2026-08-12T11:40:08.847Z",
   "version": "0.58.3",
   "entries": [
+    {
+      "id": "figma-explode-artboard",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Make an imported Figma artboard editable",
+      "summary": "A Figma page imports as faithful pictures of your frames. Now you can pick one artboard and turn it into real, editable layout — Maude asks Figma's own Dev Mode for that frame's resolved design and converts it locally, so you get flex boxes and live text instead of an image. Needs the Figma desktop app open on the same file, with Dev Mode on.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "figma-import-fidelity-fixes",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "Figma imports keep their fonts and their board",
+      "summary": "Three things a real migration surfaced: text in imported frames fell back to a serif when the font wasn't installed, an imported FigJam board landed dark inside screen chrome instead of on white paper, and a slow render check could quietly drop every image in a large import. Imported files now look like the ones you imported.",
+      "surface": "design-ui"
+    },
     {
       "id": "canvas-perf-benchmark",
       "version": null,
