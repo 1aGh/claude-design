@@ -1,10 +1,10 @@
 {
-  "generated": "2026-08-12T20:54:15.293Z",
-  "version": "0.59.0",
+  "generated": "2026-08-12T21:36:59.582Z",
+  "version": "0.60.0",
   "entries": [
     {
       "id": "sync-resync-button",
-      "version": null,
+      "version": "0.60.0",
       "date": "2026-08-12",
       "kind": "feature",
       "title": "Resync your project without restarting Maude",
@@ -12,7 +12,7 @@
     },
     {
       "id": "figma-offline-fig-import",
-      "version": null,
+      "version": "0.60.0",
       "date": "2026-08-12",
       "kind": "feature",
       "title": "Import a Figma file with no Figma account",
