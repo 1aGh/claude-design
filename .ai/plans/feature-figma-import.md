@@ -901,3 +901,39 @@ finding 4's determinism now holds at n=30 rather than n=2. **This reopens
 - [ ] **(Phase 6) All four smoke tiers green — Tier 2 (differential `.fig` vs REST on the same document) is the gate.** No `.fig` import ships without a passing differential run; an unknown container version refuses loudly rather than decoding approximately
 - [ ] `desktop-e2e` scenarios green against the built `.app`
 - [ ] DDR recorded and ingested into kgai; What's-New entry appended via the `whats-new-entry` skill
+
+---
+
+## Retro — Phase 7 (2026-08-12)
+
+- **The migration found more than the feature did.** Five defects came out of running the importer on
+  two real files, not out of building it: a smoke gate that had never once looked at an import
+  (`-maxdepth 1`), a page loop with no fault containment, a board framed as a screen, rendered text
+  falling back to serif, and one canary timeout discarding all 272 assets while the verb exited 0.
+  **A feature that passes its own tests and has never been run on a real document is untested.**
+  Next `/flow:plan` for an ingestion feature should carry "migrate a real file into a different repo"
+  as a TASK, not as validation.
+
+- **I was wrong twice about the same bug, and only measurement settled it.** The asset loss went:
+  "my font change" (reproduced without it) → "chunk size" (n=4 fails too) → 26 leaked `agent-browser`
+  daemons making a trivial canary take 12.5 s against a 20 s budget. Each wrong diagnosis produced a
+  plausible fix, and the second one even improved the numbers (269 → 123 skipped), which is exactly
+  what makes it dangerous. **A partial improvement is the strongest evidence a wrong hypothesis can
+  manufacture.** The check that ended it was the cheapest one available — run ONE trivial input.
+
+- **Every security finding was in the seam, not in the specified part.** DDR-219 D5 specified the
+  parser contract in unusual detail and it held completely — both reviewers failed to break out
+  through the Figma response. All six blockers were in what the WRITE path did with values that never
+  came from the response: `kind` from a `.meta.json` field with zero writers, a parse gate that
+  existed only in a comment, an identity check that let the upstream decide whether it ran.
+  **Specification effort concentrates where the author is already worried; the bugs go where it isn't.**
+
+- **A prediction derived from a ratio was refuted by a count.** D11 called A.10 "near-silent on this
+  route" from flex 142 : absolute 42. A.10 counts findings, so the real number is 42 blockers per
+  artboard. Worth generalising: when a DDR predicts a gate's behaviour, the plan should require the
+  gate to be RUN once, not reasoned about.
+
+- **`--changed-only` and the concurrent-session tree cost real time.** Two full imports were lost to a
+  fault I never explained, and a third to an externally-killed background task; `nohup` was the fix.
+  In this Syncthing multi-session tree, `git status` is never just your own work — three files in the
+  final commit had to be separated from another session's in-flight feature by reading the diffs.

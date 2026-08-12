@@ -3,9 +3,37 @@
 > **kgai-active repo** — working state and history live in the knowledge graph, not this file.
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
-**Status:** done — "canvas render performance" closed 2026-08-12 (benchmark verb + gesture-static React; the reported jank turned out to live in the studio embedding, reproduced but unexplained)
+**Status:** done — Figma import **Phase 7** closed 2026-08-12 (`--explode`: one imported artboard becomes editable via Figma's own Dev Mode codegen, over a wire no model reads). Plan stays ACTIVE — Phase 6 (`.fig` decoder) has not started.
 **Active plan:** —
 **Active task:** —
+
+_2026-08-12:_ **Figma import Phase 7 CLOSED (plan NOT archived — Phase 6 is untouched).** `--explode
+<artboard-id>` turns one already-imported artboard into editable JSX by asking Figma's own Dev Mode
+generator for that frame's resolved DOM, over the LOCAL loopback MCP with `apps/studio` as the client —
+no model in the path, enforced by grep tests rather than intent. Verified live end-to-end (33/33 assets,
+response sha identical across 30 calls) and by **rendered comparison against Figma's own export**, not by
+count agreement — the acceptance rule this feature earned after reporting success three times while
+losing content. **A real migration into `studyfi-design` was the actual test, and it found more than the
+feature did:** `/design:smoke` had `-maxdepth 1` so it had NEVER gated an import (it reported 52/52 green
+having not looked at the six imported pages); `--pages` lost every remaining page to one fault; an
+imported FigJam board landed dark inside screen chrome because a board is not a screen; rendered frames
+fell back to a SERIF because an SVG behind `<img src>` cannot see the DS webfonts; and one canary timeout
+discarded all 272 assets while the verb still exited 0. **Two measurements corrected two of my own wrong
+diagnoses** — the asset loss was not my font change (reproduced without it) and not chunk size (n=4 fails
+too); it was 26 leaked `agent-browser` daemons making a trivial canary take 12.5 s against a 20 s budget
+(3.4 s after killing them). **DDR-219 D11 is refuted by measurement:** A.10 was predicted "near-silent" on
+this route from a flex:absolute RATIO, but it counts FINDINGS — 42 blockers per exploded artboard. Not
+worked around: the only mechanical fix is the blanket justification comment D11 itself bans.
+Post-implementation security fan-out (DDR-219 mandates it) returned **6 blockers, all of them a control a
+comment claimed and the code lacked** — including `kind` as an unbounded JSX injection through a
+`meta.kindHint` field with zero writers in the repo, and D8's "validate it parses" simply not existing.
+All six fixed in `f75b71cb`. **Lesson:** every gap the reviewers found was in the seam AROUND the
+carefully-specified part — the parser contract held completely, and the bugs were in what the write path
+did with values that never came from the response.
+Open: A.10 exemption for `route: "codegen"` needs a DDR amendment; `oxc-parser` is not in root deps so
+`--explode` is desktop-only on the npm channel; the local Dev Mode DAILY cap is still unmeasured (rate is
+not the constraint — 68/min measured vs the remote's 10/min); the 3 planned scenarios were never written;
+`desktop-e2e` and `check-bundle-completeness --smoke` not run.
 
 _2026-08-12:_ **"Canvas render performance" CLOSED + archived.** Reported symptom: large canvases
 (128-artboard onboarding flow, sticky-dense FigJam board) unusable to pan/zoom. Built the meter before
