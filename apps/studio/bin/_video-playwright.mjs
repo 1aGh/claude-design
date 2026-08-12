@@ -450,6 +450,7 @@ async function frameStepCapture({
   // gif never gets a lossy intermediate stacked under its own quantization —
   // so the knob only actually applies to a plain video encode.
   const useJpeg = frameFormat === 'jpeg' && !isGif && !dump;
+  const shotFormat = useJpeg ? 'jpeg' : 'png';
   const stageMs = { seek: 0, settle: 0, screenshot: 0, encode: 0 };
   for (let f = 0; f < frameCount; f += 1) {
     const tSeek = Date.now();
@@ -474,7 +475,7 @@ async function frameStepCapture({
           if (isGif) return window.__maudeEnc.addGifFrame(b64);
           return window.__maudeEnc.addVideoFrame(b64, format);
         },
-        { b64, isGif, format: useJpeg ? 'jpeg' : 'png' }
+        { b64, isGif, format: shotFormat }
       );
       // NB: this stage is the double CDP crossing — the screenshot bytes go out
       // to node as base64 and straight back into the same page, to an encoder
