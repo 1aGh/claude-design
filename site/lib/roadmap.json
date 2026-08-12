@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-12T14:44:23.574Z",
+  "generated": "2026-08-12T15:49:43.118Z",
   "currentPhase": null,
   "phases": [
     {
@@ -802,6 +802,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/archive/feature-fast-video-export.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-figma-import",
+      "title": "Feature: Figma / FigJam import",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-figma-import.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1991,17 +2002,6 @@
       "summary": "The moodboard direction gates catch a disliked direction before the scaffold. They do not catch a scaffold that ran but produced silently-broken output — empty files trusted as written, a transpile...",
       "planPath": ".ai/plans/archive/setup-ds-round2-scaffold-integrity-and-devserver-fixes.md",
       "archived": true,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-figma-import",
-      "title": "Feature: Figma / FigJam import",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-figma-import.md",
-      "archived": false,
       "phaseKey": null
     },
     {

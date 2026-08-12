@@ -7,7 +7,7 @@
 **Active plan:** `.ai/plans/feature-figma-import.md`
 **Active task:** — (blocked on the two above)
 
-_2026-08-12:_ **Figma import Phase 6 — decoder LANDED and the ship gate is MET.** `.fig`/`.jam` now decodes
+_2026-08-12:_ **Figma import Phase 6 CLOSED — the feature is done and the plan is archived.** `.fig`/`.jam` now decodes
 end to end offline: a hand-written ZIP reader, a Kiwi schema+data decoder ported from the documented
 reference, tree rebuild from `parentIndex`, absolute bbox composed down the parent chain, then
 **REST-shaped raw into the EXISTING `normalizeDocument(raw, {origin:'fig'})`** so the caps and the
@@ -57,8 +57,18 @@ only queued VECTOR clusters, so an IMAGE fill emitted an EMPTY positioned div �
 while the import reported success. Both doors fixed; the offline door now resolves fills from
 `images/<imageRef>` through the same content-addressed promote, verified with zero network calls. A
 server-side vector render still cannot exist offline and gets its own `asset-unavailable-offline`.
-Open: the independent security round. Also: Tier 4 has two dated corpora now (`106` n=2, `101` n=1), and
-A.10 has not been RUN on a `--fig` canvas.
+**A user's own export then closed the last gap and refuted one more claim.** I had shipped
+`asset-unavailable-offline` saying a vector cluster needs Figma to render — false: every VECTOR carries
+`fillGeometry[].commandsBlob` into `blobs[]`, and both blobs decoded to the byte under one small command
+set (0 close, 1 M, 2 L, 3 Q, 4 C + float32 pairs). `figma/fig-vector.ts` now rebuilds icons offline into
+real SVG (still through the DDR-167 lane). Verified by screenshot: photo AND icon render from a local
+file with zero network calls. **Three corrections in one phase, all the same shape** — a rule derived
+from documentation (ZIP data descriptors), from an assumption (the version allowlist), and from OUR data
+structure (`PendingExport` has no `imageRef`, therefore the FORMAT has no geometry) rather than from the
+bytes.
+Debt carried forward: the independent security round never ran (four idle notifications, no report);
+A.10 not RUN on a `--fig` canvas; the 3 planned scenarios never written; `desktop-e2e` +
+`check-bundle-completeness --smoke` not run. Tier 4 now has two dated corpora (`106` n=2, `101` n=1).
 
 _2026-08-12:_ **Figma import Phase 7 CLOSED (plan NOT archived — Phase 6 is untouched).** `--explode
 <artboard-id>` turns one already-imported artboard into editable JSX by asking Figma's own Dev Mode

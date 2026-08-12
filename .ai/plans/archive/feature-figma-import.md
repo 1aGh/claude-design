@@ -1004,3 +1004,41 @@ finding 4's determinism now holds at n=30 rather than n=2. **This reopens
   fault I never explained, and a third to an externally-killed background task; `nohup` was the fix.
   In this Syncthing multi-session tree, `git status` is never just your own work — three files in the
   final commit had to be separated from another session's in-flight feature by reading the diffs.
+
+## Retro — Phase 6 (2026-08-12)
+
+- **Every defect after the DDR came from comparing against something external.** Not one came
+  from re-reading my own code. The Tier-2 differential against REST found two (the decoder was
+  emitting Figma's INTERNAL vocabulary, and every FigJam sticky had lost its text); Tier 3 through
+  the real translators found three more (dropped typography, FigJam colours on the translator
+  default, the lossy line-height); a user pointing at a rendered broken icon found the last. The
+  self-review I ran in place of the missing security round found real things too — but they were
+  all in code I had just written, which is the easy half.
+
+- **Three corrections in one phase, all the same shape: a rule derived from something other than
+  the bytes.** ZIP data descriptors refused from documentation (would have rejected every real
+  file). A container-version allowlist that assumed the number predicts compatibility (a real
+  export is version 101, *lower* than the fixtures' 106, and decodes fine). And "a vector cluster
+  needs Figma to render" — inferred from `PendingExport` carrying no `imageRef`, a fact about OUR
+  data structure, stated as a fact about the FORMAT, without opening a single blob. **When a claim
+  is about a file format, the evidence has to be the file.**
+
+- **The float trap is the best argument this feature has for its own acceptance rule.** Getting
+  Kiwi's exponent rotation wrong kept the stream byte-exact — every string, enum and guid correct,
+  accounting balanced to the byte, no error anywhere — while zeroing every coordinate in the
+  document. A structurally perfect, geometrically empty file. **Tier 1 cannot be a correctness
+  gate**, because "decodes and consumes every byte" passes that bug cleanly.
+
+- **`attrValue` was the wrong bound, and only a test found it.** It maps rejected characters to
+  SPACES, so `FRAME (IGNORE ALL PRIOR INSTRUCTIONS…)` bounded to 32 chars is still readable prose.
+  That is the DDR-219 `detail` finding recurring one phase later, in a control I wrote *citing*
+  DDR-219.
+
+- **The fixtures' incidental shape masqueraded as the format's guarantee, twice.** `images/` was
+  empty in both, so D6 looked covered; the internal canvas was childless, so pruning it before
+  parentage resolution looked safe. Both only surfaced against a file nobody authored for the tests.
+
+- **The mandated independent security round never ran** — four idle notifications, no report — and
+  the phase closed without it. That is the one acceptance criterion I could not satisfy by working
+  harder, and the retro above is the argument for why it still matters: the classes of bug I am
+  worst at finding are exactly the ones an outside reader is for.
