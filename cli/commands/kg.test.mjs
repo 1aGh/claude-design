@@ -116,3 +116,27 @@ test('passthrough strips the maude-owned --root flag from the kg argv', () => {
   assert.match(r.stdout, /ARGV:context --about x/);
   assert.doesNotMatch(r.stdout, /--root/);
 });
+
+test('record-log succeeds when the scoped slug contains a slash (repo-namespaced store)', () => {
+  // scopedSlug() prefixes the log's slug with `${scope.repo}/` under this
+  // store's per-repo namespacing convention, so `built.slug` is e.g.
+  // "acme/foo" — a temp filename built by bare string interpolation reads
+  // that slash as an implied subdirectory writeFileSync never creates, and
+  // every record-log call in a repo-namespaced store failed ENOENT before it
+  // ever reached `kg ingest`.
+  const root = repoWith({ mode: 'on', scope: { repo: 'acme', dept: 'dev' } });
+  const logDir = join(root, '.ai', 'logs', 'rca');
+  mkdirSync(logDir, { recursive: true });
+  writeFileSync(join(logDir, 'foo.md'), '# RCA: something broke\n\nbody text\n');
+  const stub = join(root, 'kg-stub.sh');
+  writeFileSync(stub, '#!/usr/bin/env bash\nexit 0\n');
+  spawnSync('chmod', ['+x', stub]);
+  const r = spawnSync(
+    'node',
+    [MAUDE_BIN, 'kg', 'record-log', '--file', '.ai/logs/rca/foo.md', '--root', root],
+    { cwd: root, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1', KGAI_BIN: stub } }
+  );
+  assert.equal(r.status ?? 0, 0, r.stderr);
+  assert.doesNotMatch(r.stderr, /ENOENT/);
+  assert.match(r.stdout, /\[kg\] recorded rca:acme\/foo/);
+});

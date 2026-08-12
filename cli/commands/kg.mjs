@@ -406,7 +406,14 @@ async function verbRecordLog(state, args, pkgRoot) {
   // Temp file + `kg ingest --file`, matching the importer: the same plumbing
   // that ingested 310 decisions during migration, so no new stdin path to get
   // wrong (and a verdict body is far past comfortable argv size anyway).
-  const tmp = join(tmpdir(), `kg-record-${kind}-${built.slug}.json`);
+  // `built.slug` is `${scope.repo}/<slug>` under this store's per-repo
+  // namespacing convention (scopedSlug) — a bare join() with that slash reads
+  // as an implied subdirectory `writeFileSync` never creates, so every call
+  // in a repo-namespaced store failed ENOENT before it ever reached `kg
+  // ingest`. This is a filesystem staging path, not the graph identity, so
+  // sanitizing it here doesn't touch what actually gets recorded.
+  const tmpSlug = built.slug.replace(/\//g, '_');
+  const tmp = join(tmpdir(), `kg-record-${kind}-${tmpSlug}.json`);
   writeFileSync(tmp, JSON.stringify({ decisions: [built.decision] }));
   const status = runKg(state, ['ingest', '--file', tmp], {
     timeoutMs: 30000,
