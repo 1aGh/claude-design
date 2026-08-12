@@ -25,6 +25,8 @@ maude kg doctor                  # is the graph active here?
 
 `kg context --about` on a broad area returns only that area's **head** decision (`dev-server` alone is shaped by 42), so reach for `search` first on topical questions.
 
+**A plan's own task list can lag reality.** `~/git` is a Syncthing tree with concurrent sessions (see the root `CLAUDE.md`), and work on a plan's files can land outside `/flow:execute`'s checkpoint loop with nothing updating the plan doc or the graph's per-task state. Before trusting a plan's checkboxes as "still open," check `git log --oneline -- <files it names>` — feature-fast-video-export (2026-08-12) turned out three-quarters shipped already.
+
 **The graph holds the FULL decision text — it is self-sufficient.** Each node stores the entire source document (`rationale`) plus `path`, `date`, `tags` and typed edges, so "what alternatives did we reject, and why" is answerable from `kg` alone, with no file open. The committed log is ~5 MB for this corpus; that's the price of not depending on the working tree.
 
 | | in the graph | on disk |
