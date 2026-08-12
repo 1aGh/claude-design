@@ -167,7 +167,8 @@ export function harnessSource({ pan, zoom, injectCss, fitAll, setFlags }) {
 }
 
 /**
- * Validate a harness result before ANY of it is printed or recorded.
+ * Shape check behind `parseAndValidateResult` — validates a harness result
+ * before ANY of it is printed or recorded.
  *
  * The harness parks its result on `window.__maudePerfResult` — a global inside
  * the canvas origin, which DDR-054 treats as untrusted. A canvas from a cloned
@@ -179,7 +180,22 @@ export function harnessSource({ pan, zoom, injectCss, fitAll, setFlags }) {
  *
  * Returns the value only when every leaf is the primitive it claims to be.
  */
-export function validateResult(r) {
+export function parseAndValidateResult(raw) {
+  let decoded;
+  try {
+    decoded = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  } catch {
+    // The PARSE is part of the trust boundary, not a step before it. A canvas
+    // owns its window and can replace JSON.stringify, so `raw` is arbitrary
+    // text — and a JSON.parse SyntaxError quotes a snippet of its input, which
+    // would carry attacker-authored text into the invoking agent's transcript
+    // through the generic error handler.
+    return null;
+  }
+  return validateResult(decoded);
+}
+
+function validateResult(r) {
   const num = (v) => v === null || (typeof v === 'number' && Number.isFinite(v));
   const stat = (o) => o && typeof o === 'object' && num(o.p50) && num(o.p95) && num(o.max);
   if (!r || typeof r !== 'object') return null;
@@ -274,9 +290,24 @@ export function readHistory(path, label, engineTag) {
   return prev;
 }
 
+/**
+ * One-line, control-character-free rendering of a caller-supplied string.
+ * A canvas filename comes from the repo and POSIX allows newlines in it, so
+ * echoing one raw lets a hostile repo inject its own line into a report an
+ * agent reads.
+ */
+function safeLabel(v) {
+  let out = '';
+  for (const ch of String(v).slice(0, 200)) {
+    const code = ch.codePointAt(0);
+    out += code < 0x20 || code === 0x7f ? ' ' : ch;
+  }
+  return out;
+}
+
 export function renderReport({ row, prev, opts, label, engineTag }) {
   const out = [];
-  out.push(`\n  canvas: ${label}    engine: ${engineTag}`);
+  out.push(`\n  canvas: ${safeLabel(label)}    engine: ${safeLabel(engineTag)}`);
   out.push(`  gesture: ${opts.pan} pan frames + ${opts.zoom} zoom frames\n`);
   out.push(deltaLine('frame p50', row.p50FrameMs, prev?.p50FrameMs));
   out.push(deltaLine('frame p95', row.p95FrameMs, prev?.p95FrameMs));

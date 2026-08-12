@@ -32,9 +32,9 @@ import {
   buildRow,
   harnessSource,
   medianOf,
+  parseAndValidateResult,
   readHistory,
   renderReport,
-  validateResult,
 } from './_perf-shared.mjs';
 
 const AB = process.env.MAUDE_AGENT_BROWSER || 'agent-browser';
@@ -168,7 +168,7 @@ async function main() {
       await sleep(1000);
       const r = abEval('JSON.stringify(window.__maudePerfResult)');
       if (r && r !== 'null') {
-        const parsed = validateResult(typeof r === 'string' ? JSON.parse(r) : r);
+        const parsed = parseAndValidateResult(r);
         if (!parsed) {
           console.error(
             '_perf-probe.mjs: the page returned a malformed result — refusing to print or record it. ' +

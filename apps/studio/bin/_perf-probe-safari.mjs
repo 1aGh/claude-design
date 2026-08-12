@@ -29,9 +29,9 @@ import {
   buildRow,
   harnessSource,
   medianOf,
+  parseAndValidateResult,
   readHistory,
   renderReport,
-  validateResult,
 } from './_perf-shared.mjs';
 
 function parseArgs(argv) {
@@ -272,7 +272,7 @@ async function main() {
         await sleep(1000);
         const raw = await exec('return JSON.stringify(window.__maudePerfResult);');
         if (raw && raw !== 'null') {
-          r = validateResult(JSON.parse(raw));
+          r = parseAndValidateResult(raw);
           if (!r) {
             console.error(
               '_perf-probe-safari.mjs: the page returned a malformed result — refusing to print or ' +
