@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-12T09:24:24.345Z",
+  "generated": "2026-08-12T11:31:36.427Z",
   "currentPhase": null,
   "phases": [
     {
@@ -648,6 +648,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — this plan touches the Phase-23 media-intake stack (use-canvas-media-drop.tsx + annota...",
       "planPath": ".ai/plans/archive/feature-bulk-media-insert.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-canvas-render-performance",
+      "title": "Feature: Canvas render performance — smooth pan/zoom on large canvases",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-canvas-render-performance.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1980,17 +1991,6 @@
       "summary": "The moodboard direction gates catch a disliked direction before the scaffold. They do not catch a scaffold that ran but produced silently-broken output — empty files trusted as written, a transpile...",
       "planPath": ".ai/plans/archive/setup-ds-round2-scaffold-integrity-and-devserver-fixes.md",
       "archived": true,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-canvas-render-performance",
-      "title": "Feature: Canvas render performance — smooth pan/zoom on large canvases",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-canvas-render-performance.md",
-      "archived": false,
       "phaseKey": null
     },
     {

@@ -3,9 +3,36 @@
 > **kgai-active repo** — working state and history live in the knowledge graph, not this file.
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
-**Status:** done — "fast, correct video export" closed 2026-08-12 (audio correctness at the source + JPEG knob + a live a11y bug + a kg tooling bug, all fixed same session)
+**Status:** done — "canvas render performance" closed 2026-08-12 (benchmark verb + gesture-static React; the reported jank turned out to live in the studio embedding, reproduced but unexplained)
 **Active plan:** —
 **Active task:** —
+
+_2026-08-12:_ **"Canvas render performance" CLOSED + archived.** Reported symptom: large canvases
+(128-artboard onboarding flow, sticky-dense FigJam board) unusable to pan/zoom. Built the meter before
+the fix — `maude design perf`, two engine lanes (Chromium via agent-browser, **WebKit via safaridriver**,
+because the desktop shell is WKWebView and Chromium does not reproduce its behaviour), plus `--fit-all`,
+`--studio` and a deterministic fixture generator, with an append-only history so before/after is a
+property of the tool. **The meter moved the target twice.** First it stopped a blind refactor: the
+predicted React fanout was real (5504 DCArtboard renders per gesture) but frame time was never bound by
+it — 60fps warm on both engines. Then `--studio` found where the jank actually lives: the same canvas,
+engine and viewport measures 20 ms standalone and **42 ms inside the studio embedding**. That multiplier
+is reproduced but STILL UNEXPLAINED — the `active-artboard` postMessage and the studio chrome were both
+measured and ruled out. The fix shipped anyway because the waste is provable: viewport publishing is now
+settle-only (5504 → 896 renders; 2 per board standalone = gesture-start + settle), with live reads kept
+exactly where they are load-bearing — including the five `1/zoom` counter-scale chrome sites BREAKER
+predicted would flicker. **Two planned tasks were deliberately NOT done, both on evidence:** viewport
+stays in `WorldContextValue` (settle-only already satisfies the invariant without rewriting every
+consumer) and the per-artboard `will-change` promotion is untouched (A/B below the noise floor, while the
+earlier RCA shows it load-bearing for filter-heavy canvases). Security fan-out earned its keep on the new
+verb: an auditor **proved RCE** through `node -e` argument interpolation before the fix, plus --history
+containment, --canvas traversal/encoding, count caps, shape-validation of a result that comes from the
+untrusted canvas origin, and safaridriver identity + child cleanup. **Lessons:** a performance task's
+plan should carry "how do we know we're measuring the right thing" as a task, not an assumption — this
+harness needed four self-corrections (isolated browser session, warm-up + median after two identical runs
+came out 60% apart, refusing to record a gesture that never moved the world, zoom direction at fit-all); and in this
+Syncthing multi-session tree, a concurrent session renamed the repro canvas mid-measurement and pushed
+load average past 300, which alone flipped two tests red and one run 60% slower.
+Open: the studio 2× multiplier, and WKWebView desktop still unmeasured (Safari is the closest proxy).
 
 _2026-08-12:_ **"Fast, correct video export" CLOSED + archived — most of the plan was already shipped by
 prior sessions before this close-out started (`3becccd9`/`354ec5c4`/`6b1b7a63`: the Remotion bump, the
