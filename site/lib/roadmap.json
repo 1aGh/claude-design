@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-12T20:54:14.696Z",
+  "generated": "2026-08-12T22:00:30.829Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1147,6 +1147,17 @@
       "phaseKey": null
     },
     {
+      "id": "feature-sync-resync-and-out-of-process-sweep",
+      "title": "Feature: Resync the whole panel, and survive the sweep",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-sync-resync-and-out-of-process-sweep.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
       "id": "feature-unified-settings-modal",
       "title": "Feature: Unified Settings modal (vertical tabs + internal scroll)",
       "status": "done",
@@ -2034,17 +2045,6 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-production-grade-hardening.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-sync-resync-and-out-of-process-sweep",
-      "title": "Feature: Resync the whole panel, and survive the sweep",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-sync-resync-and-out-of-process-sweep.md",
       "archived": false,
       "phaseKey": null
     },
