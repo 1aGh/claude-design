@@ -97,7 +97,7 @@ describe('the route is wired to the whole-sync restart, and refuses rather than 
   });
 
   test('cancel reaches the sweep through the live runtime, not the supervisor', () => {
-    expect(HTTP).toContain("ctx.syncControl?.current?.()?.cancelAssetSweep() ?? false");
+    expect(HTTP).toContain('ctx.syncControl?.current?.()?.cancelAssetSweep() ?? false');
   });
 });
 
