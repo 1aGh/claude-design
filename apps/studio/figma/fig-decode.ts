@@ -29,6 +29,7 @@ import { inflateRawSync, zstdDecompressSync } from 'node:zlib';
 
 import { styleToWeight } from './codegen-fonts.ts';
 import { decodeKiwi, findRootDefinition, type KiwiSchema, parseKiwiSchema } from './fig-kiwi.ts';
+import { pathFromBlob, type VectorPath } from './fig-vector.ts';
 import { FigZipError, readFigZip } from './fig-zip.ts';
 import { reportToken } from './sanitize.ts';
 import {
@@ -130,6 +131,13 @@ export interface FigDecodeReport {
 export interface FigDecodeResult {
   document: NormalizedDocument;
   report: FigDecodeReport;
+  /**
+   * Vector geometry the archive carries, by node id. Kept OUT of the normalized
+   * tree on purpose: REST has no equivalent, so putting it there would make the
+   * Tier-2 differential diverge for a field the REST door cannot produce. The
+   * local importer reads this to build SVGs without asking Figma to render.
+   */
+  vectors: Map<string, VectorPath>;
 }
 
 function u32le(b: Uint8Array, o: number): number {
@@ -519,12 +527,66 @@ const LOSSY_LINE_HEIGHT = {
   why: 'a percent line-height needs font metrics the local file does not carry',
 };
 
+/**
+ * Read one node's own path geometry, if it has any.
+ *
+ * A decode failure DEGRADES to "no vector" rather than refusing the document:
+ * a single unreadable icon should not cost the whole import, and the caller
+ * reports the absence. That is the one place the fail-loud rule bends, and it
+ * bends toward reporting rather than toward guessing at the shape.
+ */
+function vectorOf(change: Record<string, unknown>, blobs: readonly unknown[]): VectorPath | null {
+  const geometry = change.fillGeometry;
+  if (!Array.isArray(geometry) || geometry.length === 0) return null;
+  const first = obj(geometry[0]);
+  const index = num(first?.commandsBlob);
+  if (index === undefined || index < 0 || index >= blobs.length) return null;
+
+  const raw = obj(blobs[index])?.bytes;
+  const bytes =
+    raw instanceof Uint8Array ? raw : Array.isArray(raw) ? Uint8Array.from(raw as number[]) : null;
+  if (!bytes) return null;
+
+  let d: string;
+  try {
+    d = pathFromBlob(bytes);
+  } catch {
+    return null;
+  }
+
+  const paint = (Array.isArray(change.fillPaints) ? change.fillPaints : []).find(
+    (p) => obj(p)?.type === 'SOLID' && obj(p)?.visible !== false
+  );
+  const colour = obj(obj(paint)?.color);
+  const hex =
+    colour === undefined
+      ? null
+      : `#${(['r', 'g', 'b'] as const)
+          .map((k) => {
+            const v = num(colour[k]) ?? 0;
+            return Math.max(0, Math.min(255, Math.round(v * 255)))
+              .toString(16)
+              .padStart(2, '0');
+          })
+          .join('')}`;
+
+  return {
+    d,
+    fill: hex,
+    fillOpacity: num(obj(paint)?.opacity) ?? 1,
+    fillRule: str(first?.windingRule) === 'EVENODD' ? 'evenodd' : 'nonzero',
+    x: 0,
+    y: 0,
+  };
+}
+
 interface RebuildResult {
   root: Record<string, unknown>;
   unmapped: Map<string, number>;
   internalSkipped: number;
   nodeCount: number;
   lossyLineHeights: number;
+  vectors: Map<string, VectorPath>;
 }
 
 /**
@@ -533,7 +595,7 @@ interface RebuildResult {
  * that the Kiwi decode-depth cap does not bound (A8/F4) — hence the explicit
  * cycle, duplicate, orphan and single-root controls here.
  */
-function rebuildTree(changes: unknown[]): RebuildResult {
+function rebuildTree(changes: unknown[], blobs: readonly unknown[]): RebuildResult {
   if (changes.length > MAX_NODE_COUNT) {
     throw new FigDecodeError(
       `file carries ${changes.length} nodes, over the ${MAX_NODE_COUNT} limit. Import a specific frame instead.`
@@ -595,6 +657,7 @@ function rebuildTree(changes: unknown[]): RebuildResult {
 
   const unmapped = new Map<string, number>();
   const onStack = new Set<string>();
+  const vectors = new Map<string, VectorPath>();
   const lossy = { lineHeights: 0 };
   let nodeCount = 0;
   let internalSkipped = 0;
@@ -617,6 +680,9 @@ function rebuildTree(changes: unknown[]): RebuildResult {
     const absolute = compose(parentAbsolute, matrixOf(change.transform));
     const node = toRestNode(change, absolute, lossy);
     nodeCount++;
+
+    const art = vectorOf(change, blobs);
+    if (art) vectors.set(String(node.id), art);
 
     const type = node.type;
     if (typeof type !== 'string' || !KNOWN_NODE_TYPES.has(type)) {
@@ -656,7 +722,14 @@ function rebuildTree(changes: unknown[]): RebuildResult {
     throw new FigDecodeError('the document root is marked internal-only');
   }
   const root = build(roots[0], IDENTITY, 0);
-  return { root, unmapped, internalSkipped, nodeCount, lossyLineHeights: lossy.lineHeights };
+  return {
+    root,
+    unmapped,
+    internalSkipped,
+    nodeCount,
+    lossyLineHeights: lossy.lineHeights,
+    vectors,
+  };
 }
 
 // ── The door ────────────────────────────────────────────────────────────────
@@ -703,7 +776,11 @@ export function decodeFigArchive(archive: Uint8Array, opts: DecodeFigOptions): F
     throw new FigDecodeError('canvas.fig carries no node changes');
   }
 
-  const { root, unmapped, internalSkipped, nodeCount, lossyLineHeights } = rebuildTree(changes);
+  const blobs = Array.isArray(message?.blobs) ? message.blobs : [];
+  const { root, unmapped, internalSkipped, nodeCount, lossyLineHeights, vectors } = rebuildTree(
+    changes,
+    blobs
+  );
 
   const document = normalizeDocument(root, {
     fileKey: opts.fileKey,
@@ -713,6 +790,7 @@ export function decodeFigArchive(archive: Uint8Array, opts: DecodeFigOptions): F
 
   return {
     document,
+    vectors,
     report: {
       containerVersion: container.version,
       containerVersionKnown: OBSERVED_CONTAINER_VERSIONS.has(container.version),

@@ -141,6 +141,7 @@ Refuse, with the observed value named in the message so diagnosis is one line:
 | data chunk missing the zstd magic | refuse |
 | any cap in D4 tripped | refuse |
 | Kiwi type index out of range, unterminated string, malformed varint | refuse |
+| a vector cluster (~~no geometry offline~~ — see A11) | **rebuilt from the archive's own path blobs** |
 | a node type in the file that `FigmaNodeType` lacks | **carry it, report it, skip it** — this is data, not framing |
 
 The last row is the boundary of the rule and worth stating explicitly: **framing
@@ -451,6 +452,31 @@ already exists and is already documented as being there for the Tier-2 diff.
   file it must open anyway for `exported_at` (which Tier 4 needs). The decoder
   reads `exported_at` and **drops `file_name` on the floor** — an explicit
   negative control, and a test.
+
+### A11 — A9/A10 shipped a FALSE claim, and the icon proved it
+
+Both said a vector cluster is a server-side render absent from a local export,
+and `asset-unavailable-offline` told the user so in as many words. **Wrong.**
+Every `VECTOR` carries `fillGeometry[].commandsBlob`, an index into the
+message's `blobs[]`, and the blob holds the path.
+
+Measured on the same export: both blobs decode to the byte (196/196 and 82/82)
+under one small command set — `0` close, `1` moveTo, `2` lineTo, `3` quadTo,
+`4` cubicTo, each followed by float32 LE pairs. The icon is a `#5b62e8` rounded
+square plus a white 8-point sparkle, and it now rebuilds offline into a real
+SVG and renders.
+
+`figma/fig-vector.ts` owns the decode; the composed string still goes through
+the DDR-167 SVG lane on promote, because we authored it out of a third party's
+bytes. `asset-unavailable-offline` survives only for a node with genuinely no
+geometry.
+
+**Why the claim got made:** I inferred it from `PendingExport` carrying no
+`imageRef` — a fact about OUR data structure — and stated it as a fact about
+the FORMAT, without opening a blob. The user pointed at a rendered broken icon
+and it collapsed in one probe. Same shape as the two earlier corrections in this
+DDR (data descriptors, the version gate): a rule derived from something other
+than the bytes.
 
 ### A9 — The version gate is REMOVED; a real file refuted it (2026-08-12)
 

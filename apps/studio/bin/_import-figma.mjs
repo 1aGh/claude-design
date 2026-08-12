@@ -61,6 +61,7 @@ import {
 import { CodegenError, CodegenSession } from '../figma/codegen-client.ts';
 import { commentsToStrokes, indexNodes } from '../figma/comments-to-strokes.ts';
 import { decodeFigArchive, FigDecodeError } from '../figma/fig-decode.ts';
+import { artToSvg } from '../figma/fig-vector.ts';
 import { readFigZip } from '../figma/fig-zip.ts';
 import { attrValue, ImportReport } from '../figma/sanitize.ts';
 import { JsxTooLargeError, toArtboard, toCanvas } from '../figma/to-artboard.ts';
@@ -237,6 +238,38 @@ export function formatSummary(report, extra = {}) {
  * asset, so the on-disk name is a hash we computed and the archive's own entry
  * name never reaches a path (D6's lookup-key rule).
  */
+/**
+ * Compose one vector cluster into a standalone SVG from the archive's OWN
+ * geometry — no Figma render, no network.
+ *
+ * The cluster node and every descendant that carries a path contribute one
+ * `<path>`, translated into the cluster's coordinate space via the absolute
+ * boxes the decoder already composed. Returns null when nothing in the subtree
+ * has geometry, so the caller can report the absence honestly.
+ */
+function buildClusterSvg(local, nodeId) {
+  let cluster = null;
+  walkNodes(local.document.root, (n) => {
+    if (n.id === nodeId) cluster = n;
+  });
+  if (!cluster?.absoluteBoundingBox) return null;
+
+  const origin = cluster.absoluteBoundingBox;
+  const paths = [];
+  const collect = (node) => {
+    const art = local.vectors.get(node.id);
+    const box = node.absoluteBoundingBox;
+    if (art && box) {
+      paths.push({ ...art, x: box.x - origin.x, y: box.y - origin.y });
+    }
+    for (const kid of node.children ?? []) collect(kid);
+  };
+  collect(cluster);
+  if (paths.length === 0) return null;
+
+  return artToSvg({ width: origin.width, height: origin.height, paths });
+}
+
 async function resolveArchiveAssets(
   local,
   pendingExports,
@@ -250,12 +283,31 @@ async function resolveArchiveAssets(
 
   for (const p of pendingExports) {
     if (!p.imageRef) {
-      report.add(
-        p.nodeId,
-        'VECTOR',
-        'asset-unavailable-offline',
-        'a vector render needs Figma; the archive carries fills only'
-      );
+      // NOT unavailable after all: a `.fig` carries the path geometry itself
+      // (fillGeometry -> commandsBlob -> blobs[]), so the icon is rebuilt here
+      // rather than requested from Figma. Corrects the claim DDR-221 A9/A10
+      // shipped. It still goes through the DDR-167 SVG lane on promote — this
+      // is a third party's file, and we authored the string from their bytes.
+      const svg = buildClusterSvg(local, p.nodeId);
+      if (!svg) {
+        report.add(
+          p.nodeId,
+          'VECTOR',
+          'asset-unavailable-offline',
+          'no path geometry in the archive for this node'
+        );
+        continue;
+      }
+      const stagedSvgPath = deps.stagingPath(p.nodeId, 'svg');
+      writeFileSync(stagedSvgPath, svg, 'utf8');
+      try {
+        const { ref } = await deps.promote(stagedSvgPath, 'svg');
+        rewrites.set(p.placeholder, ref);
+        resolved.push({ nodeId: p.nodeId, ref });
+        totalBytes += Buffer.byteLength(svg);
+      } catch (err) {
+        report.add(p.nodeId, 'VECTOR', 'asset-skipped', `promote failed: ${err.code ?? 'error'}`);
+      }
       continue;
     }
     // Charset-checked before it is used as a lookup key, so a crafted ref can
@@ -296,13 +348,16 @@ export function decodeLocalFig(path, fileKeyOverride = null) {
   const fileKey =
     fileKeyOverride ?? `fig${createHash('sha256').update(bytes).digest('hex').slice(0, 29)}`;
   try {
-    const { document, report } = decodeFigArchive(new Uint8Array(bytes), { fileKey });
+    const { document, report, vectors } = decodeFigArchive(new Uint8Array(bytes), { fileKey });
     // The archive stays open: image fills resolve out of `images/<imageRef>`
     // rather than over `/v1/images` (DDR-221 D6 — no expiry, no rate limit, no
     // SSRF surface, because there is no request).
     return {
       document,
       report,
+      // Path geometry by node id — what lets a vector cluster be rebuilt here
+      // instead of requested from Figma.
+      vectors,
       fileKey,
       surface: document.surface,
       zip: readFigZip(new Uint8Array(bytes)),
