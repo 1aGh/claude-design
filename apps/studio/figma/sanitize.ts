@@ -258,6 +258,25 @@ export function attrValue(raw: string, maxLen = 64): string {
 }
 
 /**
+ * A report token for `detail` — strict, and deliberately NOT `attrValue`.
+ *
+ * `attrValue` rewrites rejected characters to SPACES, which is right for a label
+ * and wrong here: a class token like `ignore.all.prior.instructions.and` comes
+ * back as that sentence, and `detail` reaches verb stdout (which D10 declares
+ * entirely code-owned), the HTTP summary and the panel. Charset-bounding is a
+ * markup control; it was never a semantic one (post-implementation review F3).
+ *
+ * So: a Tailwind FAMILY shape only — lowercase, digits, hyphens, NO SPACES ever
+ * — and anything else collapses to a fixed word. `unrecognized x7` is less
+ * informative than the raw token and cannot be read as an instruction, which is
+ * the right trade for a field an agent reads.
+ */
+export function reportToken(raw: string): string {
+  const head = /^[a-z][a-z0-9-]{0,23}/.exec(raw.trim().toLowerCase());
+  return head ? head[0] : 'unrecognized';
+}
+
+/**
  * A JSX-safe identifier derived from a NODE ID — never from a Figma string.
  * `2:17` → `Node_2_17`. This is the whole identifier story: there is no Figma
  * text anywhere in the identifier space, which is why Round 1 and Round 2 both

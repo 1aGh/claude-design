@@ -83,7 +83,12 @@ export type FigmaNodeType =
   | 'WASHI_TAPE'
   | 'UNKNOWN';
 
-const KNOWN_NODE_TYPES = new Set<string>([
+/**
+ * Exported so the `.fig` door can tell a vocabulary gap from a mapped type
+ * WITHOUT keeping a second copy of the list (DDR-221 D3 degrade-and-report).
+ * `nodeType()` below still owns the mapping; this is read-only.
+ */
+export const KNOWN_NODE_TYPES: ReadonlySet<string> = new Set<string>([
   'DOCUMENT',
   'CANVAS',
   'FRAME',

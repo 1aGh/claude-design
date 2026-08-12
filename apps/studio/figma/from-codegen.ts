@@ -98,7 +98,15 @@ import {
   type ImportReport,
   identifierFromNodeId,
   jsxStringLiteral,
+  reportToken,
 } from './sanitize.ts';
+
+// Re-exported for the existing from-codegen tests and callers; the helper now
+// lives in sanitize.ts because the `.fig` door needs the same bounding
+// (DDR-221 A8/F1) and `attrValue` is NOT sufficient — it maps rejected
+// characters to SPACES, so a bounded label can still read as prose.
+export { reportToken };
+
 import type { DsToken } from './style-map.ts';
 import { mapClassName, type TailwindContext } from './tailwind-map.ts';
 
@@ -1083,25 +1091,6 @@ function paramList(decl: ComponentDecl): string {
     parts.push(def ? `${renamed} = ${def}` : renamed);
   }
   return `{ ${parts.join(', ')} }`;
-}
-
-/**
- * A report token for `detail` — strict, and deliberately NOT `attrValue`.
- *
- * `attrValue` rewrites rejected characters to SPACES, which is right for a label
- * and wrong here: a class token like `ignore.all.prior.instructions.and` comes
- * back as that sentence, and `detail` reaches verb stdout (which D10 declares
- * entirely code-owned), the HTTP summary and the panel. Charset-bounding is a
- * markup control; it was never a semantic one (post-implementation review F3).
- *
- * So: a Tailwind FAMILY shape only — lowercase, digits, hyphens, NO SPACES ever
- * — and anything else collapses to a fixed word. `unrecognized x7` is less
- * informative than the raw token and cannot be read as an instruction, which is
- * the right trade for a field an agent reads.
- */
-export function reportToken(raw: string): string {
-  const head = /^[a-z][a-z0-9-]{0,23}/.exec(raw.trim().toLowerCase());
-  return head ? head[0] : 'unrecognized';
 }
 
 function indent(text: string, levels: number): string {
