@@ -29,7 +29,8 @@
 #
 # Reads:
 #   $DESIGN_ROOT/_server.json   (must exist — caller runs server-up.sh first)
-#   $DESIGN_ROOT/ui/*.tsx       (canvases)
+#   $DESIGN_ROOT/ui/**/*.tsx    (canvases, RECURSIVELY — `--pages` imports
+#                               land in ui/<folder>/ and were being missed)
 #   $DESIGN_ROOT/system/*/preview/*.tsx   (specimens, when --include-system 1)
 #
 # Writes:
@@ -111,13 +112,24 @@ fi
 echo "→ smoke engine: $ENGINE | port: $PORT | out: $OUT_DIR" >&2
 
 # ---------- collect canvases ----------
+#
+# RECURSIVE, and that is a fix, not a preference. This was `-maxdepth 1` and the
+# consequence was measured on the first live Figma migration: `--pages` always
+# writes to `ui/<folder>/`, so EVERY canvas the primary import route produces was
+# invisible here. The run reported "52/52 canvases rendered styled" having never
+# looked at the 6 imported pages — green, true, and worthless. The import-graph
+# lint below already walks `ui/` recursively, which is exactly why the mismatch
+# went unnoticed: the lint covered the imports, the screenshots did not.
+#
+# A `_`-prefixed DIRECTORY is skipped as well as a `_`-prefixed file, so runtime
+# state (`_history/`, `_draw/`, `_smoke/` output itself) never enters the sweep —
+# without that, recursing would screenshot our own previous reports.
 CANVASES=""
 if [ -d "$DESIGN_ROOT/ui" ]; then
   while IFS= read -r f; do
-    base=$(basename "$f")
-    case "$base" in _*) continue ;; esac
+    case "$f" in *'/_'*) continue ;; esac
     CANVASES="$CANVASES$f"$'\n'
-  done < <(find "$DESIGN_ROOT/ui" -maxdepth 1 -type f -name '*.tsx' 2>/dev/null | sort)
+  done < <(find "$DESIGN_ROOT/ui" -type f -name '*.tsx' 2>/dev/null | sort)
 fi
 
 if [ "$INCLUDE_SYSTEM" = "1" ] && [ -d "$DESIGN_ROOT/system" ]; then
@@ -130,7 +142,7 @@ fi
 
 CANVASES=$(printf '%s' "$CANVASES" | sed '/^$/d')
 COUNT=$(printf '%s' "$CANVASES" | grep -c .)
-[ "$COUNT" -gt 0 ] || { echo "smoke.sh: no canvases found (ui/*.tsx or system/*/preview/*.tsx)" >&2; exit 1; }
+[ "$COUNT" -gt 0 ] || { echo "smoke.sh: no canvases found (ui/**/*.tsx or system/*/preview/*.tsx)" >&2; exit 1; }
 echo "→ found $COUNT canvases" >&2
 
 # ---------- --changed-only incremental filter (Phase C / DDR-061) ----------

@@ -7,7 +7,7 @@ description: "Bring an existing design into Maude. `--figma <url>` pulls a REAL 
 | -------- | ----- |
 | **Command** | `/design:import` |
 | **Category** | `daily` (daily) |
-| **Argument hint** | `--figma <url> \| --reconstruct <image-path> [--name \"<title>\"] [--into <canvas-path>] [--rounds N]` |
+| **Argument hint** | `--figma <url> \| --explode <artboard-id> --canvas <path> \| --reconstruct <image-path> [--name \"<title>\"] [--into <canvas-path>] [--rounds N]` |
 | **Source** | [`plugins/design/commands/import.md`](https://github.com/1aGh/maude/blob/main/plugins/design/commands/import.md) |
 
 ## Description
@@ -17,7 +17,7 @@ Bring an existing design into Maude. `--figma &lt;url>` pulls a REAL Figma docum
 ## Invocation
 
 ```text
-/design:import --figma <url> | --reconstruct <image-path> [--name \"<title>\"] [--into <canvas-path>] [--rounds N]
+/design:import --figma <url> | --explode <artboard-id> --canvas <path> | --reconstruct <image-path> [--name \"<title>\"] [--into <canvas-path>] [--rounds N]
 ```
 
 ## Summary

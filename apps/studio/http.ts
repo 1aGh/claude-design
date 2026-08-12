@@ -1163,6 +1163,33 @@ export function createHttp(
         },
       };
     },
+    // `--explode` from the panel. Same lazy import and same ONE implementation
+    // as the routes above — and note what is NOT here: the raw codegen response
+    // never leaves the verb, so this route returns the same code-owned
+    // accounting an agent would see on stdout (DDR-219 D10).
+    async explode({ canvas, artboard, dryRun, confirmDocument }) {
+      const mod = await import('./bin/_import-figma.mjs');
+      const r = await mod.explodeArtboard({
+        root: ctx.paths.repoRoot,
+        designRootRel: ctx.paths.designRel,
+        canvasRel: canvas,
+        artboardId: artboard,
+        dryRun: Boolean(dryRun),
+        confirmDocument: Boolean(confirmDocument),
+      });
+      return {
+        summary: {
+          canvas: r.canvas,
+          artboard: r.artboardId,
+          route: 'codegen',
+          endpoint: 'local',
+          responseSha256: r.responseSha256,
+          written: r.written,
+          assets: r.assets ?? null,
+          dispositions: r.report.entries,
+        },
+      };
+    },
   });
   const gitJson = (r: { status: number; json: unknown }) =>
     Response.json(r.json, { status: r.status, headers: { 'Cache-Control': 'no-store' } });
@@ -2546,6 +2573,26 @@ export function createHttp(
         return new Response('local request required', { status: 403 });
       const body = await readJson<unknown>(req, 8 * 1024);
       return gitJson(await figmaApi.runImport(body));
+    },
+
+    // `--explode` — one artboard, via the LOCAL Dev Mode MCP (DDR-219 D2).
+    //
+    // Same triple gate, and it needs it more than the others: this route reaches
+    // an unauthenticated loopback service that reads whatever Figma document the
+    // user has open, and then WRITES into the design root. A canvas-reachable
+    // version of it would hand the untrusted iframe (DDR-054) a primitive that
+    // reads the user's open design — so it is in NEITHER canvas allowlist, the
+    // same standing rule DDR-088 sets for every privileged route, asserted in
+    // `test/canvas-origin-gate.test.ts` and by the grep test in
+    // `cli/lib/figma-codegen-reachability.test.mjs`.
+    '/_api/figma/explode': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isTrustedRequestHost(req))
+        return new Response('local request required', { status: 403 });
+      const body = await readJson<unknown>(req, 8 * 1024);
+      return gitJson(await figmaApi.explode(body));
     },
 
     '/_api/github/create-project': async (req: Request) => {

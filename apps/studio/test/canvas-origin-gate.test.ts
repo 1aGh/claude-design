@@ -227,6 +227,10 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         '/_api/figma/connect',
         '/_api/figma/probe',
         '/_api/figma/import',
+        // DDR-219 D2 — the codegen route is privileged-origin only. From the
+        // canvas it would be a read primitive over the user's OPEN Figma
+        // document plus a write into the design root.
+        '/_api/figma/explode',
         // Local-only project create (mkdir + git init + scaffold) — writes to disk,
         // no token; MAIN-ORIGIN ONLY, so the canvas origin must 403 at the gate.
         '/_api/project/create-local',

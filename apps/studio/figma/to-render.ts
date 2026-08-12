@@ -218,8 +218,30 @@ export function toRenderCanvas(
   const bodies: string[] = [];
   const positions: Array<{ id: string; x: number; y: number }> = [];
   const pendingRenders: RenderUnit[] = [];
-  /** The tree we are NOT translating, kept so one artboard can be exploded later. */
-  const sources: Array<{ id: string; nodeId: string; type: string }> = [];
+  /**
+   * The tree we are NOT translating, kept so one artboard can be exploded later.
+   *
+   * `label` + `w`/`h` are here for a reason that is not cosmetic. DDR-219 probe
+   * finding 1: `get_design_context` takes NO file key — it reads whatever
+   * document Figma has open — and Figma node ids are NOT unique across files.
+   * So `--explode` on a canvas whose `source.fileKey` is file A, while file B is
+   * the active tab, would return file B's node of the same id and stamp it as
+   * file A's. Low-numbered ids (`0:1`, `1:2`, `6:906`) recur in essentially every
+   * file, so that is not exotic. Reading the open file's identity over that
+   * transport is unsolved (residual 8) — but a NAME-AND-GEOMETRY cross-check
+   * against this record is cheap and catches the collision, and widening the
+   * record is a one-line change made HERE, while the render route is being
+   * touched anyway, rather than a migration later.
+   */
+  const sources: Array<{
+    id: string;
+    nodeId: string;
+    type: string;
+    label: string;
+    w: number;
+    h: number;
+    route: 'render';
+  }> = [];
 
   for (const node of renderTargets) {
     const bb = node.absoluteBoundingBox!;
@@ -256,7 +278,7 @@ export function toRenderCanvas(
     );
     positions.push({ id: abId, x: Math.round(bb.x - originX), y: Math.round(bb.y - originY) });
     pendingRenders.push({ node, placeholder });
-    sources.push({ id: abId, nodeId: node.id, type: node.type });
+    sources.push({ id: abId, nodeId: node.id, type: node.type, label, w, h, route: 'render' });
     report.add(node.id, node.type, 'imported', 'rendered by figma');
   }
 

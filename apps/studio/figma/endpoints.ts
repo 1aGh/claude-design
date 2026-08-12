@@ -76,6 +76,43 @@ export interface FigmaImportRequest {
   dryRun?: boolean;
 }
 
+export interface FigmaExplodeRequest {
+  /** Canvas path RELATIVE to the design root. Never absolute, never `..`. */
+  canvas: string;
+  /** The `DCArtboard` id. Code-computed at import time, so a strict charset. */
+  artboard: string;
+  dryRun?: boolean;
+  confirmDocument?: boolean;
+}
+
+/**
+ * Validate an explode request.
+ *
+ * Narrower than `parseImportRequest`, because this one MUTATES an existing
+ * reviewed, versioned, peer-synced artifact. The caller supplies a target and
+ * nothing else: no output path, no node id, no URL, no size. Everything else is
+ * read from what the deterministic import already recorded (DDR-219 D8, which
+ * inherits DDR-216 D3's "the producer never picks its own target").
+ */
+export function parseExplodeRequest(body: unknown): FigmaExplodeRequest | null {
+  if (!body || typeof body !== 'object') return null;
+  const b = body as Record<string, unknown>;
+  if (typeof b.canvas !== 'string' || b.canvas.length === 0 || b.canvas.length > 512) return null;
+  // Traversal is refused HERE as well as by the verb's realpath containment.
+  // Two independent checks, because this one is cheap and the failure is total.
+  if (b.canvas.includes('..') || b.canvas.startsWith('/') || /^[A-Za-z]:/.test(b.canvas)) {
+    return null;
+  }
+  if (!b.canvas.endsWith('.tsx')) return null;
+  if (typeof b.artboard !== 'string' || !/^[a-z0-9-]{1,64}$/.test(b.artboard)) return null;
+  return {
+    canvas: b.canvas,
+    artboard: b.artboard,
+    dryRun: b.dryRun === true,
+    confirmDocument: b.confirmDocument === true,
+  };
+}
+
 export interface FigmaEndpoints {
   /** POST — store a PAT. Returns presence only, never the value. */
   connect(body: unknown): FigmaEndpointResult;
@@ -87,6 +124,8 @@ export interface FigmaEndpoints {
   probe(): Promise<FigmaEndpointResult>;
   /** POST — run an import. Same work the CLI verb does, same guarantees. */
   runImport(body: unknown): Promise<FigmaEndpointResult>;
+  /** POST — make ONE already-imported artboard editable via Dev Mode codegen. */
+  explode(body: unknown): Promise<FigmaEndpointResult>;
 }
 
 /**
@@ -116,6 +155,10 @@ export interface FigmaEndpointDeps {
   runImport?(req: FigmaImportRequest): Promise<{
     summary: Record<string, unknown>;
   }>;
+  /** Same injection, same reason. The real implementation is the verb's
+   *  `explodeArtboard`, so the panel and the CLI cannot drift apart in what
+   *  they validate, cap or report. */
+  explode?(req: FigmaExplodeRequest): Promise<{ summary: Record<string, unknown> }>;
 }
 
 export function createFigmaEndpoints(deps: FigmaEndpointDeps = {}): FigmaEndpoints {
@@ -194,6 +237,36 @@ export function createFigmaEndpoints(deps: FigmaEndpointDeps = {}): FigmaEndpoin
         // Anything else is reported generically — an import failure message must
         // never become a channel for an upstream string (D10).
         return { status: 500, json: { ok: false, reason: 'failed', error: 'Import failed.' } };
+      }
+    },
+
+    async explode(body: unknown): Promise<FigmaEndpointResult> {
+      const req = parseExplodeRequest(body);
+      if (!req) return { status: 400, json: { error: 'canvas and artboard are required' } };
+      if (!deps.explode) {
+        return { status: 501, json: { error: 'codegen is not available in this shell' } };
+      }
+      try {
+        const { summary } = await deps.explode(req);
+        return { status: 200, json: { ok: true, ...summary } };
+      } catch (err) {
+        // Codegen being unavailable is the COMMON case (no Dev/Full seat, Figma
+        // desktop not running, Dev Mode off, wrong tab). It is a 409, not a 500:
+        // nothing is wrong with the request or with us. The reason code is the
+        // client's OWN enum — `CodegenError.kind` / `CodegenConvertError.reason`
+        // are code-owned strings from fixed tables, never upstream text.
+        const kind = (err as { kind?: string; reason?: string } | null)?.kind;
+        const reason = (err as { reason?: string } | null)?.reason;
+        if (typeof kind === 'string') {
+          return {
+            status: 409,
+            json: { ok: false, reason: kind, error: (err as Error).message },
+          };
+        }
+        if (typeof reason === 'string') {
+          return { status: 422, json: { ok: false, reason, error: (err as Error).message } };
+        }
+        return { status: 500, json: { ok: false, reason: 'failed', error: 'Explode failed.' } };
       }
     },
   };

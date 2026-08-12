@@ -13,6 +13,7 @@ import {
   FIGMA_ASSET_MAX_BYTES,
   FIGMA_SVG_MAX_BYTES,
   MAX_ASSETS_PER_IMPORT,
+  MAX_SVG_PROMOTE_CHUNK,
   type ResolveDeps,
   renderKey,
   resolveAssets,
@@ -314,6 +315,97 @@ describe('SVG promotes are batched — the canary is a browser launch each', () 
     expect(batches[0].length).toBe(12);
     expect(rec.promoted).toEqual([]); // the per-file path is not used
     expect(out.rewrites.size).toBe(12);
+  });
+
+  // A live 6-page import lost ALL 272 frame renders to one canary timeout: the
+  // promote was a single unbounded batch and the caller fails closed, so one
+  // `spawnSync agent-browser ETIMEDOUT` became 272 x `asset-skipped` — while the
+  // import still exited 0 and reported success over a folder of broken images.
+  test('a batch bigger than the chunk cap is split', async () => {
+    stubImages();
+    const batches: string[][] = [];
+    const { deps } = makeDeps({
+      promoteSvgBatch: async (paths) => {
+        batches.push([...paths]);
+        return paths.map((p) => `/assets/${p.split('/').pop()}`);
+      },
+    });
+    const requests = Array.from({ length: MAX_SVG_PROMOTE_CHUNK + 5 }, (_, i) =>
+      req(`8:${i}`, 'svg')
+    );
+    const out = await resolveAssets(KEY, requests, deps, new ImportReport());
+    expect(batches.length).toBe(2);
+    expect(batches[0].length).toBe(MAX_SVG_PROMOTE_CHUNK);
+    expect(batches[1].length).toBe(5);
+    expect(out.rewrites.size).toBe(MAX_SVG_PROMOTE_CHUNK + 5);
+  });
+
+  test('a chunk that throws through its retry costs only its OWN chunk', async () => {
+    stubImages();
+    let call = 0;
+    const { deps } = makeDeps({
+      promoteSvgBatch: async (paths) => {
+        call += 1;
+        // Both attempts on the FIRST chunk fail; later chunks are healthy.
+        if (call <= 2) throw new Error('spawnSync agent-browser ETIMEDOUT');
+        return paths.map((p) => `/assets/${p.split('/').pop()}`);
+      },
+    });
+    const requests = Array.from({ length: MAX_SVG_PROMOTE_CHUNK + 5 }, (_, i) =>
+      req(`7:${i}`, 'svg')
+    );
+    const report = new ImportReport();
+    const out = await resolveAssets(KEY, requests, deps, report);
+    // The surviving chunk still lands — that is the whole point.
+    expect(out.rewrites.size).toBe(5);
+    expect(report.count('asset-skipped')).toBe(MAX_SVG_PROMOTE_CHUNK);
+  });
+
+  test('a chunk that throws ONCE is retried, and the retry keeps the assets', async () => {
+    // Measured: the same lane promoted 4/4 and 24/24 but threw on 12. The
+    // failure is a coin-flip against `agent-browser`'s per-invocation budget,
+    // and a lost chunk is a permanently broken image in a versioned artifact.
+    stubImages();
+    let calls = 0;
+    const { deps } = makeDeps({
+      promoteSvgBatch: async (paths) => {
+        calls += 1;
+        if (calls === 1) throw new Error('spawnSync agent-browser ETIMEDOUT');
+        return paths.map((p) => `/assets/${p.split('/').pop()}`);
+      },
+    });
+    const report = new ImportReport();
+    const out = await resolveAssets(KEY, [req('5:1', 'svg'), req('5:2', 'svg')], deps, report);
+    expect(calls).toBe(2);
+    expect(out.rewrites.size).toBe(2);
+    expect(report.count('asset-skipped')).toBe(0);
+  });
+
+  test('the retry is bounded at ONE — a lane that is down still fails fast', async () => {
+    stubImages();
+    let calls = 0;
+    const { deps } = makeDeps({
+      promoteSvgBatch: async () => {
+        calls += 1;
+        throw new Error('spawnSync agent-browser ETIMEDOUT');
+      },
+    });
+    const report = new ImportReport();
+    await resolveAssets(KEY, [req('4:1', 'svg')], deps, report);
+    expect(calls).toBe(2);
+    expect(report.count('asset-skipped')).toBe(1);
+  });
+
+  test('a SHORT return pads rather than shifting refs onto the wrong nodes', async () => {
+    stubImages();
+    const { deps } = makeDeps({
+      promoteSvgBatch: async (paths) => paths.slice(0, 1).map(() => '/assets/only.svg'),
+    });
+    const requests = Array.from({ length: 3 }, (_, i) => req(`6:${i}`, 'svg'));
+    const report = new ImportReport();
+    const out = await resolveAssets(KEY, requests, deps, report);
+    expect(out.rewrites.size).toBe(1);
+    expect(report.count('asset-skipped')).toBe(2);
   });
 
   test('rasters still take the per-file path', async () => {

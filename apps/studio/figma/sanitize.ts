@@ -73,6 +73,29 @@ export const DISPOSITIONS = Object.freeze([
   'asset-degraded',
   'jsx-cap-reached',
   'value-rejected',
+  // ── The codegen route (DDR-219 D9). Three dispositions, one rule: what makes
+  // them safe is that `detail` carries a BOUNDED token plus a count, never the
+  // upstream family or utility name verbatim — `detail` is the one field on the
+  // wire no sanitizer touches, and it reaches verb stdout (D10), the HTTP route
+  // and the panel.
+  /** A Tailwind utility the mapper does not know, or whose value failed its grammar. */
+  'codegen-utility-unmapped',
+  /** A font family that did not survive the copy — a CSS fallback is NOT a report. */
+  'font-substituted',
+  /** Dev Mode unreachable / no seat / wrong document. The COMMON case, not an error state. */
+  'codegen-unavailable',
+  /** The converter itself could not be LOADED. Contract: REFUSE, never "let a model do it". */
+  'codegen-converter-unavailable',
+  /**
+   * The converter ran and REFUSED this frame — a parse error, an element outside
+   * the allowlist, a construct it does not understand (DDR-219 D5 rule 4).
+   *
+   * Deliberately NOT folded into `codegen-unavailable`: "Figma was unreachable"
+   * and "we looked at what Figma sent and would not emit it" are different
+   * facts, and conflating outcomes is how this feature reported success three
+   * times while losing content.
+   */
+  'codegen-frame-refused',
 ] as const);
 
 export type Disposition = (typeof DISPOSITIONS)[number];

@@ -16,7 +16,7 @@ Validate docs and codebase patterns before implementing. Pay attention to existi
 > | 4 Styles → tokens | T10 | ✅ shipped — `figma/to-tokens.ts` |
 > | 5 One-click UI | T11–T12 | ✅ shipped |
 > | 6 `.fig` decoder | T13–T15 | ⬜ not started, deliberately last |
-> | **7 Codegen → HTML** | T16 ✅ · T16b–T16d ✅ · **T17** 🔜 · T18–T21 | ⚠️ **RESCOPED by DDR-219 — read it before T17** |
+> | **7 Codegen → HTML** | T16 ✅ · T16b–T16d ✅ · T17 ✅ · T17b ✅ · T18 ✅ · T19–T21b ✅ | ✅ **SHIPPED 2026-08-12** — `--explode`, verified on a live frame |
 >
 > **T16 is answered — [DDR-219](../archive/decisions/DDR-219-codegen-is-a-per-frame-tool-not-an-ingestion-route.md)
 > (2026-08-11), after a security round that returned 30 blockers + 3 exploit
@@ -644,7 +644,39 @@ What it decided, and what changed between draft and accepted:
 > content, order, icons, spacing and radii. **The Tailwind mapper is small and bounded.** The real work
 > is elsewhere — see the module finding below.
 
-**T17: CREATE `figma/from-codegen.ts` + the local-MCP client** — Tailwind → Maude, one frame. **Blocked on T16b–T16d.**
+**T17: CREATE `figma/from-codegen.ts` + the local-MCP client** — ✅ **DONE 2026-08-12.**
+`figma/codegen-client.ts` (the one module allowed to name `:3845`; asserts the
+handshake, the tool name, and that **no write-shaped tool is co-tenant** — refusing
+otherwise; never sends `dirForAssetWrites`; asserts the response is CODE not
+metadata; cuts Figma's own 1 647 B imperative tail before the converter sees it;
+carries D10's one-call ceiling as a session counter, so it is a property of the
+code and not of caller behaviour). `figma/codegen-values.ts` is the **lane-local**
+grammar — `style-map.ts`'s `VAR_RE` is untouched and a test asserts it still
+refuses a fallback-bearing `var()`, so the widening cannot creep back into the
+shared constant. `figma/tailwind-map.ts` maps the 64 measured families and hits
+**129/129 on the spike's exact class census** (asserted as a test, so a future
+Figma release surfaces as an `unmapped` entry rather than a silent drop).
+`figma/from-codegen.ts` parses with **`oxc-parser`** — the D5 rule-1 named-parser
+decision, and the review's answer is that it costs *nothing new*: it is already a
+production dep of `apps/studio`, already parses third-party TSX here
+(`canvas-pipeline.ts`), and its per-platform staging (D12) is already paid.
+The module stays REACT (helper components survive, one `Icons` instead of
+fourteen inlined subtrees), every identifier is regenerated from the node id, and
+element/attribute allowlists plus pre-parse caps bound the rest.
+- **Two corrections found while building.** (1) The converter is imported
+  **dynamically**: `oxc-parser` lives in `apps/studio/node_modules`, which ships
+  inside the desktop `.app` (staged automatically by `helper-deps.mjs`) but is
+  **not** installed by `npm i -g @1agh/maude` — a static import would have broken
+  `--board`/`--pages`/`--frames`/`--tokens` on the npm channel for a module only
+  `--explode` uses. Absence is `codegen-converter-unavailable`, whose contract
+  D10 already fixed as REFUSE. **Open item for the user: `--explode` itself is
+  therefore desktop-app-only until `oxc-parser` is added to root
+  `dependencies`, which puts a native NAPI dep in every npm install.**
+  (2) `normalizeCalc`'s first (regex) version rewrote `var(--black-10,…)` into
+  `var(--black - 10,…)` — a hyphen in a custom-property NAME looks exactly like a
+  subtraction operator. Replaced with a context-tracking scan; regression test.
+
+**T17 (original spec, kept for the record):**
 - **Do**: a zero-dep JSON-RPC client for `127.0.0.1:3845` (assert the `initialize` handshake and the expected tool name before requesting a document; a failed assertion **refuses**). Then parse the returned module, map Tailwind utilities to inline styles, wrap in `DCArtboard` at the frame's size.
 - **Do — the shape the spike corrected.** A real screen's response is a **TypeScript MODULE, not an element**: 15 asset constants, a `type IconsProps = {…}`, a helper `function Icons({ className, property1 = "account" }: IconsProps)`, then `export default function ChapterGenerated()`. **Figma emits component variants as parameterized React components.** So **do NOT flatten to HTML — keep the module as React.** Maude canvases *are* React, so a helper component in the emitted `.tsx` is natively renderable and **strictly more editable** than inlined markup: one `Icons` component beats fourteen duplicated icon subtrees, which is DDR-216 D8 mitigation 2 arriving from a new direction. (The spike's regex-strip approach rendered `type IconsProps = …` as visible body text — the exact defect class D5's named-parser rule exists to prevent, demonstrated on the first real screen.)
 - **Do — truncate at the code/prose boundary.** Every response ends with an imperative block addressed to a model (*"SUPER CRITICAL: … MUST be converted"*, *"IMPORTANT: … you MUST call get_screenshot"*) — 1 648 B on this frame, issued by **Figma itself**, not an attacker. On D2's channel it is inert bytes; carrying it into an artifact would write Figma's instructions into a canvas agents later read.
@@ -653,11 +685,69 @@ What it decided, and what changed between draft and accepted:
 - **Also**: discard the response's identifiers and regenerate from `data-node-id` via `identifierFromNodeId` (DDR-216 D6's "airtight identifier space" holds only if you do). Route `data-figma-node` through `attrValue()` — `to-render.ts:250–252` uses `JSON.stringify` as a JSX attribute escaper, which is unsound (a JSX attribute literal does not process backslash escapes); it is latent there only because `label = attrValue(node.name)` already bounds it at `:229`.
 - **Validate**: unit tests per utility family; a hostile-markup table (script/style/iframe/`on*`/`href`/`dangerouslySetInnerHTML`); one full frame round-trips to a canvas that parses.
 
-**T17b: IMPLEMENT the write model (DDR-219 D8).**
+**T17b: IMPLEMENT the write model (DDR-219 D8).** — ✅ **DONE 2026-08-12.**
+`maude design import-figma --explode <artboard-id> --canvas <rel-path>`, plus the
+privileged `POST /_api/figma/explode` (in NEITHER canvas allowlist, `GET → 405`
+asserted in `test/canvas-origin-gate.test.ts`). Target validated against
+`figma.frames[]` on a canvas already `kind: "imported-figma"`, realpath-contained,
+refuses to create a file, refuses an artboard already `route: "codegen"`, exactly
+one artboard, `_history/<slug>/` snapshot first, both files built out of tree.
+Staging is a unique child under a **stable** parent (`~/.cache/maude/figma-staging/`)
+— probe finding 2 killed pure `mkdtemp` for this lane, and the first draft keyed
+the child on the PID, which is the same path twice in one long-lived process.
+- **Residual 8 is now partly closed, not just named.** `figma.frames[]` gained
+  `label`/`w`/`h` in `to-render.ts` (the "one-line change made now" the DDR asked
+  for), and the verb cross-checks the returned root's `data-node-id` AND its
+  `data-name` against that record before writing — the wrong-open-document
+  collision is the one failure every other control passes. `--confirm-document`
+  is the escape hatch for a genuine rename. The refusal message names neither
+  document's text (D10). The *mechanism* for reading the open file's identity is
+  still unsolved; this is a name-and-node check, not file identity.
+- **Honest limit, stated in the code:** promotion is TWO renames, not one atomic
+  operation — the same gap `assets.ts:33–41` documents.
+
+> ### 🔴 MEASURED AFTER SHIPPING — DDR-219 D11's "A.10 is near-silent on this route" is WRONG
+>
+> D11 predicted the keeper's Pass A.10 would be "close to a no-op for the codegen
+> route", reasoning from the flex:absolute **ratio** (142 : 42). But A.10 counts
+> **findings**, not ratios, and T16b made every A.10 finding on an
+> `imported-figma` canvas a **blocker with no stacking threshold**.
+>
+> Measured on the live `425:2939` conversion: **42 `position: 'absolute'`
+> declarations, 0 justification comments** — i.e. **42 blockers on every exploded
+> artboard.** The prediction was inferred; this is counted.
+>
+> **Deliberately NOT worked around.** The one mechanical fix — emitting
+> `{/* imported: absolute per Figma layout */}` above each node — is the blanket
+> generator justification D11's own honesty note **bans**. Nor was A.10 quietly
+> narrowed: three consecutive DDRs asserted controls nobody built, and weakening
+> one the day after building it is the same failure wearing a different hat.
+>
+> **The fork, for the user:** (a) exempt `route: "codegen"` artboards from A.10
+> and say why — absolute positioning in codegen output is Figma's *resolved*
+> layout, not the translator drift A.10 was written to catch, and these artboards
+> are `kind="digital"` (a fixed-size screen), which is the case A.10 was scoped
+> away from originally; (b) keep the blockers and accept that `/design:critic` is
+> red on every exploded artboard; (c) change what the emitter produces, which is
+> not possible without abandoning fidelity. **(a) is the recommendation, and it
+> needs a DDR amendment, not a code edit.**
+
+**T17b (original spec, kept for the record):**
 - **Do**: target from the user's invocation only, validated to be an existing entry in that canvas's `figma.frames[]`, in a canvas already `kind: "imported-figma"`, realpath-contained under `<designRoot>`; refuse to create a new file. Exactly one artboard. `_history/<slug>/` snapshot. `.tsx` + `.meta.json` **atomic or not at all** — a partial failure stamping a codegen artboard `route: "render"` is provenance that lies.
 - **Gotcha**: the raw response stages **outside the Syncthing tree** (`mkdtemp` under `os.tmpdir()`/`~/.cache/maude/`), chosen by the **verb**, not the caller — `~/git/.stignore` excludes neither `.design/` nor `_history/` nor `.tmp-*`, and Syncthing replicates the *create*. Assert against a path prefix (DDR-216 standing assertion 12). Note `assets.ts:33–41`: promotion is N renames, not atomic — an aborted explode must not strand orphan assets.
 
-**T18: RESOLVE fonts against what the project can render — and report substitutions.**
+**T18: RESOLVE fonts against what the project can render — and report substitutions.** — ✅ **DONE 2026-08-12.**
+`figma/codegen-fonts.ts`. A family the DS already declares resolves to that token
+and is NOT a substitution; anything else lands on the DS body token (or a SANS
+system stack — the measured failure was a design landing on a *serif* fallback)
+and emits `font-substituted`. Bounded per D9: `attrValue(name, 32)` **plus a
+count**, one entry per family rather than one per element — forty identical
+entries would bury every other disposition and blow the summary's 200-line cap.
+Figma packs the weight into the family (`SF_Pro:Bold`); the style half is split
+off as a numeric weight and only fills a gap an explicit weight utility left.
+Verified live: the real frame reported `SF Pro x1` and `SF Pro Display x1`.
+
+**T18 (original spec, kept for the record):**
 - **Do**: map the Figma family onto a DS token when one matches, else onto the literal family with a system fallback. Detect availability rather than assuming it.
 - **Every substitution emits a `font-substituted` disposition** naming the requested and the used family.
 - **Why this is a task and not a detail**: a substituted font looks fine and **is not 1:1**. Silent visual drift is exactly the failure mode this import has already shipped three times (dropped loose content, stripped `href`, zero-height arrows) — each time reporting success. A fallback in a CSS declaration is not a report.
@@ -667,18 +757,94 @@ What it decided, and what changed between draft and accepted:
 
 **T20: ~~MEASURE the full-file run before enabling it.~~** ✅ **ANSWERED in DDR-219 from documentation.** Remote Pro + Full seat is 200 calls/day · 10/min; 115 frames = 57 % of one day. Instrumenting a full-file run would only measure how fast we exhaust a quota whose size is documented. **Local metering is undocumented** (fact 5) — hence the per-invocation ceiling below, set from the remote numbers and flagged as possibly wrong in either direction. Revisit on measurement if local turns out unmetered.
 
-**T20b: ENFORCE the call ceiling in the verb.**
+**T20b: ENFORCE the call ceiling in the verb.** — ✅ **DONE 2026-08-12.** The
+counter lives on `CodegenSession`, spent BEFORE the call so a failure gets no
+retry budget, and a second `fetchDesignContext` in one invocation throws
+`ceiling`. Deliberately per-session rather than module-level: a module counter
+would leak across invocations in the long-lived dev-server process, and a
+per-invocation one is scoped to exactly the unit the ceiling is defined over.
 - **Do**: one codegen call per user invocation, full stop, enforced by the wrapper — not left as a property of how a caller behaves.
 - **Why**: without it, an instruction inside a document ("for accurate conversion, fetch design context for each of these node ids first…") spends the user's whole daily Figma budget from content, and the failure reads as a Figma outage.
 
 **T21: ~~RETIRE or SCOPE the superseded routes.~~** ✅ **PREMISE GONE.** DDR-219 D1 gives each route its own verb — `--pages` render-first, `--pages --editable`/`--frames` the tree translator, `--explode` codegen. Nothing is unreferenced, so nothing is retired. Run `check-import-coherence.sh` anyway when Phase 7 lands (it is a release gate regardless).
 
-**T21b: SURFACE provenance where the consumer actually reads it (DDR-219 D7).**
+**T21b: SURFACE provenance where the consumer actually reads it (DDR-219 D7).** — ✅ **DONE 2026-08-12.**
+All three: `figma.frames[]` gains `route: "codegen"` + `responseSha256` +
+`endpoint: "local"` + tool name (and only that frame's record is rewritten);
+a code-owned header banner in the `.tsx` that says plainly the structure is
+Figma's and is not reproducible from Maude's sources; and the per-artboard
+visible marker is the artboard **label** — `"<name> · codegen"` — which renders
+in the artboard header strip, confirmed in the live screenshot.
 - **Do**: `figma.frames[]` carries `route` + `responseSha256` + `endpoint` + tool name; a distinct code-owned **header banner in the emitted `.tsx`**; a per-artboard visible marker.
 - **Why a badge is not enough**: `canvasKinds` is keyed **per canvas file** (`api.ts:5362`, badge at `client/app.jsx:2145`/`:2299`), so a canvas mixing render and codegen artboards is byte-identical in the tree to a fully deterministic one. And the consumers that matter — `design-system-keeper`, the critic panel, `/design:edit` — read the **file**, never the chip.
 - **Note**: the hash does not make the artboard reproducible. It makes *"did these two come from the same generator state"* answerable, which is the minimum an incident needs. The Phase-6 differential oracle is **unavailable for this route forever** — there is no second door.
 
 ---
+
+---
+
+## Live migration into `studyfi-design` (2026-08-12) — what a real run found
+
+First migration of two real files (FigJam `FW9hdFe2Q5wxAguis0pVfD`, design
+`2H6a9YUgPAu0AGdEiwP895` — 6 pages / 272 frames) into a DIFFERENT repo. Four
+user-reported defects, one gate found hollow, one premise refuted.
+
+### 🔴 `/design:smoke` cannot see a `--pages` import — the gate is hollow for this feature
+
+`smoke.sh:120` enumerates with `find "$DESIGN_ROOT/ui" -maxdepth 1`. **Not
+recursive.** `--pages` always writes to `ui/<folder>/`, so **every canvas the
+primary Figma import route produces is invisible to the render gate** — the one
+whose entire purpose is catching "build green ≠ user-visible green" (DDR-021 /
+DDR-068). The run reported **52/52 green having never looked at the migration.**
+Line 281's import-graph lint IS recursive, which is why the lint covered them and
+the screenshots did not — the green was true and vacuous. **Fix: make the
+screenshot pass recursive.** Until then no import has ever been smoke-gated.
+
+### Fixed in this pass (user notes 1–3)
+
+1. **The board landed on a dark ground.** `boardHostCanvas` emitted a
+   full-extent `<DCArtboard>` with no `background`, so it took `var(--bg-1)` —
+   near-black on a dark-default DS. A FigJam board is white paper.
+2. **An artboard was the wrong backing object.** Replaced with the whiteboard's
+   own primitives on the annotation layer. **Note the trap:** a `section` CANNOT
+   be the ground — `annotations-model.ts` paints it at a hardcoded
+   `fill-opacity="0.06"`, so white-at-6 % over dark stays dark. It takes TWO
+   objects: an opaque `rect` (the paper) plus the labelled `section` (the
+   region), in that paint order. The host canvas is now `<DesignCanvas />` with
+   no artboard at all — strokes are world-coordinate, so nothing ever needed one.
+3. **Rendered frames fell back to a SERIF.** Figma emits `font-family="Inter"`
+   and nothing else, and an SVG behind `<img src>` renders in an isolated
+   document where page CSS, `@font-face` and the DS webfonts do not reach — so an
+   uninstalled family lands on the browser default, which is serif. A sans-serif
+   product design arrived in Times and every count-based check called it success.
+   `withSansFallback` appends a generic to every `font-family`, figma-lane-local
+   (NOT in the shared DDR-167 SVG path, which serves hand-authored assets too).
+
+### ⚠️ `--pages` has no per-page error containment
+
+The loop catches `too_large`, empty pages and comment-fetch failures — but not a
+page fetch failure, so one fault costs every remaining page and there is no
+resume. Cost two runs (3 pages instead of 5, twice) before a third completed.
+**The trigger itself is unexplained**: every page fetches fine standalone, the
+API was reachable immediately after each failure, and replaying the API load that
+precedes it did not reproduce it. Containment is worth fixing regardless of cause.
+
+### 📐 DDR-219 D1's rate premise is refuted for the LOCAL channel
+
+D1 keeps codegen a per-frame tool partly because 115 frames = 57 % of a day —
+**but that is the REMOTE server's 200/day · 10/min.** Fact 5 left local metering
+unmeasured and D10 said "revisit on measurement". Measured 2026-08-12:
+
+| | remote (documented) | **local (measured)** |
+| --- | --- | --- |
+| rate | 10/min | **68/min** — 30/30 calls in 26.6 s, no throttle |
+| 272 frames | 136 % of a day | **~4 min** |
+
+The remote 10/min would have tripped at call 11. **A daily cap remains unknown
+and was deliberately NOT probed** — it cannot be disproven without risking
+exhausting the user's budget. Output was byte-identical across all 30 calls, so
+finding 4's determinism now holds at n=30 rather than n=2. **This reopens
+"should `--pages` be codegen-first?" as a live question**, gated on the daily cap.
 
 ## Validation
 

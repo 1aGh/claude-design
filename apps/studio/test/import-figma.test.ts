@@ -30,7 +30,9 @@ import {
   ImportFigmaError,
   importBoard,
   importFrames,
+  importPages,
   importTokens,
+  withSansFallback,
 } from '../bin/_import-figma.mjs';
 
 const TOKEN = 'figd_VERBCANARY_0123456789abcdef';
@@ -107,6 +109,140 @@ afterEach(() => {
   delete process.env.MAUDE_GEN_KEYS_PATH;
 });
 
+describe('a rendered SVG never falls back to a SERIF (live-migration report)', () => {
+  // Measured on the StudyFi cover page: Figma renders text as
+  // `font-family="Inter"` and nothing else. An SVG behind `<img src>` renders
+  // in an isolated document — the page CSS, its @font-face rules and the DS
+  // webfonts do not reach inside — so an uninstalled family lands on the
+  // browser default, which is a serif. A sans-serif product design arrived in
+  // Times, and every count-based check called it a success.
+  test('a bare family gains a generic sans fallback', () => {
+    expect(withSansFallback('<text font-family="Inter">x</text>')).toContain(
+      'font-family="Inter, sans-serif"'
+    );
+    expect(withSansFallback('<text style="font-family: SF Pro Text">x</text>')).toContain(
+      'font-family:SF Pro Text, sans-serif'
+    );
+  });
+
+  test('a stack that already ends in a generic is left alone', () => {
+    for (const already of [
+      '<text font-family="Inter, sans-serif">x</text>',
+      '<text font-family="Georgia, serif">x</text>',
+      '<text font-family="ui-monospace, monospace">x</text>',
+      '<text font-family="system-ui">x</text>',
+    ]) {
+      expect(withSansFallback(already)).toBe(already);
+    }
+  });
+
+  test('it is a FALLBACK, not a substitution — the requested family still wins', () => {
+    const out = withSansFallback('<text font-family="Hanken Grotesk">x</text>');
+    expect(out.indexOf('Hanken Grotesk')).toBeLessThan(out.indexOf('sans-serif'));
+  });
+
+  test('it rewrites nothing but font-family', () => {
+    const svg = '<svg><rect fill="#fff"/><text font-size="12" font-family="Inter">hi</text></svg>';
+    const out = withSansFallback(svg);
+    expect(out).toContain('fill="#fff"');
+    expect(out).toContain('font-size="12"');
+    expect(out).toContain('>hi<');
+  });
+
+  test('an unterminated / oversized attribute cannot run away', () => {
+    const huge = `<text font-family="${'A'.repeat(500)}">x</text>`;
+    expect(withSansFallback(huge)).toBe(huge);
+  });
+});
+
+describe('--pages contains a page failure instead of losing the rest of the file', () => {
+  // Measured on the first live migration: a fault entering page 4 of 6 cost
+  // pages 4, 5 and 6 — twice in a row — because the loop caught `too_large`,
+  // empty pages and comment failures but NOT a page fetch failure. There is no
+  // resume, so the retry re-fetched and re-rendered the three that had already
+  // succeeded.
+  const PAGES = {
+    document: {
+      id: '0:0',
+      type: 'DOCUMENT',
+      children: [
+        { id: '1:1', name: 'One', type: 'CANVAS' },
+        { id: '2:2', name: 'Two', type: 'CANVAS' },
+        { id: '3:3', name: 'Three', type: 'CANVAS' },
+      ],
+    },
+  };
+  const PAGE_BODY = (id: string) => ({
+    nodes: {
+      [id]: {
+        document: {
+          id,
+          name: 'P',
+          type: 'CANVAS',
+          children: [
+            {
+              id: `${id}0`,
+              name: 'Frame',
+              type: 'FRAME',
+              visible: true,
+              absoluteBoundingBox: box(0, 0, 100, 100),
+            },
+          ],
+        },
+      },
+    },
+  });
+
+  /** Page two's document fetch drops the connection; one and three are fine. */
+  function stubWithPageTwoDown() {
+    globalThis.fetch = mock(async (input: unknown) => {
+      const url = String(input);
+      if (url.includes('/images'))
+        return new Response(JSON.stringify({ images: {} }), { status: 200 });
+      if (url.includes('/comments'))
+        return new Response(JSON.stringify({ comments: [] }), { status: 200 });
+      if (
+        url.includes('depth=1') ||
+        /\/files\/[^/]+\?/.test(url) ||
+        url.endsWith('/files/2H6a9YUgPAu0AGdEiwP895')
+      ) {
+        return new Response(JSON.stringify(PAGES), { status: 200 });
+      }
+      const m = /ids=([^&]+)/.exec(url);
+      const id = m ? decodeURIComponent(m[1]) : '';
+      if (id.startsWith('2:2')) throw new TypeError('fetch failed');
+      if (id) return new Response(JSON.stringify(PAGE_BODY(id)), { status: 200 });
+      return new Response(JSON.stringify(PAGES), { status: 200 });
+    }) as unknown as typeof fetch;
+  }
+
+  test('the pages either side of the fault still import, and the fault is REPORTED', async () => {
+    stubWithPageTwoDown();
+    const r = await importPages({
+      url: 'https://www.figma.com/design/2H6a9YUgPAu0AGdEiwP895/x',
+      root: sandbox,
+      folder: 'f',
+    });
+    // Page three is the one the old behaviour lost: it comes AFTER the fault.
+    expect(r.written.length).toBeGreaterThanOrEqual(2);
+    const failed = r.skipped.find((x: { page?: string }) => x.page === '2:2');
+    expect(failed).toBeDefined();
+    // Reported by node id + a code-owned reason, never document text (D10).
+    expect(String(failed?.why)).toMatch(/^(network|bad_response|failed \(\w+\))$/);
+  });
+
+  test('a MISCONFIGURED request stays fatal — a partial folder must not look complete', async () => {
+    stubWithPageTwoDown();
+    await expect(
+      importPages({
+        url: 'https://www.figma.com/design/2H6a9YUgPAu0AGdEiwP895/x',
+        root: sandbox,
+        folder: 'NOT A SLUG',
+      })
+    ).rejects.toBeInstanceOf(ImportFigmaError);
+  });
+});
+
 describe('--board writes a sanitized annotation layer', () => {
   test('lands at a code-computed slug under the design root', async () => {
     const result = await importBoard({ url: BOARD_URL, root: sandbox });
@@ -137,6 +273,46 @@ describe('--board writes a sanitized annotation layer', () => {
     const result = await importBoard({ url: BOARD_URL, root: sandbox });
     const svg = readFileSync(result.path as string, 'utf8');
     expect(svg).not.toContain('you cannot see me');
+  });
+
+  // A FigJam board is not a screen, and framing it as one was wrong twice: the
+  // artboard drew screen chrome around whiteboard content, and it took the DS
+  // surface colour — which paints a white board near-black on a dark-default
+  // design system. Reported from a live migration into `studyfi-design`.
+  test('the host canvas has NO artboard — the board is not a screen', async () => {
+    const result = await importBoard({ url: BOARD_URL, root: sandbox });
+    const tsx = readFileSync(join(sandbox, '.design', result.canvas as string), 'utf8');
+    expect(tsx).not.toContain('<DCArtboard');
+    expect(tsx).not.toContain('DCArtboard,');
+    expect(tsx).toContain('<DesignCanvas />');
+  });
+
+  test('the board gets an OPAQUE light paper — a section is only a 6% tint', async () => {
+    // `annotations-model.ts` paints a section at a hardcoded fill-opacity of
+    // 0.06, so it cannot be the ground: white-at-6% over a dark-default DS is
+    // still dark. Measured on the first migration into `studyfi-design`.
+    const result = await importBoard({ url: BOARD_URL, root: sandbox });
+    const svg = readFileSync(result.path as string, 'utf8');
+    expect(svg).toContain('data-id="figma-board-paper"');
+    expect(svg.toLowerCase()).toContain('fill="#ffffff"');
+  });
+
+  test('the region is a labelled SECTION, on the annotation layer', async () => {
+    const result = await importBoard({ url: BOARD_URL, root: sandbox });
+    const svg = readFileSync(result.path as string, 'utf8');
+    expect(svg).toContain('data-tool="section"');
+    expect(svg).toContain('data-id="figma-board-region"');
+  });
+
+  test('paint order is paper -> region -> content; either one later would veil the board', async () => {
+    const result = await importBoard({ url: BOARD_URL, root: sandbox });
+    const svg = readFileSync(result.path as string, 'utf8');
+    const paper = svg.indexOf('data-id="figma-board-paper"');
+    const region = svg.indexOf('data-id="figma-board-region"');
+    const firstContent = svg.search(/data-tool="(sticky|image|text|ellipse|arrow)"/);
+    expect(paper).toBeGreaterThan(-1);
+    expect(paper).toBeLessThan(region);
+    if (firstContent > -1) expect(region).toBeLessThan(firstContent);
   });
 
   test('an explicit --slug is honoured when it is a valid slug', async () => {

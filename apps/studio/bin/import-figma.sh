@@ -15,18 +15,27 @@
 # Usage:
 #   import-figma.sh --board  <figjam-url> --root <repo> [--design-root .design]
 #                   [--slug <name>] [--dry-run] [--json]
+#   import-figma.sh --pages  <figma-url>  --root <repo> [--folder <name>] [--editable]
 #   import-figma.sh --frames <figma-url>  --root <repo>   (Phase 3)
 #   import-figma.sh --tokens <figma-url>  --root <repo>   (Phase 4)
+#   import-figma.sh --explode <artboard-id> --canvas <rel-path> --root <repo>
+#                   [--confirm-document] [--dry-run] [--json]      (Phase 7)
 #
 # Needs a Figma personal access token with the `file_content:read` scope, added
 # once in Settings.
+#
+# `--explode` needs NO token — it reads the Figma DESKTOP app's local Dev Mode
+# MCP server over loopback (DDR-219 D2) rather than the REST API. It does need
+# that app running, in Dev Mode, with the same file as the active tab, on a Dev
+# or Full seat. It is not an import route: the artboard must already exist on an
+# imported canvas.
 #
 # Exit: 0 ok · 1 other · 2 usage · 3 validation reject · 4 fetch/parse error ·
 #       5 no token configured · 6 write/containment error.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 case "$1" in
-  --help|-h) sed -n '2,25p' "$0" | sed 's/^# \?//'; exit 0 ;;
+  --help|-h) sed -n '2,34p' "$0" | sed 's/^# \?//'; exit 0 ;;
 esac
 
 if ! command -v bun >/dev/null 2>&1; then

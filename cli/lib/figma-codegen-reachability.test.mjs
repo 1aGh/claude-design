@@ -31,6 +31,21 @@ import { test } from 'node:test';
 /** The ONE module allowed to name the local Dev Mode endpoint (DDR-219 D2). */
 const CODEGEN_CLIENT = 'apps/studio/figma/codegen-client.ts';
 
+/**
+ * Tests under the Figma lane may name it too, and the widening is narrow on
+ * purpose. `codegen-client.test.ts` asserts the endpoint constant — that IS the
+ * control ("the URL is never influenced by input"), and a guard that forbids
+ * asserting the thing it guards would push the assertion out of the repo.
+ * `from-codegen.test.ts` carries a captured response fixture whose asset
+ * constants are loopback URLs, and the property under test is that the converter
+ * DISCARDS them — which can only be asserted against a fixture that has them.
+ *
+ * Neither executes anything against the port. What stays absolutely banned is a
+ * second non-test module reaching it, which is the shape that would make codegen
+ * a bulk ingestion route by accident.
+ */
+const TEST_FILE_RE = /^apps\/studio\/figma\/[a-z-]+\.test\.ts$/;
+
 /** Trees that ship or execute. Prose (`.ai/`, `docs/`, `site/`) may name both. */
 const RUNTIME_TREES = ['apps/studio', 'cli', 'plugins'];
 
@@ -65,7 +80,7 @@ test('only the designated client names the LOCAL Dev Mode endpoint', () => {
   // Match the endpoint shape, not a bare `3845`, which could legitimately occur
   // as a byte count or a hash fragment.
   const offenders = grep('(localhost|127\\.0\\.0\\.1|:)3845', RUNTIME_TREES).filter(
-    (f) => f !== CODEGEN_CLIENT
+    (f) => f !== CODEGEN_CLIENT && !TEST_FILE_RE.test(f)
   );
   assert.deepEqual(
     offenders,
