@@ -11,7 +11,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import { GlobalRegistrator } from '@happy-dom/global-registrator';
 
-import { installMaudeSeekBridge } from '../video-comp.tsx';
+import { findArtboardOf, installMaudeSeekBridge } from '../video-comp.tsx';
 
 interface FakePlayer {
   seekTo: (frame: number) => void;
@@ -111,6 +111,11 @@ describe('video-comp seek bridge', () => {
       durationInFrames: 90,
       width: 640,
       height: 360,
+      // issue #75 — always present in the snapshot (null when the comp was
+      // registered outside an artboard), so the shell can key the transport
+      // target on artboard identity instead of guessing from duration.
+      artboardId: null,
+      artboardLabel: null,
     });
     // No ref/functions leak into the snapshot.
     expect(Object.keys(comps[0])).not.toContain('ref');
@@ -186,5 +191,80 @@ describe('video-comp seek bridge', () => {
     await expect(w.__maude_seek__?.(10, { strict: true })).rejects.toThrow(
       /refusing to report a seek that did not happen/
     );
+  });
+});
+
+// issue #75 — a comp's own id is a mount slug (`videocomp-N`) unless the author
+// set one, so the shell can only tell two comps apart by the artboard they are
+// mounted in. This is the resolution that puts that id on the wire.
+describe('findArtboardOf', () => {
+  test('resolves the enclosing artboard id + visible label', () => {
+    document.body.innerHTML = `
+      <article data-dc-screen="outro">
+        <button class="dc-artboard-label sku"><span aria-hidden="true"></span>Outro</button>
+        <div class="dc-artboard-body"><div class="dc-video-comp" data-comp-id="videocomp-2"></div></div>
+      </article>`;
+    const host = document.querySelector('.dc-video-comp');
+    expect(findArtboardOf(host)).toEqual({ artboardId: 'outro', artboardLabel: 'Outro' });
+  });
+
+  test('a comp mounted outside any artboard reports nulls, never throws', () => {
+    document.body.innerHTML = '<div class="dc-video-comp" data-comp-id="bare"></div>';
+    expect(findArtboardOf(document.querySelector('.dc-video-comp'))).toEqual({
+      artboardId: null,
+      artboardLabel: null,
+    });
+    expect(findArtboardOf(null)).toEqual({ artboardId: null, artboardLabel: null });
+  });
+
+  // Adversarial review 2026-08-12 — `.dc-artboard-label` is a class anyone can
+  // write, so the label must come from the element canvas-lib actually renders
+  // (a DIRECT header/button child), not from the first match anywhere below.
+  test('a planted label node cannot outrank the real header', () => {
+    document.body.innerHTML = `
+      <article data-dc-screen="intro">
+        <span class="dc-artboard-label" hidden>Outro</span>
+        <header class="dc-artboard-label sku">Intro</header>
+        <div class="dc-artboard-body"><div class="dc-video-comp"></div></div>
+      </article>`;
+    expect(findArtboardOf(document.querySelector('.dc-video-comp')).artboardLabel).toBe('Intro');
+  });
+
+  test('a nested artboard resolves to the NEAREST board, not the outer label', () => {
+    document.body.innerHTML = `
+      <article data-dc-screen="outer">
+        <header class="dc-artboard-label sku">Outer</header>
+        <article data-dc-screen="inner">
+          <header class="dc-artboard-label sku">Inner</header>
+          <div class="dc-video-comp"></div>
+        </article>
+      </article>`;
+    expect(findArtboardOf(document.querySelector('.dc-video-comp'))).toEqual({
+      artboardId: 'inner',
+      artboardLabel: 'Inner',
+    });
+  });
+
+  test('a label deep in the body is ignored — only a direct header/button counts', () => {
+    document.body.innerHTML = `
+      <article data-dc-screen="intro">
+        <div class="dc-artboard-body">
+          <p class="dc-artboard-label">Outro</p>
+          <div class="dc-video-comp"></div>
+        </div>
+      </article>`;
+    expect(findArtboardOf(document.querySelector('.dc-video-comp'))).toEqual({
+      artboardId: 'intro',
+      artboardLabel: null,
+    });
+  });
+
+  test('an unlabelled artboard still yields its id', () => {
+    document.body.innerHTML =
+      '<article data-dc-screen="intro"><div class="dc-video-comp"></div></article>';
+    expect(findArtboardOf(document.querySelector('.dc-video-comp'))).toEqual({
+      artboardId: 'intro',
+      artboardLabel: null,
+    });
   });
 });

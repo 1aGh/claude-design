@@ -45,6 +45,11 @@ import { FilePreview, sanitizeDisplayText } from './panels/file-preview.jsx';
 import SetupChecklistDialog, { useSetupReadiness } from './panels/SetupChecklist.jsx';
 import TimelinePanel from './panels/TimelinePanel.jsx';
 import { parseCompTimeline } from './panels/timeline-parse.js';
+import {
+  activeComp,
+  resolveCompTarget,
+  sanitizeArtboardText,
+} from './panels/timeline-comp-target.js';
 import { durationFramesForDrop, probeMediaDuration } from './panels/timeline-media-cache.js';
 import GenerateDialog from './generate-dialog.jsx';
 import RepoBranchSwitcher from './panels/RepoBranchSwitcher.jsx';
@@ -1562,7 +1567,12 @@ function ExportDialog({
   // never a silent truncation, never a surprise refusal.
   const EXPORT_SAFE_FRAMES = 900;
   const EXPORT_DEFAULT_CAP = 3600;
-  const exportComp = comps[0] || null;
+  // The comp being exported — resolved to the artboard this dialog targets, not
+  // to whichever comp mounted first (#75). It drives the long-comp consent
+  // notice AND `options.maxFrames`, so a wrong pick both misstates the frame
+  // count to the user and raises the server-side cap on behalf of a comp that
+  // isn't the one leaving the machine.
+  const exportComp = activeComp(comps, resolveCompTarget(comps, { artboardId: activeArtboardId }));
   const exportCompFrames = exportComp?.durationInFrames || 0;
   const exportCompFps = exportComp?.fps || 30;
   const exportIsHeavy = card.temporal && exportCompFrames > EXPORT_SAFE_FRAMES;
@@ -9770,18 +9780,6 @@ function App() {
   // Task 5 — seam transitions between series beats ({ afterIndex, dur }).
   const [timelineTransitions, setTimelineTransitions] = useState([]);
   const [timelineTotal, setTimelineTotal] = useState(0);
-  // On a multi-comp canvas the Timeline drives ONE comp (the parser scopes to it
-  // + reports its total). Match that total back to the announced comp id so the
-  // transport/scrub targets ONLY that comp — not every artboard on the canvas.
-  const timelineCompId = useMemo(() => {
-    if (!activeComps.length) return null;
-    const match = activeComps.find((c) => c.durationInFrames === timelineTotal);
-    return (match ?? activeComps[0]).id;
-  }, [activeComps, timelineTotal]);
-  const timelineCompIdRef = useRef(null);
-  useEffect(() => {
-    timelineCompIdRef.current = timelineCompId;
-  }, [timelineCompId]);
   // rca/issue-video-artboard-frame-reset-on-edit — last known playhead, read
   // from the `timeline-comps` handler below (which fires on every comp
   // (re)mount, incl. a ⌘R hard iframe reload) to re-seed the fresh Player
@@ -9801,6 +9799,34 @@ function App() {
   useEffect(() => {
     timelineArtboardIdRef.current = timelineArtboardId;
   }, [timelineArtboardId]);
+  // On a multi-comp canvas the Timeline drives ONE comp: the one mounted in the
+  // artboard whose rows the panel is drawing. Resolved by artboard identity
+  // (announced by video-comp.tsx), NOT by duration — two comps of equal length
+  // made the old duration match return the first artboard's Player, so scrub +
+  // playback moved a comp the user wasn't even looking at (issue #75).
+  const timelineCompId = useMemo(
+    () =>
+      resolveCompTarget(activeComps, {
+        // Both signals, in confidence order: the artboard the ROW PARSER scoped
+        // to (lexical, from the .tsx) then the viewport-active one canvas-lib
+        // reports on pan (structural). See resolveCompTarget — when the two
+        // disagree, the one that names a comp actually mounted there wins.
+        artboardId: [timelineArtboardId, canvasActiveArtboard],
+        total: timelineTotal,
+      }),
+    [activeComps, timelineArtboardId, canvasActiveArtboard, timelineTotal]
+  );
+  const timelineCompIdRef = useRef(null);
+  useEffect(() => {
+    timelineCompIdRef.current = timelineCompId;
+  }, [timelineCompId]);
+  // Frame math (drop position, split, overlay insert) must use the timebase of
+  // the comp the Timeline is actually on — `activeComps[0].fps` silently used
+  // the first artboard's (issue #75).
+  const timelineFps = useMemo(
+    () => activeComp(activeComps, timelineCompId)?.fps || 30,
+    [activeComps, timelineCompId]
+  );
   // feature-enhanced-video-editing (Task 3) — the timeline's single-select model.
   // Holds the selected clip's stableId (NOT a row index — DDR-150), so the
   // selection survives comp-clips refetches, reorders, and external file edits.
@@ -10477,7 +10503,9 @@ function App() {
       // inputs stay exempt.
       if (tag === 'INPUT' && t?.type !== 'range') return;
       if (tag === 'TEXTAREA' || tag === 'SELECT' || t?.isContentEditable) return;
-      const fps = s.comps[0]?.fps || 30;
+      // The timebase of the comp the transport is on, not of whichever comp
+      // announced first — Shift+arrow is "±1 second" on THIS artboard (#75).
+      const fps = activeComp(s.comps, s.compId)?.fps || 30;
       const total = Math.max(1, s.total);
       const doSeek = (f) => {
         const nf = Math.max(0, Math.min(total - 1, Math.round(f)));
@@ -10659,8 +10687,13 @@ function App() {
       setTimelineTotal(0);
       return;
     }
-    const total = activeComps[0]?.durationInFrames || 0;
     const artboard = canvasActiveArtboard ?? selected?.artboardId ?? null;
+    // Seed the parser's fallback total from the comp mounted in THIS artboard,
+    // not from whichever comp announced first (issue #75).
+    const seedComp =
+      (artboard && activeComps.find((c) => c.artboardId === artboard || c.id === artboard)) ||
+      activeComps[0];
+    const total = seedComp?.durationInFrames || 0;
     const parsed = parseCompTimeline(timelineSource, total, artboard);
     setTimelineArtboardId(parsed.artboardId ?? artboard ?? null);
     // Overlay the enumerator's authoritative media (kind badge + replace target)
@@ -12563,8 +12596,10 @@ function App() {
             ? iframesRef.current.get(activePath)?.contentWindow
             : null;
         if (e.source !== activeWin) return;
-        // Cap the id like the sibling timeline-comps handler (defensive; inert).
-        setCanvasActiveArtboard(typeof m.id === 'string' ? m.id.slice(0, 120) : null);
+        // Neutralize + cap exactly like the sibling timeline-comps handler —
+        // this id is matched AGAINST that one, so both sides must go through
+        // the same normalization or an odd-but-legal id would never match.
+        setCanvasActiveArtboard(sanitizeArtboardText(m.id));
       } else if (m.dgn === 'timeline-comps' && Array.isArray(m.comps)) {
         // DDR-148 — a video-comp announces its comp meta (from video-comp.tsx).
         // Gate to the ACTIVE canvas window (phase-28 F-2 pattern): a background
@@ -12584,6 +12619,13 @@ function App() {
             durationInFrames: Math.max(1, Math.min(1_000_000, Math.round(Number(c.durationInFrames) || 1))),
             width: Math.max(1, Math.round(Number(c.width) || 0)),
             height: Math.max(1, Math.round(Number(c.height) || 0)),
+            // The enclosing artboard (issue #75) — the key the transport target
+            // is resolved on, and (the label) shell chrome the user reads. This
+            // is untrusted canvas-origin text, so neutralize the bidi/zero-width
+            // class HERE, at the boundary, and every downstream consumer
+            // inherits a clean value (security-review 2026-08-12).
+            artboardId: sanitizeArtboardText(c.artboardId),
+            artboardLabel: sanitizeArtboardText(c.artboardLabel),
           }));
         setActiveComps(safe);
         // rca/issue-video-artboard-frame-reset-on-edit — the SAME comp
@@ -14771,6 +14813,7 @@ function App() {
         {timelineOpen && (
           <TimelinePanel
             comps={activeComps}
+            compId={timelineCompId}
             sequences={timelineSequences}
             audio={timelineAudio}
             transitions={timelineTransitions}
@@ -15049,7 +15092,7 @@ function App() {
               // files always land in the audio band. Without a position, the
               // legacy append path.
               const artboardId = timelineArtboardId || undefined;
-              const fps = activeComps[0]?.fps || 30;
+              const fps = timelineFps;
               const canvas = activePath;
               const list = (Array.isArray(files) ? files : [files]).filter(Boolean);
               (async () => {
@@ -15263,7 +15306,7 @@ function App() {
               // happens in the timeline inspector).
               Promise.resolve('Title').then((text) => {
               if (!text) return;
-              const fps = activeComps[0]?.fps || 30;
+              const fps = timelineFps;
               fetch('/_api/insert-sequence', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
@@ -15297,7 +15340,7 @@ function App() {
               (async () => {
               const prompt = 'Describe this shot — double-click to edit';
               const kind = 'veo';
-              const fps = activeComps[0]?.fps || 30;
+              const fps = timelineFps;
               fetch('/_api/insert-sequence', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
@@ -15404,7 +15447,7 @@ function App() {
               // overlay-lane <Img> at the playhead. WKWebView can't open an
               // HTML file input, so native goes through the Rust pick dialog.
               const uploadPicked = (blob, type) => {
-                const fps = activeComps[0]?.fps || 30;
+                const fps = timelineFps;
                 fetch('/_api/asset', {
                   method: 'POST',
                   headers: { 'Content-Type': type || 'application/octet-stream' },

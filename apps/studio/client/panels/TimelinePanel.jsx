@@ -23,6 +23,7 @@ import { ImagePlus, MessageSquarePlus, Plus, Scissors, Sparkles, Type } from 'lu
 
 import ClipInspector from './ClipInspector.jsx';
 import { computeSnapTargets, snapFrame } from './timeline-snap.js';
+import { activeComp } from './timeline-comp-target.js';
 import { getFilmstrip, getPeaks, peaksToPath, stripBucket } from './timeline-media-cache.js';
 import {
   clampPxPerFrame,
@@ -143,6 +144,10 @@ const SCROLL_PAD_X = 24;
 
 export default function TimelinePanel({
   comps = [],
+  // issue #75 — the comp the shell's transport targets. The panel reads its
+  // meta (fps / duration) off the SAME comp, so the readout can never describe
+  // a different artboard than the one Play actually moves.
+  compId = null,
   sequences = [],
   audio = [],
   transitions = [],
@@ -204,7 +209,14 @@ export default function TimelinePanel({
   // storyline layout moves layer detail into the clip inspector).
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [dropActive, setDropActive] = useState(false);
-  const comp = comps[0] ?? null;
+  const comp = activeComp(comps, compId);
+  // issue #75 — which artboard the rows + transport belong to. `null` means the
+  // shell genuinely could NOT tell (a comp mounted outside any artboard, a
+  // resolver fall-through). That case must render as an explicit unknown, not
+  // as no chip at all: "no chip" already means "single comp, nothing to
+  // disambiguate", and reusing it for "I don't know" would make the ambiguous
+  // case look like the safe one (security-review 2026-08-12).
+  const scopedArtboard = comp?.artboardLabel || comp?.artboardId || null;
   const totalFrames = Math.max(1, total || comp?.durationInFrames || 1);
   const fps = comp?.fps ?? 30;
   const clamped = clamp(Math.round(frame), 0, totalFrames - 1);
@@ -1422,6 +1434,22 @@ export default function TimelinePanel({
                 title="Volume"
                 onChange={(e) => onVolume?.(Number(e.target.value) / 100)}
               />
+            ) : null}
+            {/* issue #75 — on a multi-comp canvas the rows + transport belong to
+                ONE artboard, and nothing said which. Show it (label, id as the
+                fallback) so the panel and the canvas agree out loud. */}
+            {comps.length > 1 ? (
+              <span
+                className={`tl-artboard${scopedArtboard ? '' : ' is-unknown'}`}
+                data-testid="timeline-artboard"
+                title={
+                  scopedArtboard
+                    ? `Timeline is scoped to artboard "${scopedArtboard}" — pan to another artboard to switch`
+                    : "This canvas has several video comps and the Timeline couldn't tell which artboard this one sits in — the transport may be moving a comp you're not looking at"
+                }
+              >
+                {scopedArtboard ?? 'artboard ?'}
+              </span>
             ) : null}
             <span className="tl-readout" data-testid="timeline-readout">
               <b>{clamped}</b>

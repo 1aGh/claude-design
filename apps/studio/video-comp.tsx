@@ -41,6 +41,16 @@ export interface VideoCompMeta {
 /** A live registration — the Player handle + its meta, keyed by artboard id. */
 interface CompEntry extends VideoCompMeta {
   id: string;
+  /** The enclosing DCArtboard's id (`data-dc-screen`), resolved by DOM
+   *  containment at mount. The VideoComp's own `compId` is usually an
+   *  author-omitted `videocomp-N` mount slug, so this is the ONLY reliable way
+   *  for the shell to map "the artboard the user is looking at" → "the comp the
+   *  transport must drive" (rca/issue-timeline-drives-wrong-artboard). Null on a
+   *  comp mounted outside an artboard (bare preview / test harness). */
+  artboardId: string | null;
+  /** The artboard's visible label — shown in the Timeline head so the user can
+   *  see WHICH artboard the rows + transport belong to. */
+  artboardLabel: string | null;
   ref: React.RefObject<PlayerRef | null>;
   /** The Remotion composition component + its props — carried so the export
    *  capture's renderMediaOnWeb path (DDR-148 addendum, audio export) can
@@ -55,6 +65,9 @@ interface CompEntry extends VideoCompMeta {
 /** Serializable meta the capture shim + Timeline panel read (no functions). */
 export interface CompSnapshot extends VideoCompMeta {
   id: string;
+  /** Enclosing DCArtboard id + label — see CompEntry. */
+  artboardId: string | null;
+  artboardLabel: string | null;
 }
 
 /** Result contract for `__maude_render_video__` — see exporters/video-render-lib.ts. */
@@ -255,6 +268,8 @@ export function installMaudeSeekBridge(): void {
       durationInFrames: e.durationInFrames,
       width: e.width,
       height: e.height,
+      artboardId: e.artboardId ?? null,
+      artboardLabel: e.artboardLabel ?? null,
     }));
 
   w.__maude_render_video__ = async (compId, opts) => {
@@ -286,6 +301,35 @@ export function installMaudeSeekBridge(): void {
  *  ordinary artboard, or a comp not yet mounted). */
 export function findCompIdIn(container: Element): string | null {
   return container.querySelector('[data-comp-id]')?.getAttribute('data-comp-id') ?? null;
+}
+
+/** The inverse of `findCompIdIn` — walk UP from a mounted comp to the artboard
+ *  that contains it, and read its id + visible label. Same rationale (the two
+ *  ids are independent), used at registration time so every announced comp
+ *  carries the artboard the user actually sees it on. */
+export function findArtboardOf(el: Element | null): {
+  artboardId: string | null;
+  artboardLabel: string | null;
+} {
+  const board = el?.closest?.('[data-dc-screen]') ?? null;
+  if (!board) return { artboardId: null, artboardLabel: null };
+  // DIRECT children only, and only the two tags canvas-lib actually renders the
+  // label as (`<header>` unpositioned / `<button>` positioned). A subtree-wide
+  // `querySelector('.dc-artboard-label')` would take the first match in document
+  // order anywhere below the artboard — including a hidden node planted ahead of
+  // the real header, or one belonging to a nested artboard — and `textContent`
+  // reads hidden nodes happily. The label is shell chrome the user reads to know
+  // which artboard the transport moves, so it must come from the element
+  // canvas-lib owns, not from whatever matches the class first.
+  const header = Array.from(board.children).find(
+    (c) =>
+      (c.tagName === 'HEADER' || c.tagName === 'BUTTON') &&
+      c.classList.contains('dc-artboard-label')
+  );
+  return {
+    artboardId: board.getAttribute('data-dc-screen'),
+    artboardLabel: header?.textContent?.trim() || null,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -361,6 +405,7 @@ export function VideoComp({
   autoPlay,
 }: VideoCompProps) {
   const ref = useRef<PlayerRef | null>(null);
+  const hostRef = useRef<HTMLDivElement | null>(null);
   // Stable id across re-renders; unique per mount when the author omits one.
   const [autoId] = useState(() => id ?? `videocomp-${++mountCounter}`);
   const compId = id ?? autoId;
@@ -390,8 +435,13 @@ export function VideoComp({
   // Register with the seek bridge for the lifetime of this mount.
   useEffect(() => {
     installMaudeSeekBridge();
+    // Resolved here (not at render) because the wrapper is only in the DOM once
+    // the effect runs — that's also when the enclosing DCArtboard exists.
+    const { artboardId, artboardLabel } = findArtboardOf(hostRef.current);
     const entry: CompEntry = {
       id: compId,
+      artboardId,
+      artboardLabel,
       fps,
       durationInFrames,
       width,
@@ -507,6 +557,7 @@ export function VideoComp({
   return (
     <div
       className="dc-video-comp"
+      ref={hostRef}
       data-comp-id={compId}
       style={{ width, height, maxWidth: '100%' }}
     >
