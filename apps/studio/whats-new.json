@@ -2,6 +2,14 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "figma-offline-fig-import",
+      "version": null,
+      "date": "2026-08-12",
+      "kind": "feature",
+      "title": "Import a Figma file with no Figma account",
+      "summary": "Drag in a .fig or .jam you exported and Maude reads it entirely offline — no token, no network, no seat. Images travel inside the file, so nothing expires and nothing is rate-limited. If the export is from a Figma version Maude does not recognise, it says so rather than guessing at the geometry."
+    },
+    {
       "id": "cloud-asset-push-completes",
       "version": "0.59.0",
       "date": "2026-08-12",

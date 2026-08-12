@@ -2,7 +2,7 @@
 name: import
 category: daily
 description: Bring an existing design into Maude. `--figma <url>` pulls a REAL Figma document over the REST API and translates it with deterministic code — no vision model anywhere (DDR-216). `--reconstruct <image>` is the lossy fallback for when all you have is a picture (DDR-174). The two share no architecture. Token files and brand material have their own dedicated entry points — see Notes below.
-argument-hint: "--figma <url> | --explode <artboard-id> --canvas <path> | --reconstruct <image-path> [--name \"<title>\"] [--into <canvas-path>] [--rounds N]"
+argument-hint: "--figma <url> | --fig <path.fig> | --explode <artboard-id> --canvas <path> | --reconstruct <image-path> [--name \"<title>\"] [--into <canvas-path>] [--rounds N]"
 ---
 
 # /design:import — bring an existing design into Maude
@@ -50,9 +50,25 @@ maude design import-figma --frames "$FIGMA_URL" --root "$REPO"
 # Paint / text / effect styles → W3C tokens → the existing import-tokens pipeline
 maude design import-figma --tokens "$FIGMA_URL" --root "$REPO"
 
+# A local .fig / .jam export → offline, no network and no token at all
+maude design import-figma --fig ~/Downloads/board.jam --root "$REPO"
+
 # See what it would do, write nothing
 maude design import-figma --pages "$FIGMA_URL" --root "$REPO" --dry-run
 ```
+
+**`--fig` is the OFFLINE door ([DDR-221](../../../.ai/archive/decisions/DDR-221-fig-container-decoder-fails-loud-and-adds-no-dependency.md)).**
+It reads a `.fig`/`.jam` the user exported, with **no network, no Figma token
+and no Figma seat** — the only door that works when the user has none of those,
+and the only one whose images travel inside the file (nothing expires, nothing
+is rate-limited). The archive's own prelude decides whether it is a board or a
+design file, so there is no mode to pick. An unrecognised prelude or container
+version **refuses** rather than decoding approximately: for a design importer,
+plausible-but-wrong geometry is worse than a clean error. A local file carries
+no Figma file key, so provenance is content-addressed unless the user passes
+`--file-key`; the summary states which. One field cannot be reproduced offline —
+a percent line-height needs font metrics the export does not carry — and it is
+reported as `lossyFields`, not silently dropped.
 
 **`--pages` is RENDER-FIRST ([DDR-216 D12](../../../.ai/archive/decisions/DDR-216-figma-ingestion-architecture-and-trust-boundary.md)).**
 Each artboard is Figma's *own* render of that frame, referenced from `<img>` —

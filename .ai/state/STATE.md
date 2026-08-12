@@ -3,9 +3,9 @@
 > **kgai-active repo** — working state and history live in the knowledge graph, not this file.
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
-**Status:** in-progress — Figma import **Phase 6** (`.fig` decoder): T13 + T14 + Tier 2 landed. **The ship gate is MET** — the same document through both doors normalizes identically (0 type / 0 name / 0 text diffs, 0.000px geometry). Remaining: Tier 3, the `--fig` verb, an images fixture, the independent security round.
+**Status:** in-progress — Figma import **Phase 6** (`.fig` decoder): T13 + T14 + T15 (Tiers 1–3 + fuzz) + the `--fig` verb all landed and verified on real imports. Remaining are two things I cannot close alone: a fixture containing IMAGES (needs authoring in Figma) and the independent security round (the subagents never reported).
 **Active plan:** `.ai/plans/feature-figma-import.md`
-**Active task:** Tier 3 + the `--fig` verb
+**Active task:** — (blocked on the two above)
 
 _2026-08-12:_ **Figma import Phase 6 — decoder LANDED and the ship gate is MET.** `.fig`/`.jam` now decodes
 end to end offline: a hand-written ZIP reader, a Kiwi schema+data decoder ported from the documented
@@ -38,9 +38,19 @@ SYMBOL is COMPONENT — 11 nodes, and the translators are written against the RE
 FigJam sticky and shape had silently lost its text** (20 nodes — a sticky is an internal template
 instance whose text lives in `nodeGenerationData.overrides[].textData.characters`). Trees now agree
 exactly, geometry to 0.000px asserted as `== 0`.
-Open: Tier 3 end-to-end through `to-strokes`/`to-artboard`;
-the `--fig` CLI verb; `images/` is EMPTY in both fixtures so D6's archive-image path has zero coverage;
-the independent security round; known container versions is `{106}`, n=2, one export date.
+**Tier 3 and the verb followed.** Tier 3 runs both doors through the REAL translators and found three
+more gaps in the same class: typography dropped (weight lives in the font STYLE NAME, a default alignment
+is omitted where REST states it), every FigJam colour on the translator default (a sticky's `fillPaints`
+are a template override — same root cause as its missing text, now one override lookup instead of two
+special cases), and `lineHeight` genuinely unreproducible offline, which is now REPORTED as `lossyFields`
+and asserted to be the only such field. `maude design import-figma --fig <path>` imports a local export
+with no network, token or seat — verified by real runs (board 31 strokes with sticky text; design 6
+artboards). The archive's prelude picks the route, so no mode can be got wrong; provenance is
+content-addressed because a local file has no REST key.
+Open, and both need someone other than me: a fixture that actually CONTAINS images (`images/` is empty in
+both committed exports, so D6's archive-image path — the thing this door is supposed to be better at than
+REST — has zero coverage), and the independent security round. Also: Tier 4 has one dated corpus (`106`,
+n=2), and A.10 has not been RUN on a `--fig` canvas.
 
 _2026-08-12:_ **Figma import Phase 7 CLOSED (plan NOT archived — Phase 6 is untouched).** `--explode
 <artboard-id>` turns one already-imported artboard into editable JSX by asking Figma's own Dev Mode

@@ -586,14 +586,39 @@ Five findings that change the implementation:
 > lossy delta (REST expands INSTANCE children with `I<inst>;<child>` ids) is
 > asserted AS lossy, with a test that fails if the allowlist ever covers nothing.
 >
-> **Still open before `--fig` is exposed to a user:**
-> 1. Tier 3 end-to-end through `to-strokes` / `to-artboard` + the A.10 gate.
-> 3. The `maude design import-figma --fig <path>` verb (T6's mode set).
-> 4. A third fixture **with images** — `images/` is empty in both committed
->    ones, so D6's archive-image path has no coverage at all.
-> 5. The **independent** `security-auditor` + `ethical-hacker` round. It did not
->    run; a self-review stood in and its five findings are implemented, but that
->    is a floor, not the gate T13 asked for.
+> **✅ Tier 3 + the `--fig` verb landed (`70536e6f`, `eca5cc11`).** Tier 3 runs
+> BOTH doors through the real `toStrokes` / `toCanvas` and compares strokes,
+> bindings, dispositions and the whole emitted JSX. It found three more gaps of
+> the same shape as Tier 2's — typography dropped (weight lives in the font
+> STYLE NAME; a default alignment is omitted where REST states it), every FigJam
+> colour on the translator default (a sticky's own `fillPaints` are a template
+> override, same root cause as its text — now one override lookup, not two
+> special cases), and `lineHeight` genuinely unreproducible offline. That last
+> is REPORTED as `lossyFields` and asserted to be the ONLY entry, so the list
+> cannot quietly grow.
+>
+> `maude design import-figma --fig <path>` works end to end offline, verified by
+> real imports into a scratch project (board: 31 strokes, sticky text intact,
+> both unmappable shapes and both group-endpoint degradations reported by node
+> id; design: 6 artboards). The archive's prelude picks the route, so there is
+> no mode to get wrong. Provenance is content-addressed because a local export
+> carries no REST key (`originFileKey` is an opaque `lk-` link key and
+> `meta.json`'s `file_name` is the document TITLE, which DDR-216 D7 forbids
+> recording) — `--file-key` supplies the real one and the summary says which you
+> got. Documented in `plugins/design/commands/import.md`.
+>
+> **Still open:**
+> 1. 🔴 **A fixture that actually contains images.** `images/` is empty in both
+>    committed exports, so D6's archive-image path — the one this door is
+>    supposed to be *better* at than REST — has no test input at all. Needs a
+>    purpose-built third export (a raster fill + a vector), authored in Figma.
+> 2. 🔴 **The independent `security-auditor` + `ethical-hacker` round.** Never
+>    ran; a self-review stood in and its findings (F1–F8) are all implemented
+>    and regression-tested, but that is a floor, not the gate T13 asked for.
+> 3. Tier 4's re-export ritual has a documented recipe and a schema-hash
+>    assertion, but only ONE dated corpus (`2026-08-03`, version `106`, n=2).
+> 4. The A.10 editability gate has not been RUN on a `--fig` canvas (the
+>    Phase-7 lesson: a gate predicted is not a gate measured).
 
 **T15: BUILD the smoke suite — the load-bearing deliverable of this phase**
 
