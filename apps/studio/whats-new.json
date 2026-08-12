@@ -3,8 +3,8 @@
   "entries": [
     {
       "id": "cloud-asset-push-completes",
-      "version": null,
-      "date": null,
+      "version": "0.59.0",
+      "date": "2026-08-12",
       "kind": "fix",
       "title": "Every asset reaches the cloud, in one go",
       "summary": "A project with a lot of images, fonts and video used to trickle a handful of files to the cloud per boot and never catch up. Now the whole set uploads in one pass, and a file the hub refuses is named with the real reason instead of a bare error code.",
@@ -12,8 +12,8 @@
     },
     {
       "id": "figma-explode-artboard",
-      "version": null,
-      "date": null,
+      "version": "0.59.0",
+      "date": "2026-08-12",
       "kind": "feature",
       "title": "Make an imported Figma artboard editable",
       "summary": "A Figma page imports as faithful pictures of your frames. Now you can pick one artboard and turn it into real, editable layout — Maude asks Figma's own Dev Mode for that frame's resolved design and converts it locally, so you get flex boxes and live text instead of an image. Needs the Figma desktop app open on the same file, with Dev Mode on.",
@@ -21,8 +21,8 @@
     },
     {
       "id": "figma-import-fidelity-fixes",
-      "version": null,
-      "date": null,
+      "version": "0.59.0",
+      "date": "2026-08-12",
       "kind": "fix",
       "title": "Figma imports keep their fonts and their board",
       "summary": "Three things a real migration surfaced: text in imported frames fell back to a serif when the font wasn't installed, an imported FigJam board landed dark inside screen chrome instead of on white paper, and a slow render check could quietly drop every image in a large import. Imported files now look like the ones you imported.",
@@ -30,8 +30,8 @@
     },
     {
       "id": "canvas-perf-benchmark",
-      "version": null,
-      "date": null,
+      "version": "0.59.0",
+      "date": "2026-08-12",
       "kind": "improvement",
       "title": "Measure a canvas's pan/zoom performance",
       "summary": "A new `maude design perf` command drives a scripted pan and zoom over a canvas and reports frame timings plus how much React work the gesture caused — with a delta against your previous run, so a change is either faster or it isn't. It can measure Chrome or Safari (WebKit, the engine the desktop app uses), and `/design:smoke --perf` folds it into a smoke sweep. Under the hood, pan and zoom no longer re-render the canvas tree while you're moving: on a 128-artboard canvas that removed about 90% of the renders a gesture used to trigger.",
@@ -39,8 +39,8 @@
     },
     {
       "id": "video-export-degraded-visible",
-      "version": null,
-      "date": null,
+      "version": "0.59.0",
+      "date": "2026-08-12",
       "kind": "fix",
       "title": "A video export tells you when it's missing audio",
       "summary": "If an MP4/WebM export can't get audio — an unsupported media element, or the fast renderer had to fall back to a frame-by-frame capture — the export no longer quietly reports \"done\" with a clean checkmark. The Exports panel now shows a degraded pill and a completion toast explaining exactly what was dropped and how to fix it, and it's recorded in your export history too.",
@@ -48,8 +48,8 @@
     },
     {
       "id": "sync-panel-per-file",
-      "version": null,
-      "date": null,
+      "version": "0.59.0",
+      "date": "2026-08-12",
       "kind": "feature",
       "title": "Watch your project sync, file by file",
       "summary": "Click the hub sync chip in the status bar to open the new Sync panel: every canvas with its own live state (syncing, synced, or refused and why), plus your images and fonts as they upload to the cloud. “Is my work actually up there?” now has a per-file answer.",
@@ -65,8 +65,8 @@
     },
     {
       "id": "cloud-brand-assets-and-steady-link",
-      "version": null,
-      "date": null,
+      "version": "0.59.0",
+      "date": "2026-08-12",
       "kind": "fix",
       "title": "Brand logos load in the cloud (and a steadier status bar)",
       "summary": "Your design system's own logos, signs, fonts and photos now show up in the cloud copy instead of grey placeholders — the last piece of \"the cloud copy matches your desktop\". And the desktop status bar no longer flickers to \"reconnecting\" when you step away for a minute; an idle link stays live.",

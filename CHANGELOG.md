@@ -1,5 +1,84 @@
 # @1agh/maude
 
+## 0.59.0
+
+### Minor Changes
+
+- 97159c2: New Sync panel: watch your project sync, file by file.
+
+  - **Per-file sync state.** The status-bar **hub sync** chip is now a button —
+    click it to open a Sync panel listing every canvas with its live state
+    (_syncing_, _synced_, or _refused_ with the reason), grouped by canvas
+    group, with anything that needs attention pinned on top. "Is my work
+    actually up there?" finally has a per-file answer instead of one aggregate
+    number.
+
+  - **Asset upload progress.** The desktop's asset push to the cloud (images,
+    fonts, videos) now reports live progress into the same panel — how many are
+    pushed, already there, or failed (with the failing paths listed). Failed
+    uploads retry on the next launch.
+
+  - Under the hood this is pure surfacing: the sync payload gains a bounded
+    per-document list and an asset-progress lane (additive — older readers are
+    unaffected), the panel speaks the same vocabulary as the chip and the cloud
+    rail, and everything hub-supplied renders bounded and text-only.
+
+### Patch Changes
+
+- 9ef622a: A project's assets now finish uploading to the cloud in one pass.
+
+  The authenticated asset write lane was sharing the hub's per-IP admin rate-limit
+  bucket (5 requests a minute — a brute-force control for unauthenticated
+  traffic), so a project with a lot of images, fonts and video moved a handful of
+  files per boot and never caught up. It gets its own generous per-token bucket
+  now, the desktop paces itself on the hub's `Retry-After` instead of burning the
+  window, and a refused upload no longer wedges the sweep — a peer that answers
+  before reading the body used to leave the connection desynchronized, which
+  could hang the sync and take the dev server with it. A file the hub refuses is
+  also named with the real reason instead of a bare status code.
+
+- 3b6f89a: Design-system brand assets now render in the cloud, and the desktop status bar
+  stops flapping to "reconnecting" on an idle link.
+
+  - **Cloud images (completing the 0.58.3 fix).** The first pass only pushed a
+    project's top-level `assets/` up to the cloud, but a design system keeps its
+    logos, signs, fonts and photos under `system/<ds>/assets/…` and references
+    them by their full path — served from the cell's checkout, not the asset
+    bucket. Those 90-odd files never left the desktop, so every brand logo showed
+    a grey "Preview:" placeholder. The desktop now pushes every asset directory to
+    the cell over a new checkout-write route (symlink-contained, binary-extensions
+    only, size-capped), so brand assets render in the cloud like everything else.
+
+  - **"Reconnecting" flap (desktop).** The status bar could sit on _reconnecting_
+    while the cloud sync said _synced_ — two different sockets. The local
+    dev-server socket carries no traffic when you're idle, so it hit the 120-second
+    idle-timeout, closed, and reconnected in a loop. It now sends a small keepalive
+    every 25 seconds, so an idle link stays _live_.
+
+- a6f1c30: The Timeline plays the artboard you're actually looking at.
+
+  - **Fixed: scrub and playback moved the wrong comp.** On a canvas with more than
+    one video-comp, the Timeline drew the rows of the artboard you had panned to,
+    but Play, scrub, mute and loop drove the _first_ artboard's composition.
+    Underneath, the panel picked its target comp by matching clip length — so two
+    compositions of the same duration (the ordinary case) collapsed onto whichever
+    one happened to mount first. Every comp now says which artboard it belongs to,
+    and the transport follows that, not the length.
+
+  - **The Timeline says which artboard it's on.** On a multi-comp canvas the panel
+    head shows the scoped artboard's name, so "these rows belong to _that_ board"
+    is visible instead of inferred. Pan to another artboard to switch.
+
+  - The clip length is still used as a fallback when the artboard isn't known, but
+    only when it identifies exactly one comp — never by silently taking the first.
+    The same targeted comp now backs the frame readout and the frame math behind
+    drop, split, and the +Title / +Image / +AI clip inserts.
+
+- abbc792: A muted/degraded video export now looks visibly different from a clean one, and mp4/webm export gets an opt-in JPEG capture intermediate.
+
+  - **The "degraded export" pill actually reads as a warning now.** A CSS token typo (`--u-status-warning` instead of `--u-status-warn`) meant the Exports panel's "degraded" pill silently rendered in the same accent color as "running" — undercutting the whole point of flagging a muted or lower-quality export.
+  - **`--frame-format jpeg|png` (opt-in, default stays `png`)** on the frame-step video capture path — a lossy-but-faster screenshot intermediate for the fallback exporter, gated off for `--dump-frames` and GIF. No default behavior changes.
+
 ## 0.58.3
 
 ### Patch Changes
