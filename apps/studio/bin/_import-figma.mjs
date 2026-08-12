@@ -61,6 +61,7 @@ import {
 import { CodegenError, CodegenSession } from '../figma/codegen-client.ts';
 import { commentsToStrokes, indexNodes } from '../figma/comments-to-strokes.ts';
 import { decodeFigArchive, FigDecodeError } from '../figma/fig-decode.ts';
+import { readFigZip } from '../figma/fig-zip.ts';
 import { attrValue, ImportReport } from '../figma/sanitize.ts';
 import { JsxTooLargeError, toArtboard, toCanvas } from '../figma/to-artboard.ts';
 import { toRenderCanvas } from '../figma/to-render.ts';
@@ -226,6 +227,62 @@ export function formatSummary(report, extra = {}) {
  * enforces. Pass `--file-key` when you know the real one and want the canvas to
  * point back at the Figma document.
  */
+/**
+ * Resolve pending assets from the archive itself — the offline half of DDR-221
+ * D6. An IMAGE fill is present as `images/<imageRef>` and needs no network; a
+ * VECTOR cluster is a server-side render that a local export simply does not
+ * contain, so it is reported as unavailable rather than attempted.
+ *
+ * Bytes go through the SAME content-addressed promote as every other ingested
+ * asset, so the on-disk name is a hash we computed and the archive's own entry
+ * name never reaches a path (D6's lookup-key rule).
+ */
+async function resolveArchiveAssets(
+  local,
+  pendingExports,
+  report,
+  { root, designRootRel, stagingDir }
+) {
+  const deps = makeAssetDeps({ root, designRootRel, stagingDir });
+  const rewrites = new Map();
+  const resolved = [];
+  let totalBytes = 0;
+
+  for (const p of pendingExports) {
+    if (!p.imageRef) {
+      report.add(
+        p.nodeId,
+        'VECTOR',
+        'asset-unavailable-offline',
+        'a vector render needs Figma; the archive carries fills only'
+      );
+      continue;
+    }
+    // Charset-checked before it is used as a lookup key, so a crafted ref can
+    // never be read as a path even though we only ever compare it to entries.
+    if (!/^[0-9a-f]{8,128}$/.test(p.imageRef)) {
+      report.add(p.nodeId, 'IMAGE', 'asset-skipped', 'malformed image reference');
+      continue;
+    }
+    const bytes = local.zip.get(`images/${p.imageRef}`);
+    if (!bytes) {
+      report.add(p.nodeId, 'IMAGE', 'asset-skipped', 'not present in the archive');
+      continue;
+    }
+    const staged = deps.stagingPath(p.nodeId, 'png');
+    writeFileSync(staged, bytes);
+    try {
+      const { ref } = await deps.promote(staged, 'png');
+      rewrites.set(p.placeholder, ref);
+      resolved.push({ nodeId: p.nodeId, ref });
+      totalBytes += bytes.length;
+    } catch (err) {
+      report.add(p.nodeId, 'IMAGE', 'asset-skipped', `promote failed: ${err.code ?? 'error'}`);
+    }
+  }
+  return { resolved, rewrites, totalBytes };
+}
+
 export function decodeLocalFig(path, fileKeyOverride = null) {
   let bytes;
   try {
@@ -240,7 +297,16 @@ export function decodeLocalFig(path, fileKeyOverride = null) {
     fileKeyOverride ?? `fig${createHash('sha256').update(bytes).digest('hex').slice(0, 29)}`;
   try {
     const { document, report } = decodeFigArchive(new Uint8Array(bytes), { fileKey });
-    return { document, report, fileKey, surface: document.surface };
+    // The archive stays open: image fills resolve out of `images/<imageRef>`
+    // rather than over `/v1/images` (DDR-221 D6 — no expiry, no rate limit, no
+    // SSRF surface, because there is no request).
+    return {
+      document,
+      report,
+      fileKey,
+      surface: document.surface,
+      zip: readFigZip(new Uint8Array(bytes)),
+    };
   } catch (err) {
     if (err instanceof FigDecodeError) throw new ImportFigmaError(4, err.message);
     throw err;
@@ -1073,21 +1139,33 @@ export async function importFrames({
       // placeholders the emitter left behind. A placeholder that never resolves
       // is deliberately LEFT IN PLACE — a visibly broken image beats a silently
       // missing element, and the summary already names the node.
-      const assets = await resolveAssets(
-        target.fileKey,
-        result.pendingExports.map((p) => ({
-          nodeId: p.nodeId,
-          format: p.format,
-          placeholder: p.placeholder,
-        })),
-        makeAssetDeps({ root, designRootRel, stagingDir: staging }),
-        result.report,
-        // ONE budget for the WHOLE import (review F4). The caps are meaningless
-        // as per-call locals: `importFrames` loops over frames, so 60 frames ×
-        // 200 assets × 2 MB reconstructs the multi-GB Syncthing shape D5 says
-        // it closed — and each asset costs a browser launch for the SVG canary.
-        budget
-      );
+      // OFFLINE DOOR: `/v1/images` renders are produced by Figma's servers and
+      // simply do not exist in a local export, so there is nothing to resolve
+      // and no network call to make. The placeholders stay in place — a
+      // visibly broken image beats a silently missing element — and every one
+      // is named in the summary rather than quietly dropped (DDR-221 D6: the
+      // archive covers image FILLS, never server-side vector renders).
+      const assets = local
+        ? await resolveArchiveAssets(local, result.pendingExports, result.report, {
+            root,
+            designRootRel,
+            stagingDir: staging,
+          })
+        : await resolveAssets(
+            target.fileKey,
+            result.pendingExports.map((p) => ({
+              nodeId: p.nodeId,
+              format: p.format,
+              placeholder: p.placeholder,
+            })),
+            makeAssetDeps({ root, designRootRel, stagingDir: staging }),
+            result.report,
+            // ONE budget for the WHOLE import (review F4). The caps are meaningless
+            // as per-call locals: `importFrames` loops over frames, so 60 frames ×
+            // 200 assets × 2 MB reconstructs the multi-GB Syncthing shape D5 says
+            // it closed — and each asset costs a browser launch for the SVG canary.
+            budget
+          );
       const tsx = applyRewrites(result.tsx, assets.rewrites);
       resolvedAssets += assets.resolved.length;
 

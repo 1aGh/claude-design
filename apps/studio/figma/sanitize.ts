@@ -71,6 +71,13 @@ export const DISPOSITIONS = Object.freeze([
   'asset-cap-reached',
   /** A vector Figma declined to render as SVG, re-requested as PNG. */
   'asset-degraded',
+  /**
+   * The LOCAL `.fig` door (DDR-221) cannot produce this asset: a vector cluster
+   * is rendered by Figma's servers and is simply absent from an export. The
+   * archive carries image FILLS, never renders. Distinct from `asset-skipped`
+   * ("we tried and it failed") — nothing was attempted and nothing could be.
+   */
+  'asset-unavailable-offline',
   'jsx-cap-reached',
   'value-rejected',
   // ── The codegen route (DDR-219 D9). Three dispositions, one rule: what makes

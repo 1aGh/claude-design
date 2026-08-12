@@ -78,6 +78,12 @@ export interface PendingExport {
   placeholder: string;
   /** True when this export stands in for a whole cluster (D8 mitigation 2). */
   collapsed: boolean;
+  /**
+   * Figma's content hash for an IMAGE fill, when this export is a fill rather
+   * than a server-side render. The LOCAL door resolves it straight out of the
+   * archive (`images/<imageRef>`) with no network at all — DDR-221 D6.
+   */
+  imageRef?: string;
 }
 
 export interface ToArtboardOptions {
@@ -244,6 +250,35 @@ function emitNode(node: FigmaNode, depth: number, parentIsFlex: boolean, ctx: Em
   const pad = indent(depth);
   const name = identifierFromNodeId(node.id);
   const label = attrValue(node.name) || name;
+
+  // An IMAGE fill is a real picture, not a colour. It used to fall through to
+  // the generic leaf path, where `style-map` has nothing to say about it, and
+  // the node emitted as an EMPTY positioned div — the photo silently gone while
+  // the import reported success. Measured on a real export (2026-08-12).
+  const imageFill = (node.fills ?? []).find((f) => f.type === 'IMAGE' && f.visible && f.imageRef);
+  if (imageFill?.imageRef && !isVectorCluster(node)) {
+    const placeholder = `/assets/pending-${node.id.replace(/[^0-9]+/g, '-')}.png`;
+    ctx.pendingExports.push({
+      nodeId: node.id,
+      format: 'png',
+      placeholder,
+      collapsed: false,
+      imageRef: imageFill.imageRef,
+    });
+    ctx.report.add(node.id, node.type, 'asset-pending', 'image fill');
+    ctx.metrics.totalLeaves += 1;
+    const bb = node.absoluteBoundingBox;
+    const pos = positionStyle(node, parentIsFlex, ctx);
+    if (pos.absolute) ctx.metrics.absoluteLeaves += 1;
+    const style = {
+      ...pos.decls,
+      ...(bb ? { width: `${Math.round(bb.width)}px`, height: `${Math.round(bb.height)}px` } : {}),
+      objectFit: 'cover',
+    };
+    return [
+      `${pad}<img src=${JSON.stringify(placeholder)} alt=${JSON.stringify(label)} data-dc-element=${JSON.stringify(label)} style=${styleObjectLiteral(style, false)} />`,
+    ];
+  }
 
   // A whole vector cluster becomes ONE asset reference, never one per leaf.
   if (isVectorCluster(node)) {

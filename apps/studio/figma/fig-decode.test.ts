@@ -15,7 +15,7 @@ import { crc32, deflateRawSync, zstdCompressSync } from 'node:zlib';
 import {
   decodeFigArchive,
   FigDecodeError,
-  KNOWN_CONTAINER_VERSIONS,
+  OBSERVED_CONTAINER_VERSIONS,
   readFigContainer,
 } from './fig-decode.ts';
 import { findRootDefinition, parseKiwiSchema } from './fig-kiwi.ts';
@@ -224,10 +224,32 @@ describe('tier 1 — container framing', () => {
     expect(design.schemaSha256.slice(0, 8)).toBe('c22712ff');
   });
 
-  test('an unknown container version REFUSES and names the version', () => {
+  test('an unobserved container version DECODES and is flagged, not refused', () => {
+    // Measured 2026-08-12 on a real third-party export: version 101, LOWER than
+    // the fixtures' 106 despite a later export date, a different schema, and
+    // byte-identical framing that decodes cleanly. The version predicts nothing,
+    // so refusing on it only rejected valid files (DDR-221 D3, amended).
+    const archive = hostileArchive(baseDefs(), baseData());
     const bytes = containerBytes(schemaBytes(baseDefs()), baseData(), 107);
-    expect(() => readFigContainer(bytes)).toThrow(/version 107/);
-    expect(KNOWN_CONTAINER_VERSIONS.has(107)).toBe(false);
+    expect(readFigContainer(bytes).version).toBe(107);
+    expect(OBSERVED_CONTAINER_VERSIONS.has(107)).toBe(false);
+    expect(decodeFigArchive(archive, { fileKey: KEY }).report.containerVersionKnown).toBe(true);
+  });
+
+  test('STRUCTURE is what refuses — the checks that replaced the version gate', () => {
+    // Each of these is a framing violation the version number could never have
+    // caught, and together they are why dropping the allowlist is safe.
+    const defs = baseDefs();
+    expect(() =>
+      readFigContainer(containerBytes(schemaBytes(defs), baseData(), 106, 'notafig'))
+    ).toThrow(/prelude/);
+    // A schema with trailing bytes cannot be a Kiwi schema.
+    const padded = new Uint8Array([...schemaBytes(defs), 0, 0, 0]);
+    expect(() =>
+      decodeFigArchive(zipOf([{ name: 'canvas.fig', data: containerBytes(padded, baseData()) }]), {
+        fileKey: KEY,
+      })
+    ).toThrow(/trailing bytes/);
   });
 
   test('an unrecognised prelude refuses without echoing the bytes as text', () => {
@@ -644,6 +666,68 @@ describe('silent-wrongness sweep — a hostile file must not produce a plausible
     const names: string[] = [];
     walkNodes(document.root, (n) => names.push(n.name));
     expect(names).toEqual(['Document']);
+  });
+});
+
+describe('image fills resolve out of the archive (DDR-221 D6)', () => {
+  test("a paint's 20-byte image.hash becomes the hex imageRef that names the archive entry", () => {
+    const defs = baseDefs();
+    defs.push({
+      name: 'ImageRefStruct',
+      kind: 1,
+      fields: [
+        ['hash', -2, true, 0],
+        ['name', -6, false, 0],
+      ],
+    });
+    defs.push({
+      name: 'Paint',
+      kind: 2,
+      fields: [
+        ['type', -6, false, 1],
+        ['visible', -1, false, 2],
+        ['image', 4, false, 3],
+      ],
+    });
+    defs[2].fields.push(['fillPaints', 5, true, 38]);
+
+    const hash = [0x0f, 0x0e, 0x1f, 0xf4, 0xb9, 0xf8, 0xbe, 0x0c];
+    const w = new W();
+    w.varuint(6).varuint(1);
+    w.varuint(1).varuint(0).varuint(0);
+    w.varuint(4).varuint(1);
+    w.varuint(5).str('Document');
+    w.varuint(38).varuint(1); // one Paint
+    w.varuint(1).str('IMAGE');
+    w.varuint(2).byte(1);
+    w.varuint(3); // image: ImageRefStruct (a STRUCT — fields in order, no ids)
+    w.varuint(hash.length);
+    for (const b of hash) w.byte(b);
+    w.str('photo');
+    w.varuint(0); // end Paint
+    w.varuint(0).varuint(0);
+
+    const { document } = decodeFigArchive(hostileArchive(defs, w.out), { fileKey: KEY });
+    const fill = document.root.fills?.[0];
+    // Measured on a real export: this hex IS the `images/<name>` entry, which is
+    // what makes the offline door resolve pictures with no network at all.
+    expect(fill?.imageRef).toBe('0f0e1ff4b9f8be0c78b7e0a28320f60808027d35'.slice(0, 16));
+    expect(fill?.type).toBe('IMAGE');
+  });
+
+  test('an archive entry is fetched by exact name and verified, never by path', async () => {
+    // The lookup key rule (D6): `images/<hex>` is matched literally against the
+    // central directory, and the bytes are CRC-checked on the way out.
+    const png = new TextEncoder().encode('not-really-a-png-but-bytes-are-bytes');
+    const zip = zipOf([
+      { name: 'canvas.fig', data: containerBytes(schemaBytes(baseDefs()), baseData()) },
+      { name: 'images/0f0e1ff4b9f8be0c78b7e0a28320f60808027d35', data: png },
+    ]);
+    const archive = readFigZip(zip);
+    expect(archive.has('images/0f0e1ff4b9f8be0c78b7e0a28320f60808027d35')).toBe(true);
+    expect(archive.get('images/0f0e1ff4b9f8be0c78b7e0a28320f60808027d35')).toEqual(png);
+    // A ref that is not an entry is simply absent — no traversal, no guessing.
+    expect(archive.get('images/../canvas.fig')).toBeUndefined();
   });
 });
 

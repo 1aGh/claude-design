@@ -47,12 +47,28 @@ const PRELUDES: Record<string, 'design' | 'board'> = {
 };
 
 /**
- * Known container versions. An unknown one REFUSES (DDR-221 D3) — this is the
- * decision most likely to annoy someone the first time Figma ships 107, and the
- * trade is deliberate: the message names the version, the schema-hash alarm is
- * designed to see it coming, and the REST door still works.
+ * Container versions we have actually observed. INFORMATIONAL — not a gate.
+ *
+ * DDR-221 D3 originally REFUSED an unrecognised version, on the assumption that
+ * the number predicts framing compatibility. Measured on a real third-party
+ * export (2026-08-12): it does not. That file is version **101** — LOWER than
+ * the fixtures' 106 despite being exported nine days later — carries a
+ * DIFFERENT schema (`7ae1921b` vs `c22712ff`), and decodes perfectly under the
+ * same code, because the framing is byte-identical and the file brings its own
+ * schema (D1's whole thesis).
+ *
+ * So the version was refusing valid files while predicting nothing. What
+ * actually gates correctness is STRUCTURE, all of it still enforced: the
+ * prelude, exactly two chunks with zero trailing bytes, a raw-deflate schema
+ * that parses and consumes every byte, the zstd magic, STRICT root resolution
+ * (exactly one `Message` of kind MESSAGE with a `nodeChanges: NodeChange[]`),
+ * and a data chunk that decodes with nothing left over. A file passing all of
+ * those is a Figma document whatever integer sits in bytes 8–11.
+ *
+ * The version is reported instead, and an unobserved one is worth noticing —
+ * see `FigDecodeReport.containerVersion` and the schema-hash alarm (D8).
  */
-export const KNOWN_CONTAINER_VERSIONS: ReadonlySet<number> = new Set([106]);
+export const OBSERVED_CONTAINER_VERSIONS: ReadonlySet<number> = new Set([101, 106]);
 
 /** ~1 500x the measured 42 KB. */
 export const MAX_CANVAS_FIG_BYTES = 64 * 1024 * 1024;
@@ -88,7 +104,10 @@ export interface FigContainer {
 }
 
 export interface FigDecodeReport {
+  /** Observed, not validated. See `OBSERVED_CONTAINER_VERSIONS`. */
   containerVersion: number;
+  /** True when this version is one we have seen before — a soft drift signal. */
+  containerVersionKnown: boolean;
   schemaSha256: string;
   /** From `meta.json`. Makes a dated fixture corpus self-labelling. */
   exportedAt?: string;
@@ -157,13 +176,9 @@ export function readFigContainer(bytes: Uint8Array): FigContainer {
     throw new FigDecodeError(`unrecognised Figma container prelude (bytes: ${hex})`);
   }
 
+  // Read, reported, NOT gated — see OBSERVED_CONTAINER_VERSIONS for why the
+  // allowlist was removed. Structure gates; the integer does not.
   const version = u32le(bytes, 8);
-  if (!KNOWN_CONTAINER_VERSIONS.has(version)) {
-    throw new FigDecodeError(
-      `unsupported Figma container version ${version} (known: ${[...KNOWN_CONTAINER_VERSIONS].join(', ')}). ` +
-        'Import this file over the Figma API instead.'
-    );
-  }
 
   const chunks: Uint8Array[] = [];
   let offset = 12;
@@ -328,6 +343,29 @@ function restType(change: Record<string, unknown>): string | undefined {
  * takes the first entry that carries characters, which is what REST reports as
  * the node's own `characters`.
  */
+/**
+ * `.fig` identifies an image fill by a 20-byte `image.hash`; REST calls the same
+ * thing `imageRef` and states it as hex. Measured on a real export: the hex IS
+ * the archive entry name (`images/<hex>`), which is what makes D6's "images
+ * travel inside the file" resolvable with no network at all.
+ *
+ * Only that one field is added — the paint is otherwise passed through for
+ * `normalizeDocument` to sanitize, exactly like the REST door's paints.
+ */
+function toRestPaint(paint: unknown): unknown {
+  const p = obj(paint);
+  if (!p || p.imageRef !== undefined) return paint;
+  const hash = obj(p.image)?.hash;
+  if (!Array.isArray(hash) || hash.length === 0 || hash.length > 64) return paint;
+  let hex = '';
+  for (const byte of hash) {
+    const n = num(byte);
+    if (n === undefined || n < 0 || n > 255 || !Number.isInteger(n)) return paint;
+    hex += n.toString(16).padStart(2, '0');
+  }
+  return { ...p, imageRef: hex };
+}
+
 function overrides(change: Record<string, unknown>): unknown[] {
   const list = obj(change.nodeGenerationData)?.overrides;
   return Array.isArray(list) ? list : [];
@@ -387,7 +425,7 @@ function toRestNode(
   // an override, not a top-level field. Reading only the top level left every
   // board node on the translator's default colour (found by Tier 3).
   const fills = change.fillPaints ?? fromOverrides(change, 'fillPaints');
-  if (Array.isArray(fills)) raw.fills = fills;
+  if (Array.isArray(fills)) raw.fills = fills.map(toRestPaint);
   const strokes = change.strokePaints ?? fromOverrides(change, 'strokePaints');
   if (Array.isArray(strokes)) raw.strokes = strokes;
   if (Array.isArray(change.effects)) raw.effects = change.effects;
@@ -677,6 +715,7 @@ export function decodeFigArchive(archive: Uint8Array, opts: DecodeFigOptions): F
     document,
     report: {
       containerVersion: container.version,
+      containerVersionKnown: OBSERVED_CONTAINER_VERSIONS.has(container.version),
       schemaSha256: container.schemaSha256,
       exportedAt: readExportedAt(safeEntry(zip, META_ENTRY)),
       nodeCount,
