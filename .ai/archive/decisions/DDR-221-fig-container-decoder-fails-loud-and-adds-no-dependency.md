@@ -135,7 +135,7 @@ Refuse, with the observed value named in the message so diagnosis is one line:
 | Condition | Posture |
 |---|---|
 | prelude ∉ {`fig-kiwi`, `fig-jam.`} | refuse — name the observed 8 bytes |
-| container version ∉ known set (`106`) | **refuse** — name the observed version |
+| container version ∉ known set | ~~refuse~~ → **report** (amended, see A9) |
 | chunk count ≠ 2, or trailing bytes ≠ 0 | refuse |
 | schema chunk not raw-deflate | refuse |
 | data chunk missing the zstd magic | refuse |
@@ -451,6 +451,49 @@ already exists and is already documented as being there for the Tier-2 diff.
   file it must open anyway for `exported_at` (which Tier 4 needs). The decoder
   reads `exported_at` and **drops `file_name` on the floor** — an explicit
   negative control, and a test.
+
+### A9 — The version gate is REMOVED; a real file refuted it (2026-08-12)
+
+A genuine third-party export (12 MB, images inside) is container version
+**101** — *lower* than the fixtures' 106 despite being made nine days later —
+carries a **different** embedded schema (`7ae1921b` vs `c22712ff`), and decodes
+perfectly under the same code. Framing byte-identical.
+
+So D3's allowlist was **refusing valid files while predicting nothing**. It was
+written from the assumption that the version tracks framing compatibility; n=3
+says it does not even monotonically increase. This is the same class of error as
+the data-descriptor refusal: a rule derived from documentation rather than from
+files.
+
+The allowlist is dropped. The version is reported, with a
+`containerVersionKnown` flag as a soft drift signal alongside the schema hash
+(D8). **Structure still gates**, and it is far stronger than an integer: the
+prelude, exactly two chunks with zero trailing bytes, a raw-deflate schema that
+parses and consumes every byte, the zstd magic, strict root resolution (A8/F2),
+and a data chunk that decodes with nothing left over.
+
+Note this *strengthens* D1 rather than weakening D3's spirit: the file carries
+its own schema, so a schema change is a non-event — which is precisely what this
+file demonstrated.
+
+### A10 — D6 is now real, and it was hiding a defect in the REST door too
+
+The same file closed the coverage gap A6 named. Measured: a paint's 20-byte
+`image.hash`, hex-encoded, **is** the `images/<name>` archive entry. The local
+door now resolves image fills straight from the archive through the same
+content-addressed promote as every other asset — no network, no expiry, no rate
+limit, no SSRF surface, exactly as D6 claimed.
+
+Getting there exposed a defect **shared with the REST door**: `to-artboard` only
+ever queued VECTOR clusters, so an IMAGE fill fell through to the generic leaf
+path and emitted an **empty positioned div**. An 11.7 MB photo vanished while
+the import reported success. Fixed for both doors.
+
+What genuinely cannot work offline is a vector cluster — Figma renders those
+server-side. That gets `asset-unavailable-offline`, deliberately distinct from
+`asset-skipped`: "nothing could be attempted" and "we tried and it failed" are
+different facts, and conflating outcomes is how this feature repeatedly reported
+success while losing content.
 
 ### A8 — Five controls the security pass added; all bind T14
 

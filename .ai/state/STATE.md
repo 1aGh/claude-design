@@ -3,7 +3,7 @@
 > **kgai-active repo** — working state and history live in the knowledge graph, not this file.
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
-**Status:** in-progress — Figma import **Phase 6** (`.fig` decoder): T13 + T14 + T15 (Tiers 1–3 + fuzz) + the `--fig` verb all landed and verified on real imports. Remaining are two things I cannot close alone: a fixture containing IMAGES (needs authoring in Figma) and the independent security round (the subagents never reported).
+**Status:** in-progress — Figma import **Phase 6** (`.fig` decoder): T13 + T14 + T15 (Tiers 1–3 + fuzz) + the `--fig` verb, all landed and verified against a REAL third-party export with images. The one remaining item is the independent security round (the subagents never reported).
 **Active plan:** `.ai/plans/feature-figma-import.md`
 **Active task:** — (blocked on the two above)
 
@@ -47,10 +47,18 @@ and asserted to be the only such field. `maude design import-figma --fig <path>`
 with no network, token or seat — verified by real runs (board 31 strokes with sticky text; design 6
 artboards). The archive's prelude picks the route, so no mode can be got wrong; provenance is
 content-addressed because a local file has no REST key.
-Open, and both need someone other than me: a fixture that actually CONTAINS images (`images/` is empty in
-both committed exports, so D6's archive-image path — the thing this door is supposed to be better at than
-REST — has zero coverage), and the independent security round. Also: Tier 4 has one dated corpus (`106`,
-n=2), and A.10 has not been RUN on a `--fig` canvas.
+**A real 12 MB export then refuted two things at once.** It is container version **101** — LOWER than the
+fixtures' 106 despite a later export date — with a DIFFERENT embedded schema, and it decodes perfectly:
+the framing is byte-identical and the file brings its own schema, which is D1's thesis working exactly as
+argued. So D3's version allowlist was refusing valid files while predicting nothing, and it is removed
+(reported instead, with a drift flag); STRUCTURE still gates, and it is much stronger than an integer.
+The same file closed A6's image gap and exposed a defect **shared with the REST door**: `to-artboard`
+only queued VECTOR clusters, so an IMAGE fill emitted an EMPTY positioned div — an 11.7 MB photo vanished
+while the import reported success. Both doors fixed; the offline door now resolves fills from
+`images/<imageRef>` through the same content-addressed promote, verified with zero network calls. A
+server-side vector render still cannot exist offline and gets its own `asset-unavailable-offline`.
+Open: the independent security round. Also: Tier 4 has two dated corpora now (`106` n=2, `101` n=1), and
+A.10 has not been RUN on a `--fig` canvas.
 
 _2026-08-12:_ **Figma import Phase 7 CLOSED (plan NOT archived — Phase 6 is untouched).** `--explode
 <artboard-id>` turns one already-imported artboard into editable JSX by asking Figma's own Dev Mode
