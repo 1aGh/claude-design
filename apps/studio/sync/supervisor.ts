@@ -57,6 +57,16 @@ export interface SyncSupervisor {
    * `undefined` keeps whatever the config already holds.
    */
   restart(linkedHub?: LinkedHub | null): Promise<SyncStartOutcome>;
+  /**
+   * Is a start/restart/stop cycle in flight?
+   *
+   * NOT a lock — `serialize()` below already guarantees ordering, and a caller
+   * must never re-implement that. This exists so the Resync button can be
+   * REFUSED EARLY (409) instead of quietly queued: a person pressing twice
+   * wants to know the first press is still working, not to buy a second full
+   * re-link of every canvas.
+   */
+  busy(): boolean;
   stop(): Promise<void>;
   /** The live runtime, or null in solo mode. Test/inspection surface. */
   current(): SyncRuntime | null;
@@ -150,16 +160,26 @@ export function createSyncSupervisor(
     return { syncing: true, canvases };
   }
 
+  let inFlight = 0;
+
   function serialize<T>(work: () => Promise<T>): Promise<T> {
+    inFlight++;
     const next = chain.then(work, work);
     // Keep the chain alive even when a link fails — the NEXT attach must still
     // be able to run. (A rejected chain would poison every later restart.)
     chain = next.catch(() => {});
+    // Settled either way — a cycle that threw is still a cycle that ended, and
+    // leaking `inFlight` would leave Resync refusing forever.
+    const settle = (): void => {
+      inFlight--;
+    };
+    next.then(settle, settle);
     return next;
   }
 
   return {
     start: () => serialize(boot),
+    busy: () => inFlight > 0,
     restart: (linkedHub) =>
       serialize(async () => {
         try {

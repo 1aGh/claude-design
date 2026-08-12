@@ -128,6 +128,18 @@ const stub = await startStub();
 const scratch = mkdtempSync(join(tmpdir(), 'maude-e2e-cloud-'));
 mkdirSync(scratch, { recursive: true });
 
+// THE CROSS-ORIGIN SPLIT STAYS ON IN THIS LANE — the "revisit if a scenario
+// must exercise the split-origin path" the base config's comment left open.
+//
+// The base default is `0`, so WebDriver's switchToFrame() can reach into the
+// canvas iframe. TSX sync is deliberately coupled to that same switch (DDR-060
+// / DDR-054 §F1: the per-canvas opt-in is inert without the sandbox), so with
+// the split off this lane's fixture has NOTHING syncable — the rail reported
+// "2 TSX canvas(es) found but none are syncable" and every step from the attach
+// onward failed on a project that was linked and could never sync. Nothing in
+// this lane enters the canvas frame; it is all rail, dialogs and panels.
+process.env.MAUDE_CANVAS_ORIGIN_SPLIT = '1';
+
 process.env.MAUDE_CLOUD_URL = `http://127.0.0.1:${stub.port}`;
 process.env.MAUDE_CLOUD_CONFIG = join(scratch, 'cloud.json');
 process.env.HUBS_CONFIG_PATH = join(scratch, 'hubs.json');

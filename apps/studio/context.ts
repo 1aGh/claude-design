@@ -198,6 +198,10 @@ export interface Context {
       reason?: string;
       detail?: string;
     }>;
+    /** A cycle is in flight — Resync refuses early rather than queueing. */
+    busy?(): boolean;
+    /** The live runtime, for the sweep-scoped cancel. Null in solo mode. */
+    current?(): { cancelAssetSweep(): boolean } | null;
   };
 }
 

@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-12T15:49:43.118Z",
+  "generated": "2026-08-12T20:54:14.696Z",
   "currentPhase": null,
   "phases": [
     {
@@ -2034,6 +2034,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-production-grade-hardening.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-sync-resync-and-out-of-process-sweep",
+      "title": "Feature: Resync the whole panel, and survive the sweep",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-sync-resync-and-out-of-process-sweep.md",
       "archived": false,
       "phaseKey": null
     },

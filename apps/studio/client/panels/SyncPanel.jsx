@@ -11,9 +11,22 @@
 // paths, but everything renders through safeName anyway: this payload is
 // read back off disk (`_sync.json`), and a bounded text-only row is free.
 
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { safeName, syncPresentation } from '../../sync/presentation.ts';
+import { safeDetail, safeName, syncPresentation } from '../../sync/presentation.ts';
+
+/**
+ * How long Resync stays disabled after a cycle finishes.
+ *
+ * A resync is `syncControl.restart()`: it tears every provider down and
+ * re-authenticates EVERY document — 76 WS auths on the project this was built
+ * for, since auth fires once per document. The valid-token bucket is 600/min
+ * per label (DDR-102), so roughly eight presses inside a minute would pin the
+ * very bucket the incident behind this feature was about. Ten seconds caps an
+ * impatient person at six presses a minute and keeps them well under it. The
+ * hub's own 429 remains the real backstop — this is politeness, not security.
+ */
+const RESYNC_COOLDOWN_MS = 10_000;
 
 /** DocSyncState → the presentation vocabulary (never invent a new word). */
 const STATE_WORD = {
@@ -84,6 +97,52 @@ export default function SyncPanel({
   onClose,
 }) {
   const p = syncPresentation(status, { project });
+  const [resyncing, setResyncing] = useState(false);
+  const [cooling, setCooling] = useState(false);
+  const [note, setNote] = useState('');
+  const timers = useRef([]);
+
+  // Timers outlive an unmount otherwise — closing the panel mid-cooldown would
+  // set state on a gone component.
+  useEffect(
+    () => () => {
+      for (const t of timers.current) clearTimeout(t);
+      timers.current = [];
+    },
+    []
+  );
+
+  const resync = useCallback(async () => {
+    if (resyncing || cooling) return;
+    setResyncing(true);
+    setNote('');
+    let res = null;
+    let json = {};
+    try {
+      res = await fetch('/_api/sync/resync', { method: 'POST' });
+      json = await res.json().catch(() => ({}));
+    } catch {
+      /* the server went away — say so below rather than throwing into render */
+    }
+    setResyncing(false);
+    if (!res) setNote('Maude could not reach the sync service.');
+    else if (res.status === 409) setNote('Already restarting — give it a moment.');
+    else if (!res.ok || !json.ok) setNote(json.detail || 'Resync could not start.');
+    // A restart that declined is not an error, but it IS the only thing worth
+    // saying — the panel's own header keeps reporting the live state.
+    else if (json.sync && !json.sync.syncing) setNote(json.sync.detail || '');
+    setCooling(true);
+    timers.current.push(setTimeout(() => setCooling(false), RESYNC_COOLDOWN_MS));
+  }, [resyncing, cooling]);
+
+  const cancelAssets = useCallback(async () => {
+    try {
+      await fetch('/_api/sync/cancel-assets', { method: 'POST' });
+    } catch {
+      /* the sweep ends with the server either way */
+    }
+  }, []);
+
   const items = readItems(status?.items);
   const truncated = isCount(status?.itemsTruncated) ? status.itemsTruncated : 0;
   const assets = readAssets(status?.assets);
@@ -129,10 +188,28 @@ export default function SyncPanel({
           <span className="gp-panel-title">Sync</span>
           {counts && <span className="gp-count">{counts}</span>}
           <span className="gp-spacer" />
+          {/* Resync re-runs the WHOLE sync — every canvas and every asset — so
+              it lives in the header, not inside the assets section. It is
+              `syncControl.restart()`, the same cycle Connect performs. */}
+          <button
+            type="button"
+            className="sp-resync"
+            data-testid="sync-resync"
+            onClick={resync}
+            disabled={resyncing || cooling}
+            title="Re-check every canvas and asset against the workspace"
+          >
+            {resyncing ? 'Resyncing…' : 'Resync'}
+          </button>
           <button type="button" className="gp-x" aria-label="Close" onClick={onClose}>
             ×
           </button>
         </div>
+        {note && (
+          <div className="sp-resync-note" role="status" aria-live="polite">
+            {safeDetail(note, '')}
+          </div>
+        )}
         {/* The one-rule sentence, live — same aria pattern as the rail note:
             a polite announcement when the phase changes, never a focus steal. */}
         {p && (
@@ -193,6 +270,20 @@ export default function SyncPanel({
                 ? `${assets.pushed} pushed · ${assets.skipped} already there` +
                   (assets.failedCount > 0 ? ` · ${assets.failedCount} failed` : '')
                 : `Pushing assets — ${assets.done} of ${assets.total}…`}
+              {/* Cancel is scoped to the SWEEP — interrupting an upload is a
+                  real gesture; interrupting a reconnect mid-handshake is not.
+                  Safe to press: uploads are idempotent and the hub writes
+                  temp-then-rename, so nothing half-written can survive. */}
+              {!assets.finished && (
+                <button
+                  type="button"
+                  className="sp-assets-cancel"
+                  data-testid="sync-assets-cancel"
+                  onClick={cancelAssets}
+                >
+                  Cancel
+                </button>
+              )}
             </div>
             {!assets.finished && assets.active && (
               <div className="sp-assets-active" title={safeName(assets.active, '')}>

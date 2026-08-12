@@ -239,6 +239,15 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         // the untrusted canvas origin must never reach it (it writes the global
         // ~/.config/maude/hubs.json token store).
         '/_api/hub/link',
+        // feature-sync-resync-and-out-of-process-sweep — the Resync control and
+        // the sweep cancel are MAIN-ORIGIN ONLY (absent from CANVAS_SAFE_API +
+        // startCanvasServer's routes). From the canvas origin, resync would be
+        // an amplification primitive driven by untrusted content: one request
+        // re-authenticates every document against the person's own hub and
+        // re-runs a whole-project upload, spending their DDR-102 rate-limit
+        // budget. A GET here 403s at the gate, never 405 from a reached handler.
+        '/_api/sync/resync',
+        '/_api/sync/cancel-assets',
         // ACP chat attachments (POST upload + GET thumbnail serve) are MAIN-ORIGIN
         // ONLY — absent from CANVAS_SAFE_API + startCanvasServer's routes. The
         // untrusted canvas origin must never read (or write) the user's pasted

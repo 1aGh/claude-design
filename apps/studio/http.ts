@@ -2468,6 +2468,53 @@ export function createHttp(
       return gitJson(await cloudApi.detach());
     },
 
+    // ── Resync (feature-sync-resync-and-out-of-process-sweep) ───────────────
+    // MAIN-ORIGIN ONLY: absent from BOTH CANVAS_SAFE_API and startCanvasServer's
+    // `routes` map (DDR-088's two-allowlist rule). Canvas content is untrusted
+    // (DDR-054) and must not be able to command the desktop to re-push a whole
+    // project — a canvas that could would be an amplification primitive against
+    // the person's own hub, and a way to spend their rate-limit budget.
+    '/_api/sync/resync': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isTrustedRequestHost(req))
+        return new Response('local request required', { status: 403 });
+      const control = ctx.syncControl;
+      if (!control) {
+        return gitJson({
+          status: 200,
+          json: { ok: false, reason: 'no-supervisor', detail: 'Restart Maude to start syncing.' },
+        });
+      }
+      // REFUSED, not queued — see `SyncSupervisor.busy`. A second press must
+      // not buy a second full re-link of every canvas.
+      if (control.busy?.()) {
+        return gitJson({
+          status: 409,
+          json: { ok: false, reason: 'busy', detail: 'Syncing is already restarting.' },
+        });
+      }
+      // No argument: KEEP the configured hub. Only an explicit `null` unlinks,
+      // and this route must never be able to.
+      const sync = await control.restart();
+      return gitJson({ status: 200, json: { ok: true, sync } });
+    },
+
+    '/_api/sync/cancel-assets': async (req: Request) => {
+      // Cancel is scoped to the ASSET SWEEP: killing a reconnect mid-handshake
+      // is not a meaningful gesture, killing a multi-hundred-megabyte upload
+      // is. Safe by construction — uploads are idempotent and the hub writes
+      // temp-then-rename, so no half-written asset can survive this.
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isTrustedRequestHost(req))
+        return new Response('local request required', { status: 403 });
+      const cancelled = ctx.syncControl?.current?.()?.cancelAssetSweep() ?? false;
+      return gitJson({ status: 200, json: { ok: true, cancelled } });
+    },
+
     '/_api/github/identity': async (req: Request) => {
       if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
       if (!isTrustedRequestHost(req))

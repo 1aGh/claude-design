@@ -29,7 +29,7 @@ import type { Context, LinkedHub } from '../context.ts';
 import { createHistory } from '../history.ts';
 import { SYNTHETIC_FS_DELAY_MS } from '../hmr-broadcast.ts';
 import { type CanvasSyncAgent, createCanvasSyncAgent } from './agent.ts';
-import { pushAssets } from './asset-push.ts';
+import { type AssetSweepHandle, runAssetSweep } from './asset-sweep.ts';
 import { atomicWrite } from './atomic-write.ts';
 import { createAutoCommit } from './autocommit.ts';
 import { type CellPairing, resolveCellPairing, sanitizeForLog } from './cell-pairing.ts';
@@ -203,6 +203,13 @@ export interface SyncRuntime {
   agentFor(slug: string): CanvasSyncAgent | undefined;
   /** Current offline/sync status payload (Task 8), or null when unlinked. */
   status(): import('./status.ts').SyncStatusPayload | null;
+  /**
+   * Stop the asset sweep child, if one is running. `false` means there was
+   * nothing to cancel — the caller reports that, rather than pretending.
+   * Scoped to the sweep on purpose: killing a reconnect mid-handshake is not a
+   * meaningful gesture, killing a multi-hundred-megabyte upload is.
+   */
+  cancelAssetSweep(): boolean;
 }
 
 export interface CreateSyncRuntimeOptions {
@@ -450,6 +457,8 @@ export function createSyncRuntime(
   let busUnsub: (() => void) | null = null;
   let started = false;
   let stopped = false;
+  /** The live asset sweep, so `stop()` can end it and the panel can cancel it. */
+  let assetSweep: AssetSweepHandle | null = null;
 
   // Task 8 — offline-mode status surface, initialized in start() once the
   // canvas count is known. The store writes `_sync.json` + broadcasts
@@ -1545,10 +1554,17 @@ export function createSyncRuntime(
       // (they carry the canvases; assets ride behind, never in front). Not
       // under pairing: a cell's assets are already on the cell. Fire-and-forget
       // — a miss is retried on the next boot for free.
-      if (!cellPairing) {
-        void pushAssets({
+      if (!cellPairing && !stopped) {
+        // OUT OF PROCESS since feature-sync-resync-and-out-of-process-sweep:
+        // the sweep segfaults Bun when it runs alongside the dev server (proven
+        // by isolation — identical sweep, same hub, completes standalone). The
+        // child dying is now a failed sweep the panel reports, not a dead
+        // editor. See `asset-sweep.ts`.
+        assetSweep = runAssetSweep({
           designRoot: ctx.paths.designRoot,
           hubUrl: linkedHub.url,
+          // Read at call time — a silent renewal mid-sweep must reach the child
+          // (the parent re-writes its credential file when this changes).
           token: () => token,
           // feature-sync-progress-modal — ride the same `sync:status` payload
           // the doc counts use, so the Sync panel has one source. Guarded on
@@ -1556,8 +1572,6 @@ export function createSyncRuntime(
           onProgress: (p) => {
             if (!stopped) store.updateAssets?.(p);
           },
-        }).catch((err) => {
-          console.warn(`[sync/assets] asset push failed: ${(err as Error).message}`);
         });
       }
     });
@@ -1572,6 +1586,11 @@ export function createSyncRuntime(
   async function stop(): Promise<void> {
     if (stopped) return;
     stopped = true;
+    // A sweep that outlives its runtime keeps uploading a project the person
+    // just closed — and `restart()` (the Resync button) calls stop() on every
+    // press, so without this each press would leave another sweep running.
+    assetSweep?.cancel();
+    assetSweep = null;
     // Commit whatever is still inside the quiescence window BEFORE tearing
     // anything down. Shutting down mid-window would leave the last edits on
     // disk but out of history — the one state this whole mechanism exists to
@@ -1677,6 +1696,11 @@ export function createSyncRuntime(
     size: () => agents.size + projections.size,
     agentFor: (slug) => agents.get(slug),
     status: () => statusStore?.get() ?? null,
+    cancelAssetSweep: () => {
+      if (!assetSweep) return false;
+      assetSweep.cancel();
+      return true;
+    },
   };
 }
 

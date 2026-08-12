@@ -237,7 +237,14 @@ describe('cloud-attach — sign-in, picker, attach, deep-link decision (stubbed)
     // a test of the fixture rather than of the pipeline.
     await browser.waitUntil(
       async () =>
-        /Synced with|unreachable|were refused by|nothing to sync yet/.test(await note.getText()),
+        // `Not reachable: <project>.` is the offline sentence `presentation.ts`
+        // actually writes; the lowercase `unreachable` this used to look for
+        // only ever appears as a SUFFIX on the refusal case, so the plain
+        // offline outcome — the one this stub always produces — could never
+        // match and the step timed out on a state that was already terminal.
+        /Synced with|Not reachable|unreachable|were refused by|nothing to sync yet/.test(
+          await note.getText()
+        ),
       { timeout: 60_000, timeoutMsg: 'the connect note never reached a terminal state' }
     );
     const text = await note.getText();
@@ -258,5 +265,46 @@ describe('cloud-attach — sign-in, picker, attach, deep-link decision (stubbed)
     const note = await $(tid('cloud-connect-note'));
     expect(await note.getAttribute('aria-live')).toBe('polite');
     expect(await note.getAttribute('role')).toBe('status');
+  });
+
+  it('9 · Resync re-runs the WHOLE sync from the panel, and the app survives it', async () => {
+    // feature-sync-resync-and-out-of-process-sweep. Two things are proven here
+    // that no unit test can reach:
+    //
+    //   • the control is wired to the whole-sync route in the PACKAGED client
+    //     bundle (the committed artifact is what ships — a rebuild forgotten in
+    //     the last task ships a UI without its own button);
+    //   • pressing it leaves the app ALIVE. Resync tears down every provider,
+    //     re-authenticates every document and re-fires the asset sweep — the
+    //     exact sequence that used to take the dev server down with it. The
+    //     canvas list still rendering afterwards IS the assertion.
+    const chip = await $(tid('open-sync'));
+    await chip.waitForDisplayed({ timeout: 30_000 });
+    await chip.click();
+
+    // `waitForExist`, not `waitForDisplayed` — the right dock in this harness's
+    // window geometry is the same one `shell-parity` had to assert existence on.
+    const panel = await $(tid('sync-panel'));
+    await panel.waitForExist({ timeout: 15_000 });
+    const resync = await $(tid('sync-resync'));
+    await resync.waitForExist({ timeout: 10_000 });
+    expect(await resync.isEnabled()).toBe(true);
+    await capture('sync panel with Resync');
+
+    await resync.click();
+    // It refuses a second press — while the cycle runs AND through the
+    // cooldown after it, so an impatient person cannot pin their own hub's
+    // rate limit (DDR-102: a restart is one WS auth per document).
+    await browser.waitUntil(async () => !(await resync.isEnabled()), {
+      timeout: 15_000,
+      timeoutMsg: 'Resync stayed pressable — the cycle/cooldown guard is gone',
+    });
+    await capture('resync in flight');
+
+    // The app is still an app: the canvas list is there, and the panel is still
+    // rendering sync state rather than a blank aside.
+    await (await $(tid('canvas-list'))).waitForDisplayed({ timeout: 20_000 });
+    expect((await panel.getText()).length).toBeGreaterThan(0);
+    await capture('after resync — the studio is still up');
   });
 });

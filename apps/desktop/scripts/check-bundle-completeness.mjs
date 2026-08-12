@@ -354,6 +354,45 @@ console.log('\n[5] kgai engine + plugin (autonomous capture in the shipped app)'
   }
 }
 
+// === Check 6 — the asset-sweep worker (feature-sync-resync-and-out-of-process-sweep) ==
+// The sweep runs OUT OF PROCESS because it segfaults Bun when it runs alongside
+// the dev server. That makes `sync/asset-push-worker.ts` a runtime-spawned
+// surface — the exact class DDR-177 exists for — and it is spawned by the
+// SERVER, not by a `maude design <verb>`, so check [3]'s helper walk and the
+// stripped-PATH smoke both step right past it. Missing from the bundle, the app
+// still runs and still syncs canvases; assets simply never upload again, and the
+// panel reports a sweep that could not start. Silent enough to ship twice.
+console.log('\n[6] out-of-process asset sweep (DDR-177 runtime-spawned surface)');
+{
+  const worker = join(target.resources, 'apps', 'studio', 'sync', 'asset-push-worker.ts');
+  if (!existsSync(worker)) {
+    fail(
+      'asset-push-worker.ts is staged',
+      `${worker} is absent — the dev server would spawn a script that is not in the bundle, and every asset sweep would fail to start. ` +
+        'Stage the apps/studio source tree (stage-resources.mjs) so the worker rides with it.'
+    );
+  } else {
+    // The sweep engine is a SIBLING import — a half-staged tree fails at module
+    // eval, not at spawn, which reads to a user as "assets just stopped".
+    const engine = join(target.resources, 'apps', 'studio', 'sync', 'asset-push.ts');
+    if (!existsSync(engine)) {
+      fail('asset-push.ts (the sweep engine) is staged', `${engine} is absent`);
+    } else {
+      // It must stay dependency-free: the worker is spawned with a deliberately
+      // minimal environment, so an npm import here would need its own staging.
+      const bare = collectImports(worker);
+      if (bare.length) {
+        fail(
+          'asset-push-worker.ts npm closure',
+          `imports ${bare.join(', ')} — stage them (helper-deps.mjs) or drop the dependency`
+        );
+      } else {
+        ok('asset-push-worker.ts staged with its engine', 'no npm deps');
+      }
+    }
+  }
+}
+
 // === Report ===================================================================
 console.log(`\n${'='.repeat(70)}`);
 if (notes.length) {

@@ -2692,6 +2692,16 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .sp-assets-line { padding: var(--space-1) var(--space-4); font-size: var(--type-sm); color: var(--fg-1); }
 .sp-assets-active { padding: 0 var(--space-4); font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sp-assets-retry { padding: var(--space-1) var(--space-4); font-size: var(--type-xs); color: var(--fg-2); }
+/* feature-sync-resync-and-out-of-process-sweep — Resync (header) re-runs the
+ * whole sync; Cancel (assets line) stops only the upload sweep. */
+.sp-resync { appearance: none; flex: none; font-family: var(--font-body); font-size: var(--type-xs); color: var(--fg-1); background: var(--bg-2); border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 2px var(--space-2); cursor: pointer; transition: color var(--dur-soft) var(--ease-out), border-color var(--dur-soft) var(--ease-out); }
+.sp-resync:hover:not(:disabled) { color: var(--fg-0); border-color: var(--border-strong); }
+.sp-resync:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sp-resync:disabled { color: var(--fg-3); cursor: default; }
+.sp-resync-note { padding: 0 var(--space-4) var(--space-2); font-size: var(--type-xs); color: var(--fg-2); line-height: var(--lh-base); }
+.sp-assets-cancel { appearance: none; margin-left: var(--space-2); font-family: var(--font-body); font-size: var(--type-xs); color: var(--fg-2); background: transparent; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
+.sp-assets-cancel:hover { color: var(--status-error); }
+.sp-assets-cancel:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* The popup — opens UPWARD from the dock (gi-menu anatomy). SOLID opaque menu
  * surface + border here (NOT the canvas `.panel`, which isn't in the client bundle
  * — phase-28 lesson; the tree must never bleed through). */

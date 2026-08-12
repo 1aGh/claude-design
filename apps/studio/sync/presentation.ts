@@ -77,6 +77,9 @@ export interface SyncStatusLike extends Partial<SyncStatusSnapshot> {
 const MAX_NAME_LEN = 60;
 const SHOWN_NAMES = 3;
 
+/** A whole sentence, not a name — the diagnose() details are up to ~90 chars. */
+const MAX_DETAIL_LEN = 160;
+
 export function safeName(raw: unknown, fallback: string): string {
   // Length alone was not enough. A name is hub-supplied (cell mode sets it from
   // `MAUDE_PROJECT_NAME`; `.design/config.json` is a committed file anyone with
@@ -95,6 +98,24 @@ export function safeName(raw: unknown, fallback: string): string {
     .trim();
   if (!s) return fallback;
   return s.length > MAX_NAME_LEN ? `${s.slice(0, MAX_NAME_LEN)}…` : s;
+}
+
+/**
+ * The same sanitizing, for a SENTENCE.
+ *
+ * `SyncStartOutcome.detail` is a full clause a person is meant to act on
+ * ("No sign-in for this workspace is stored on this machine yet."), and at
+ * `safeName`'s 60-character name budget the useful half is exactly what gets
+ * cut. The stripping is identical and non-negotiable — the string still passes
+ * through the server from a hub-influenced world — only the budget differs.
+ */
+export function safeDetail(raw: unknown, fallback: string): string {
+  const s = String(raw ?? '')
+    .replace(/[\p{Cc}\p{Cf}]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!s) return fallback;
+  return s.length > MAX_DETAIL_LEN ? `${s.slice(0, MAX_DETAIL_LEN)}…` : s;
 }
 
 function shownNames(list: readonly string[] | undefined): string[] {

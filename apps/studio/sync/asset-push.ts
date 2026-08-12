@@ -136,6 +136,26 @@ const ERROR_SNIPPET_CHARS = 80;
  */
 const UPLOAD_CONNECTION_HEADERS = { connection: 'close' } as const;
 
+/**
+ * THE PER-REQUEST TIME BUDGETS BELOW STAY — reviewed and kept, RCA step 3
+ * (feature-sync-resync-and-out-of-process-sweep, Task 7).
+ *
+ * They were suspects: the crash reports went from `abort_signal(2)` to
+ * `abort_signal(79)` in the same change that introduced them, which reads like
+ * a cause. Two things settle it the other way.
+ *
+ * First, the count is what a bounded sweep LOOKS like — 79 in-flight budgets
+ * over a 182-file sweep is one per request, not a leak. Second, the actual
+ * fault was isolated elsewhere and fixed: an HTTP/1.1 keep-alive desync after a
+ * peer refused a PUT before draining its body (see UPLOAD_CONNECTION_HEADERS).
+ * The sweep now also runs in its own process, so whatever these do or do not
+ * contribute costs the sweep and not the editor.
+ *
+ * Removing them would trade a suspicion for a certainty: a request with no
+ * budget is how a sweep hangs forever with nothing to report — the exact
+ * invisibility this whole feature exists to end. So they stay.
+ */
+
 /** HEAD is a small, bodyless probe — a hub that has not answered in 30 s is not
  *  about to. */
 const HEAD_TIMEOUT_MS = 30_000;

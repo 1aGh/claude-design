@@ -1,7 +1,15 @@
 {
-  "generated": "2026-08-12T15:48:08.056Z",
+  "generated": "2026-08-12T20:54:15.293Z",
   "version": "0.59.0",
   "entries": [
+    {
+      "id": "sync-resync-button",
+      "version": null,
+      "date": "2026-08-12",
+      "kind": "feature",
+      "title": "Resync your project without restarting Maude",
+      "summary": "The Sync panel has a Resync button: one press re-checks everything against the cloud — every canvas and every file — instead of quitting and reopening. Uploads now run on their own too, so a failed upload stays a failed upload: Maude keeps working, the panel says what happened, and you can stop one part-way without leaving anything half-sent."
+    },
     {
       "id": "figma-offline-fig-import",
       "version": null,

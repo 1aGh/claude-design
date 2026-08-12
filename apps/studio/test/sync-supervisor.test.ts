@@ -77,6 +77,7 @@ function fakeRuntime(log: string[], id: string, size = 3): SyncRuntime {
     size: () => size,
     agentFor: () => undefined,
     status: () => null,
+    cancelAssetSweep: () => false,
   };
 }
 
@@ -188,6 +189,50 @@ describe('createSyncSupervisor', () => {
     rmSync(ctx.paths.repoRoot, { recursive: true, force: true });
   });
 
+  // feature-sync-resync-and-out-of-process-sweep — `busy()` is what lets the
+  // Resync route answer 409 instead of quietly queueing a second full re-link
+  // of every canvas. It reports the chain; it must never BE the chain.
+  test('busy() reports a cycle in flight and clears when it settles', async () => {
+    const ctx = makeCtx({ url: 'https://hub.example', linkedAt: 1 });
+    let release: () => void = () => {};
+    const held = new Promise<void>((r) => {
+      release = r;
+    });
+    const sup = createSyncSupervisor(ctx, {}, () => ({
+      start: () => held,
+      stop: async () => {},
+      size: () => 1,
+      agentFor: () => undefined,
+      status: () => null,
+      cancelAssetSweep: () => false,
+    }));
+
+    expect(sup.busy()).toBe(false);
+    const cycle = sup.start();
+    expect(sup.busy()).toBe(true);
+    release();
+    await cycle;
+    expect(sup.busy()).toBe(false);
+    rmSync(ctx.paths.repoRoot, { recursive: true, force: true });
+  });
+
+  test('busy() clears after a cycle that THREW — Resync never wedges shut', async () => {
+    const ctx = makeCtx({ url: 'https://hub.example', linkedAt: 1 });
+    const sup = createSyncSupervisor(ctx, {}, () => ({
+      start: async () => {
+        throw new Error('nope');
+      },
+      stop: async () => {},
+      size: () => 0,
+      agentFor: () => undefined,
+      status: () => null,
+      cancelAssetSweep: () => false,
+    }));
+    await sup.start();
+    expect(sup.busy()).toBe(false);
+    rmSync(ctx.paths.repoRoot, { recursive: true, force: true });
+  });
+
   test('a throwing start leaves the server up and answers with the reason', async () => {
     const ctx = makeCtx({ url: 'https://hub.example', linkedAt: 1 });
     const sup = createSyncSupervisor(ctx, {}, () => ({
@@ -198,6 +243,7 @@ describe('createSyncSupervisor', () => {
       size: () => 0,
       agentFor: () => undefined,
       status: () => null,
+      cancelAssetSweep: () => false,
     }));
     const out = await sup.start();
     expect(out.syncing).toBe(false);
