@@ -3,9 +3,37 @@
 > **kgai-active repo** — working state and history live in the knowledge graph, not this file.
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
-**Status:** done — Figma import **Phase 7** closed 2026-08-12 (`--explode`: one imported artboard becomes editable via Figma's own Dev Mode codegen, over a wire no model reads). Plan stays ACTIVE — Phase 6 (`.fig` decoder) has not started.
-**Active plan:** —
-**Active task:** —
+**Status:** in-progress — Figma import **Phase 6** (`.fig` decoder): T13 + T14 landed, T15 partial. **Tier 2 (the differential vs REST) is the ship gate and is NOT done**, so the door must not be wired to a user-facing verb yet.
+**Active plan:** `.ai/plans/feature-figma-import.md`
+**Active task:** T15 — Tier 2 differential, then the `--fig` verb
+
+_2026-08-12:_ **Figma import Phase 6 — decoder LANDED, ship gate NOT met.** `.fig`/`.jam` now decodes
+end to end offline: a hand-written ZIP reader, a Kiwi schema+data decoder ported from the documented
+reference, tree rebuild from `parentIndex`, absolute bbox composed down the parent chain, then
+**REST-shaped raw into the EXISTING `normalizeDocument(raw, {origin:'fig'})`** so the caps and the
+prototype-pollution guard are the same code as the REST door rather than a parallel copy. Dependency-free
+on `node:zlib` alone — `zstdDecompressSync` + `inflateRawSync` both measured present on Bun 1.3.3, so
+`fzstd` is dropped, and `jszip` was REJECTED despite already being an `apps/studio` dep because it is
+absent from the root and would have made `--fig` desktop-only on npm exactly the way `oxc-parser` does
+for `--explode`. Verified on both committed fixtures: every documented node id, the hostile layer name
+verbatim, all six connectors incl. the TEXT and GROUP degrade cases, the wide sticky 416×240, the nested
+section composed to absolute (60,140) 560×700. **Measurement corrected the DDR twice while building it:**
+Figma's exporter SETS the ZIP data-descriptor flag (D3's draft refused it from documentation and would
+have rejected every real file), and `attrValue` is NOT sufficient to bound a report label — it maps
+rejected characters to SPACES, so bounded prose still reads as prose; `reportToken` moved into
+`sanitize.ts` because two lanes now need the one-token-no-spaces guarantee. **The float trap is the
+lesson worth keeping:** Kiwi rotates a float's exponent into the low byte, and getting the framing right
+with the math wrong kept the stream byte-exact — every string, enum and guid correct, accounting exact —
+while zeroing every coordinate in the file. A structurally perfect, geometrically empty document with no
+error signal. **Tier 1 therefore cannot be the gate**, and the tests assert concrete fixture dimensions.
+The fuzz corpus earned its place immediately by catching a `FigZipError` escaping the door's own error
+type. **The mandated independent security round did NOT run** — both subagents went idle without
+reporting; the self-review that replaced it found 2 HIGH + 3 MEDIUM (all schema-hostility: the attacker
+supplies the SCHEMA, not just the data) and all five are implemented and regression-tested, but a
+self-review is blind to exactly the seam DDR-219 was caught in.
+Open: **Tier 2 differential (the ship gate)**; Tier 3 end-to-end through `to-strokes`/`to-artboard`;
+the `--fig` CLI verb; `images/` is EMPTY in both fixtures so D6's archive-image path has zero coverage;
+the independent security round; known container versions is `{106}`, n=2, one export date.
 
 _2026-08-12:_ **Figma import Phase 7 CLOSED (plan NOT archived — Phase 6 is untouched).** `--explode
 <artboard-id>` turns one already-imported artboard into editable JSX by asking Figma's own Dev Mode
