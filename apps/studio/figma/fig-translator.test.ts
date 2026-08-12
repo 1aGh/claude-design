@@ -14,7 +14,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { decodeFigArchive } from './fig-decode.ts';
-import { toCanvas } from './to-artboard.ts';
+import { toArtboard, toCanvas } from './to-artboard.ts';
 import { toStrokes } from './to-strokes.ts';
 import { type FigmaNode, type NormalizedDocument, walkNodes } from './types.ts';
 
@@ -124,8 +124,27 @@ describe('tier 3 — design page through to-canvas', () => {
     expect(b.origin).toEqual(a.origin);
     // The emitted component source is the real deliverable — compare it whole,
     // minus the ONE field a local file cannot reproduce (see the next test).
-    const withoutLineHeight = (tsx: string) => tsx.replace(/ lineHeight: "[^"]*",/g, '');
-    expect(withoutLineHeight(b.tsx)).toBe(withoutLineHeight(a.tsx));
+    // Normalized: the ONE field a local export cannot reproduce (next test).
+    // `toCanvas`'s banner carries no verb, so there is nothing else to allow for.
+    const norm = (tsx: string) => tsx.replace(/ lineHeight: "[^"]*",/g, '');
+    expect(norm(b.tsx)).toBe(norm(a.tsx));
+  });
+
+  test('a single-frame artboard names the DOOR it came through', async () => {
+    // `--fig` reads a local export with no network at all. A banner claiming
+    // `--frames` on a file nobody fetched is a false provenance claim, so
+    // `toArtboard` reads `doc.origin` rather than hardcoding the verb.
+    const { rest, fig } = await doors('design.fig', 'design.rest-oracle.json', KEY);
+    const frameOf = (d: NormalizedDocument) => {
+      let f: FigmaNode | undefined;
+      walkNodes(d.root, (n) => {
+        if (!f && n.type === 'FRAME') f = n;
+      });
+      if (!f) throw new Error('no FRAME in the fixture');
+      return f;
+    };
+    expect(toArtboard(rest, frameOf(rest)).tsx).toContain('import-figma --frames`');
+    expect(toArtboard(fig, frameOf(fig)).tsx).toContain('--fig (offline, local export)`');
   });
 
   test('lineHeight is the ONLY thing the local door cannot reproduce, and it says so', async () => {

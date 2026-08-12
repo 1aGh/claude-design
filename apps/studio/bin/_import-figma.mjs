@@ -27,6 +27,7 @@
 // Exit: 0 ok · 2 usage · 3 validation/mapping reject · 4 fetch/parse error ·
 //       5 not configured (no token) · 6 write/containment error · 1 other.
 
+import { createHash } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -59,6 +60,7 @@ import {
 } from '../figma/client.ts';
 import { CodegenError, CodegenSession } from '../figma/codegen-client.ts';
 import { commentsToStrokes, indexNodes } from '../figma/comments-to-strokes.ts';
+import { decodeFigArchive, FigDecodeError } from '../figma/fig-decode.ts';
 import { attrValue, ImportReport } from '../figma/sanitize.ts';
 import { JsxTooLargeError, toArtboard, toCanvas } from '../figma/to-artboard.ts';
 import { toRenderCanvas } from '../figma/to-render.ts';
@@ -212,6 +214,39 @@ export function formatSummary(report, extra = {}) {
  * plus `sanitizeAnnotationSvg`, so this verb can never persist a shape the
  * canvas would reject (D6's annotation row).
  */
+/**
+ * Read and decode a local `.fig` / `.jam` (DDR-221). Offline end to end: no
+ * network, no token, no SSRF surface.
+ *
+ * PROVENANCE. A local archive does not carry the REST file key — `originFileKey`
+ * is an opaque internal `lk-` link key, and `meta.json`'s `file_name` is the
+ * Figma document TITLE, which DDR-216 D7 forbids recording. So the key is
+ * CONTENT-ADDRESSED from the payload: stable across re-imports of the same
+ * export, reveals nothing, and satisfies the same charset rule the URL parser
+ * enforces. Pass `--file-key` when you know the real one and want the canvas to
+ * point back at the Figma document.
+ */
+export function decodeLocalFig(path, fileKeyOverride = null) {
+  let bytes;
+  try {
+    bytes = readFileSync(path);
+  } catch (err) {
+    throw new ImportFigmaError(4, `cannot read ${path}: ${err.code ?? err.message}`);
+  }
+  if (fileKeyOverride !== null && !/^[A-Za-z0-9]{10,64}$/.test(fileKeyOverride)) {
+    throw new ImportFigmaError(2, 'invalid --file-key (want [A-Za-z0-9]{10,64})');
+  }
+  const fileKey =
+    fileKeyOverride ?? `fig${createHash('sha256').update(bytes).digest('hex').slice(0, 29)}`;
+  try {
+    const { document, report } = decodeFigArchive(new Uint8Array(bytes), { fileKey });
+    return { document, report, fileKey, surface: document.surface };
+  } catch (err) {
+    if (err instanceof FigDecodeError) throw new ImportFigmaError(4, err.message);
+    throw err;
+  }
+}
+
 export async function importBoard({
   url,
   root,
@@ -219,13 +254,18 @@ export async function importBoard({
   slug,
   dryRun = false,
   confirmLarge = false,
+  local = null,
 }) {
-  const target = parseFigmaTarget(url, 'board');
-  const doc = await fetchDocument({
-    fileKey: target.fileKey,
-    surface: 'board',
-    ...(target.nodeId ? { nodeId: target.nodeId } : {}),
-  });
+  // `local` is a already-decoded `.fig` (the offline door, DDR-221). Same
+  // normalized tree, so everything below is shared verbatim with the REST path.
+  const target = local ? { fileKey: local.fileKey, nodeId: null } : parseFigmaTarget(url, 'board');
+  const doc =
+    local?.document ??
+    (await fetchDocument({
+      fileKey: target.fileKey,
+      surface: 'board',
+      ...(target.nodeId ? { nodeId: target.nodeId } : {}),
+    }));
   const { strokes, report, pendingImages, origin } = toStrokes(doc, { confirmLarge });
 
   const outSlug = slug ?? `figjam-${target.fileKey.slice(0, 8).toLowerCase()}`;
@@ -958,10 +998,19 @@ function selectFrames(doc, nodeId) {
   // An explicit node-id means "this subtree" — the root IS the selection.
   if (nodeId && doc.root.id === nodeId) return [doc.root];
   if (wanted.has(doc.root.type)) return [doc.root];
+  // A DOCUMENT root means the caller handed us a whole file rather than a page
+  // or a frame — always the case for the local `.fig` door, which has no
+  // node-id to scope with. Descend to the first CANVAS. Previously this fell
+  // through to "no FRAME or COMPONENT found", so this turns a hard error into
+  // the obvious behaviour; the node/depth caps still apply either way.
+  const root =
+    doc.root.type === 'DOCUMENT'
+      ? ((doc.root.children ?? []).find((n) => n.type === 'CANVAS') ?? doc.root)
+      : doc.root;
   // Otherwise take the page's top-level frames. Deliberately NOT a deep walk:
   // whole-file import is not a viable default (DDR-216 D5) and a nested frame
   // is part of its parent's composition, not a canvas of its own.
-  return (doc.root.children ?? []).filter((n) => wanted.has(n.type) && n.visible);
+  return (root.children ?? []).filter((n) => wanted.has(n.type) && n.visible);
 }
 
 /**
@@ -978,13 +1027,16 @@ export async function importFrames({
   slug,
   dryRun = false,
   kind = 'digital',
+  local = null,
 }) {
-  const target = parseFigmaTarget(url, 'design');
-  const doc = await fetchDocument({
-    fileKey: target.fileKey,
-    surface: 'design',
-    ...(target.nodeId ? { nodeId: target.nodeId } : {}),
-  });
+  const target = local ? { fileKey: local.fileKey, nodeId: null } : parseFigmaTarget(url, 'design');
+  const doc =
+    local?.document ??
+    (await fetchDocument({
+      fileKey: target.fileKey,
+      surface: 'design',
+      ...(target.nodeId ? { nodeId: target.nodeId } : {}),
+    }));
 
   const frames = selectFrames(doc, target.nodeId);
   if (frames.length === 0) {
@@ -1459,6 +1511,8 @@ function parseArgv(argv) {
     canvas: null,
     artboard: null,
     confirmDocument: false,
+    figPath: null,
+    fileKey: null,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -1468,9 +1522,26 @@ function parseArgv(argv) {
       case '--pages':
       case '--tokens':
         if (out.mode)
-          throw new ImportFigmaError(2, 'pick exactly one of --board/--frames/--tokens/--explode');
+          throw new ImportFigmaError(
+            2,
+            'pick exactly one of --board/--frames/--tokens/--fig/--explode'
+          );
         out.mode = a.slice(2);
         out.url = argv[++i];
+        break;
+      // `--fig` takes a local PATH, not a URL. The route (board vs frames) is
+      // decided by the archive's own 8-byte prelude, not by the caller.
+      case '--fig':
+        if (out.mode)
+          throw new ImportFigmaError(
+            2,
+            'pick exactly one of --board/--frames/--tokens/--fig/--explode'
+          );
+        out.mode = 'fig';
+        out.figPath = argv[++i];
+        break;
+      case '--file-key':
+        out.fileKey = argv[++i];
         break;
       // `--explode` takes an ARTBOARD ID, not a URL: it is not an import route,
       // it is a follow-up operation on an artboard a deterministic import
@@ -1531,6 +1602,8 @@ Usage:
   maude design import-figma --pages  <figma-url>  --root <repo> [--folder <name>] [--editable]
   maude design import-figma --frames <figma-url>  --root <repo> [--slug <name>]
   maude design import-figma --tokens <figma-url>  --root <repo>
+  maude design import-figma --fig    <path.fig>   --root <repo> [--slug <name>]
+                            [--file-key <key>] [--dry-run] [--json]
   maude design import-figma --explode <artboard-id> --canvas ui/<folder>/<Page>.tsx
                             --root <repo> [--confirm-document] [--dry-run] [--json]
 
@@ -1557,6 +1630,14 @@ the frame's name is cross-checked before anything is written). One codegen call
 per invocation, always. Unavailable is a normal outcome, reported as
 \`codegen-unavailable\` — it never silently falls back to another route.
 
+\`--fig\` reads a \`.fig\` / \`.jam\` you exported from Figma, entirely OFFLINE — no
+network, no token, no Figma seat. The archive's own 8-byte prelude decides the
+route (a \`.jam\` is a board, a \`.fig\` a design file), and an unrecognised prelude
+or container version REFUSES rather than decoding approximately. Images travel
+inside the archive, so nothing expires and nothing is rate-limited. A local file
+carries no REST file key, so provenance is content-addressed unless you pass
+\`--file-key\`; the summary says which you got.
+
 The file's REVIEW COMMENTS come across as sticky annotations pinned where they
 sit — open threads on yellow paper, resolved ones on grey.
 
@@ -1578,7 +1659,11 @@ async function main() {
     process.stdout.write(`${HELP}\n`);
     process.exit(opts.help ? 0 : 2);
   }
-  if (opts.mode !== 'explode' && !opts.url) {
+  if (opts.mode === 'fig' && !opts.figPath) {
+    process.stderr.write('import-figma: --fig needs a path to a .fig or .jam file\n');
+    process.exit(2);
+  }
+  if (opts.mode !== 'explode' && opts.mode !== 'fig' && !opts.url) {
     process.stderr.write('import-figma: a Figma URL is required\n');
     process.exit(2);
   }
@@ -1618,6 +1703,72 @@ async function main() {
             `  node: ${r.nodeId} · route: codegen · endpoint: local\n` +
             `  response: ${r.bytes} B code, ${r.proseBytes} B prose discarded, sha256 ${r.responseSha256.slice(0, 16)}…\n` +
             `${formatSummary(r.report, r.assets ? { assets: `${r.assets.resolved}/${r.assets.pending} resolved` } : {})}\n`
+        );
+      }
+      return;
+    }
+    if (opts.mode === 'fig') {
+      const local = decodeLocalFig(opts.figPath, opts.fileKey);
+      // The 8-byte prelude decides the route, not the caller: a `.jam` is a
+      // board and a `.fig` is a design file, and the archive is authoritative
+      // about which it is.
+      const isBoard = local.surface === 'board';
+      const r = isBoard
+        ? await importBoard({
+            root,
+            designRootRel: opts.designRoot,
+            slug: opts.slug,
+            dryRun: opts.dryRun,
+            confirmLarge: opts.confirmLarge,
+            local,
+          })
+        : await importFrames({
+            root,
+            designRootRel: opts.designRoot,
+            slug: opts.slug,
+            dryRun: opts.dryRun,
+            local,
+          });
+      const merged = new ImportReport();
+      if (isBoard) merged.entries.push(...r.report.entries);
+      else for (const rep of r.reports) merged.entries.push(...rep.entries);
+      const provenance = {
+        containerVersion: local.report.containerVersion,
+        schemaSha256: local.report.schemaSha256,
+        exportedAt: local.report.exportedAt ?? null,
+        fileKey: local.fileKey,
+        derivedFileKey: opts.fileKey === null,
+      };
+      if (opts.json) {
+        process.stdout.write(
+          `${JSON.stringify({
+            route: 'fig-local',
+            surface: local.surface,
+            ...provenance,
+            unmappedTypes: local.report.unmappedTypes,
+            lossyFields: local.report.lossyFields,
+            internalNodesSkipped: local.report.internalNodesSkipped,
+            ...(isBoard ? { slug: r.slug, strokes: r.strokeCount } : { written: r.written }),
+            dispositions: merged.entries,
+          })}\n`
+        );
+      } else {
+        const lossy = local.report.lossyFields
+          .map((f) => `  lossy ${f.field} x${f.count} — ${f.why}`)
+          .join('\n');
+        const unmapped = local.report.unmappedTypes
+          .map((u) => `  unmapped type ${u.type} x${u.count}`)
+          .join('\n');
+        const head = isBoard
+          ? `import-figma: board -> ${r.slug} (${r.strokeCount} strokes)${opts.dryRun ? ' (dry run)' : ''}`
+          : `import-figma: ${r.written.length} frame(s)${opts.dryRun ? ' (dry run)' : ''}`;
+        process.stdout.write(
+          `${head}\n` +
+            `  offline: container v${provenance.containerVersion} · schema ${provenance.schemaSha256.slice(0, 8)}` +
+            `${provenance.exportedAt ? ` · exported ${provenance.exportedAt}` : ''}\n` +
+            `  file key: ${provenance.fileKey}${provenance.derivedFileKey ? ' (content-derived — pass --file-key for the real one)' : ''}\n` +
+            `${[unmapped, lossy].filter(Boolean).join('\n')}${unmapped || lossy ? '\n' : ''}` +
+            `${formatSummary(merged)}\n`
         );
       }
       return;
