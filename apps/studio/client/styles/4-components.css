@@ -1402,16 +1402,16 @@
 /* A degraded export is `done` but not clean — it must never read as success.
    Overrides --done, so declaration order matters. */
 .st-export-pill--degraded {
-  background: color-mix(in oklab, var(--u-status-warning, var(--u-accent)) 18%, transparent);
-  color: var(--u-status-warning, var(--u-accent));
+  background: color-mix(in oklab, var(--u-status-warn, var(--u-accent)) 18%, transparent);
+  color: var(--u-status-warn, var(--u-accent));
 }
 .st-export-degraded {
   font-size: 12px;
   line-height: 1.45;
-  color: var(--u-status-warning, var(--u-accent));
+  color: var(--u-status-warn, var(--u-accent));
   padding: 6px 8px;
   border-radius: var(--radius-sm, 6px);
-  background: color-mix(in oklab, var(--u-status-warning, var(--u-accent)) 10%, transparent);
+  background: color-mix(in oklab, var(--u-status-warn, var(--u-accent)) 10%, transparent);
 }
 .st-export-degraded__fix {
   margin-top: 4px;
