@@ -3,9 +3,30 @@
 > **kgai-active repo** — working state and history live in the knowledge graph, not this file.
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
-**Status:** done — "the cloud copy matches your desktop" closed 2026-08-10 (sync fixes 4–8: no duplicates, no broken canvases, images present, honest Connect state, one save model)
+**Status:** done — "fast, correct video export" closed 2026-08-12 (audio correctness at the source + JPEG knob + a live a11y bug + a kg tooling bug, all fixed same session)
 **Active plan:** —
 **Active task:** —
+
+_2026-08-12:_ **"Fast, correct video export" CLOSED + archived — most of the plan was already shipped by
+prior sessions before this close-out started (`3becccd9`/`354ec5c4`/`6b1b7a63`: the Remotion bump, the
+muted-mp4 fix, the seek-bridge fix, the GPU spike), discovered by reading source + `git log` rather than
+trusting the plan's own stale checkboxes. Closed the genuine remainder: a `--frame-format jpeg|png`
+opt-in knob (default png, no default flip — the ΔE2000 measurement gate hasn't run), a source-shape test
+pinning the encode-lib's no-clear-between-frames behavior, an RCA addendum disambiguating the reported
+export failure from DDR-157's unrelated overflow class, and **DDR-220** recording the resolved
+architecture (audio-in-one-pass via `renderMediaOnWeb`, pre-flight refusal as the correctness backstop,
+parallel capture deliberately deferred behind BREAKER's frame-purity-contract dissent — falsification
+spike passed, the safety contract around it isn't built). The `/flow:done` validate fan-out, run against
+a diff with zero UI files, still earned its keep: the a11y-auditor's read of the *already-shipped*
+`DegradedNote` UI (only in scope because the whats-new entry pointed at it) caught a live bug —
+`--u-status-warning` was never a defined token, so the "degraded" export pill silently fell back to the
+same color as "running," undercutting its own "must never read as success" intent — fixed same-session
+rather than filed as a follow-up. Recording the close into the graph then surfaced a second, unrelated
+bug: `maude kg record-log` ENOENTs in every repo-namespaced kgai store (this one included) because the
+temp-staging filename never sanitized the `/` that `scopedSlug()` puts in every slug — fixed with a
+regression test that reproduces the exact failure. **The lesson worth keeping:** in this Syncthing,
+multi-session repo, a plan's own task list can go stale from work landing outside `/flow:execute`'s
+checkpoint loop — check `git log -- <files the plan names>` before trusting it.
 
 _2026-08-10:_ **"The cloud copy matches your desktop" CLOSED + archived — the remaining five faults
 of the desktop↔cloud sync RCA (fixes 4–8, after 1–3's self-renewing link).** The drift had one root:
@@ -274,3 +295,7 @@ _Older:_ `feature-kgai-ecosystem-integration` (2026-07-28). Two follow-ups need 
 
 The pre-migration file (930 KB, 88 progress blocks + 127 history rows) is preserved verbatim at
 `.ai/archive/state/STATE-pre-kgai-2026-07-28.md`; all of it is in the graph as dated `milestone:` nodes.
+
+## Loaded skills (skill-loader)
+
+- 2026-08-12 (feature-canvas-render-performance): React/browser-render perf + Tauri WKWebView + motion — covered by built-ins (`web-perf`, `flow:motion-rules`, core React expertise); no terminal-skills fetch needed.

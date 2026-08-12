@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-11T15:24:51.342Z",
+  "generated": "2026-08-12T09:24:24.345Z",
   "currentPhase": null,
   "phases": [
     {
@@ -780,6 +780,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/archive/feature-enhanced-video-editing.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-fast-video-export",
+      "title": "Feature: Fast, correct video export",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-fast-video-export.md",
       "archived": true,
       "phaseKey": null
     },
@@ -1972,13 +1983,13 @@
       "phaseKey": null
     },
     {
-      "id": "feature-fast-video-export",
-      "title": "Feature: Fast, correct video export",
+      "id": "feature-canvas-render-performance",
+      "title": "Feature: Canvas render performance — smooth pan/zoom on large canvases",
       "status": "planned",
       "shipTarget": null,
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-fast-video-export.md",
+      "planPath": ".ai/plans/feature-canvas-render-performance.md",
       "archived": false,
       "phaseKey": null
     },
