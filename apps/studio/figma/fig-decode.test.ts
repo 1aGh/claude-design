@@ -554,6 +554,97 @@ describe('A8/F5 — the schema cannot choose which REST field a value lands in',
   });
 });
 
+describe('silent-wrongness sweep — a hostile file must not produce a plausible tree', () => {
+  test('a non-finite transform component REFUSES instead of defaulting to the identity', () => {
+    const defs = baseDefs();
+    defs.push({
+      name: 'Matrix',
+      kind: 1,
+      fields: [
+        ['m00', -5, false, 0],
+        ['m01', -5, false, 0],
+        ['m02', -5, false, 0],
+        ['m10', -5, false, 0],
+        ['m11', -5, false, 0],
+        ['m12', -5, false, 0],
+      ],
+    });
+    defs[2].fields.push(['transform', 4, false, 12]);
+
+    // Kiwi float: 4 LE bytes, exponent rotated into the low byte. Encode NaN.
+    // Zero and denormals collapse to a SINGLE 0 byte — writing four desyncs
+    // the stream, which is how this test first failed.
+    const enc = (f: number) => {
+      const dv = new DataView(new ArrayBuffer(4));
+      dv.setFloat32(0, f, true);
+      let bits = dv.getUint32(0, true);
+      bits = ((bits >>> 23) | (bits << 9)) >>> 0;
+      if ((bits & 0xff) === 0) return [0];
+      return [bits & 0xff, (bits >>> 8) & 0xff, (bits >>> 16) & 0xff, (bits >>> 24) & 0xff];
+    };
+    const w = new W();
+    w.varuint(6).varuint(1);
+    w.varuint(1).varuint(0).varuint(0);
+    w.varuint(4).varuint(1);
+    w.varuint(5).str('Document');
+    w.varuint(12);
+    for (const v of [Number.NaN, 0, 0, 0, 1, 0]) for (const b of enc(v)) w.byte(b);
+    w.varuint(0).varuint(0);
+
+    // Defaulting NaN to 1 would place the node plausibly and silently.
+    expect(() => decodeFigArchive(hostileArchive(defs, w.out), { fileKey: KEY })).toThrow(
+      /not a finite number/
+    );
+  });
+
+  test('an internal-only node with children prunes the subtree, it does not orphan them', () => {
+    // The fixtures' internal canvas is childless, which is why dropping such
+    // nodes before parentage was resolved looked safe. It is not: the children
+    // became orphans and a legitimate file was refused.
+    const defs = baseDefs();
+    defs.unshift({
+      name: 'ParentIndex',
+      kind: 2,
+      fields: [
+        ['guid', 1, false, 1],
+        ['position', -6, false, 2],
+      ],
+    });
+    defs[1].fields = [
+      ['sessionID', -4, false, 0],
+      ['localID', -4, false, 0],
+    ];
+    defs[3].fields = [
+      ['guid', 1, false, 1],
+      ['parentIndex', 0, false, 3],
+      ['type', 2, false, 4],
+      ['name', -6, false, 5],
+      ['internalOnly', -1, false, 142],
+    ];
+    defs[4].fields = [['nodeChanges', 3, true, 6]];
+
+    const w = new W();
+    w.varuint(6).varuint(3);
+    // root
+    w.varuint(1).varuint(0).varuint(0).varuint(4).varuint(1).varuint(5).str('Document').varuint(0);
+    // internal child of root
+    w.varuint(1).varuint(0).varuint(1);
+    w.varuint(3).varuint(1).varuint(0).varuint(0).varuint(2).str('a').varuint(0);
+    w.varuint(4).varuint(4).varuint(5).str('Internal').varuint(142).byte(1).varuint(0);
+    // grandchild of the internal node
+    w.varuint(1).varuint(0).varuint(2);
+    w.varuint(3).varuint(1).varuint(0).varuint(1).varuint(2).str('a').varuint(0);
+    w.varuint(4).varuint(4).varuint(5).str('Buried').varuint(0);
+    w.varuint(0);
+
+    const { document, report } = decodeFigArchive(hostileArchive(defs, w.out), { fileKey: KEY });
+    expect(report.internalNodesSkipped).toBe(2); // the node AND its descendant
+    const names: string[] = [];
+    walkNodes(document.root, (n) => names.push(n.name));
+    expect(names).toEqual(['Document']);
+  });
+});
+
 // ── Fuzz corpus — mandatory for a parser fed untrusted bytes ────────────────
 
 describe('fuzz — mutated real archives never crash the process', () => {

@@ -226,16 +226,31 @@ function obj(v: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
+/**
+ * ABSENT is not the same as NaN. A missing `transform` legitimately means the
+ * identity, but a component that is PRESENT and non-finite is a crafted or
+ * corrupt file: defaulting it to the identity yields plausible-but-wrong
+ * geometry with no error signal, which is the exact failure D3 exists to
+ * prevent (and the same shape as the A4 float trap). Refuse instead.
+ */
+function component(v: unknown, fallback: number, name: string): number {
+  if (v === undefined) return fallback;
+  const n = num(v);
+  if (n === undefined)
+    throw new FigDecodeError(`transform component ${name} is not a finite number`);
+  return n;
+}
+
 function matrixOf(v: unknown): Matrix {
   const m = obj(v);
   if (!m) return IDENTITY;
   return {
-    m00: num(m.m00) ?? 1,
-    m01: num(m.m01) ?? 0,
-    m02: num(m.m02) ?? 0,
-    m10: num(m.m10) ?? 0,
-    m11: num(m.m11) ?? 1,
-    m12: num(m.m12) ?? 0,
+    m00: component(m.m00, 1, 'm00'),
+    m01: component(m.m01, 0, 'm01'),
+    m02: component(m.m02, 0, 'm02'),
+    m10: component(m.m10, 0, 'm10'),
+    m11: component(m.m11, 1, 'm11'),
+    m12: component(m.m12, 0, 'm12'),
   };
 }
 
@@ -386,7 +401,6 @@ function rebuildTree(changes: unknown[]): RebuildResult {
 
   const byId = new Map<string, Record<string, unknown>>();
   const order: string[] = [];
-  let internalSkipped = 0;
 
   for (const entry of changes) {
     const change = obj(entry);
@@ -394,12 +408,10 @@ function rebuildTree(changes: unknown[]): RebuildResult {
     const id = guidOf(change.guid);
     if (!id) throw new FigDecodeError('a node change has no usable guid');
     if (byId.has(id)) throw new FigDecodeError(`duplicate node guid ${id}`);
-    // Figma's own hidden page. Dropping it is a vocabulary decision, not a
-    // framing one, so it degrades and is reported rather than refusing.
-    if (change.internalOnly === true) {
-      internalSkipped++;
-      continue;
-    }
+    // Internal-only nodes are NOT removed here. Dropping them before parentage
+    // is resolved would orphan their children and refuse a legitimate file —
+    // the fixtures' internal canvas happens to be childless, which is why this
+    // looked safe. They are pruned as whole subtrees during the walk instead.
     byId.set(id, change);
     order.push(id);
   }
@@ -443,6 +455,16 @@ function rebuildTree(changes: unknown[]): RebuildResult {
   const unmapped = new Map<string, number>();
   const onStack = new Set<string>();
   let nodeCount = 0;
+  let internalSkipped = 0;
+
+  /** Count a pruned internal subtree so the report says how much was dropped. */
+  const countSubtree = (id: string, seen: Set<string>): number => {
+    if (seen.has(id)) return 0;
+    seen.add(id);
+    let n = 1;
+    for (const kid of childIds.get(id) ?? []) n += countSubtree(kid, seen);
+    return n;
+  };
 
   const build = (id: string, parentAbsolute: Matrix, depth: number): Record<string, unknown> => {
     // Cycle detection. A→B→A would otherwise recurse until the stack dies.
@@ -471,13 +493,26 @@ function rebuildTree(changes: unknown[]): RebuildResult {
 
     const kids = childIds.get(id);
     if (kids?.length) {
-      node.children = kids.map((kid) => build(kid, absolute, depth + 1));
+      const kept: Array<Record<string, unknown>> = [];
+      for (const kid of kids) {
+        // Prune Figma's internal-only nodes as WHOLE SUBTREES here, where the
+        // parentage is already resolved, rather than dropping them up front.
+        if (byId.get(kid)?.internalOnly === true) {
+          internalSkipped += countSubtree(kid, new Set());
+          continue;
+        }
+        kept.push(build(kid, absolute, depth + 1));
+      }
+      if (kept.length > 0) node.children = kept;
     }
 
     onStack.delete(id);
     return node;
   };
 
+  if (byId.get(roots[0])?.internalOnly === true) {
+    throw new FigDecodeError('the document root is marked internal-only');
+  }
   const root = build(roots[0], IDENTITY, 0);
   return { root, unmapped, internalSkipped, nodeCount };
 }

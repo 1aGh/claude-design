@@ -110,8 +110,11 @@ Two doors gated on the same avoidable cause is a pattern, not an accident.
 
 So the ZIP layer is **ours too** — `figma/fig-zip.ts`, a narrow reader over
 `node:zlib` that understands precisely the archive Figma writes and **refuses
-everything else** (see D3). No zip64, no encryption, no data descriptors, no
-multi-disk, no streaming central-directory recovery. We need three entries by
+everything else** (see D3). No zip64, no encryption, no multi-disk, no
+streaming central-directory recovery. (**Corrected at implementation:** data
+descriptors ARE allowed — Figma's exporter sets that flag, and this draft's
+"no data descriptors" would have refused every real file. Harmless because
+sizes and CRC come from the central directory.) We need three entries by
 exact name from a single known producer; a general ZIP implementation is surface
 we would own forever for no gain.
 
@@ -465,6 +468,14 @@ supplies the schema, not just the data.**
 | **F3** MED | Decoded objects are keyed by schema field names. `o["__proto__"] = v` does **not** pollute `Object.prototype`, but it *does* set that node's prototype to attacker data, yielding phantom inherited `type`/`name`/`characters`. `isPollutingKey` runs in `normalizeDocument` — **after** these objects exist | Build every decoded object with `Object.create(null)`. (Phase-7 F6, same class, recurring.) |
 | **F4** MED | Tree rebuild from `parentIndex` is a **second** recursion; D4's depth cap bounds only Kiwi decoding. A→B→A stack-overflows | Cycle detection in the rebuild, single-root assertion, explicit refusal for orphans and duplicate guids. |
 | **F5** MED | If the REST-shaped mapping copies decoded keys generically, the schema chooses which REST field each value lands in (`absoluteBoundingBox`, `characters`, `children`) | Map from a **hardcoded** list of expected `NodeChange` field names. Never iterate decoded keys. |
+
+A post-implementation code-level pass added two more, both fixed and tested:
+**F7** — a PRESENT-but-non-finite transform component silently fell back to the
+identity, placing a node plausibly with no error signal (the A4 trap reached
+deliberately); absent still defaults, non-finite now refuses. **F8** — pruning
+internal-only nodes before parentage was resolved orphaned their children and
+refused legitimate files; both fixtures' internal canvas is childless, which is
+why it looked safe. Subtrees are pruned during the walk instead.
 
 Residual 3 above ("new code on untrusted bytes") is **reclassified** — F1–F5 are
 its concrete instances, each fixable now rather than lived with.
