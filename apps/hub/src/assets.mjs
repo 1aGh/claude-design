@@ -419,6 +419,29 @@ export function parseCheckoutAssetPath(pathname) {
  * surface that does not exist).
  */
 export function checkoutAssetRel(rel) {
+  const parts = checkoutRelShape(rel);
+  if (!parts) return null;
+  if (!parts.includes('assets')) return null;
+  const last = parts[parts.length - 1];
+  const dot = last.lastIndexOf('.');
+  if (dot < 0) return null;
+  if (!CHECKOUT_ASSET_EXTS.has(last.slice(dot + 1).toLowerCase())) return null;
+  return rel;
+}
+
+/**
+ * The SEGMENT shape rules alone — relative, bounded, every component
+ * charset-safe and starting alphanumeric (which is what keeps all DDR-115
+ * runtime state — `_history/`, `_chat/`, `_comments/`, `_untrusted/` — out
+ * without a rule naming it). Returns the split parts, or null.
+ *
+ * Extracted from `checkoutAssetRel` so a hub read lane that admits NON-asset
+ * paths (the tokens-CSS lane in studio-manifest.mjs) judges shape by the exact
+ * same rules as the asset write surface — the asset-specific `assets`-segment
+ * and binary-extension requirements stay layered on top in `checkoutAssetRel`,
+ * where the write route needs them.
+ */
+export function checkoutRelShape(rel) {
   if (typeof rel !== 'string') return null;
   if (!rel || rel.length > 512) return null;
   // biome-ignore lint/suspicious/noControlCharactersInRegex: refusing them is the point.
@@ -426,20 +449,12 @@ export function checkoutAssetRel(rel) {
   if (rel.startsWith('/') || rel.includes('\\') || /^[A-Za-z]:/.test(rel)) return null;
   const parts = rel.split('/');
   if (parts.length < 2 || parts.length > 8) return null;
-  let hasAssetsSeg = false;
-  for (let i = 0; i < parts.length; i++) {
-    const p = parts[i];
+  for (const p of parts) {
     if (!p || p === '.' || p === '..') return null;
     if (!/^[A-Za-z0-9][A-Za-z0-9 ._-]*$/.test(p)) return null;
     if (/ $/.test(p)) return null;
-    if (p === 'assets') hasAssetsSeg = true;
   }
-  if (!hasAssetsSeg) return null;
-  const last = parts[parts.length - 1];
-  const dot = last.lastIndexOf('.');
-  if (dot < 0) return null;
-  if (!CHECKOUT_ASSET_EXTS.has(last.slice(dot + 1).toLowerCase())) return null;
-  return rel;
+  return parts;
 }
 
 /**

@@ -21,7 +21,7 @@
 // Every value is a capability from `role-matrix.mjs` — that is what makes the
 // role model ONE table rather than two that agree today.
 
-import { checkoutAssetRel } from './assets.mjs';
+import { checkoutAssetRel, checkoutRelShape } from './assets.mjs';
 import { CAPABILITIES, can } from './role-matrix.mjs';
 
 /** Methods that cannot change anything. */
@@ -303,6 +303,53 @@ function designAssetLane(pathname) {
 }
 
 /**
+ * The design-system tokens-CSS read lane — `/<designRoot>/…/*.css`.
+ *
+ * Reported 2026-08-13 (same day, same family as the asset lane above): the
+ * inspector's Variables tab was empty on every cloud session — "No color
+ * tokens", "No match" — while the desktop showed the full set. The client
+ * fetches each DS's tokens CSS from the MAIN origin
+ * (`/${designRel}/${ds.tokensCssRel}`, `useAllDsTokens` in client/app.jsx);
+ * the asset lane refuses it — `.css` is deliberately outside
+ * `CHECKOUT_ASSET_EXTS` so the asset PUT can never overwrite a stylesheet, and
+ * a tokens file has no `assets` segment — so the default-closed `classify`
+ * answered 404 and the shell had zero tokens. (Canvases still rendered styled:
+ * the canvas ORIGIN serves designRoot files through its own `isCanvasSafe`
+ * lane, which is why only the shell UI went blind.)
+ *
+ * Same shape discipline as the asset lane — `checkoutRelShape` is the shared
+ * home for the segment rules (charset-safe, starts-alphanumeric ⇒ DDR-115
+ * runtime state excluded, no traversal, depth/length caps) — with the
+ * extension pinned to exactly `.css`. `CHECKOUT_ASSET_EXTS` itself must NOT
+ * grow `.css`: that set also gates the WRITE surface, and this lane is
+ * read-only by construction (`classify` grants it no unsafe capability).
+ *
+ * Exposure: any `.css` under designRoot becomes readable to authenticated
+ * project members on the main origin — the same bytes the canvas origin
+ * already serves to the same people, so no new trust boundary is crossed.
+ *
+ * @returns {string | null} the matched prefix, or null when this is not one.
+ */
+function designTokensLane(pathname) {
+  const root = (process.env.MAUDE_DESIGN_ROOT ?? '.design').replace(/^\/+|\/+$/g, '');
+  if (!root) return null;
+  const prefix = `/${root}/`;
+  if (!pathname.startsWith(prefix)) return null;
+  let rel = pathname.slice(prefix.length);
+  try {
+    rel = decodeURIComponent(rel);
+  } catch {
+    return null;
+  }
+  const parts = checkoutRelShape(rel);
+  if (!parts) return null;
+  const last = parts[parts.length - 1];
+  const dot = last.lastIndexOf('.');
+  if (dot < 1) return null;
+  return last.slice(dot + 1).toLowerCase() === 'css' ? prefix : null;
+}
+
+/**
  * Classify one request.
  *
  * @returns {{ capability: string, matched: string } | { capability: null, matched: string | null }}
@@ -317,7 +364,7 @@ export function classify(method, pathname) {
   // Read-only by construction: an unsafe method here yields a null capability
   // with a non-null `matched`, which `decide` reports as a METHOD refusal —
   // the same shape every other read-only prefix produces.
-  const design = designAssetLane(pathname);
+  const design = designAssetLane(pathname) ?? designTokensLane(pathname);
   if (design) return { capability: safe ? 'read' : null, matched: design };
   let best = null;
   for (const rule of STUDIO_PREFIXES) {

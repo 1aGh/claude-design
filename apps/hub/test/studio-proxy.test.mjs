@@ -1156,3 +1156,44 @@ test('the lane forwards assets and nothing else', async () => {
     assert.equal(response.statusCode, 404, pathname);
   }
 });
+
+// ---------------------------------------- the DS tokens-CSS read lane
+
+// Reported 2026-08-13 (same family, hours later): the inspector's Variables
+// tab was empty in every cloud session while the desktop showed the full token
+// set — the client fetches each DS's tokens CSS from the main origin and the
+// asset lane refuses `.css` by design. The reported path (alligators'
+// `tokensCssRel`) is one of the cases by name, so a future narrowing of the
+// lane fails loudly on the thing a person actually saw.
+test('a DS tokens CSS GET is forwarded to the studio', async () => {
+  const { proxy, forwarded } = makeProxy();
+  const response = fakeResponse();
+  await proxy.handle({
+    request: { headers: {}, url: '/.design/system/alligators/colors_and_type.css' },
+    response,
+    pathname: '/.design/system/alligators/colors_and_type.css',
+    method: 'GET',
+    session: { email: 'v@b.c', role: 'viewer' },
+  });
+  assert.equal(forwarded.length, 1, 'a viewer must be able to read the DS tokens CSS');
+});
+
+test('the tokens lane forwards css and nothing else — and never a write', async () => {
+  for (const { pathname, method } of [
+    { pathname: '/.design/ui/Home.tsx', method: 'GET' }, // canvas SOURCE
+    { pathname: '/.design/config.json', method: 'GET' }, // project config
+    { pathname: '/.design/_history/ui-home/tokens.css', method: 'GET' }, // DDR-115
+    { pathname: '/.design/system/alligators/colors_and_type.css', method: 'PUT' },
+  ]) {
+    const { proxy, forwarded } = makeProxy();
+    const response = fakeResponse();
+    await proxy.handle({
+      request: { headers: {}, url: pathname },
+      response,
+      pathname,
+      method,
+      session: { email: 'o@b.c', role: 'owner' },
+    });
+    assert.equal(forwarded.length, 0, `${method} ${pathname}`);
+  }
+});

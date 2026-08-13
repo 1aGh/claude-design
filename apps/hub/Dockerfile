@@ -241,10 +241,21 @@ COPY --from=studio-build /build/maude-server /app/maude-server
 COPY --from=studio-build /build/bundle-manifest.json /app/bundle-manifest.json
 COPY --from=canvas-deps /canvas/node_modules /maude/node_modules
 # The engine's own source — the sandbox runs it as SOURCE (Bun reads TypeScript
-# natively). No pre-built bundles, no sample media, no sticker packs, no tests.
-COPY --exclude=dist --exclude=media --exclude=stickers --exclude=test \
+# natively). No pre-built bundles, no tests. `stickers/` and `media/` DO ship:
+# the manifest declares `/_stickers/`, `/_api/stickers` and `/_media/` as
+# read-safe, and excluding the payload behind an open lane is how the cloud
+# StickerPicker showed "No stickers bundled" for every tenant (RCA 2026-08-13,
+# .ai/logs/rca/issue-cloud-studio-parity-stickers-and-ds-variables.md).
+COPY --exclude=dist --exclude=test \
      --exclude=e2e --exclude=node_modules \
      apps/studio /maude/apps/studio
+# Fail the BUILD, not the tenant: a future exclude (or a context that lost the
+# packs) must never again produce an image whose sticker/media routes serve an
+# empty directory.
+RUN test -n "$(find /maude/apps/studio/stickers -mindepth 2 -maxdepth 2 -name manifest.json -print -quit)" \
+ || (echo "hub image: no sticker packs under apps/studio/stickers — the /_stickers lane would serve nothing" >&2; exit 1)
+RUN test -f /maude/apps/studio/media/intro.mp4 \
+ || (echo "hub image: apps/studio/media/intro.mp4 missing — the /_media lane would serve nothing" >&2; exit 1)
 # What the SERVER reads off disk, taken FROM THE BUILD STAGE — not from the
 # build context. This is E1 being taken seriously rather than described: the
 # bytes that were hashed into `bundle-manifest.json` and the bytes that get

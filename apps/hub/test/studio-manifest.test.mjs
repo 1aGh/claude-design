@@ -256,3 +256,61 @@ test('a percent-encoded traversal is decoded before it is judged', () => {
     false
   );
 });
+
+// ── The design-system tokens-CSS read lane ───────────────────────────────────
+//
+// Reported 2026-08-13: the inspector's Variables tab was empty in every cloud
+// session ("No color tokens" / "No match") while the desktop showed the full
+// set. The client fetches each DS's tokens CSS from the MAIN origin
+// (`/.design/system/<ds>/colors_and_type.css`); the asset lane refuses it —
+// no `assets` segment, and `.css` is deliberately outside the binary-only
+// extension set that guards the WRITE surface — so the default-closed manifest
+// answered 404. These pin the lane: same segment shape rules as the asset
+// lane, extension pinned to `.css`, read-only.
+
+test('a DS tokens CSS is readable — the inspector variables lane', () => {
+  // The reported path, by name (alligators' tokensCssRel).
+  assert.deepEqual(decide('GET', '/.design/system/alligators/colors_and_type.css', 'viewer'), {
+    allow: true,
+    capability: 'read',
+  });
+  // The skeleton default per-DS path shape travels the same lane.
+  assert.equal(decide('GET', '/.design/system/ds/core/tokens.css', 'viewer').allow, true);
+});
+
+test('the tokens lane is css-only — it is still not a repository browser', () => {
+  for (const p of [
+    '/.design/ui/Home.tsx', // canvas SOURCE
+    '/.design/config.json', // project config
+    '/.design/ui/home.meta.json', // canvas layout sidecar
+    '/.design/system/ds/README.md', // DS prose
+    '/.design/system/ds/tokens.css.bak', // extension must be the FINAL suffix
+  ]) {
+    assert.equal(decide('GET', p, 'owner').allow, false, p);
+  }
+});
+
+test('runtime state stays invisible to the tokens lane too', () => {
+  // DDR-115 again: a segment must start alphanumeric, so `_history/` &co.
+  // never match even when the file inside is a stylesheet.
+  for (const p of [
+    '/.design/_history/ui-home/tokens.css',
+    '/.design/_untrusted/hub-supplied.css',
+    '/.design/_canvas-state/slug.view.css',
+  ]) {
+    assert.equal(decide('GET', p, 'owner').reason, 'unclassified', p);
+  }
+});
+
+test('the tokens lane is READ-ONLY — no method writes through it', () => {
+  const v = decide('PUT', '/.design/system/ds/core/tokens.css', 'owner');
+  assert.equal(v.allow, false);
+  assert.equal(v.reason, 'method');
+});
+
+test('a percent-encoded traversal cannot reach a css outside designRoot', () => {
+  assert.equal(
+    decide('GET', '/.design/system/%2e%2e/%2e%2e/secrets/creds.css', 'owner').allow,
+    false
+  );
+});
