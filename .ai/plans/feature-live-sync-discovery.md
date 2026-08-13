@@ -166,8 +166,8 @@ exhaustively testable.
 | 2 — per-slug release | ✅ done | `awarenessDetaches`/`statusDetaches` keyed by slug; `ConnectionMonitor.forgetDoc` added |
 | 3 — `adopt()`/`release()` | ✅ done | plus `rescanNow()` / `pullRemoteNow()` seams; `busy()` unaffected |
 | 4 — local discovery | ✅ done | `canvas-list-update` → full rescan → adopt/release. **Closes symptom B, and the cell half of A** |
-| 5 — hub roster doc | ⬜ deferred | the poll (T6) already closes the symptom on every hub version; roster is the latency upgrade |
-| 6 — remote discovery | ✅ done (poll lane) | 20 s `GET /api/documents` poll + `pullRemoteNow()`. **Closes the desktop half of symptom A** |
+| 5 — roster doc | ⬜ deferred, **and the design changed** — see below | the poll closes the symptom on every hub version; a roster only lowers latency |
+| 6 — remote discovery | ✅ done (poll lane) | 20 s `GET /api/documents` poll, an immediate poll when a socket returns, + `pullRemoteNow()`. **Closes the desktop half of symptom A** |
 | 7 — mid-session pull | ✅ done | reuses `pullTargets`/`admitPullTarget`/`relocatePulled`; `strictPullSlugs` keeps the fresh-link relaxation boot-only |
 | 8 — asset lane | ✅ done | PUSH half from a concurrent session (`scheduleAssetSweep` on `fs:any`); the RESTORE half is `hydrateAssets()` — see below |
 | 9 — honest refusals | 🔶 superseded in part | `syncRefusal()` closes the DESKTOP gates. The reported symptom was the hub refusing the route in a cell **on purpose** — real fix: hide the control (Task 10) |
@@ -195,6 +195,32 @@ Extra, not in the original task list:
 Still open from that RCA: §3 (a file 200 at the hub door and 404 at the studio door — needs a
 request-level observation from a signed-in cloud session) and the live half of §4 (a local
 annotation sidecar with content whose hub doc lane reads empty).
+
+### Task 5, revised: the roster needs no hub changes
+
+Task 5 below specifies a **hub-authored, read-only** roster document, justified by "a peer must
+never be able to write it — a peer-writable roster is a primitive for making another peer create
+files." **That justification is wrong, and it is the expensive half of the design.** A peer can
+already cause another peer to create a file by simply OPENING a document with that name: it lands in
+the hub's `documents` table, `GET /api/documents` lists it, and the receiver pulls it. Every such
+name goes through `slugFromDocName` → `pullTargets` → `admitPullTarget` either way. A peer-written
+roster therefore grants no authority a peer does not already have, so it needs no new hub surface,
+no new auth posture, and no change to the component DDR-054 designates untrusted to peers.
+
+The cheap shape, studio-side only:
+
+- every peer opens one extra document per project (`_roster`, namespaced like any other) and
+  publishes its own slug set in that document's **awareness**, not its content — ephemeral,
+  per-connection, disappears on disconnect, so there is no roster state to grow or garbage-collect;
+- observing it gives instant discovery of a canvas an ONLINE peer just made;
+- the existing `GET /api/documents` poll stays as the durable lane: a canvas made by a peer that has
+  since gone offline is on the hub, not in anyone's awareness.
+
+One wart to handle explicitly: `_roster` is a document, so the pull path would otherwise try to
+materialise it as `.design/_roster.tsx`. It has to be excluded in the listing diff and in the local
+scan — a small, named exception rather than a general "ignore underscore names" rule.
+
+Worth doing when the ≤20 s discovery latency is the complaint. It is not what was reported.
 
 ## Tasks
 
