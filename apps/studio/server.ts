@@ -685,6 +685,17 @@ ctx.bus.on('fs:json', (rel: string) => {
 // Connect starts syncing instead of printing "restart the studio server".
 const syncRuntime = createSyncSupervisor(ctx, collab ? { registry: collab.registry } : {});
 ctx.syncControl = syncRuntime;
+// A linked project that had NOTHING syncable at boot asks for one cycle the
+// moment it gains its first canvas — see the zero-canvas branch in
+// `sync/index.ts`. The runtime cannot cycle itself (the supervisor owns the
+// serialization), so it asks and this answers. Refused while a cycle is already
+// in flight, exactly like the Resync button.
+ctx.bus.on('sync:needs-restart', () => {
+  if (syncRuntime.busy()) return;
+  void syncRuntime.restart().catch((err) => {
+    console.error('[sync] first-canvas restart failed:', err);
+  });
+});
 try {
   await syncRuntime.start();
 } catch (err) {

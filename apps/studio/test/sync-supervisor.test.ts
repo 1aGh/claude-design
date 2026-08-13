@@ -74,6 +74,10 @@ function fakeRuntime(log: string[], id: string, size = 3): SyncRuntime {
     stop: async () => {
       log.push(`stop:${id}`);
     },
+    adopt: async () => 0,
+    release: async () => 0,
+    rescanNow: async () => {},
+    pullRemoteNow: async () => {},
     size: () => size,
     agentFor: () => undefined,
     status: () => null,

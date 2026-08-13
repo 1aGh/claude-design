@@ -25,6 +25,11 @@ import { stdin, stdout } from 'node:process';
 import { createInterface } from 'node:readline/promises';
 import { parseArgs } from '../lib/argv.mjs';
 import { lintConfig } from '../lib/config-lint.mjs';
+import {
+  describeGitignoreDrift,
+  findGitignoreDrift,
+  removeGitignoreDrift,
+} from '../lib/gitignore-drift.mjs';
 import { getHub } from '../lib/hubs-config.mjs';
 import { checkAll } from '../lib/preflight.mjs';
 import { detectQualityGates, detectStack } from '../lib/stack-detect.mjs';
@@ -172,6 +177,25 @@ export async function run({ args, pkgRoot }) {
     }
   }
 
+  // ── Gitignore drift: is git dropping VERSIONED design content? ───────────
+  // The one failure mode nothing else can see. A rule OUTSIDE the
+  // `# maude:begin`/`# maude:end` markers is invisible to the block writer, so
+  // a stale `.design/*.annotations.svg` — hand-copied years ago from a planning
+  // doc that predates DDR-115 — silently keeps every draw layer out of git
+  // while both UIs render it happily. See `lib/gitignore-drift.mjs`.
+  const gitignoreFsPath = resolve(repoRoot, '.gitignore');
+  const designRel = (() => {
+    try {
+      const dcfg = JSON.parse(readFileSync(designFsPath, 'utf8'));
+      return typeof dcfg.designRoot === 'string' && dcfg.designRoot ? dcfg.designRoot : '.design';
+    } catch {
+      return '.design';
+    }
+  })();
+  const gitignoreDrift = existsSync(gitignoreFsPath)
+    ? findGitignoreDrift(readFileSync(gitignoreFsPath, 'utf8'), designRel)
+    : [];
+
   // ── Summary ─────────────────────────────────────────────────────────────
   const hardDepsMissing = Object.values(depsByPlugin)
     .filter((r) => r.summary)
@@ -184,21 +208,43 @@ export async function run({ args, pkgRoot }) {
     schemaErrors,
     driftCount,
     qualityAdditions: additionsCount,
-    healthy: hardDepsMissing === 0 && schemaErrors === 0,
+    gitignoreDrift: gitignoreDrift.length,
+    // A HARD failure, not a warning. Every other doctor finding is about
+    // configuration that is merely suboptimal; this one means work the person
+    // can see on screen is not in their repository and will not survive a fresh
+    // clone. Silence about that is how it went unnoticed for a whole project.
+    healthy: hardDepsMissing === 0 && schemaErrors === 0 && gitignoreDrift.length === 0,
   };
 
   if (jsonMode) {
     process.stdout.write(
-      `${JSON.stringify({ deps: depsByPlugin, config: configReport, design: designReport, summary }, null, 2)}\n`
+      `${JSON.stringify(
+        {
+          deps: depsByPlugin,
+          config: configReport,
+          design: designReport,
+          gitignore: { path: gitignoreFsPath, designRel, drift: gitignoreDrift },
+          summary,
+        },
+        null,
+        2
+      )}\n`
     );
     process.exit(summary.healthy ? 0 : 1);
   }
 
-  printReport({ depsByPlugin, configReport, designReport, summary });
+  printReport({ depsByPlugin, configReport, designReport, gitignoreDrift, summary });
 
   // ── Fix path ────────────────────────────────────────────────────────────
   if (fix) {
-    await applyFixes({ repoRoot, configFsPath, depsByPlugin, configReport });
+    await applyFixes({
+      repoRoot,
+      configFsPath,
+      depsByPlugin,
+      configReport,
+      gitignoreFsPath,
+      gitignoreDrift,
+    });
   } else if (!summary.healthy) {
     process.stdout.write(
       '\nRun with --fix to: install missing deps (prompt per item), drop unknown keys, apply detected drift, add missing quality gates. Existing user values are NEVER overwritten.\n'
@@ -249,7 +295,7 @@ function usage() {
 `;
 }
 
-function printReport({ depsByPlugin, configReport, designReport, summary }) {
+function printReport({ depsByPlugin, configReport, designReport, gitignoreDrift, summary }) {
   process.stdout.write('maude doctor\n\n');
   for (const [name, env] of Object.entries(depsByPlugin)) {
     process.stdout.write(`  Dependencies (plugins/${name}):\n`);
@@ -340,6 +386,20 @@ function printReport({ depsByPlugin, configReport, designReport, summary }) {
     process.stdout.write('\n');
   }
 
+  // Gitignore drift — git is dropping content DDR-115 calls versioned.
+  if (gitignoreDrift?.length) {
+    process.stdout.write('  Gitignore (.gitignore):\n');
+    for (const line of describeGitignoreDrift(gitignoreDrift)) {
+      process.stdout.write(`    ✗ ${line}\n`);
+    }
+    process.stdout.write(
+      '    These rules sit OUTSIDE the `# maude:begin`/`# maude:end` block, so\n' +
+        '    re-running the writer cannot correct them. Work you can see in the UI\n' +
+        '    is not in your repository and will not survive a fresh clone.\n' +
+        '    `maude doctor --fix` removes exactly these lines, and nothing else.\n\n'
+    );
+  }
+
   const parts = [];
   if (summary.hardDepsMissing) parts.push(`${summary.hardDepsMissing} hard dep missing`);
   if (summary.schemaErrors)
@@ -350,11 +410,22 @@ function printReport({ depsByPlugin, configReport, designReport, summary }) {
     parts.push(
       `${summary.qualityAdditions} quality addition${summary.qualityAdditions === 1 ? '' : 's'}`
     );
+  if (summary.gitignoreDrift)
+    parts.push(
+      `${summary.gitignoreDrift} gitignore rule${summary.gitignoreDrift === 1 ? '' : 's'} dropping versioned content`
+    );
   if (parts.length === 0) parts.push('all clear');
   process.stdout.write(`  Summary: ${parts.join(', ')}.\n`);
 }
 
-async function applyFixes({ repoRoot, configFsPath, depsByPlugin, configReport }) {
+async function applyFixes({
+  repoRoot,
+  configFsPath,
+  depsByPlugin,
+  configReport,
+  gitignoreFsPath,
+  gitignoreDrift,
+}) {
   let configChanged = false;
 
   // ── Config edits ───────────────────────────────────────────────────────
@@ -458,6 +529,41 @@ async function applyFixes({ repoRoot, configFsPath, depsByPlugin, configReport }
         }
       }
       rl.close();
+    }
+  }
+
+  // ── Gitignore drift ─────────────────────────────────────────────────────
+  //
+  // The ONE fix in this command that edits a file the user hand-wrote, so it is
+  // the one that asks. Everything else `--fix` does is additive or confined to
+  // generated regions; this deletes lines from somebody's `.gitignore`. The
+  // prompt names each line, and a non-TTY (CI, a scripted spawn) is a decline —
+  // never an assumed yes.
+  if (gitignoreDrift?.length && gitignoreFsPath && existsSync(gitignoreFsPath)) {
+    process.stdout.write('\n--- Gitignore rules dropping VERSIONED design content ---\n');
+    for (const line of describeGitignoreDrift(gitignoreDrift)) {
+      process.stdout.write(`  ${line}\n`);
+    }
+    if (!stdin.isTTY) {
+      process.stdout.write(
+        '  skipped — non-interactive stdin. Re-run in a terminal, or delete the lines above by hand.\n'
+      );
+    } else {
+      const rl = createInterface({ input: stdin, output: stdout });
+      const ans = await rl.question(
+        `  Remove ${gitignoreDrift.length === 1 ? 'this line' : `these ${gitignoreDrift.length} lines`} from .gitignore? [y/N] `
+      );
+      rl.close();
+      if (/^y(es)?$/i.test((ans || '').trim())) {
+        const before = readFileSync(gitignoreFsPath, 'utf8');
+        writeFileSync(gitignoreFsPath, removeGitignoreDrift(before, gitignoreDrift), 'utf8');
+        process.stdout.write(
+          '  ✓ removed. The files are still untracked until you `git add` them —\n' +
+            '    `git status` will now show them for the first time.\n'
+        );
+      } else {
+        process.stdout.write('  skipped.\n');
+      }
     }
   }
 

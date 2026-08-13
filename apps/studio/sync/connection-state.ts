@@ -119,6 +119,16 @@ export interface ConnectionMonitor {
    *  `reason` (feature-sync-progress-modal) is the classification for an
    *  auth-rejected doc — our own vocabulary, ignored for other states. */
   noteDocState(slug: string, state: DocSyncState, reason?: string): void;
+  /**
+   * Drop every trace of a slug — its doc state, its rejection reason and its
+   * provider status.
+   *
+   * The counterpart to `noteDocState` for a canvas the runtime has RELEASED
+   * (deleted on disk, or moved out of a synced group). Without it a released
+   * canvas stays in the item list as a row that can never settle, and its stale
+   * provider status keeps voting in the session's online/offline derivation.
+   */
+  forgetDoc(slug: string): void;
   /** DDR-102 — real sync activity for a slug (reconcile done, hub-pushed flush
    *  applied): bumps `lastSyncAt` to now. */
   noteSyncActivity(slug: string): void;
@@ -420,6 +430,19 @@ export function createConnectionMonitor(opts: ConnectionMonitorOptions = {}): Co
       if (docState !== 'auth-rejected') docReasons.delete(slug);
       else if (reason !== undefined) docReasons.set(slug, reason);
       emit();
+    },
+
+    forgetDoc(slug) {
+      if (stopped) return;
+      // A released canvas must leave the counters, not linger as a `pending` row
+      // nothing will ever settle. `providerStatuses` is keyed by the same slug
+      // (see `noteProviderStatus`'s `providerId`), so it is dropped here too —
+      // otherwise a deleted canvas's last known status would keep voting in
+      // `deriveState` forever and could hold the whole session in `offline`.
+      const had = docStates.delete(slug);
+      docReasons.delete(slug);
+      const hadStatus = providerStatuses.delete(slug);
+      if (had || hadStatus) emit();
     },
 
     noteSyncActivity(slug) {

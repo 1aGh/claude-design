@@ -120,4 +120,14 @@ describe('the Resync control', () => {
   test('the note is sanitized too — server detail is still bounded text', () => {
     expect(PANEL).toContain("safeDetail(note, '')");
   });
+
+  test('it is ABSENT in the cloud — the hub refuses that route on purpose', () => {
+    // A cell's sync runtime serves the project to everyone in it, so cycling it
+    // is an operator action and the hub refuses the route (v0.60.2). The panel
+    // used to render the button regardless, so a cloud member could press a
+    // control that cannot work by design and got an error sentence for it.
+    // See `.ai/logs/rca/issue-cloud-assets-open-findings.md` §5.
+    expect(PANEL).toMatch(/\{!cloud && \(/);
+    expect(PANEL).toMatch(/cloud = null,/);
+  });
 });

@@ -93,6 +93,9 @@ export default function SyncPanel({
   status, // the live `sync:status` payload (never null while mounted)
   project, // display name for the header sentence (hub-supplied → safeName'd)
   groupPaths = [], // declared canvas-group paths, for row grouping
+  // Present exactly when the hub runs this studio (`/_config`'s `cloud` block);
+  // null on the desktop. Decides whether Resync is offered at all — see below.
+  cloud = null,
   resizing,
   onClose,
 }) {
@@ -190,17 +193,29 @@ export default function SyncPanel({
           <span className="gp-spacer" />
           {/* Resync re-runs the WHOLE sync — every canvas and every asset — so
               it lives in the header, not inside the assets section. It is
-              `syncControl.restart()`, the same cycle Connect performs. */}
-          <button
-            type="button"
-            className="sp-resync"
-            data-testid="sync-resync"
-            onClick={resync}
-            disabled={resyncing || cooling}
-            title="Re-check every canvas and asset against the workspace"
-          >
-            {resyncing ? 'Resyncing…' : 'Resync'}
-          </button>
+              `syncControl.restart()`, the same cycle Connect performs.
+
+              NOT IN THE CLOUD. On a cell the sync runtime belongs to the process
+              serving the project to EVERYONE, so restarting it is an operator
+              action, not a member's — the hub refuses the route there on
+              purpose (v0.60.2). Rendering the button anyway meant a cloud member
+              could press a control that cannot work by design and be handed an
+              error for it; the honest surface is its absence. Discovery is
+              continuous now, so nobody needs this button to pick up a new
+              canvas — it is a repair tool, and repairing a cell is the hub's
+              job. See `.ai/logs/rca/issue-cloud-assets-open-findings.md` §5. */}
+          {!cloud && (
+            <button
+              type="button"
+              className="sp-resync"
+              data-testid="sync-resync"
+              onClick={resync}
+              disabled={resyncing || cooling}
+              title="Re-check every canvas and asset against the workspace"
+            >
+              {resyncing ? 'Resyncing…' : 'Resync'}
+            </button>
+          )}
           <button type="button" className="gp-x" aria-label="Close" onClick={onClose}>
             ×
           </button>

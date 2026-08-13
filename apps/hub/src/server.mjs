@@ -53,7 +53,7 @@ import {
   verifyAdminAuth,
   writeAdminSecret,
 } from './admin-auth.mjs';
-import { createAssetSweeper } from './asset-lane.mjs';
+import { createAssetSweeper, hydrateAssets } from './asset-lane.mjs';
 import { handleAssetProbeRoute, handleAssetRoute, handleCheckoutAssetRoute } from './assets.mjs';
 import {
   handleAuthRoutes,
@@ -121,7 +121,7 @@ const HUB_VERSION = readOwnVersion();
  * never a path. Safe on the unauthenticated /health, which is the point — when
  * you need this, authentication is usually the thing that is broken.
  */
-const bootReport = { seed: null, history: null, assets: null };
+const bootReport = { seed: null, history: null, assets: null, assetsRestored: null };
 const DOCUMENT_NAME_REGEX = /^[A-Za-z0-9._/-]{1,256}$/;
 const PUBLIC_URL_REGEX = /^https?:\/\/[^\s;'"<>`]+$/;
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -1127,6 +1127,18 @@ export function createHub(config = {}) {
       bootReport.assets = summary;
     },
     /**
+     * Record the bucket → checkout restore for /health.
+     *
+     * Kept SEPARATE from `assets` rather than folded into it: the two lanes
+     * fail for different reasons and the operator question is different. A
+     * non-zero `restored` is the visible symptom of an ephemeral checkout, and
+     * it is the number that says how close this cell came to serving a project
+     * full of grey boxes.
+     */
+    recordAssetHydrate(summary) {
+      bootReport.assetsRestored = summary;
+    },
+    /**
      * Hand the boot sequence's sweeper to the proxy's post-upload hook (B3).
      *
      * It is built in `runAsMain()`, where the storage credentials resolve, and
@@ -1601,6 +1613,11 @@ function workspaceStatus() {
     ...(bootReport.seed ? { seed: bootReport.seed } : {}),
     ...(bootReport.history ? { history: bootReport.history } : {}),
     ...(bootReport.assets ? { assets: bootReport.assets } : {}),
+    // Present only when this boot actually had to refill the checkout from the
+    // bucket — i.e. when the instance came up with assets missing. Absent is
+    // the healthy steady state; a non-zero `restored` is the operator's signal
+    // that the checkout is being lost across migrations and how badly.
+    ...(bootReport.assetsRestored ? { assetsRestored: bootReport.assetsRestored } : {}),
     // D5 — A STUCK GIT LOCK IS INVISIBLE UNTIL THE HISTORY IS ALREADY GONE.
     // `index.lock` is how git says "an operation is in flight"; left behind by
     // a killed process it means every subsequent commit fails, so the cell
@@ -2284,7 +2301,30 @@ async function runAsMain() {
       const designRoot = join(repoDir, process.env.MAUDE_DESIGN_ROOT ?? '.design');
       s3Source
         .config()
-        .then((s3) => {
+        .then(async (s3) => {
+          // HYDRATE FIRST, THEN MIRROR — the order is the whole point.
+          //
+          // A cell's checkout is ephemeral and `rehydrate.mjs` restores it from
+          // the newest BACKUP GENERATION, so every asset that reached the bucket
+          // after that generation is simply gone from disk on the next wake. The
+          // sweep below only ever went checkout → bucket, so it had nothing to
+          // say about that: it would find the file absent, upload nothing, and
+          // report success while the studio served 404s for it. Measured at
+          // 53–58 of ~95 assets missing immediately after a rollout, three times
+          // in one afternoon, with a ~388 MB re-upload from a laptop as the only
+          // repair anyone had.
+          //
+          // Hydrating first also makes the sweep that follows cheap and correct:
+          // the gaps are filled, so it HEADs them, finds them present, and skips
+          // — instead of racing a restore it cannot see.
+          const restored = await hydrateAssets({ designRoot, s3 });
+          if (restored.restored.length || restored.failed.length) {
+            built.recordAssetHydrate({
+              restored: restored.restored.length,
+              present: restored.present,
+              failed: restored.failed.length,
+            });
+          }
           const sweeper = createAssetSweeper({ designRoot, s3 });
           built.setAssetSweeper(sweeper);
           return sweeper.sweepAll();

@@ -1,0 +1,406 @@
+// Continuous discovery — a canvas that appears AFTER boot still syncs.
+//
+// THE REGRESSION THIS PINS. `createSyncRuntime.start()` enumerated the project
+// once and opened one provider per canvas it found. Nothing joined the runtime
+// afterwards, so a canvas created a second later never synced, never got a
+// cursor, and — on the cell, where the same runtime is what publishes a canvas
+// to the hub at all — never even became a Hocuspocus document, which is why it
+// could not be discovered by the desktop either. The only cure was a full
+// runtime cycle (the Resync button, or relaunching the app), and the direction
+// asymmetry the user reported was purely an artifact of which end restarts more
+// often.
+//
+// The assertions below are deliberately about the WIRE, not about the runtime's
+// bookkeeping: a canvas is adopted when its content reaches the peer doc. A test
+// that only checked `size()` would pass on a runtime that opened a provider and
+// never connected it.
+
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Awareness } from 'y-protocols/awareness';
+import * as Y from 'yjs';
+
+import type { Context, DevServerConfig } from '../context.ts';
+import { createBus } from '../context.ts';
+import { createSyncRuntime, type SyncProvider } from '../sync/index.ts';
+
+let dir: string;
+let cfgPathEnv: string | undefined;
+let realFetch: typeof fetch;
+
+beforeEach(() => {
+  dir = mkdtempSync(join(tmpdir(), 'sync-incremental-'));
+  cfgPathEnv = process.env.HUBS_CONFIG_PATH;
+  process.env.HUBS_CONFIG_PATH = join(dir, 'hubs.json');
+  realFetch = globalThis.fetch;
+});
+
+afterEach(() => {
+  globalThis.fetch = realFetch;
+  if (cfgPathEnv === undefined) delete process.env.HUBS_CONFIG_PATH;
+  else process.env.HUBS_CONFIG_PATH = cfgPathEnv;
+  rmSync(dir, { recursive: true, force: true });
+});
+
+/** The hub's `GET /api/documents` — names and byte counts, never a path. */
+function hubListing(documents: Array<{ name: string; bytes: number }>): void {
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    if (String(input).endsWith('/api/documents')) {
+      return new Response(JSON.stringify({ documents }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    return new Response('nope', { status: 404 });
+  }) as typeof fetch;
+}
+
+function writeHubsConfig(url: string, token: string): void {
+  const cfgPath = process.env.HUBS_CONFIG_PATH;
+  if (!cfgPath) throw new Error('HUBS_CONFIG_PATH not set by beforeEach');
+  writeFileSync(cfgPath, JSON.stringify({ hubs: { [url]: { token, linkedAt: 1 } } }));
+  chmodSync(cfgPath, 0o600);
+}
+
+function makeCtx(linkedHub?: DevServerConfig['linkedHub']): Context {
+  const designRoot = join(dir, 'design');
+  mkdirSync(join(designRoot, 'ui'), { recursive: true });
+  mkdirSync(join(designRoot, '_comments'), { recursive: true });
+  return {
+    cfg: {
+      name: 'test',
+      projectLabel: null,
+      designRoot: 'design',
+      canvasGroups: [{ label: 'Canvases', path: 'ui' }],
+      rootClass: 'app',
+      themeDefault: 'dark',
+      tokensCssRel: 'system/colors.css',
+      teamAccentDefault: null,
+      handoffTargets: [],
+      newCanvasDir: 'ui',
+      newComponentDir: 'ui/components',
+      linkedHub,
+      _source: 'defaults',
+    },
+    projectLabel: 'test',
+    paths: {
+      repoRoot: dir,
+      designRel: 'design',
+      designRoot,
+      serverInfoFile: join(designRoot, '_server.json'),
+      activeFile: join(designRoot, '_active.json'),
+      commentsDir: join(designRoot, '_comments'),
+      canvasStateDir: join(designRoot, '_canvas-state'),
+      historyDir: join(designRoot, '_history'),
+      tokensUrlRel: 'design/system/colors.css',
+      systemDirRel: 'system',
+    },
+    bus: createBus(),
+  } as Context;
+}
+
+/** Cross-linked in-memory provider pair, mirroring `sync-runtime.test.ts`. */
+function inMemoryProviderFactory(): {
+  factory: (args: { url: string; token: string; documentName: string }) => SyncProvider;
+  peerOf: (name: string) => Y.Doc | undefined;
+  destroyed: string[];
+} {
+  const peers = new Map<string, Y.Doc>();
+  const destroyed: string[] = [];
+  const TRANSPORT = Symbol('test-transport');
+
+  function factory(args: {
+    url: string;
+    token: string;
+    documentName: string;
+    document?: Y.Doc;
+  }): SyncProvider {
+    const ownsLocal = !args.document;
+    const local = args.document ?? new Y.Doc();
+    const peer = new Y.Doc();
+    local.on('update', (update: Uint8Array, origin: unknown) => {
+      if (origin === TRANSPORT) return;
+      Y.applyUpdate(peer, update, TRANSPORT);
+    });
+    peer.on('update', (update: Uint8Array, origin: unknown) => {
+      if (origin === TRANSPORT) return;
+      Y.applyUpdate(local, update, TRANSPORT);
+    });
+    peers.set(args.documentName, peer);
+    return {
+      document: local,
+      awareness: new Awareness(local),
+      async onceSynced() {},
+      destroy() {
+        destroyed.push(args.documentName);
+        if (ownsLocal) local.destroy();
+        peer.destroy();
+      },
+    };
+  }
+
+  return { factory, peerOf: (name) => peers.get(name), destroyed };
+}
+
+/** Write a canvas the way the API does — body first, sidecar second. */
+function writeCanvas(ctx: Context, name: string, body: string): void {
+  writeFileSync(join(ctx.paths.designRoot, 'ui', `${name}.html`), body);
+}
+
+const HUB = 'https://hub.example.com';
+
+describe('continuous canvas discovery', () => {
+  test('a canvas created after start() is adopted and reaches the hub', async () => {
+    writeHubsConfig(HUB, 'mau_test');
+    const ctx = makeCtx({ url: HUB, linkedAt: 1 });
+    writeCanvas(ctx, 'screen', '<button>boot</button>');
+
+    const { factory, peerOf } = inMemoryProviderFactory();
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory });
+    await runtime?.start();
+    expect(runtime?.size()).toBe(1);
+    // The canvas that did NOT exist at boot.
+    expect(peerOf('ui-later')).toBeUndefined();
+
+    writeCanvas(ctx, 'later', '<section>made after boot</section>');
+    // The nudge the server's canvas-list watcher emits. Its payload is
+    // deliberately ignored by the runtime (it is attacker-controlled), so an
+    // empty one must still work — the rescan is the authority.
+    ctx.bus.emit('canvas-list-update', { action: 'added', rel: 'ui/later.html' });
+    await runtime?.rescanNow();
+    await new Promise((res) => setTimeout(res, 20));
+
+    expect(runtime?.size()).toBe(2);
+    expect(peerOf('ui-later')?.getText('html').toString()).toBe(
+      '<section>made after boot</section>'
+    );
+    // The boot canvas is untouched by the adoption.
+    expect(peerOf('ui-screen')?.getText('html').toString()).toBe('<button>boot</button>');
+
+    await runtime?.stop();
+  });
+
+  test('adopting is idempotent — a second rescan opens no second provider', async () => {
+    writeHubsConfig(HUB, 'mau_test');
+    const ctx = makeCtx({ url: HUB, linkedAt: 1 });
+    writeCanvas(ctx, 'screen', '<button>boot</button>');
+
+    const { factory } = inMemoryProviderFactory();
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory });
+    await runtime?.start();
+
+    writeCanvas(ctx, 'later', '<p>x</p>');
+    await runtime?.rescanNow();
+    await runtime?.rescanNow();
+    await runtime?.rescanNow();
+
+    // Two providers on one document would give this peer two votes in every
+    // merge and double every echo.
+    expect(runtime?.size()).toBe(2);
+    expect(await runtime?.adopt([])).toBe(0);
+
+    await runtime?.stop();
+  });
+
+  test('a deleted canvas is released — its provider is destroyed, the rest survive', async () => {
+    writeHubsConfig(HUB, 'mau_test');
+    const ctx = makeCtx({ url: HUB, linkedAt: 1 });
+    writeCanvas(ctx, 'a', '<i>a</i>');
+    writeCanvas(ctx, 'b', '<i>b</i>');
+    writeCanvas(ctx, 'c', '<i>c</i>');
+
+    const { factory, peerOf, destroyed } = inMemoryProviderFactory();
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory });
+    await runtime?.start();
+    expect(runtime?.size()).toBe(3);
+
+    rmSync(join(ctx.paths.designRoot, 'ui', 'b.html'));
+    await runtime?.rescanNow();
+
+    expect(runtime?.size()).toBe(2);
+    expect(destroyed).toEqual(['ui-b']);
+    // The survivors are still live, not collateral damage of the release.
+    peerOf('ui-a')?.getText('html'); // touch — must not throw on a destroyed doc
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'c.html'), '<i>c2</i>');
+    ctx.bus.emit('fs:any', 'ui/c.html');
+    // Past the fs reader's own per-path quiet window (DEFAULT_QUIET_MS).
+    await new Promise((res) => setTimeout(res, 400));
+    expect(peerOf('ui-c')?.getText('html').toString()).toBe('<i>c2</i>');
+
+    await runtime?.stop();
+  });
+
+  test('a released canvas leaves the status payload instead of hanging as pending', async () => {
+    writeHubsConfig(HUB, 'mau_test');
+    const ctx = makeCtx({ url: HUB, linkedAt: 1 });
+    writeCanvas(ctx, 'a', '<i>a</i>');
+    writeCanvas(ctx, 'b', '<i>b</i>');
+
+    const { factory } = inMemoryProviderFactory();
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory });
+    await runtime?.start();
+    await new Promise((res) => setTimeout(res, 20));
+
+    rmSync(join(ctx.paths.designRoot, 'ui', 'b.html'));
+    await runtime?.rescanNow();
+
+    const items = (runtime?.status()?.items ?? []) as Array<{ slug: string }>;
+    expect(items.map((i) => i.slug)).not.toContain('ui-b');
+
+    await runtime?.stop();
+  });
+
+  test('a canvas created on the HUB after boot is pulled down without a restart', async () => {
+    // Symptom A of the 2026-08-13 report, in one test: a canvas made in the
+    // cloud never reached the desktop, because the desktop asked the hub what
+    // the project contained exactly once — at connect — and never again.
+    writeHubsConfig(HUB, 'mau_test');
+    const ctx = makeCtx({ url: HUB, linkedAt: 1 });
+    writeCanvas(ctx, 'screen', '<button>boot</button>');
+    hubListing([{ name: 'ui-screen', bytes: 10 }]);
+
+    const { factory } = inMemoryProviderFactory();
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory });
+    await runtime?.start();
+    expect(runtime?.size()).toBe(1);
+
+    // Somebody makes a canvas in the cloud. The hub now lists a document this
+    // peer has never heard of, and has no file for.
+    hubListing([
+      { name: 'ui-screen', bytes: 10 },
+      { name: 'ui-fromcloud', bytes: 20 },
+    ]);
+    await runtime?.pullRemoteNow();
+    await new Promise((res) => setTimeout(res, 20));
+
+    expect(runtime?.size()).toBe(2);
+    expect(runtime?.agentFor('ui-fromcloud')).toBeDefined();
+    // The panel tells the person what arrived, so "nothing happened" is not the
+    // user-visible outcome of a successful pull.
+    expect(runtime?.status()?.pulled?.names).toContain('ui-fromcloud');
+
+    await runtime?.stop();
+  });
+
+  test('a second poll does not re-pull what the first one already attached', async () => {
+    writeHubsConfig(HUB, 'mau_test');
+    const ctx = makeCtx({ url: HUB, linkedAt: 1 });
+    writeCanvas(ctx, 'screen', '<button>boot</button>');
+    hubListing([
+      { name: 'ui-screen', bytes: 10 },
+      { name: 'ui-fromcloud', bytes: 20 },
+    ]);
+
+    const { factory } = inMemoryProviderFactory();
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory });
+    await runtime?.start();
+    const afterBoot = runtime?.size();
+
+    await runtime?.pullRemoteNow();
+    await runtime?.pullRemoteNow();
+    await runtime?.pullRemoteNow();
+
+    // Boot already pulled it; the poll must recognise its own work.
+    expect(runtime?.size()).toBe(afterBoot);
+
+    await runtime?.stop();
+  });
+
+  test('an unreachable hub is not an error — the poll degrades, sync continues', async () => {
+    writeHubsConfig(HUB, 'mau_test');
+    const ctx = makeCtx({ url: HUB, linkedAt: 1 });
+    writeCanvas(ctx, 'screen', '<button>boot</button>');
+    globalThis.fetch = (async () => {
+      throw new Error('offline');
+    }) as typeof fetch;
+
+    const { factory } = inMemoryProviderFactory();
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory });
+    await runtime?.start();
+    // Must not throw, must not tear the runtime down.
+    await runtime?.pullRemoteNow();
+    expect(runtime?.size()).toBe(1);
+
+    await runtime?.stop();
+  });
+
+  test('a hub-named document may not escape the design root, mid-session either', async () => {
+    // The boot pull is guarded (`pullTargets` → `resolvePulledTarget` →
+    // `admitPullTarget`); the poll reaches the same guards through the same
+    // functions rather than a second copy of the decision.
+    writeHubsConfig(HUB, 'mau_test');
+    const ctx = makeCtx({ url: HUB, linkedAt: 1 });
+    writeCanvas(ctx, 'screen', '<button>boot</button>');
+
+    const { factory } = inMemoryProviderFactory();
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory });
+    await runtime?.start();
+
+    hubListing([
+      { name: 'ui-screen', bytes: 10 },
+      // Not a legal document name — refused before it can become a path.
+      { name: '../../etc/passwd', bytes: 1 },
+      { name: 'ui/../../escape', bytes: 1 },
+    ]);
+    await runtime?.pullRemoteNow();
+
+    expect(runtime?.size()).toBe(1);
+    await runtime?.stop();
+  });
+
+  test('an EMPTY linked project asks for a cycle when it gains its first canvas', async () => {
+    // The emptiest corner of the same bug. `start()` returns early when nothing
+    // is syncable — before the status store, the monitor or the fs reader exist
+    // — so the continuous-discovery block at the bottom is never reached, and a
+    // person who links a fresh project and then makes their first canvas would
+    // still be told to restart.
+    writeHubsConfig(HUB, 'mau_test');
+    const ctx = makeCtx({ url: HUB, linkedAt: 1 });
+
+    const asked: unknown[] = [];
+    ctx.bus.on('sync:needs-restart', (p) => asked.push(p));
+
+    const { factory } = inMemoryProviderFactory();
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory });
+    await runtime?.start();
+    expect(runtime?.size()).toBe(0);
+    expect(asked).toHaveLength(0);
+
+    writeCanvas(ctx, 'first', '<main>the first one</main>');
+    await runtime?.rescanNow();
+
+    // It asks — cycling is the supervisor's to do (server.ts wires this).
+    expect(asked).toHaveLength(1);
+
+    await runtime?.stop();
+  });
+
+  test('adopt() refuses after stop() — nothing joins a dead runtime', async () => {
+    writeHubsConfig(HUB, 'mau_test');
+    const ctx = makeCtx({ url: HUB, linkedAt: 1 });
+    writeCanvas(ctx, 'a', '<i>a</i>');
+
+    const { factory } = inMemoryProviderFactory();
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory });
+    await runtime?.start();
+    await runtime?.stop();
+
+    writeCanvas(ctx, 'b', '<i>b</i>');
+    await runtime?.rescanNow();
+    expect(runtime?.size()).toBe(0);
+    expect(
+      await runtime?.adopt([
+        {
+          slug: 'ui-b',
+          html: join(ctx.paths.designRoot, 'ui', 'b.html'),
+          comments: join(ctx.paths.commentsDir, 'ui-b.json'),
+          annotations: join(ctx.paths.designRoot, 'ui-b.annotations.svg'),
+          meta: join(ctx.paths.designRoot, 'ui', 'b.meta.json'),
+          css: join(ctx.paths.designRoot, 'ui', 'b.css'),
+        },
+      ])
+    ).toBe(0);
+  });
+});

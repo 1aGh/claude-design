@@ -14474,6 +14474,7 @@ function App() {
         <SyncPanel
           status={syncStatus}
           project={cfg?.cloud?.projectName || project}
+          cloud={cfg?.cloud ?? null}
           groupPaths={(groups || []).map((g) => g.path).filter(Boolean)}
           resizing={resizingFor('sync')}
           onClose={() => setSyncPanelOpen(false)}

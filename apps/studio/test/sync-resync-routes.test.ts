@@ -71,6 +71,49 @@ describe('a foreign Host header is refused (the DNS-rebinding guard)', () => {
   }
 });
 
+// A refusal the panel cannot explain is a refusal the person cannot act on.
+// Every 403 here used to be plain text, and `SyncPanel.jsx` renders a fixed
+// "Resync could not start." for any response carrying no `detail` — so the two
+// gates above, a dead supervisor and a genuine bug all produced one causeless
+// sentence. These assert the answer is machine-readable AND human-readable; the
+// gates themselves are asserted, unchanged, above.
+describe('every refusal explains itself', () => {
+  for (const route of ROUTES) {
+    test(`a cross-origin POST ${route} answers JSON with a reason and a detail`, async () => {
+      const res = await fetch(`${base}${route}`, {
+        method: 'POST',
+        headers: { Origin: 'https://evil.example' },
+      });
+      expect(res.headers.get('content-type')).toContain('application/json');
+      const json = (await res.json()) as { ok: boolean; reason?: string; detail?: string };
+      expect(json.ok).toBe(false);
+      expect(json.reason).toBe('cross-origin');
+      expect(json.detail && json.detail.length > 0).toBe(true);
+    });
+
+    test(`a rebinding-Host POST ${route} answers JSON with a reason and a detail`, async () => {
+      const res = await fetch(`${base}${route}`, {
+        method: 'POST',
+        headers: { Host: 'sync.127.0.0.1.nip.io' },
+      });
+      const json = (await res.json()) as { ok: boolean; reason?: string; detail?: string };
+      expect(json.ok).toBe(false);
+      expect(json.reason).toBe('untrusted-host');
+      expect(json.detail && json.detail.length > 0).toBe(true);
+    });
+  }
+
+  test('a refusal names no request internals back to the caller', async () => {
+    // The presented Origin/Host is diagnostic and belongs in the server log —
+    // reflecting it would hand a canvas iframe a way to read back what it sent.
+    const res = await fetch(`${base}/_api/sync/resync`, {
+      method: 'POST',
+      headers: { Origin: 'https://evil.example' },
+    });
+    expect(await res.text()).not.toContain('evil.example');
+  });
+});
+
 describe('method gating', () => {
   for (const route of ROUTES) {
     test(`GET ${route} is 405 — resync is a write`, async () => {

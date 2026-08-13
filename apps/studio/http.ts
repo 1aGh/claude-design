@@ -1194,6 +1194,28 @@ export function createHttp(
   const gitJson = (r: { status: number; json: unknown }) =>
     Response.json(r.json, { status: r.status, headers: { 'Cache-Control': 'no-store' } });
 
+  /**
+   * A refused `/_api/sync/*` call, in the shape the Sync panel can actually
+   * render: `{ ok: false, reason, detail }`.
+   *
+   * The panel falls back to a fixed string when a response carries no `detail`,
+   * so every plain-text refusal on these routes surfaced as the same causeless
+   * "Resync could not start." — the failure the 2026-08-13 report ends on. The
+   * gate decisions are untouched; only the answer is.
+   *
+   * The `detail` is written for a person and names no request internals: which
+   * origin or host was presented is in the server log, where it is diagnostic,
+   * not in a body a canvas iframe could read back.
+   */
+  const syncRefusal = (reason: 'cross-origin' | 'untrusted-host', what: string): Response => {
+    console.warn(`[sync] ${reason} request to a sync control route — refused.`);
+    const detail =
+      reason === 'cross-origin'
+        ? `${what} from Maude itself, not from inside a canvas.`
+        : `${what} from the Maude app or this machine's own browser tab.`;
+    return gitJson({ status: 403, json: { ok: false, reason, detail } });
+  };
+
   // Shared by /_api/export and /_api/export-jobs — build the exportJobs.enqueue()
   // args from a validated request body. `inspect.state` is the live `_active.json`;
   // readers narrow to the resolver's subset locally so the export pipeline doesn't
@@ -2476,10 +2498,19 @@ export function createHttp(
     // the person's own hub, and a way to spend their rate-limit budget.
     '/_api/sync/resync': async (req: Request) => {
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
-      if (!sameOriginWrite(req))
-        return new Response('cross-origin write rejected', { status: 403 });
+      // REFUSALS ANSWER IN JSON, WITH A REASON.
+      //
+      // These were plain-text 403s, so the panel — which reads `json.detail` and
+      // falls back to a fixed string — rendered every one of them as "Resync
+      // could not start.", a sentence naming no cause and offering no next step.
+      // A person hitting the gate legitimately (a canvas iframe, a stale tab,
+      // the wrong host) got the same six words as a person hitting a bug, and
+      // neither could tell which they had. The GATES are unchanged: what a
+      // refusal SAYS is not a security property, and saying nothing was never
+      // protecting anything.
+      if (!sameOriginWrite(req)) return syncRefusal('cross-origin', 'Resync must be started');
       if (!isTrustedRequestHost(req))
-        return new Response('local request required', { status: 403 });
+        return syncRefusal('untrusted-host', 'Resync must be started');
       const control = ctx.syncControl;
       if (!control) {
         return gitJson({
@@ -2507,10 +2538,9 @@ export function createHttp(
       // is. Safe by construction — uploads are idempotent and the hub writes
       // temp-then-rename, so no half-written asset can survive this.
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
-      if (!sameOriginWrite(req))
-        return new Response('cross-origin write rejected', { status: 403 });
+      if (!sameOriginWrite(req)) return syncRefusal('cross-origin', 'Cancelling must be started');
       if (!isTrustedRequestHost(req))
-        return new Response('local request required', { status: 403 });
+        return syncRefusal('untrusted-host', 'Cancelling must be started');
       const cancelled = ctx.syncControl?.current?.()?.cancelAssetSweep() ?? false;
       return gitJson({ status: 200, json: { ok: true, cancelled } });
     },

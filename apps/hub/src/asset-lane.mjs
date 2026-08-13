@@ -27,12 +27,19 @@
 // path (`graphics/camo-bg.png`). Mirroring only hashes left a hosted project
 // rendering without its own brand.
 
-import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from 'node:fs';
+import { dirname, join, resolve, sep } from 'node:path';
 
 import { assetObjectKey, assetPrefixFromEnv } from './asset-key.mjs';
 import { parseAssetPath } from './assets.mjs';
-import { headObject, putObject } from './s3.mjs';
+import { getObject, headObject, listObjects, putObject } from './s3.mjs';
 
 /**
  * Eligibility is decided by the PROXY, not by a second regex here.
@@ -139,6 +146,140 @@ export async function sweepAssets({ designRoot, s3, log = console, deps = {}, pr
   if (result.uploaded.length || result.failed.length) {
     log.log?.(
       `[assets] mirrored ${result.uploaded.length}, skipped ${result.skipped}` +
+        (result.failed.length ? `, ${result.failed.length} failed` : '')
+    );
+  }
+  return result;
+}
+
+/**
+ * The names a bucket listing offers this checkout, given what is already on disk.
+ *
+ * Pure — the caller supplies the listing and the disk. Separated from the IO so
+ * the two decisions that matter (what is servable, what is missing) can be
+ * exhaustively tested without a bucket or a filesystem.
+ *
+ * @param {string[]} keys       object keys, scope prefix ALREADY stripped
+ * @param {Set<string>} onDisk  asset-relative names present in the checkout
+ */
+export function missingFromCheckout(keys, onDisk = new Set()) {
+  return [...new Set(keys.filter((k) => servable(k) && !onDisk.has(k)))].sort();
+}
+
+/**
+ * Strip a tenant scope from an object key, or null when it is not ours.
+ *
+ * A listing is filtered server-side by prefix, but the answer is still remote
+ * input and this is the step that turns it into a PATH. A key that does not
+ * start with the exact scope we asked for is refused rather than trimmed —
+ * "close enough" is how one tenant's media ends up in another's checkout.
+ */
+export function assetNameFromKey(key, prefix = '') {
+  const scope = prefix ? `${prefix}/assets/` : 'assets/';
+  const k = String(key ?? '');
+  return k.startsWith(scope) ? k.slice(scope.length) : null;
+}
+
+/**
+ * Refill the checkout from the bucket — the direction that did not exist.
+ *
+ * THE FAILURE. A cell's checkout is EPHEMERAL: the platform migrates instances
+ * whenever it likes, and `rehydrate.mjs` restores the working set from the
+ * newest backup generation. Assets that reached the bucket AFTER that
+ * generation are not in it. `sweepAssets` above mirrors checkout → bucket and
+ * there was no reverse, so those bytes existed in exactly one place the cell
+ * could not read. The studio serves the CHECKOUT, so every canvas photograph
+ * became a grey box.
+ *
+ * Measured on Brno Alligators, 2026-08-13: immediately after a fleet rollout,
+ * 53–58 of ~95 bucket-class assets were 404 in the checkout and 200 in the
+ * bucket. Three times in one afternoon. The only repair anyone had was
+ * re-uploading ~388 MB from a laptop — a client fixing a server's disk, for
+ * bytes the server already had.
+ *
+ * IT NEVER OVERWRITES. Only files ABSENT from the checkout are written. The
+ * bucket is a backup of this checkout, not an authority over it: a
+ * content-addressed name means identical bytes either way, and a
+ * path-addressed one (`graphics/camo-bg.png`) could legitimately be NEWER on
+ * disk — a local edit that has not been swept up yet. Filling gaps is the whole
+ * job; anything more is a way to lose work.
+ *
+ * NEVER THROWS. A cell that refuses to boot because one GET 502'd is worse than
+ * a cell with one missing image, and the next boot retries for free.
+ *
+ * @returns {Promise<{ restored: string[], present: number, failed: {key:string,reason:string}[], listed: number }>}
+ */
+export async function hydrateAssets({ designRoot, s3, log = console, deps = {}, prefix }) {
+  const scope = prefix ?? assetPrefixFromEnv();
+  const list = deps.listObjects ?? listObjects;
+  const get = deps.getObject ?? getObject;
+  const result = { restored: [], present: 0, failed: [], listed: 0 };
+  if (!s3) return result;
+
+  const dir = join(designRoot, 'assets');
+  let objects;
+  try {
+    objects = await list(s3, scope ? `${scope}/assets/` : 'assets/');
+  } catch (err) {
+    log.warn?.(`[assets] could not list the bucket to hydrate: ${err.message}`);
+    return result;
+  }
+  result.listed = objects.length;
+
+  const names = objects.map((o) => assetNameFromKey(o.key, scope)).filter((n) => n !== null);
+  const onDisk = new Set(listRecursive(dir));
+  result.present = names.filter((n) => onDisk.has(n)).length;
+  const missing = missingFromCheckout(names, onDisk);
+  if (missing.length === 0) return result;
+
+  log.log?.(
+    `[assets] ${missing.length} asset(s) are in the bucket and missing from the checkout — restoring.`
+  );
+
+  const root = resolve(dir);
+  for (const name of missing) {
+    // Belt and braces at a CREATE. `servable()` already refuses `..`, a leading
+    // slash, a backslash and anything outside the bounded charset — but this is
+    // the one place a remote-controlled string becomes a file, so the last word
+    // belongs to the filesystem, not to a regex.
+    const abs = resolve(dir, name);
+    if (abs !== root && !abs.startsWith(root + sep)) {
+      result.failed.push({ key: name, reason: 'resolves outside the assets directory' });
+      continue;
+    }
+    try {
+      const body = await get(s3, assetObjectKey(name, scope));
+      if (!body) {
+        // Listed a moment ago, gone now. Not an error worth shouting about.
+        result.failed.push({ key: name, reason: 'not found in the bucket' });
+        continue;
+      }
+      if (body.length > MAX_ASSET_BYTES) {
+        result.failed.push({ key: name, reason: `over ${MAX_ASSET_BYTES} bytes` });
+        continue;
+      }
+      // Re-check under the write, not only under the plan: a concurrent sweep,
+      // a git checkout or a desktop push may have landed the real file while
+      // this loop was awaiting an earlier GET.
+      if (existsSync(abs)) {
+        result.present += 1;
+        continue;
+      }
+      mkdirSync(dirname(abs), { recursive: true });
+      // Temp + rename, so a crash mid-restore cannot leave a truncated image
+      // that later looks like a real asset to every reader in the process.
+      const tmp = `${abs}.hydrating-${process.pid}`;
+      writeFileSync(tmp, body);
+      renameSync(tmp, abs);
+      result.restored.push(name);
+    } catch (err) {
+      result.failed.push({ key: name, reason: err.message });
+    }
+  }
+
+  if (result.restored.length || result.failed.length) {
+    log.log?.(
+      `[assets] restored ${result.restored.length} from the bucket, ${result.present} already present` +
         (result.failed.length ? `, ${result.failed.length} failed` : '')
     );
   }

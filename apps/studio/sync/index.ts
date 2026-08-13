@@ -40,6 +40,7 @@ import {
   createConnectionMonitor,
   type ProviderStatus,
 } from './connection-state.ts';
+import { createRescanScheduler, diffCanvasSet, type RescanScheduler } from './discovery.ts';
 import { createDocNameResolver } from './doc-name.ts';
 import { createEchoGuard } from './echo-guard.ts';
 import { createFsReader, type FsReader } from './fs-mirror.ts';
@@ -123,6 +124,26 @@ export const RENEW_MIN_INTERVAL_MS = 60_000;
 export const RENEW_MAX_WITHOUT_PROGRESS = 3;
 /** F2 — setTimeout clamps delays above this (2^31-1) to 1 ms, turning a
  *  far-future expiry into a tight renewal loop. Clamp before we hand it over. */
+/**
+ * Quiet window before a canvas-set change triggers a rescan.
+ *
+ * Slightly longer than `canvas-list-watch.ts`'s own 150 ms, on purpose: a create
+ * writes the `.tsx` and then the `.meta.json`, and attaching in the gap would
+ * sync a canvas whose sidecar is about to say `syncable: false`. Letting the
+ * cheaper watcher settle first means the rescan sees a finished canvas.
+ */
+export const DISCOVERY_DEBOUNCE_MS = 400;
+
+/**
+ * How often a peer re-asks the hub what the project contains.
+ *
+ * The floor is set by what a person would call "immediately" for a canvas
+ * somebody else just made, and the ceiling by the fact that this runs per peer,
+ * per project, forever. 20 s is a name-and-size listing — a few hundred bytes —
+ * and it is the ONLY discovery lane a hub of any version can serve.
+ */
+export const REMOTE_POLL_MS = 20_000;
+
 export const MAX_TIMER_DELAY_MS = 2_147_483_647;
 /** F2 — a hub-reported `expiresAt` further out than this is not believed for
  *  scheduling (cloud cells issue ≤ 12 h; a month is already implausible). */
@@ -198,6 +219,33 @@ export type ProviderFactory = (args: {
 export interface SyncRuntime {
   start(): Promise<void>;
   stop(): Promise<void>;
+  /**
+   * Take ownership of canvases discovered AFTER `start()` — the incremental
+   * half of `start()`'s boot set. Returns how many were newly attached
+   * (already-attached slugs are skipped, not re-opened).
+   *
+   * Deliberately NOT a restart: a restart re-links every canvas in the project
+   * and costs a full handshake fan-out, which is why the Resync button is
+   * rate-limited. Adoption is per-canvas and cheap, so it can run on every
+   * discovery without the user authorising anything.
+   */
+  adopt(canvases: readonly CanvasDescriptor[]): Promise<number>;
+  /** Give up canvases that left the project. Returns how many were released. */
+  release(slugs: readonly string[]): Promise<number>;
+  /**
+   * Run the local canvas rescan immediately instead of waiting for the debounce.
+   *
+   * The discovery loop is event-driven (`canvas-list-update`); this is the seam
+   * tests use to make it deterministic, and the hook a caller can use to force a
+   * check without paying for a full runtime cycle the way Resync does.
+   */
+  rescanNow(): Promise<void>;
+  /**
+   * Ask the hub what the project contains right now, and pull down anything
+   * this peer does not have — the remote half of `rescanNow`, off the poll's
+   * schedule. Test seam, and the hook behind a manual "check now".
+   */
+  pullRemoteNow(): Promise<void>;
   /** Number of active per-canvas agents. */
   size(): number;
   /** Test inspection — get the agent for a slug if one was created. */
@@ -447,8 +495,31 @@ export function createSyncRuntime(
   // per run (chosen by useSharedDoc).
   const projections = new Map<string, DocProjection>();
   const providers = new Map<string, SyncProvider>();
-  const awarenessDetaches: Array<() => void> = [];
-  const statusDetaches: Array<() => void> = [];
+  // KEYED BY SLUG, not flat arrays.
+  //
+  // These used to be two bare lists drained only by `stop()`, which was right
+  // while the canvas set was fixed at boot. Continuous discovery makes a canvas
+  // leave the runtime on its own (deleted on disk, moved out of a synced group),
+  // and releasing one means running exactly ITS closures — a flat list cannot
+  // say which those are. `stop()` still drains everything, in the same two
+  // phases and the same order as before.
+  const awarenessDetaches = new Map<string, Array<() => void>>();
+  const statusDetaches = new Map<string, Array<() => void>>();
+  const noteDetach = (map: Map<string, Array<() => void>>, slug: string, fn: () => void): void => {
+    const list = map.get(slug);
+    if (list) list.push(fn);
+    else map.set(slug, [fn]);
+  };
+  const runDetaches = (map: Map<string, Array<() => void>>, slug: string): void => {
+    for (const detach of map.get(slug) ?? []) {
+      try {
+        detach();
+      } catch {
+        /* best-effort — registry teardown also clears bridges on destroyAll */
+      }
+    }
+    map.delete(slug);
+  };
   // Phase 9.2 (DDR-064) — slugs pinned in the registry because a provider is
   // attached to their shared doc; released on stop(). Empty unless sharedDoc.
   const pinnedSlugs = new Set<string>();
@@ -593,6 +664,101 @@ export function createSyncRuntime(
    *  one. Cleared on stop() so a teardown can't fire a reload for a runtime
    *  that no longer exists. */
   const announceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  /**
+   * Assigned by `start()`. Adopting a canvas needs the boot closure (the
+   * journal, the history, the status store, `connectCanvas`), so the function
+   * is built there and published here for `adopt()` to reach. Null in solo mode
+   * and after `stop()`.
+   */
+  let attachOne: ((canvas: CanvasDescriptor, boot: boolean) => Promise<void>) | null = null;
+
+  /** Continuous local discovery — armed at the end of `start()`, torn down in
+   *  `stop()`. See the block that creates it and `discovery.ts`. */
+  let discoveryRescan: RescanScheduler | null = null;
+  let discoveryUnsub: (() => void) | null = null;
+  /** Periodic remote-document poll — the hub-side half of discovery. */
+  let remotePollTimer: ReturnType<typeof setInterval> | null = null;
+  /** Assigned by `start()`; the seam `pullRemoteNow()` and tests reach. */
+  let remotePull: (() => Promise<void>) | null = null;
+  /** Every slug this run brought down, so the panel's "came down from the
+   *  project" list accumulates instead of being replaced by the latest batch. */
+  const everPulled = new Set<string>();
+
+  /**
+   * The LIVE descriptor set, by slug.
+   *
+   * `start()`'s `canvases` array is the BOOT set and stops being the truth the
+   * moment a canvas is adopted or released. The DDR-054 §3 F3 untrusted markers
+   * must describe what is actually attached — a marker naming a canvas that
+   * left, or silently omitting one that arrived, is the control pointing at a
+   * phantom. Descriptors are held BY REFERENCE: `relocatePulled` mutates them in
+   * place, and the map must see that.
+   */
+  const descriptors = new Map<string, CanvasDescriptor>();
+
+  /**
+   * Give up ONE canvas — the inverse of `attachOne`.
+   *
+   * Order is deliberate and is NOT `stop()`'s order. `stop()` unpins before it
+   * flushes because the whole process is going away and the rooms are being
+   * torn down anyway; here the room OUTLIVES the release, so the doc→file
+   * projection must flush FIRST and the pin is dropped last. Unpinning early
+   * would hand the room to the last-browser-leaves drop while the projector was
+   * still writing through it.
+   *
+   * The shared WebSocket is deliberately untouched: it belongs to the runtime,
+   * not to a canvas, and the next adopt will need it. Only `stop()` disposes it.
+   */
+  async function releaseOne(slug: string): Promise<boolean> {
+    const known = agents.has(slug) || projections.has(slug) || providers.has(slug);
+    if (!known) return false;
+    runDetaches(awarenessDetaches, slug);
+    runDetaches(statusDetaches, slug);
+    const agent = agents.get(slug);
+    if (agent) {
+      try {
+        await agent.flush();
+        agent.stop();
+      } catch {
+        /* best-effort */
+      }
+      agents.delete(slug);
+    }
+    const projection = projections.get(slug);
+    if (projection) {
+      try {
+        await projection.flush();
+        projection.stop();
+      } catch {
+        /* best-effort */
+      }
+      projections.delete(slug);
+    }
+    const provider = providers.get(slug);
+    if (provider) {
+      try {
+        provider.destroy();
+      } catch {
+        /* best-effort */
+      }
+      providers.delete(slug);
+    }
+    if (pinnedSlugs.delete(slug)) {
+      try {
+        opts.registry?.unpin?.(slug);
+      } catch {
+        /* best-effort */
+      }
+    }
+    descriptors.delete(slug);
+    // Drop the row too — a released canvas that stayed `pending` in the status
+    // payload would be a permanent "still syncing" the user can never clear.
+    monitor?.forgetDoc(slug);
+    rejectedPermanent.delete(slug);
+    rejectedReasons.delete(slug);
+    return true;
+  }
 
   async function start(): Promise<void> {
     if (started || stopped) return;
@@ -754,10 +920,27 @@ export function createSyncRuntime(
     // the carried path leaves every one of these reachable with no path at all.
     const admittedPulls = pulled.filter((t) => admitPullTarget(ctx, t.slug, t.bodyAbs));
     const pulledSlugs = new Set(admittedPulls.map((t) => t.slug));
+    /**
+     * Slugs pulled AFTER boot, which never get the fresh-link relaxation.
+     *
+     * `allowUndeclaredGroup` exists for exactly one moment: the first connect of
+     * a bare folder somebody just pointed at a project, which has declared no
+     * canvas groups and would otherwise refuse every incoming path. It closes as
+     * soon as one group is learned. A mid-session pull is not that moment — and
+     * because `relocatePulled` reads `pathOpts` at call time, a project that
+     * never learned a group would otherwise leave the relaxation open for every
+     * later arrival, which is an unbounded directory-creation primitive for the
+     * hub. Membership in this set overrides the flag, per canvas.
+     */
+    const strictPullSlugs = new Set<string>();
     const canvases = [
       ...localCanvases,
       ...admittedPulls.map((t) => descriptorFor(t.slug, t.bodyAbs)),
     ];
+    /**
+     * Seed the live descriptor set from the boot set — see `descriptors`.
+     */
+    for (const c of canvases) descriptors.set(c.slug, c);
     // T4.5 (DDR-054 §3 F3) — every syncable canvas can receive hub-pushed
     // content, so the whole set is untrusted Claude-context. Mark it (writes
     // `_untrusted/INDEX.json` + a managed `.claudeignore` block; clears both
@@ -781,8 +964,9 @@ export function createSyncRuntime(
     //
     // So it is written twice: once now (so the markers exist before any provider
     // is built) and once after the pulls settle, from the final descriptors.
+    // Reads the LIVE set, not the boot array — see `descriptors`.
     const markUntrusted = (): void => {
-      if (!cellPairing) writeUntrustedMarkers(ctx, canvases, linkedHub.url);
+      if (!cellPairing) writeUntrustedMarkers(ctx, [...descriptors.values()], linkedHub.url);
     };
     markUntrusted();
     if (canvases.length === 0) {
@@ -792,6 +976,31 @@ export function createSyncRuntime(
       // loudly: a warn, a `_sync.json` the CLI + browser banner read, and a bus
       // broadcast so open tabs render it immediately.
       surfaceNoSyncable(ctx, linkedHub.url, scan.tsxCount);
+      // A PROJECT WITH NOTHING IN IT YET IS STILL A PROJECT.
+      //
+      // This return happens before the status store, the monitor and the fs
+      // reader exist, so the continuous-discovery machinery at the bottom of
+      // start() is never reached — and a person who links an empty project and
+      // then makes their first canvas would be back to "nothing syncs until you
+      // restart", which is the whole bug, reached from its emptiest corner.
+      //
+      // A full cycle IS the right answer here and only here: there is no runtime
+      // state to preserve, and one is exactly what a first canvas needs. The
+      // supervisor owns cycling (it holds the serialization), so this asks
+      // rather than acts — see `server.ts`.
+      const watchForFirst = createRescanScheduler({
+        debounceMs: DISCOVERY_DEBOUNCE_MS,
+        onError: (err) => console.error('[sync] first-canvas watch failed:', err),
+        run: async () => {
+          if (stopped || opts.canvases) return;
+          const again = await scanCanvases(ctx);
+          if (admitCanvases(again.canvases, useSharedDoc).length === 0) return;
+          console.log('[sync] the project has its first syncable canvas — starting sync.');
+          ctx.bus.emit('sync:needs-restart');
+        },
+      });
+      discoveryRescan = watchForFirst;
+      discoveryUnsub = ctx.bus.on('canvas-list-update', () => watchForFirst.schedule());
       return;
     }
 
@@ -1314,7 +1523,9 @@ export function createSyncRuntime(
         resolve: path.resolve,
         sep: path.sep,
         realpath: realpathOfDeepestExisting,
-        allowUndeclaredGroup: pathOpts.allowUndeclaredGroup,
+        // The fresh-link relaxation is boot-only, per canvas — see
+        // `strictPullSlugs` for why reading `pathOpts` alone is not enough.
+        allowUndeclaredGroup: pathOpts.allowUndeclaredGroup && !strictPullSlugs.has(canvas.slug),
         onRefused: (reason) => pathOpts.onRefused(canvas.slug, reason),
       });
       if (!resolved) return;
@@ -1367,7 +1578,19 @@ export function createSyncRuntime(
       canvas: CanvasDescriptor,
       canvasPaths: import('./agent.ts').CanvasSyncPaths,
       document?: Y.Doc,
-      setup?: (provider: SyncProvider) => void
+      setup?: (provider: SyncProvider) => void,
+      /**
+       * Does this connect belong to the BOOT set?
+       *
+       * Only a boot connect may enqueue a `bootWaits` entry. The boot summary
+       * (`Promise.allSettled(bootWaits)`) is a one-shot report about the set the
+       * runtime opened at start; a canvas adopted later must never be able to
+       * join a list that has already been awaited — and, once discovery is
+       * continuous, an unbounded stream of them would grow that array for the
+       * life of the process. Defaults true so the re-probe path (which has
+       * always pushed) is byte-for-byte unchanged.
+       */
+      boot = true
     ): Promise<SyncProvider> => {
       const provider = await providerFactory({
         url: linkedHub.url,
@@ -1401,7 +1624,11 @@ export function createSyncRuntime(
 
       // Task 8 — feed this provider's WS status into the offline monitor.
       if (provider.onStatus) {
-        statusDetaches.push(provider.onStatus((s) => mon.noteProviderStatus(canvas.slug, s)));
+        noteDetach(
+          statusDetaches,
+          canvas.slug,
+          provider.onStatus((s) => mon.noteProviderStatus(canvas.slug, s))
+        );
       } else {
         // No status events (test stub) — treat as connected so the monitor
         // doesn't sit in the boot 'connecting' state forever.
@@ -1409,7 +1636,9 @@ export function createSyncRuntime(
       }
       // DDR-102 — classify + aggregate hub auth rejections.
       if (provider.onAuthFailed) {
-        statusDetaches.push(
+        noteDetach(
+          statusDetaches,
+          canvas.slug,
           provider.onAuthFailed(({ reason }) =>
             handleAuthFailure(canvas, canvasPaths, provider, reason)
           )
@@ -1419,7 +1648,11 @@ export function createSyncRuntime(
       // browser cursors relay cross-machine. No-op when the provider exposes
       // no awareness or no registry was passed (file-sync-only tests).
       if (opts.registry && provider.awareness) {
-        awarenessDetaches.push(opts.registry.attachHubAwareness(canvas.slug, provider.awareness));
+        noteDetach(
+          awarenessDetaches,
+          canvas.slug,
+          opts.registry.attachHubAwareness(canvas.slug, provider.awareness)
+        );
       }
       // Cold-start reconcile fires once the provider has hub state.
       const synced = provider.onceSynced().then(() => {
@@ -1429,12 +1662,25 @@ export function createSyncRuntime(
         }
         return runHandleSynced(canvas, canvasPaths, provider);
       });
-      bootWaits.push(settleWait(synced));
+      if (boot) bootWaits.push(settleWait(synced));
       return provider;
     };
 
-    for (const canvas of canvases) {
+    /**
+     * Take ownership of ONE canvas: pin its shared doc if there is one, open a
+     * provider, and build the disk handler behind it.
+     *
+     * Extracted from the boot loop so the SAME path can be reached after boot —
+     * document discovery is continuous, not a snapshot taken at `start()`, and a
+     * canvas that appears later must be adopted by exactly this code rather than
+     * by a second, drifting copy of it. Every branch below is the boot
+     * behaviour, unchanged; `boot` only decides whether the connect joins the
+     * one-shot boot summary.
+     */
+    const attachCanvas = async (canvas: CanvasDescriptor, boot: boolean): Promise<void> => {
       try {
+        // By reference — `relocatePulled` mutates this object in place.
+        descriptors.set(canvas.slug, canvas);
         // Phase 9.2 (DDR-064) — when sharedDoc is on, the provider attaches to
         // the collab room's single Y.Doc (registry.getDoc) instead of a fresh
         // one, so browser edits flow straight into the doc that syncs to the
@@ -1456,129 +1702,143 @@ export function createSyncRuntime(
           css: canvas.css,
         };
         mon.noteDocState(canvas.slug, 'pending');
-        await connectCanvas(canvas, canvasPaths, sharedYDoc, (provider) => {
-          // Phase 9.2 (DDR-064) — the disk handler. Under sharedDoc it's a
-          // loop-free projection (html/css/meta doc→file + all-types file→doc;
-          // the collab room keeps comments/annotations doc→file, so no
-          // double-write). Flag-OFF keeps the proven two-doc agent. Created
-          // ONCE here (first connect) — a DDR-102 re-probe swaps only the
-          // provider; everything below is doc-scoped and survives.
-          let agent: CanvasSyncAgent | undefined;
-          if (useSharedDoc && sharedYDoc) {
-            const projection = createDocProjection({
-              slug: canvas.slug,
-              doc: provider.document,
-              paths: canvasPaths,
-              echoGuard,
-              journal: journal ?? undefined,
-              // Cell pairing only — see the DocProjectionOptions.onWrote doc.
-              // The synthetic event is delayed by the same margin the container
-              // write bridge uses, so a watcher that DOES fire wins the race and
-              // the HMR broadcaster's per-file coalescing collapses the pair
-              // into one `canvas-hmr`. The projector's own echo guard drops the
-              // resulting file→doc read, so this cannot loop.
-              ...(cellPairing ? { onWrote: announceWrite } : {}),
-            });
-            projection.start();
-            projections.set(canvas.slug, projection);
-          } else {
-            const relBody = path.relative(ctx.paths.repoRoot, canvas.html);
-            agent = createCanvasSyncAgent({
-              slug: canvas.slug,
-              doc: provider.document,
-              paths: canvasPaths,
-              echoGuard,
-              adopt: adoptOnce,
-              journal: journal ?? undefined,
-              // Wrap the writer rather than adding a new hook: every path the
-              // agent materializes to disk goes through it, so a future write
-              // surface is committed automatically instead of being forgotten.
-              ...(autoCommit
-                ? {
-                    writer: (file: string, bytes: string | Uint8Array) => {
-                      atomicWrite(file, bytes);
-                      autoCommit.note(
-                        path.relative(ctx.paths.repoRoot, file),
-                        editorOf(canvas.slug)
-                      );
-                    },
+        await connectCanvas(
+          canvas,
+          canvasPaths,
+          sharedYDoc,
+          (provider) => {
+            // Phase 9.2 (DDR-064) — the disk handler. Under sharedDoc it's a
+            // loop-free projection (html/css/meta doc→file + all-types file→doc;
+            // the collab room keeps comments/annotations doc→file, so no
+            // double-write). Flag-OFF keeps the proven two-doc agent. Created
+            // ONCE here (first connect) — a DDR-102 re-probe swaps only the
+            // provider; everything below is doc-scoped and survives.
+            let agent: CanvasSyncAgent | undefined;
+            if (useSharedDoc && sharedYDoc) {
+              const projection = createDocProjection({
+                slug: canvas.slug,
+                doc: provider.document,
+                paths: canvasPaths,
+                echoGuard,
+                journal: journal ?? undefined,
+                // Cell pairing only — see the DocProjectionOptions.onWrote doc.
+                // The synthetic event is delayed by the same margin the container
+                // write bridge uses, so a watcher that DOES fire wins the race and
+                // the HMR broadcaster's per-file coalescing collapses the pair
+                // into one `canvas-hmr`. The projector's own echo guard drops the
+                // resulting file→doc read, so this cannot loop.
+                ...(cellPairing ? { onWrote: announceWrite } : {}),
+              });
+              projection.start();
+              projections.set(canvas.slug, projection);
+            } else {
+              const relBody = path.relative(ctx.paths.repoRoot, canvas.html);
+              agent = createCanvasSyncAgent({
+                slug: canvas.slug,
+                doc: provider.document,
+                paths: canvasPaths,
+                echoGuard,
+                adopt: adoptOnce,
+                journal: journal ?? undefined,
+                // Wrap the writer rather than adding a new hook: every path the
+                // agent materializes to disk goes through it, so a future write
+                // surface is committed automatically instead of being forgotten.
+                ...(autoCommit
+                  ? {
+                      writer: (file: string, bytes: string | Uint8Array) => {
+                        atomicWrite(file, bytes);
+                        autoCommit.note(
+                          path.relative(ctx.paths.repoRoot, file),
+                          editorOf(canvas.slug)
+                        );
+                      },
+                    }
+                  : {}),
+                snapshot: async (content, reason) => {
+                  try {
+                    const snap = await history.writeSnapshot(relBody, content, reason);
+                    return snap.ts;
+                  } catch {
+                    return null; // best-effort — resolution proceeds without refs
                   }
-                : {}),
-              snapshot: async (content, reason) => {
-                try {
-                  const snap = await history.writeSnapshot(relBody, content, reason);
-                  return snap.ts;
-                } catch {
-                  return null; // best-effort — resolution proceeds without refs
-                }
-              },
-              onConflict: (info) => store.addConflict(info),
-            });
-            agent.start();
-            agents.set(canvas.slug, agent);
-          }
+                },
+                onConflict: (info) => store.addConflict(info),
+              });
+              agent.start();
+              agents.set(canvas.slug, agent);
+            }
 
-          // Count local edits (agent-origin doc updates) toward queuedOps while
-          // the hub is unreachable — the banner's "N edits queued" figure. Under
-          // sharedDoc there is no agent origin to key off (browser edits carry a
-          // RoomConn origin); queued-edit counting in that mode is a known gap
-          // (offline-banner accuracy only, not data) deferred past Phase C.
-          if (agent) {
-            const agentOrigin = agent.origin;
-            const onLocalUpdate = (_u: Uint8Array, origin: unknown) => {
-              if (origin === agentOrigin) mon.noteLocalEdit();
-            };
-            provider.document.on('update', onLocalUpdate);
-            statusDetaches.push(() => provider.document.off('update', onLocalUpdate));
-          }
+            // Count local edits (agent-origin doc updates) toward queuedOps while
+            // the hub is unreachable — the banner's "N edits queued" figure. Under
+            // sharedDoc there is no agent origin to key off (browser edits carry a
+            // RoomConn origin); queued-edit counting in that mode is a known gap
+            // (offline-banner accuracy only, not data) deferred past Phase C.
+            if (agent) {
+              const agentOrigin = agent.origin;
+              const onLocalUpdate = (_u: Uint8Array, origin: unknown) => {
+                if (origin === agentOrigin) mon.noteLocalEdit();
+              };
+              provider.document.on('update', onLocalUpdate);
+              noteDetach(statusDetaches, canvas.slug, () =>
+                provider.document.off('update', onLocalUpdate)
+              );
+            }
 
-          // Relay hub-pushed comment/annotation changes straight into the live
-          // room — IN-PROCESS + synchronous, so the room's in-memory doc is
-          // updated BEFORE its 800ms persist timer can flush stale pre-sync state
-          // back over the file (the disk-mediated re-seed in createCollab loses
-          // that race under an actively-edited peer; this is the tight path that
-          // actually closes the "comment reverts" clobber). Wholesale-replace via
-          // syncRoomFrom* → no duplication. Skip agent-origin updates (our own
-          // disk→doc apply — the file is authoritative there; a local design:edit
-          // reaches the room via createCollab's fs hook instead).
-          //
-          // CRITICAL: observe the comment + annotation Y-types SEPARATELY, not the
-          // whole-doc update. A whole-doc relay re-applies BOTH types on every
-          // change, so a comment sync would re-push the (stale) annotation and
-          // clobber an annotation the peer just drew but hasn't synced yet — and
-          // vice versa. Per-type observers keep the two lanes independent.
-          //
-          // Phase 9.2 (DDR-064): under sharedDoc the provider IS attached to the
-          // room's doc, so there is no second doc to relay into — the room already
-          // has every change. Skipping the relay is what RETIRES the
-          // wholesale-replace clobber path (the Phase 9.1 ceiling): with one doc,
-          // CRDT merge handles concurrency, no last-writer-wins blob copy.
-          const reg = opts.registry;
-          if (!useSharedDoc && agent && reg?.syncRoomFromComments) {
-            const agentOrigin = agent.origin;
-            const slug = canvas.slug;
-            const provComments = provider.document.getArray(Y_TYPES.comments);
-            const provAnn = provider.document.getMap(Y_TYPES.annotations);
-            const onComments = (_e: unknown, tx: { origin: unknown }) => {
-              if (tx.origin === agentOrigin) return;
-              reg.syncRoomFromComments?.(slug, provComments.toArray());
-            };
-            const onAnn = (_e: unknown, tx: { origin: unknown }) => {
-              if (tx.origin === agentOrigin) return;
-              const svg = provAnn.get('svg');
-              if (typeof svg === 'string') reg.syncRoomFromAnnotations?.(slug, svg);
-            };
-            provComments.observe(onComments);
-            provAnn.observe(onAnn);
-            statusDetaches.push(() => {
-              provComments.unobserve(onComments);
-              provAnn.unobserve(onAnn);
-            });
-          }
-        });
+            // Relay hub-pushed comment/annotation changes straight into the live
+            // room — IN-PROCESS + synchronous, so the room's in-memory doc is
+            // updated BEFORE its 800ms persist timer can flush stale pre-sync state
+            // back over the file (the disk-mediated re-seed in createCollab loses
+            // that race under an actively-edited peer; this is the tight path that
+            // actually closes the "comment reverts" clobber). Wholesale-replace via
+            // syncRoomFrom* → no duplication. Skip agent-origin updates (our own
+            // disk→doc apply — the file is authoritative there; a local design:edit
+            // reaches the room via createCollab's fs hook instead).
+            //
+            // CRITICAL: observe the comment + annotation Y-types SEPARATELY, not the
+            // whole-doc update. A whole-doc relay re-applies BOTH types on every
+            // change, so a comment sync would re-push the (stale) annotation and
+            // clobber an annotation the peer just drew but hasn't synced yet — and
+            // vice versa. Per-type observers keep the two lanes independent.
+            //
+            // Phase 9.2 (DDR-064): under sharedDoc the provider IS attached to the
+            // room's doc, so there is no second doc to relay into — the room already
+            // has every change. Skipping the relay is what RETIRES the
+            // wholesale-replace clobber path (the Phase 9.1 ceiling): with one doc,
+            // CRDT merge handles concurrency, no last-writer-wins blob copy.
+            const reg = opts.registry;
+            if (!useSharedDoc && agent && reg?.syncRoomFromComments) {
+              const agentOrigin = agent.origin;
+              const slug = canvas.slug;
+              const provComments = provider.document.getArray(Y_TYPES.comments);
+              const provAnn = provider.document.getMap(Y_TYPES.annotations);
+              const onComments = (_e: unknown, tx: { origin: unknown }) => {
+                if (tx.origin === agentOrigin) return;
+                reg.syncRoomFromComments?.(slug, provComments.toArray());
+              };
+              const onAnn = (_e: unknown, tx: { origin: unknown }) => {
+                if (tx.origin === agentOrigin) return;
+                const svg = provAnn.get('svg');
+                if (typeof svg === 'string') reg.syncRoomFromAnnotations?.(slug, svg);
+              };
+              provComments.observe(onComments);
+              provAnn.observe(onAnn);
+              noteDetach(statusDetaches, canvas.slug, () => {
+                provComments.unobserve(onComments);
+                provAnn.unobserve(onAnn);
+              });
+            }
+          },
+          boot
+        );
       } catch (err) {
         console.error(`[sync/${canvas.slug}] failed to start:`, err);
       }
+    };
+
+    attachOne = attachCanvas;
+
+    for (const canvas of canvases) {
+      await attachCanvas(canvas, true);
     }
 
     // Persist an initial status snapshot so `_sync.json` exists — and `maude
@@ -1638,6 +1898,129 @@ export function createSyncRuntime(
       }
     });
 
+    // ─── DISCOVERY IS CONTINUOUS FROM HERE ────────────────────────────────
+    //
+    // Everything above is the BOOT set. `canvas-list-watch.ts` already notices
+    // when the openable-canvas set changes on disk from ANY source (the API, the
+    // ACP agent, a terminal `cp`, `git checkout`, or the hub's own workspace
+    // agent writing a peer's new canvas into a cell's checkout) and emits
+    // `canvas-list-update`. Nothing was listening on behalf of sync. This is
+    // that listener.
+    //
+    // The payload is used ONLY as a nudge — never as data. See `discovery.ts`
+    // for why the authoritative answer is a full rescan through the same
+    // `scanCanvases` boot used.
+    const rescan = createRescanScheduler({
+      debounceMs: DISCOVERY_DEBOUNCE_MS,
+      onError: (err) => console.error('[sync] canvas rescan failed:', err),
+      run: async () => {
+        if (stopped) return;
+        // An explicit canvas list (test injection) means the caller owns
+        // membership; rescanning would silently overrule them.
+        if (opts.canvases) return;
+        const fresh = await scanCanvases(ctx);
+        const admitted = admitCanvases(fresh.canvases, useSharedDoc);
+        const bySlug = new Map(admitted.map((c) => [c.slug, c]));
+        const { added, removed } = diffCanvasSet(
+          [...agents.keys(), ...projections.keys()],
+          bySlug.keys(),
+          // A pulled canvas lives on the hub; a scan that has not seen its body
+          // land yet is not evidence that it left the project.
+          pulledSlugs
+        );
+        if (added.length === 0 && removed.length === 0) return;
+        if (removed.length > 0) {
+          for (const slug of removed) await releaseOne(slug);
+          console.log(`[sync] released ${removed.length} canvas(es): ${removed.join(', ')}`);
+        }
+        const incoming = added.map((slug) => bySlug.get(slug)).filter((c) => !!c);
+        for (const canvas of incoming) {
+          if (agents.has(canvas.slug) || projections.has(canvas.slug)) continue;
+          if (providers.has(canvas.slug)) continue;
+          await attachCanvas(canvas, false);
+        }
+        if (incoming.length > 0) {
+          console.log(
+            `[sync] adopted ${incoming.length} new canvas(es): ${incoming.map((c) => c.slug).join(', ')}`
+          );
+          // The set the DDR-054 §3 F3 markers describe just grew.
+          markUntrusted();
+        }
+      },
+    });
+    discoveryRescan = rescan;
+    discoveryUnsub = ctx.bus.on('canvas-list-update', () => rescan.schedule());
+
+    // ─── THE HUB HALF OF DISCOVERY ────────────────────────────────────────
+    //
+    // The rescan above sees this DISK. A document that exists only on the hub
+    // is invisible to it — Yjs has no enumeration, so a peer learns of a
+    // document only by being told its name. Boot asks once
+    // (`GET /api/documents`), which is why a canvas created in the cloud after
+    // this peer connected could never arrive: the desktop had already asked.
+    //
+    // So keep asking. This is deliberately a POLL and not a push: the listing
+    // route is the ONLY document-enumeration surface every hub version exposes,
+    // including self-hosted ones nobody is going to upgrade, and a fix that
+    // required a new hub would leave exactly the installations that reported the
+    // bug still broken. It is cheap (names + byte counts, one request), it
+    // inherits `fetchRemoteDocs`'s never-fatal posture, and it rides the same
+    // scope gate the sync itself does — a token that may not open a document is
+    // not told the document exists.
+    const pullRemoteOnce = async (): Promise<void> => {
+      if (stopped) return;
+      // Read `token` at call time: a silent renewal swaps it in place.
+      const docs = await fetchRemoteDocs(linkedHub.url, token);
+      // null = unreachable, refused, or a hub without the route. Not an error
+      // here any more than it is at boot — sync continues, we ask again later.
+      if (docs === null) return;
+      const diff = diffRemoteDocs(
+        [...descriptors.keys()].map((slug) => docNameFor(slug)),
+        docs
+      );
+      if (diff.hubOnly.length === 0) return;
+      const targets = pullTargets(
+        diff.hubOnly,
+        ctx.paths.designRoot,
+        path.join,
+        path.resolve,
+        path.sep,
+        {
+          ...pathOpts,
+          // NEVER the fresh-link relaxation after boot. See `strictPullSlugs`.
+          allowUndeclaredGroup: false,
+          realpath: realpathOfDeepestExisting,
+        }
+      );
+      const admitted = targets.filter((t) => admitPullTarget(ctx, t.slug, t.bodyAbs));
+      const fresh = admitted.filter(
+        (t) => !agents.has(t.slug) && !projections.has(t.slug) && !providers.has(t.slug)
+      );
+      if (fresh.length === 0) return;
+      for (const target of fresh) {
+        pulledSlugs.add(target.slug);
+        strictPullSlugs.add(target.slug);
+        everPulled.add(target.slug);
+        await attachCanvas(descriptorFor(target.slug, target.bodyAbs), false);
+      }
+      console.log(
+        `[sync] pulled ${fresh.length} canvas(es) down from the project: ${fresh
+          .map((t) => t.slug)
+          .join(', ')}`
+      );
+      // Both controls describe the set, and the set just grew.
+      mon.notePulled([...everPulled]);
+      markUntrusted();
+    };
+    const pollRemote = (): void => {
+      void pullRemoteOnce().catch((err) => console.error('[sync] remote poll failed:', err));
+    };
+    remotePull = pullRemoteOnce;
+    remotePollTimer = setInterval(pollRemote, REMOTE_POLL_MS);
+    // `setInterval` keeps a Bun process alive; a poll is not a reason for the
+    // dev server to refuse to exit.
+    remotePollTimer.unref?.();
+
     // Arm the pre-expiry renewal from the credential that just booted. Placed
     // last — the timer needs nothing from boot, and boot needs nothing from it
     // (a credential that dies mid-boot lands in the invalid-token path, which
@@ -1648,6 +2031,15 @@ export function createSyncRuntime(
   async function stop(): Promise<void> {
     if (stopped) return;
     stopped = true;
+    // Nothing may be adopted into a runtime that is going away.
+    attachOne = null;
+    discoveryUnsub?.();
+    discoveryUnsub = null;
+    discoveryRescan?.stop();
+    discoveryRescan = null;
+    if (remotePollTimer !== null) clearInterval(remotePollTimer);
+    remotePollTimer = null;
+    remotePull = null;
     // A sweep that outlives its runtime keeps uploading a project the person
     // just closed — and `restart()` (the Resync button) calls stop() on every
     // press, so without this each press would leave another sweep running.
@@ -1668,14 +2060,8 @@ export function createSyncRuntime(
       }
       autoCommit.stop();
     }
-    for (const detach of awarenessDetaches) {
-      try {
-        detach();
-      } catch {
-        /* best-effort — registry teardown also clears bridges on destroyAll */
-      }
-    }
-    awarenessDetaches.length = 0;
+    for (const slug of [...awarenessDetaches.keys()]) runDetaches(awarenessDetaches, slug);
+    awarenessDetaches.clear();
     // Phase 9.2 (DDR-064) — release shared-doc pins so the rooms can be dropped
     // / destroyed normally on shutdown. Empty unless sharedDoc was active.
     for (const slug of pinnedSlugs) {
@@ -1686,14 +2072,8 @@ export function createSyncRuntime(
       }
     }
     pinnedSlugs.clear();
-    for (const detach of statusDetaches) {
-      try {
-        detach();
-      } catch {
-        /* best-effort */
-      }
-    }
-    statusDetaches.length = 0;
+    for (const slug of [...statusDetaches.keys()]) runDetaches(statusDetaches, slug);
+    statusDetaches.clear();
     monitor?.stop();
     journal?.stop(); // flushes the pending debounce
     journal = null;
@@ -1753,9 +2133,43 @@ export function createSyncRuntime(
     ownedFactory?.dispose();
   }
 
+  // One chain for every membership change, so an adopt cannot interleave with a
+  // release of the same slug (rename arrives as remove+add) or with `stop()`
+  // tearing the maps down underneath it. This is the runtime's own ordering and
+  // is separate from the SUPERVISOR's chain, which serializes whole start/stop
+  // cycles — an adopt is not a cycle and must not make `busy()` true.
+  let membership: Promise<unknown> = Promise.resolve();
+  function serializeMembership<T>(work: () => Promise<T>): Promise<T> {
+    const next = membership.then(work, work);
+    membership = next.catch(() => {});
+    return next;
+  }
+
   return {
     start,
     stop,
+    adopt: (incoming) =>
+      serializeMembership(async () => {
+        if (stopped || !attachOne) return 0;
+        let attached = 0;
+        for (const canvas of incoming) {
+          // Already ours — adopting twice would open a second provider on the
+          // same document and give this peer two votes in every merge.
+          if (agents.has(canvas.slug) || projections.has(canvas.slug)) continue;
+          if (providers.has(canvas.slug)) continue;
+          await attachOne(canvas, false);
+          attached += 1;
+        }
+        return attached;
+      }),
+    release: (slugs) =>
+      serializeMembership(async () => {
+        let released = 0;
+        for (const slug of slugs) if (await releaseOne(slug)) released += 1;
+        return released;
+      }),
+    rescanNow: () => discoveryRescan?.flush() ?? Promise.resolve(),
+    pullRemoteNow: () => remotePull?.() ?? Promise.resolve(),
     // Under sharedDoc the per-canvas handler is a projection, not an agent;
     // count both so size() reflects the synced-canvas count in either mode.
     size: () => agents.size + projections.size,
