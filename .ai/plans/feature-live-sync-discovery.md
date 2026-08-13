@@ -172,8 +172,8 @@ exhaustively testable.
 | 8 — asset lane | ✅ done | PUSH half from a concurrent session (`scheduleAssetSweep` on `fs:any`); the RESTORE half is `hydrateAssets()` — see below |
 | 9 — honest refusals | 🔶 superseded in part | `syncRefusal()` closes the DESKTOP gates. The reported symptom was the hub refusing the route in a cell **on purpose** — real fix: hide the control (Task 10) |
 | 10 — panel surface | ✅ done | Resync is desktop-only; the cloud shell omits it (`cloud` prop from `/_config`) |
-| 11 — E2E both directions | ⬜ open | unit + integration coverage landed; the live cloud↔desktop pass has not run |
-| 12 — DDR | ⬜ open | |
+| 11 — E2E both directions | ✅ done (in-process) | `sync-two-peer-discovery.test.ts` — two REAL runtimes on one shared hub: create → discover → content arrives → cursors bridge → later edits keep flowing, both directions + concurrent creation. **The live cloud↔desktop pass has NOT run** — the fleet only rolls on a release tag |
+| 12 — DDR | ✅ done | recorded in kgai (this repo is kgai-active): `maude/continuous-sync-discovery`, `maude/resync-is-desktop-only`, `maude/cell-asset-hydration`, `maude/gitignore-drift-detection`. What's New entry belongs to `/flow:done` |
 
 Extra, not in the original task list:
 
