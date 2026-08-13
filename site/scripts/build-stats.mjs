@@ -95,8 +95,15 @@ const pkg = JSON.parse(await readFile(resolve(repoRoot, 'package.json'), 'utf8')
 // AHEAD of the latest tag (an as-yet-untagged release commit), use today — exactly
 // what CI computes once the same-day tag lands. Feature PRs never move package.json
 // ahead of the tag, so they stay pinned to the release tag's date.
+//
+// BOTH branches must read the same clock, or the two agree only by luck.
+// `%(creatordate:short)` renders in the TAGGER's timezone while the fallback is
+// UTC, so a release tagged between 22:00 and 24:00 UTC from CEST (+0200) baked
+// UTC-today into the release commit and CI recomputed tagger-tomorrow — a red
+// `main` on v0.60.3, from a commit whose stats.json was correct. Force UTC on the
+// tag side (`format-local` honors TZ) so the two branches can't disagree.
 const latestTagLine = sh(
-  "git for-each-ref --sort=-creatordate --count=1 --format='%(refname:short) %(creatordate:short)' refs/tags/v*"
+  "TZ=UTC git for-each-ref --sort=-creatordate --count=1 --format='%(refname:short) %(creatordate:format-local:%Y-%m-%d)' refs/tags/v*"
 );
 const [latestTag = '', latestTagDate = ''] = latestTagLine.split(/\s+/);
 const publishedDate =
