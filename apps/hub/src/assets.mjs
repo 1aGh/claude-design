@@ -682,9 +682,36 @@ export async function handleAssetProbeRoute(ctx) {
   const holds = async (rel) => {
     if (typeof rel !== 'string') return false;
     if (rel.startsWith('assets/')) {
-      // Class 1 — content-addressed, lives in the bucket.
+      // Class 1 — TWO STORES, AND THE ANSWER NEEDS BOTH.
+      //
+      // `handleAssetPut` writes the checkout first and mirrors to the bucket,
+      // because a canvas can reference the same file EITHER way: `/assets/<key>`
+      // (this hub's bucket proxy) or `/.design/assets/<key>` (the studio child's
+      // static serve, off the checkout). A canvas that hardcodes the second form
+      // — which is what the whiteboard/poster canvases emit — renders from the
+      // checkout and from nothing else.
+      //
+      // The checkout is CONTAINER-LOCAL and does not survive a cell restart; the
+      // bucket does. So "the bucket has it" is not the same claim as "this cell
+      // can serve it", and answering only the durable half is how a project ends
+      // up with photographs that are provably uploaded and visibly missing.
+      //
+      // Reported live 2026-08-13 on alligators: every `assets/*` was in the
+      // bucket, none was in the restarted cell's checkout, and the sweep skipped
+      // all 90 of them. Before the batch probe the sweep's per-file HEAD could
+      // never say "present" on a cell (a HEAD never arrives as one), so every
+      // boot re-uploaded everything and silently rebuilt the checkout — the
+      // repair was an accident of a broken skip, and fixing the skip removed it.
       const key = rel.slice('assets/'.length);
-      if (!ASSET_KEY.test(key) || !s3) return false;
+      if (!ASSET_KEY.test(key)) return false;
+      // A hub with no checkout of its own (bucket-only deployment) can only
+      // answer for the store it has; requiring a mirror it never writes would
+      // make it re-upload the world on every boot.
+      if (ctx.designRoot) {
+        const mirror = resolveCheckoutAssetTarget(ctx.designRoot, rel);
+        if (!mirror.ok || !existsSync(mirror.writeAbs)) return false;
+      }
+      if (!s3) return !!ctx.designRoot;
       try {
         return (await headObject(s3, assetObjectKey(key, prefix))) !== null;
       } catch {

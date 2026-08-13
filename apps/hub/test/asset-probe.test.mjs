@@ -93,8 +93,12 @@ function dsAsset(rel, body = 'x') {
 
 test('one request answers for both asset classes, from the right store', async () => {
   const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
-  // Class 1 lives in the bucket…
+  // Class 1 lives in the bucket AND is mirrored into the checkout — a canvas
+  // reaches it either way (`/assets/<key>` or `/.design/assets/<key>`), so a
+  // complete push is what "present" means.
   store.set('assets/deadbeef.png', Buffer.from('bytes'));
+  mkdirSync(join(designRoot, 'assets'), { recursive: true });
+  writeFileSync(join(designRoot, 'assets/deadbeef.png'), 'bytes');
   // …class 2 in the checkout.
   dsAsset('system/ds/assets/logos/there.svg');
 
@@ -109,6 +113,45 @@ test('one request answers for both asset classes, from the right store', async (
   });
   assert.equal(res.status, 200);
   assert.deepEqual(res.json.present, ['assets/deadbeef.png', 'system/ds/assets/logos/there.svg']);
+});
+
+// The live failure, 2026-08-13 (alligators): a restarted cell had every
+// `assets/*` in its bucket and none in its checkout, the probe answered
+// "present" for all 90, the sweep skipped them, and every canvas that
+// references `/.design/assets/<key>` — the checkout form — rendered a grey box
+// that no later boot would ever repair.
+test('a bucket-only asset is ABSENT — the canvas can reference the checkout form', async () => {
+  const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  store.set('assets/deadbeef.png', Buffer.from('bytes')); // bucket has it…
+  // …and the checkout does NOT (a cell restart drops the container's disk).
+  const res = await probe({ token: minted.value, paths: ['assets/deadbeef.png'] });
+  assert.deepEqual(res.json.present, [], 'skipping this leaves a permanent grey box');
+});
+
+test('present only when BOTH stores hold it', async () => {
+  const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  store.set('assets/deadbeef.png', Buffer.from('bytes'));
+  mkdirSync(join(designRoot, 'assets'), { recursive: true });
+  writeFileSync(join(designRoot, 'assets/deadbeef.png'), 'bytes');
+  const res = await probe({ token: minted.value, paths: ['assets/deadbeef.png'] });
+  assert.deepEqual(res.json.present, ['assets/deadbeef.png']);
+});
+
+test('a checkout-only asset is absent too — the bucket is what survives a restart', async () => {
+  const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  mkdirSync(join(designRoot, 'assets'), { recursive: true });
+  writeFileSync(join(designRoot, 'assets/deadbeef.png'), 'bytes');
+  const res = await probe({ token: minted.value, paths: ['assets/deadbeef.png'] });
+  assert.deepEqual(res.json.present, []);
+});
+
+test('a bucket-only hub (no checkout) still answers from the store it has', async () => {
+  // Requiring a mirror a deployment never writes would re-upload the world
+  // on every boot — the failure this probe exists to end.
+  const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  store.set('assets/deadbeef.png', Buffer.from('bytes'));
+  const res = await probe({ token: minted.value, paths: ['assets/deadbeef.png'], root: '' });
+  assert.deepEqual(res.json.present, ['assets/deadbeef.png']);
 });
 
 test('a path the WRITE route would refuse is reported absent, never an error', async () => {
