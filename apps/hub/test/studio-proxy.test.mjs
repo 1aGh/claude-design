@@ -1102,3 +1102,57 @@ test('a non-browser client may omit Origin, but must then present ?t=', async ()
   });
   assert.equal(ok.forwarded.length, 1, 'explicit ?t= with no Origin: allowed');
 });
+
+// ---------------------------------------- the design-system asset read lane
+
+// Reported 2026-08-13: DS logos, fonts and photographs 404'd in the cloud file
+// browser, and an annotation's `<image href="/.design/assets/<sha8>.jpg">`
+// showed a broken icon — while the same bytes were provably on the cell. The
+// manifest never classified the lane, so the proxy answered 404 without asking
+// the studio child. These pin the whole chain, not just the verdict: an asset
+// must be FORWARDED, and everything else must still die at this door.
+test('a design-system asset GET is forwarded to the studio', async () => {
+  const { proxy, forwarded } = makeProxy();
+  const response = fakeResponse();
+  await proxy.handle({
+    request: { headers: {}, url: '/.design/system/ds/assets/logos/mark.svg' },
+    response,
+    pathname: '/.design/system/ds/assets/logos/mark.svg',
+    method: 'GET',
+    session: { email: 'v@b.c', role: 'viewer' },
+  });
+  assert.equal(forwarded.length, 1, 'a viewer must be able to read a DS asset');
+});
+
+test("an annotation's pasted image is forwarded — the reported broken icon", async () => {
+  const { proxy, forwarded } = makeProxy();
+  await proxy.handle({
+    request: { headers: {}, url: '/.design/assets/9fb5bab5.jpg' },
+    response: fakeResponse(),
+    pathname: '/.design/assets/9fb5bab5.jpg',
+    method: 'GET',
+    session: { email: 'v@b.c', role: 'viewer' },
+  });
+  assert.equal(forwarded.length, 1);
+});
+
+test('the lane forwards assets and nothing else', async () => {
+  for (const pathname of [
+    '/.design/ui/Home.tsx',
+    '/.design/config.json',
+    '/.design/_comments/assets/pasted.png',
+    '/.design/_history/ui-home/assets/shot.png',
+  ]) {
+    const { proxy, forwarded } = makeProxy();
+    const response = fakeResponse();
+    await proxy.handle({
+      request: { headers: {}, url: pathname },
+      response,
+      pathname,
+      method: 'GET',
+      session: { email: 'o@b.c', role: 'owner' },
+    });
+    assert.equal(forwarded.length, 0, pathname);
+    assert.equal(response.statusCode, 404, pathname);
+  }
+});
