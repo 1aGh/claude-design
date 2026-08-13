@@ -6,11 +6,16 @@
 // credential is read at call time; a failure is reported, never thrown.
 
 import { describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { listPushableAssets, pushAssets, putTimeoutMs } from '../sync/asset-push.ts';
+import {
+  isPushableAssetRel,
+  listPushableAssets,
+  pushAssets,
+  putTimeoutMs,
+} from '../sync/asset-push.ts';
 
 function scratchDesignRoot(): string {
   return mkdtempSync(join(tmpdir(), 'asset-push-'));
@@ -712,5 +717,91 @@ describe('pushAssets — incremental progress (feature-sync-progress-modal)', ()
       },
     });
     expect(r.pushed).toEqual(['assets/ok.png']);
+  });
+});
+
+// An asset that appears AFTER boot has to go up now, not next launch.
+//
+// The sweep fired from exactly one place — `start()` — so a picture pasted into
+// an annotation reached the cloud only on the next boot or Resync, while the
+// annotation itself synced through the doc in milliseconds. The other side
+// rendered an `<image>` pointing at bytes nobody had sent: a permanent empty
+// frame that reads as a broken path. `isPushableAssetRel` is what decides an
+// `fs:any` event is worth a sweep, so it has to agree with the walk that
+// actually collects them.
+describe('isPushableAssetRel — the on-change trigger', () => {
+  test('it agrees with listPushableAssets on a real tree', () => {
+    const root = mkdtempSync(join(tmpdir(), 'pushable-'));
+    mkdirSync(join(root, 'assets'), { recursive: true });
+    mkdirSync(join(root, 'system/ds/assets/logos'), { recursive: true });
+    mkdirSync(join(root, '_history/ui-home/assets'), { recursive: true });
+    mkdirSync(join(root, 'ui'), { recursive: true });
+    writeFileSync(join(root, 'assets/5f809613.png'), 'x'); // the reported case
+    writeFileSync(join(root, 'system/ds/assets/logos/mark.svg'), 'x');
+    writeFileSync(join(root, '_history/ui-home/assets/shot.png'), 'x');
+    writeFileSync(join(root, 'ui/Home.tsx'), 'x');
+    writeFileSync(join(root, 'assets/notes.txt'), 'x');
+
+    const walked = new Set(listPushableAssets(root));
+    for (const rel of [
+      'assets/5f809613.png',
+      'system/ds/assets/logos/mark.svg',
+      '_history/ui-home/assets/shot.png',
+      'ui/Home.tsx',
+      'assets/notes.txt',
+    ]) {
+      expect(isPushableAssetRel(rel)).toBe(walked.has(rel));
+    }
+  });
+
+  test('the pasted-annotation image is what fires it', () => {
+    expect(isPushableAssetRel('assets/5f809613.png')).toBe(true);
+    expect(isPushableAssetRel('assets/9fb5bab5.jpg')).toBe(true);
+  });
+
+  test('runtime state and non-assets never fire a sweep', () => {
+    for (const rel of [
+      '_history/ui-home/assets/shot.png',
+      '_comments/assets/pasted.png',
+      'ui/Home.tsx',
+      'config.json',
+      'system/ds/preview/logo.tsx',
+      'assets/notes.txt',
+      'assets',
+      '',
+    ]) {
+      expect(isPushableAssetRel(rel)).toBe(false);
+    }
+  });
+
+  test('a windows-shaped path is normalized, not refused', () => {
+    expect(isPushableAssetRel('system\\ds\\assets\\logos\\mark.svg')).toBe(true);
+  });
+});
+
+// The WIRING, pinned at source (the sync-panel-surface precedent).
+//
+// `isPushableAssetRel` above is exercised directly; what a unit test cannot
+// reach here is that the runtime actually CALLS it from the fs watcher, which
+// is the half that was missing. A behavioural test needs a live runtime plus a
+// 1.5 s debounce and destabilises `sync-runtime.test.ts`'s shared fixtures, so
+// the invariant is pinned where it is cheap and unambiguous instead.
+describe('the runtime sweeps on change, not only at boot', () => {
+  const SYNC = readFileSync(join(import.meta.dir, '..', 'sync', 'index.ts'), 'utf8');
+
+  test('the fs watcher decides with isPushableAssetRel and schedules a sweep', () => {
+    expect(SYNC).toContain('if (isPushableAssetRel(rel)) scheduleAssetSweep(');
+  });
+
+  test('bursts coalesce, and a change DURING a sweep is not lost', () => {
+    // Dragging six images on is six events; each sweep costs a probe over the
+    // wire. And a file written while a sweep runs was not in that sweep's list.
+    expect(SYNC).toMatch(/ASSET_SWEEP_DEBOUNCE_MS = [\d_]+/);
+    expect(SYNC).toContain('assetSweepAgain');
+  });
+
+  test('only one sweep runs at a time, and stop() clears the pending one', () => {
+    expect(SYNC).toMatch(/if \(stopped \|\| assetSweep\) return;/);
+    expect(SYNC).toContain('if (assetSweepTimer !== null) clearTimeout(assetSweepTimer);');
   });
 });

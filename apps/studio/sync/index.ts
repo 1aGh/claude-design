@@ -29,6 +29,7 @@ import type { Context, LinkedHub } from '../context.ts';
 import { createHistory } from '../history.ts';
 import { SYNTHETIC_FS_DELAY_MS } from '../hmr-broadcast.ts';
 import { type CanvasSyncAgent, createCanvasSyncAgent } from './agent.ts';
+import { isPushableAssetRel } from './asset-push.ts';
 import { type AssetSweepHandle, runAssetSweep } from './asset-sweep.ts';
 import { atomicWrite } from './atomic-write.ts';
 import { createAutoCommit } from './autocommit.ts';
@@ -233,6 +234,8 @@ export interface CreateSyncRuntimeOptions {
   connectionMonitor?: ConnectionMonitor;
   /** Override the status store (Task 8 test injection). */
   statusStore?: SyncStatusStore;
+  /** Override the asset-sweep runner (test injection — no child process). */
+  assetSweepRunner?: typeof runAssetSweep;
   /**
    * DDR-102 — auth-failure + boot-settle knobs (test injection, mirrors the
    * connection-state injectable-timer pattern).
@@ -459,6 +462,72 @@ export function createSyncRuntime(
   let stopped = false;
   /** The live asset sweep, so `stop()` can end it and the panel can cancel it. */
   let assetSweep: AssetSweepHandle | null = null;
+  /** Debounce for the on-change sweep — see `scheduleAssetSweep`. */
+  let assetSweepTimer: ReturnType<typeof setTimeout> | null = null;
+  /** A change that arrived while a sweep was running: sweep once more after. */
+  let assetSweepAgain = false;
+
+  /**
+   * Run the asset sweep now, unless one is already running.
+   *
+   * OUT OF PROCESS since feature-sync-resync-and-out-of-process-sweep: the
+   * sweep segfaults Bun when it runs alongside the dev server (proven by
+   * isolation — the identical sweep against the same hub completes standalone).
+   * A dead child is a reported failed sweep, not a dead editor.
+   */
+  function startAssetSweep(hubUrl: string): void {
+    if (stopped || assetSweep) return;
+    const handle = (opts.assetSweepRunner ?? runAssetSweep)({
+      designRoot: ctx.paths.designRoot,
+      hubUrl,
+      // Read at call time — a silent renewal mid-sweep must reach the child
+      // (the parent re-writes its credential file when this changes).
+      token: () => token,
+      // feature-sync-progress-modal — ride the same `sync:status` payload the
+      // doc counts use, so the Sync panel has one source. `statusStore`, not
+      // start()'s local `store` alias: this helper is runtime-scoped so it can
+      // also be called from the fs watcher, and the alias does not exist here.
+      // Guarded on `stopped`: a late emit must not write `_sync.json`
+      // post-teardown.
+      onProgress: (p) => {
+        if (!stopped) statusStore?.updateAssets?.(p);
+      },
+    });
+    assetSweep = handle;
+    handle.done.finally(() => {
+      if (assetSweep === handle) assetSweep = null;
+      // A file that changed WHILE this sweep ran was not in its list — the
+      // trailing re-run is what keeps "I pasted two images quickly" from
+      // uploading only the first. Same single-flight-with-trailing-run shape
+      // the hub's own sweeper uses.
+      if (assetSweepAgain && !stopped) {
+        assetSweepAgain = false;
+        scheduleAssetSweep(hubUrl);
+      }
+    });
+  }
+
+  /**
+   * Coalesce a burst of asset writes into one sweep.
+   *
+   * Dragging six images onto a canvas is six `fs:any` events inside a second,
+   * and each sweep costs one presence probe over the wire. The debounce makes
+   * that one probe; `assetSweepAgain` makes a change during a sweep a second
+   * pass rather than a lost upload.
+   */
+  function scheduleAssetSweep(hubUrl: string): void {
+    if (stopped || cellPairing) return;
+    if (assetSweep) {
+      assetSweepAgain = true;
+      return;
+    }
+    if (assetSweepTimer !== null) clearTimeout(assetSweepTimer);
+    assetSweepTimer = setTimeout(() => {
+      assetSweepTimer = null;
+      startAssetSweep(hubUrl);
+    }, ASSET_SWEEP_DEBOUNCE_MS);
+    assetSweepTimer.unref?.();
+  }
 
   // Task 8 — offline-mode status surface, initialized in start() once the
   // canvas count is known. The store writes `_sync.json` + broadcasts
@@ -789,6 +858,16 @@ export function createSyncRuntime(
 
     busUnsub = ctx.bus.on('fs:any', (rel: string) => {
       reader.notify(rel);
+      // AN ASSET THAT APPEARS AFTER BOOT HAS TO GO UP NOW, NOT NEXT LAUNCH.
+      //
+      // The sweep used to fire from exactly one place — `start()` — so a picture
+      // pasted into an annotation reached the cloud only on the next boot or
+      // Resync. Meanwhile the annotation itself syncs through the doc in
+      // milliseconds, so the other side rendered an `<image>` pointing at bytes
+      // nobody had sent: a permanent empty frame that looked like a broken path.
+      // Reported three times in one day on alligators, each time with a
+      // different asset, which is what finally named it.
+      if (isPushableAssetRel(rel)) scheduleAssetSweep(linkedHub.url);
     });
 
     /**
@@ -1555,24 +1634,7 @@ export function createSyncRuntime(
       // under pairing: a cell's assets are already on the cell. Fire-and-forget
       // — a miss is retried on the next boot for free.
       if (!cellPairing && !stopped) {
-        // OUT OF PROCESS since feature-sync-resync-and-out-of-process-sweep:
-        // the sweep segfaults Bun when it runs alongside the dev server (proven
-        // by isolation — identical sweep, same hub, completes standalone). The
-        // child dying is now a failed sweep the panel reports, not a dead
-        // editor. See `asset-sweep.ts`.
-        assetSweep = runAssetSweep({
-          designRoot: ctx.paths.designRoot,
-          hubUrl: linkedHub.url,
-          // Read at call time — a silent renewal mid-sweep must reach the child
-          // (the parent re-writes its credential file when this changes).
-          token: () => token,
-          // feature-sync-progress-modal — ride the same `sync:status` payload
-          // the doc counts use, so the Sync panel has one source. Guarded on
-          // `stopped`: a late emit must not write `_sync.json` post-teardown.
-          onProgress: (p) => {
-            if (!stopped) store.updateAssets?.(p);
-          },
-        });
+        startAssetSweep(linkedHub.url);
       }
     });
 
@@ -1589,6 +1651,9 @@ export function createSyncRuntime(
     // A sweep that outlives its runtime keeps uploading a project the person
     // just closed — and `restart()` (the Resync button) calls stop() on every
     // press, so without this each press would leave another sweep running.
+    if (assetSweepTimer !== null) clearTimeout(assetSweepTimer);
+    assetSweepTimer = null;
+    assetSweepAgain = false;
     assetSweep?.cancel();
     assetSweep = null;
     // Commit whatever is still inside the quiescence window BEFORE tearing
@@ -1720,6 +1785,9 @@ export function createSyncRuntime(
  * `MAUDE_MAX_PINNED_ROOMS` if a real project ever meets it — and if one does,
  * that is a signal worth reading rather than a number worth bumping.
  */
+/** Coalesce a burst of asset writes (dragging six images on) into one sweep. */
+const ASSET_SWEEP_DEBOUNCE_MS = 1500;
+
 export const DEFAULT_MAX_PINNED_ROOMS = 500;
 
 function maxPinnedRooms(): number {

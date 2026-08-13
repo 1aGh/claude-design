@@ -192,6 +192,36 @@ function extOf(name: string): string {
  * `system/<ds>/assets/`, …) and collects the asset-extension files inside it.
  * Skips runtime-state (`_*`), `.git`, `node_modules`. Missing root → [].
  */
+/**
+ * Would `listPushableAssets` have returned this designRoot-relative path?
+ *
+ * The cheap, no-disk half of the same rule, for deciding whether an `fs:any`
+ * event is worth a sweep. It must not drift from the walk below — the two are
+ * kept adjacent for that reason — but it is deliberately CONSERVATIVE where it
+ * cannot be sure: a `false` here means an asset silently never uploads until
+ * the next boot, which is the bug this predicate exists to end, so anything
+ * shaped like an asset under an `assets/` directory answers true and lets the
+ * sweep itself decide.
+ */
+export function isPushableAssetRel(rel: string): boolean {
+  if (typeof rel !== 'string' || !rel) return false;
+  const norm = rel.replace(/\\/g, '/');
+  if (norm.length > MAX_REL_LEN) return false;
+  const parts = norm.split('/');
+  if (parts.length < 2 || parts.length > MAX_SEGMENTS) return false;
+  let insideAssets = false;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const seg = parts[i];
+    if (seg.startsWith('_') || seg === '.git' || seg === 'node_modules') return false;
+    if (!SEGMENT.test(seg)) return false;
+    if (seg === 'assets') insideAssets = true;
+  }
+  if (!insideAssets) return false;
+  const name = parts[parts.length - 1];
+  if (name.startsWith('_') || !SEGMENT.test(name)) return false;
+  return ASSET_EXTS.has(extOf(name));
+}
+
 export function listPushableAssets(designRoot: string): string[] {
   const out: string[] = [];
   // Walk the tree; once inside an `assets` dir, collect asset files below it.
