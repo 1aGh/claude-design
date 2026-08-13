@@ -308,6 +308,49 @@ describe('continuous canvas discovery', () => {
     await runtime?.stop();
   });
 
+  test('coming back online asks the hub what it missed, without waiting out the interval', async () => {
+    // The longest wait is the least excusable one: a peer that was offline for
+    // an hour has an hour of other people's canvases to learn about, and making
+    // it sit through the poll interval on top of the outage is a wait nobody
+    // should have to explain. `flash: 'synced'` is the monitor's reconnect edge
+    // — once per return, not once per status frame.
+    writeHubsConfig(HUB, 'mau_test');
+    const ctx = makeCtx({ url: HUB, linkedAt: 1 });
+    writeCanvas(ctx, 'screen', '<button>boot</button>');
+    hubListing([{ name: 'ui-screen', bytes: 10 }]);
+
+    // A provider that reports WS status, so a drop and a return are real
+    // events rather than a status the stub never leaves.
+    const { factory } = inMemoryProviderFactory();
+    let emit: ((s: 'connected' | 'connecting' | 'disconnected') => void) | null = null;
+    const statusFactory = (args: Parameters<typeof factory>[0]) => {
+      const provider = factory(args);
+      return {
+        ...provider,
+        onStatus(cb: (s: 'connected' | 'connecting' | 'disconnected') => void) {
+          emit = cb;
+          cb('connected');
+          return () => {};
+        },
+      };
+    };
+    const runtime = createSyncRuntime(ctx, { providerFactory: statusFactory });
+    await runtime?.start();
+
+    hubListing([
+      { name: 'ui-screen', bytes: 10 },
+      { name: 'ui-whilegone', bytes: 20 },
+    ]);
+    // Away, then back. Only the RETURN is a reason to ask.
+    emit?.('disconnected');
+    emit?.('connected');
+    await new Promise((res) => setTimeout(res, 2200));
+
+    expect(runtime?.agentFor('ui-whilegone')).toBeDefined();
+
+    await runtime?.stop();
+  });
+
   test('an unreachable hub is not an error — the poll degrades, sync continues', async () => {
     writeHubsConfig(HUB, 'mau_test');
     const ctx = makeCtx({ url: HUB, linkedAt: 1 });

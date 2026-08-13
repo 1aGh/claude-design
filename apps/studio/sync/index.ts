@@ -144,6 +144,15 @@ export const DISCOVERY_DEBOUNCE_MS = 400;
  */
 export const REMOTE_POLL_MS = 20_000;
 
+/**
+ * Settling delay for an OFF-SCHEDULE poll (reconnect).
+ *
+ * Not zero: a reconnect is a burst — every provider re-handshakes — and asking
+ * the hub for the listing in the middle of that buys a slower answer and a
+ * needless second one. Short enough that a person does not experience it.
+ */
+export const REMOTE_POLL_SOON_MS = 1_500;
+
 export const MAX_TIMER_DELAY_MS = 2_147_483_647;
 /** F2 — a hub-reported `expiresAt` further out than this is not believed for
  *  scheduling (cloud cells issue ≤ 12 h; a month is already implausible). */
@@ -681,6 +690,25 @@ export function createSyncRuntime(
   let remotePollTimer: ReturnType<typeof setInterval> | null = null;
   /** Assigned by `start()`; the seam `pullRemoteNow()` and tests reach. */
   let remotePull: (() => Promise<void>) | null = null;
+  /**
+   * Ask for an off-schedule remote poll, coalesced.
+   *
+   * Reachable before `start()` finishes wiring `remotePull` (the monitor is
+   * built first and can emit during boot), so it is a no-op until there is
+   * something to call — the boot pull has just run at that point anyway.
+   */
+  let remotePollSoonTimer: ReturnType<typeof setTimeout> | null = null;
+  function pollRemoteSoon(): void {
+    if (stopped || remotePollSoonTimer !== null) return;
+    remotePollSoonTimer = setTimeout(() => {
+      remotePollSoonTimer = null;
+      if (stopped) return;
+      void remotePull?.().catch(() => {
+        /* the scheduled poll retries — a missed opportunistic one is not news */
+      });
+    }, REMOTE_POLL_SOON_MS);
+    remotePollSoonTimer.unref?.();
+  }
   /** Every slug this run brought down, so the panel's "came down from the
    *  project" list accumulates instead of being replaced by the latest batch. */
   const everPulled = new Set<string>();
@@ -1623,11 +1651,29 @@ export function createSyncRuntime(
       if (!deferSetup) setup?.(provider);
 
       // Task 8 — feed this provider's WS status into the offline monitor.
+      // Per-provider, so a socket that never dropped never triggers a poll.
+      let wasDisconnected = false;
       if (provider.onStatus) {
         noteDetach(
           statusDetaches,
           canvas.slug,
-          provider.onStatus((s) => mon.noteProviderStatus(canvas.slug, s))
+          provider.onStatus((s) => {
+            mon.noteProviderStatus(canvas.slug, s);
+            // COMING BACK IS THE MOMENT MOST LIKELY TO HAVE MISSED SOMETHING.
+            //
+            // A peer that was away for an hour has an hour of other people's
+            // canvases to learn about, and making it sit out the poll interval
+            // ON TOP of the outage is the one wait that is both longest and
+            // least excusable. The signal is the socket returning, taken from
+            // the provider rather than from the monitor's snapshot: a caller
+            // that injects its own monitor (every test, and anything later)
+            // would otherwise silently lose this.
+            //
+            // A reconnect storm is N providers reporting at once —
+            // `pollRemoteSoon` coalesces them into one request.
+            if (s === 'connected' && wasDisconnected) pollRemoteSoon();
+            wasDisconnected = s !== 'connected';
+          })
         );
       } else {
         // No status events (test stub) — treat as connected so the monitor
@@ -2039,6 +2085,8 @@ export function createSyncRuntime(
     discoveryRescan = null;
     if (remotePollTimer !== null) clearInterval(remotePollTimer);
     remotePollTimer = null;
+    if (remotePollSoonTimer !== null) clearTimeout(remotePollSoonTimer);
+    remotePollSoonTimer = null;
     remotePull = null;
     // A sweep that outlives its runtime keeps uploading a project the person
     // just closed — and `restart()` (the Resync button) calls stop() on every

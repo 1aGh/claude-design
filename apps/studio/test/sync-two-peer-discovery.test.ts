@@ -22,10 +22,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
-
-import type { AwarenessRegistry } from '../sync/index.ts';
 import type { Context, DevServerConfig } from '../context.ts';
 import { createBus } from '../context.ts';
+import type { AwarenessRegistry } from '../sync/index.ts';
 import { createSyncRuntime, type SyncProvider, type SyncRuntime } from '../sync/index.ts';
 
 const HUB = 'https://hub.example.com';
