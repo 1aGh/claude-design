@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-12T22:00:30.829Z",
+  "generated": "2026-08-13T21:41:54.231Z",
   "currentPhase": null,
   "phases": [
     {
@@ -934,6 +934,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan spans flow + design plugins + cli + config schema + templates + docs — it is...",
       "planPath": ".ai/plans/archive/feature-kgai-ecosystem-integration.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-live-sync-discovery",
+      "title": "Feature: Live sync discovery — a canvas created anywhere syncs everywhere, without a restart",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-live-sync-discovery.md",
       "archived": true,
       "phaseKey": null
     },

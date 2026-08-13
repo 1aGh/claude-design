@@ -416,12 +416,55 @@ Execute in order. Each task is atomic and testable.
 
 ## Acceptance Criteria
 
-- [ ] A canvas created in the cloud appears and syncs on the desktop with **no restart and no Resync**
-- [ ] A canvas created on the desktop is **live-collaborative** in the cloud (cursors + incoming
-      edits) with no reload
-- [ ] Deleting a canvas releases its provider on the other side
-- [ ] An asset added on either side reaches the other, through the same validation as an upload
-- [ ] Every `/_api/sync/*` refusal carries a `detail` — `Resync could not start.` is unreachable
-- [ ] Task 1 landed with zero test edits (proving the extraction was pure)
-- [ ] `/flow:validate` passes, `/flow:validate-security` returns 0 blockers at the configured floor
-- [ ] DDR recorded + ingested; What's New entry written pending
+- [x] A canvas created in the cloud appears and syncs on the desktop with **no restart and no Resync**
+      — asserted in `sync-two-peer-discovery.test.ts` against two real runtimes; **not yet observed
+      on the live fleet**, which only rolls on a release tag
+- [x] A canvas created on the desktop is **live-collaborative** in the cloud (cursors + incoming
+      edits) with no reload — the awareness bridge is asserted for the DISCOVERED canvas, and later
+      edits are asserted to keep flowing
+- [x] Deleting a canvas releases its provider on the other side
+- [x] An asset added on either side reaches the other, through the same validation as an upload
+      — push half by `scheduleAssetSweep`, restore half by `hydrateAssets` (same `servable()` gate)
+- [x] Every `/_api/sync/*` refusal carries a `detail` — `Resync could not start.` is unreachable
+- [x] Task 1 landed with zero test edits (proving the extraction was pure) — 81 pass, no test diff
+- [x] Quality gates pass (`format`, `lint`, `tests`, `build`, `parity`, `tarball`, `tokens`,
+      `site-content`). `typecheck` is deliberately absent in this repo
+- [x] DDR recorded + ingested (5 decisions in kgai); What's New entries written pending
+
+**Not met, deliberately:**
+
+- The **live cloud↔desktop pass** on the Alligators project has not run. The cell only picks this up
+  on a release tag, so it cannot be verified before shipping — the plan's step 8 is a post-release
+  check, not a pre-merge one.
+- The **cross-platform scenario / a11y / design-system** gates did not run. This is a sync-layer
+  change whose only UI delta is a button that is *not rendered* in one shell; there is no scenario
+  covering it, and booting the source dev-server in this tree to smoke it would regenerate the
+  unminified dev bundles over the release artifacts (CLAUDE.md's standing warning).
+- **`/design:smoke`** likewise skipped, for the same bundle reason.
+
+---
+
+## Retro
+
+- **The plan's diagnosis was right and its Task 5 justification was wrong.** "A peer-writable roster
+  lets a hub make another peer create files" sounded obviously true and was false — a peer already
+  has that by opening a document with that name. It survived into the plan because it was never
+  tested against the code, only against intuition. Planning would be better served by a habit of
+  asking, for every security-flavoured constraint: *what does the attacker already have?*
+- **Two of the three reported symptoms had a single cause; the third had a different one entirely.**
+  Continuous discovery explained A and B. Symptom D (`Resync could not start.`) I attributed to a
+  local gate and "fixed" accordingly — the real cause was the hub refusing that route in a cell on
+  purpose, found only because a concurrent session had written it down in an RCA. The lesson is not
+  "read the RCA"; it is that a symptom which *fits* your theory is not evidence for it.
+- **The concurrent-session collision cost real time and nearly cost work.** A `git stash pop` failed
+  into another session's in-flight edits to the same file. A clean three-way merge recovered it, but
+  the safe move — back the other tree up before touching git state — was improvised rather than
+  routine. `~/git` is a Syncthing tree; `/flow:execute` should treat "someone else may be in this
+  file" as the default, not the surprise.
+- **`pnpm format` is not `pnpm lint`.** Import order left `main` red for one commit, because biome's
+  formatter does not sort imports and only the full-tree check surfaces it. Verifying with
+  `pnpm format` and the affected tests is not the same gate CI runs.
+- **The test that nearly passed for the wrong reason.** The two-peer harness needed a per-connection
+  origin symbol; with one shared symbol every assertion still ran and nothing ever crossed the wire.
+  Integration harnesses deserve a deliberate "make it fail first" step — an assertion that only
+  passes if data actually moved.

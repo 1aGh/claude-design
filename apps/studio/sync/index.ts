@@ -153,6 +153,17 @@ export const REMOTE_POLL_MS = 20_000;
  */
 export const REMOTE_POLL_SOON_MS = 1_500;
 
+/**
+ * How many previously-unknown canvases one listing may land.
+ *
+ * A ceiling on the TOTAL is not enough on its own: a hub that answers with
+ * thousands of names would still create thousands of files, providers and
+ * `_untrusted` entries inside a single tick before anything else got to run.
+ * A real project gains canvases a few at a time; a burst larger than this is a
+ * hub behaving unlike any project, and the rest simply arrive on later polls.
+ */
+export const MAX_PULLS_PER_POLL = 25;
+
 export const MAX_TIMER_DELAY_MS = 2_147_483_647;
 /** F2 — a hub-reported `expiresAt` further out than this is not believed for
  *  scheduling (cloud cells issue ≤ 12 h; a month is already implausible). */
@@ -725,6 +736,46 @@ export function createSyncRuntime(
    */
   const descriptors = new Map<string, CanvasDescriptor>();
 
+  /** Warnings already emitted, so a per-poll refusal is said once, not forever. */
+  const warnedOnce = new Set<string>();
+  function warnOnce(key: string, message: string): void {
+    if (warnedOnce.has(key)) return;
+    warnedOnce.add(key);
+    console.warn(message);
+  }
+
+  /**
+   * May a HUB-AUTHORED body of this shape be written to this disk at all?
+   *
+   * The local lane has asked this since 9.1-B: `scanCanvases` admits a `.tsx`
+   * only when the cross-origin sandbox is active AND the project has not opted
+   * out (`walk` → `resolveSyncable`; DDR-060 couples the two, DDR-079 sets the
+   * default). The PULL lane never asked it — so a peer running with the sandbox
+   * off, or with `linkedHub.syncTsx: false` set precisely to keep hub `.tsx` off
+   * this machine, still received hub-authored `.tsx` bodies and rendered them.
+   * With the sandbox off that render is on the MAIN origin, which is the exact
+   * execution the coupling exists to prevent.
+   *
+   * The gap predates continuous discovery — it was reachable once per connect —
+   * but a lane that re-asks every 20 s makes "the opt-out holds for a moment"
+   * indistinguishable from "the opt-out does nothing".
+   */
+  function admitPulledBody(slug: string, bodyAbs: string): boolean {
+    if (!bodyAbs.toLowerCase().endsWith('.tsx')) return true;
+    const splitActive = !!ctx.canvasOrigin;
+    const projectSyncTsx = linkedHub.syncTsx !== false;
+    if (splitActive && projectSyncTsx) return true;
+    warnOnce(
+      `pull-tsx-refused:${splitActive ? 'opt-out' : 'sandbox-off'}`,
+      `[sync] refusing hub-authored .tsx canvases (first: ${slug}) — ` +
+        (splitActive
+          ? 'this project set linkedHub.syncTsx: false.'
+          : 'the cross-origin sandbox is off (MAUDE_CANVAS_ORIGIN_SPLIT=0), and TSX sync with it — DDR-060.') +
+        ' The same gate the local scan applies, now applied to what the hub sends.'
+    );
+    return false;
+  }
+
   /**
    * Give up ONE canvas — the inverse of `attachOne`.
    *
@@ -946,8 +997,25 @@ export function createSyncRuntime(
     // in the same place: `system-colors_and_type` falls back to
     // `system/colors_and_type.tsx` whether or not a path arrives. Checking only
     // the carried path leaves every one of these reachable with no path at all.
-    const admittedPulls = pulled.filter((t) => admitPullTarget(ctx, t.slug, t.bodyAbs));
+    // The boot pull asks the SAME two questions the incremental one does — the
+    // sandbox/opt-out gate on a hub-authored body, and the pinned-room ceiling.
+    // Both were missing here too; the incremental lane just made their absence
+    // permanent instead of momentary. See `admitPulledBody` and MAX_PULLS_PER_POLL.
+    const admittedPulls = pulled
+      .filter((t) => admitPullTarget(ctx, t.slug, t.bodyAbs))
+      .filter((t) => admitPulledBody(t.slug, t.bodyAbs))
+      .slice(0, Math.max(0, maxPinnedRooms() - localCanvases.length));
     const pulledSlugs = new Set(admittedPulls.map((t) => t.slug));
+    for (const t of admittedPulls) everPulled.add(t.slug);
+    /**
+     * Tell the panel EVERYTHING that came down this run, boot included.
+     *
+     * `notePulled` REPLACES the list, and the boot pull used to pass its own
+     * slugs directly — so the first mid-session pull erased every boot-pulled
+     * canvas from the surface, which is precisely what `everPulled` exists to
+     * stop. One accumulating set, one caller.
+     */
+    const notePulledAll = (): void => mon.notePulled([...everPulled]);
     /**
      * Slugs pulled AFTER boot, which never get the fresh-link relaxation.
      *
@@ -1929,7 +1997,7 @@ export function createSyncRuntime(
       // the pull, so it named exactly the canvases that had just arrived and
       // were sitting on disk. `pulled` is the same list under the name that is
       // true, and it is the fact the user is told to act on.
-      mon.notePulled(admittedPulls.map((t) => t.slug));
+      notePulledAll();
       // Re-mark from the FINAL descriptors — `relocatePulled` mutates them in
       // place after each handshake, and the markers are the one consumer that
       // read them before that and would otherwise never read them again.
@@ -1967,17 +2035,35 @@ export function createSyncRuntime(
         const fresh = await scanCanvases(ctx);
         const admitted = admitCanvases(fresh.canvases, useSharedDoc);
         const bySlug = new Map(admitted.map((c) => [c.slug, c]));
+        // THE PULL PIN IS A RACE GUARD, NOT A PERMANENT EXEMPTION.
+        //
+        // A pulled canvas is kept out of `removed` because its body is written
+        // AFTER the handshake, so a scan taken in that window is not evidence
+        // it left the project. That window closes the moment the file exists —
+        // and the pin was never released, so it did not close at all. The cost
+        // is exactly the control this file calls "a security opt-out a hub must
+        // not be able to flip": a pulled canvas whose `.meta.json` says
+        // `syncable: false` was dropped by the scan, held by the pin, and kept
+        // receiving hub writes for the life of the process. On a cell that is
+        // days. Once the body is on disk the ordinary rules apply to it.
+        for (const slug of [...pulledSlugs]) {
+          const body = descriptors.get(slug)?.html;
+          if (body && existsSync(body)) pulledSlugs.delete(slug);
+        }
         const { added, removed } = diffCanvasSet(
           [...agents.keys(), ...projections.keys()],
           bySlug.keys(),
-          // A pulled canvas lives on the hub; a scan that has not seen its body
-          // land yet is not evidence that it left the project.
           pulledSlugs
         );
         if (added.length === 0 && removed.length === 0) return;
         if (removed.length > 0) {
           for (const slug of removed) await releaseOne(slug);
           console.log(`[sync] released ${removed.length} canvas(es): ${removed.join(', ')}`);
+          // The marker set shrank. It describes what a peer can WRITE to, so a
+          // stale entry over-lists — the safe direction, and still wrong: it is
+          // the one mitigation standing between an untrusted pull and what the
+          // agent reads.
+          markUntrusted();
         }
         const incoming = added.map((slug) => bySlug.get(slug)).filter((c) => !!c);
         for (const canvas of incoming) {
@@ -2038,24 +2124,49 @@ export function createSyncRuntime(
           realpath: realpathOfDeepestExisting,
         }
       );
-      const admitted = targets.filter((t) => admitPullTarget(ctx, t.slug, t.bodyAbs));
+      const admitted = targets
+        .filter((t) => admitPullTarget(ctx, t.slug, t.bodyAbs))
+        .filter((t) => admitPulledBody(t.slug, t.bodyAbs));
       const fresh = admitted.filter(
         (t) => !agents.has(t.slug) && !projections.has(t.slug) && !providers.has(t.slug)
       );
       if (fresh.length === 0) return;
-      for (const target of fresh) {
+      // VOLUME IS A SECURITY PROPERTY HERE, NOT A PERFORMANCE ONE.
+      //
+      // Every accepted name becomes a real file in the design root, a provider,
+      // a pinned Y.Doc, and (on a desktop) something autocommit puts into the
+      // person's git history and `_untrusted/INDEX.json` offers to Claude. The
+      // hub is untrusted to peers (DDR-054), and before continuous discovery
+      // the damage was bounded by there being exactly ONE listing, at connect.
+      // Asking every 20 s for the life of the process removes that bound: a
+      // hostile hub can drip distinct names forever. So the pull lane gets the
+      // ceiling the LOCAL lane has always had (`admitCanvases` → DDR-064 A6),
+      // plus a per-poll cap so one answer cannot land thousands at once.
+      const room = Math.max(0, maxPinnedRooms() - (agents.size + projections.size));
+      const budget = Math.min(room, MAX_PULLS_PER_POLL);
+      const accepted = fresh.slice(0, budget);
+      if (accepted.length < fresh.length) {
+        // Named loudly. A silent cap reads as "sync is broken" with no cause —
+        // the same reason `admitCanvases` shouts about its own ceiling.
+        warnOnce(
+          `pull-cap:${room === 0 ? 'ceiling' : 'batch'}`,
+          `[sync] the project offers ${fresh.length} more canvas(es) than this peer will take in one pass (${accepted.length} accepted; ceiling ${maxPinnedRooms()}, per-pass cap ${MAX_PULLS_PER_POLL}). Raise MAUDE_MAX_PINNED_ROOMS if this project is genuinely this large.`
+        );
+      }
+      if (accepted.length === 0) return;
+      for (const target of accepted) {
         pulledSlugs.add(target.slug);
         strictPullSlugs.add(target.slug);
         everPulled.add(target.slug);
         await attachCanvas(descriptorFor(target.slug, target.bodyAbs), false);
       }
       console.log(
-        `[sync] pulled ${fresh.length} canvas(es) down from the project: ${fresh
+        `[sync] pulled ${accepted.length} canvas(es) down from the project: ${accepted
           .map((t) => t.slug)
           .join(', ')}`
       );
       // Both controls describe the set, and the set just grew.
-      mon.notePulled([...everPulled]);
+      notePulledAll();
       markUntrusted();
     };
     const pollRemote = (): void => {

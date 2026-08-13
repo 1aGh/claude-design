@@ -17,7 +17,15 @@
 // hardest: it never overwrites, and a hostile key never becomes a path.
 
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
@@ -173,6 +181,33 @@ describe('hydrateAssets', () => {
     assert.deepEqual(r.restored, ['ok.png']);
     assert.equal(existsSync(join(dir, 'escape.png')), false);
     assert.equal(existsSync(join(tmpdir(), '..', 'etc', 'passwd-maude-test')), false);
+  });
+
+  it('a SYMLINK under assets/ is not a way out of it', async () => {
+    // Lexical containment is not containment. `resolve()` never follows a link
+    // and `mkdirSync(recursive:true)` happily traverses one that already
+    // exists — and the checkout is a clone of a repository the TENANT controls,
+    // so a committed symlink here is a write-outside primitive inside the cell.
+    // The sibling receiver (`sync/remote-docs.ts`) injects a realpath for
+    // exactly this; the first version of this function did not.
+    const dir = tmp();
+    const outside = tmp();
+    mkdirSync(join(dir, 'assets'), { recursive: true });
+    symlinkSync(outside, join(dir, 'assets', 'escape'));
+    const b = bucket({
+      'assets/escape/pwned.png': 'should never land',
+      'assets/ok.png': 'fine',
+    });
+    const r = await hydrateAssets({
+      designRoot: dir,
+      s3: { bucket: 'x' },
+      prefix: '',
+      log: silent(),
+      deps: b.deps,
+    });
+    assert.deepEqual(r.restored, ['ok.png']);
+    assert.equal(existsSync(join(outside, 'pwned.png')), false);
+    assert.match(r.failed.find((f) => f.key === 'escape/pwned.png')?.reason ?? '', /symlink/);
   });
 
   it('only reads its own tenant scope', async () => {

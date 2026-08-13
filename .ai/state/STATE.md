@@ -3,9 +3,11 @@
 > **kgai-active repo** — working state and history live in the knowledge graph, not this file.
 > The `flow:workflow-state` skill reads/writes it via `flow:kgai-backend`.
 
-**Status:** in-progress — Figma import **Phase 6** (`.fig` decoder): T13 + T14 + T15 (Tiers 1–3 + fuzz) + the `--fig` verb, all landed and verified against a REAL third-party export with images. The one remaining item is the independent security round (the subagents never reported).
-**Active plan:** `.ai/plans/feature-figma-import.md`
-**Active task:** — (blocked on the two above)
+**Status:** done — **feature-live-sync-discovery** closed 2026-08-13. Canvas discovery is continuous on both ends (local `canvas-list-update` rescan + a 20 s hub listing poll with an immediate poll on reconnect), so a canvas made anywhere arrives everywhere without a restart; a cell refills its own assets from the bucket at boot; Resync is desktop-only; `maude doctor` detects gitignore drift. **The independent security round DID run this time** and returned 5 blockers — all fixed before the close (pull lane now asks the sandbox/`syncTsx` locks and the pinned-room ceiling, the pull pin releases, hydration is symlink-contained, `doctor --fix` re-derives before deleting). Reports: `.ai/logs/security-reviews/sync-discovery-{audit,hacker}.md`.
+**Active plan:** —
+**Active task:** —
+
+**Not verified:** the live cloud↔desktop pass. The fleet only picks this up on a release tag, so the reported flow on `alligators.cloud.maude.sh` is a post-release check.
 
 _2026-08-12:_ **Figma import Phase 6 CLOSED — the feature is done and the plan is archived.** `.fig`/`.jam` now decodes
 end to end offline: a hand-written ZIP reader, a Kiwi schema+data decoder ported from the documented

@@ -24,7 +24,7 @@ import * as Y from 'yjs';
 
 import type { Context, DevServerConfig } from '../context.ts';
 import { createBus } from '../context.ts';
-import { createSyncRuntime, type SyncProvider } from '../sync/index.ts';
+import { createSyncRuntime, MAX_PULLS_PER_POLL, type SyncProvider } from '../sync/index.ts';
 
 let dir: string;
 let cfgPathEnv: string | undefined;
@@ -64,11 +64,19 @@ function writeHubsConfig(url: string, token: string): void {
   chmodSync(cfgPath, 0o600);
 }
 
-function makeCtx(linkedHub?: DevServerConfig['linkedHub']): Context {
+function makeCtx(
+  linkedHub?: DevServerConfig['linkedHub'],
+  // The cross-origin sandbox. Present = active, which is production and the
+  // condition a hub-authored `.tsx` body is admitted under (DDR-060 couples the
+  // two). `null` means OFF — not `undefined`, which would trigger this default
+  // and silently give the sandbox-off test a sandbox.
+  canvasOrigin: string | null = 'http://canvas.localhost:9'
+): Context {
   const designRoot = join(dir, 'design');
   mkdirSync(join(designRoot, 'ui'), { recursive: true });
   mkdirSync(join(designRoot, '_comments'), { recursive: true });
   return {
+    canvasOrigin: canvasOrigin ?? undefined,
     cfg: {
       name: 'test',
       projectLabel: null,
@@ -347,6 +355,76 @@ describe('continuous canvas discovery', () => {
     await new Promise((res) => setTimeout(res, 2200));
 
     expect(runtime?.agentFor('ui-whilegone')).toBeDefined();
+
+    await runtime?.stop();
+  });
+
+  test('a hub-authored .tsx is REFUSED when the sandbox is off', async () => {
+    // 9.1-B / DDR-060 couple the two locks: a `.tsx` syncs only while the
+    // cross-origin sandbox is active. `scanCanvases` has always asked that of
+    // LOCAL files; the pull lane never did, so a peer with the sandbox off
+    // still received hub-authored `.tsx` bodies and rendered them — on the main
+    // origin, which is the execution the coupling exists to prevent. Reachable
+    // once per connect before; every 20 s once discovery went continuous.
+    writeHubsConfig(HUB, 'mau_test');
+    const ctx = makeCtx({ url: HUB, linkedAt: 1 }, null); // split OFF
+    writeCanvas(ctx, 'screen', '<button>boot</button>');
+    hubListing([
+      { name: 'ui-screen', bytes: 10 },
+      { name: 'ui-fromcloud', bytes: 20 },
+    ]);
+
+    const { factory } = inMemoryProviderFactory();
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory });
+    await runtime?.start();
+    await runtime?.pullRemoteNow();
+
+    expect(runtime?.agentFor('ui-fromcloud')).toBeUndefined();
+
+    await runtime?.stop();
+  });
+
+  test('a hub-authored .tsx is REFUSED when the project opted out of TSX sync', async () => {
+    // The other half of the same gate: `linkedHub.syncTsx: false` is set
+    // precisely to keep hub `.tsx` off this machine.
+    writeHubsConfig(HUB, 'mau_test');
+    const ctx = makeCtx({ url: HUB, linkedAt: 1, syncTsx: false });
+    writeCanvas(ctx, 'screen', '<button>boot</button>');
+    hubListing([
+      { name: 'ui-screen', bytes: 10 },
+      { name: 'ui-fromcloud', bytes: 20 },
+    ]);
+
+    const { factory } = inMemoryProviderFactory();
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory });
+    await runtime?.start();
+    await runtime?.pullRemoteNow();
+
+    expect(runtime?.agentFor('ui-fromcloud')).toBeUndefined();
+
+    await runtime?.stop();
+  });
+
+  test('one listing cannot land more than the per-pass cap', async () => {
+    // Volume is a security property here: every accepted name is a file in the
+    // design root, a provider, a pinned doc, and something autocommit puts into
+    // the person's git. Bounded by ONE listing before; unbounded once the lane
+    // re-asks forever. The rest arrive on later polls.
+    writeHubsConfig(HUB, 'mau_test');
+    const ctx = makeCtx({ url: HUB, linkedAt: 1 });
+    writeCanvas(ctx, 'screen', '<button>boot</button>');
+    hubListing([
+      { name: 'ui-screen', bytes: 10 },
+      ...Array.from({ length: 200 }, (_, i) => ({ name: `ui-flood${i}`, bytes: 1 })),
+    ]);
+
+    const { factory } = inMemoryProviderFactory();
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory });
+    await runtime?.start();
+    const afterBoot = runtime?.size() ?? 0;
+    await runtime?.pullRemoteNow();
+
+    expect((runtime?.size() ?? 0) - afterBoot).toBeLessThanOrEqual(MAX_PULLS_PER_POLL);
 
     await runtime?.stop();
   });

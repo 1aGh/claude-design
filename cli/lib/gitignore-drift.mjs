@@ -99,10 +99,14 @@ export function findGitignoreDrift(contents, designRel = '.design') {
     const body = text.replace(/^\/+/, '').replace(/\/+$/, '');
     if (body === root) continue; // ignoring the WHOLE design root is a choice, not drift
     if (!body.startsWith(`${root}/`)) continue;
-    const rel = body.slice(root.length + 1);
-    const hit = VERSIONED_PATTERNS.find(
-      (p) => rel === p.pattern.replace(/\/+$/, '').replace(/\/\*\*$/, '')
-    );
+    // Normalise BOTH sides the same way, or the comparison silently never
+    // matches: `system/**` was stripped to `system` on the pattern side only, so
+    // a real `.design/system/**` rule — a shape this module lists as versioned —
+    // was reported clean. A detector that quietly covers less than it claims is
+    // worse than one that covers less openly.
+    const norm = (s) => s.replace(/\/+$/, '').replace(/\/\*\*$/, '');
+    const rel = norm(body.slice(root.length + 1));
+    const hit = VERSIONED_PATTERNS.find((p) => rel === norm(p.pattern));
     if (hit) out.push({ line: i + 1, text, pattern: hit.pattern, what: hit.what });
   }
   return out;

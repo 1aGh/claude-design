@@ -244,6 +244,7 @@ export async function run({ args, pkgRoot }) {
       configReport,
       gitignoreFsPath,
       gitignoreDrift,
+      designRel,
     });
   } else if (!summary.healthy) {
     process.stdout.write(
@@ -425,6 +426,7 @@ async function applyFixes({
   configReport,
   gitignoreFsPath,
   gitignoreDrift,
+  designRel,
 }) {
   let configChanged = false;
 
@@ -555,12 +557,39 @@ async function applyFixes({
       );
       rl.close();
       if (/^y(es)?$/i.test((ans || '').trim())) {
-        const before = readFileSync(gitignoreFsPath, 'utf8');
-        writeFileSync(gitignoreFsPath, removeGitignoreDrift(before, gitignoreDrift), 'utf8');
-        process.stdout.write(
-          '  ✓ removed. The files are still untracked until you `git add` them —\n' +
-            '    `git status` will now show them for the first time.\n'
-        );
+        // DELETE ONLY WHAT WAS SHOWN, FROM THE TEXT IT WAS SHOWN FROM.
+        //
+        // `removeGitignoreDrift` deletes by LINE NUMBER, and its contract says
+        // those numbers must come from a scan of the same text — otherwise the
+        // numbers mean something else. The scan happens near the top of this
+        // command; the write happens here, after the report, after every
+        // per-dependency install (which shells out and can run for minutes) and
+        // after this prompt. In a Syncthing tree with concurrent sessions —
+        // which is exactly where this repo lives — that gap is long enough for
+        // the file to change, and the failure mode is silently deleting a line
+        // the person never saw and never approved. A `.gitignore` line can be
+        // the one keeping `.env` out of a commit.
+        //
+        // So: re-read, re-derive, and proceed only if the approved lines are
+        // still exactly where they were. Anything else is a re-run, not a guess.
+        const now = readFileSync(gitignoreFsPath, 'utf8');
+        const stillThere = findGitignoreDrift(now, designRel);
+        const approved = new Map(gitignoreDrift.map((d) => [d.line, d.text]));
+        const unchanged =
+          stillThere.length === approved.size &&
+          stillThere.every((d) => approved.get(d.line) === d.text);
+        if (!unchanged) {
+          process.stdout.write(
+            '  ✗ .gitignore changed while this was waiting for an answer — nothing removed.\n' +
+              '    Re-run `maude doctor --fix` to see the current state.\n'
+          );
+        } else {
+          writeFileSync(gitignoreFsPath, removeGitignoreDrift(now, stillThere), 'utf8');
+          process.stdout.write(
+            '  ✓ removed. The files are still untracked until you `git add` them —\n' +
+              '    `git status` will now show them for the first time.\n'
+          );
+        }
       } else {
         process.stdout.write('  skipped.\n');
       }

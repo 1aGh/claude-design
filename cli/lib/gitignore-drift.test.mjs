@@ -109,6 +109,10 @@ test('every versioned shape is covered, none of the runtime ones', () => {
     '.design/*.tsx',
     '.design/config.json',
     '.design/system/',
+    // The glob form. Both sides of the comparison must be normalised the same
+    // way — normalising only the pattern made this shape report clean while the
+    // module listed it as covered.
+    '.design/system/**',
   ];
   assert.equal(findGitignoreDrift(versioned.join('\n'), '.design').length, versioned.length);
 });

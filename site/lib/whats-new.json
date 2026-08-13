@@ -1,7 +1,25 @@
 {
-  "generated": "2026-08-13T15:32:12.338Z",
+  "generated": "2026-08-13T21:19:41.953Z",
   "version": "0.60.2",
   "entries": [
+    {
+      "id": "continuous-sync-discovery",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "A new canvas shows up everywhere, on its own",
+      "summary": "Make a canvas in the cloud and it arrives on your desktop; make one on your desktop and it is live in the cloud, with cursors, straight away. Until now each side only looked for new canvases when it started up, so whichever end you had not restarted lately simply never saw them.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "cloud-keeps-its-images",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "Your cloud project keeps its images",
+      "summary": "After the cloud moved your project between machines, photographs could come back as grey boxes and the only fix was re-uploading everything from your laptop. The cloud now restores those files itself, from the copy it already had.",
+      "surface": "design-ui"
+    },
     {
       "id": "sync-resync-button",
       "version": "0.60.0",

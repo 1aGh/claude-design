@@ -32,6 +32,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   renameSync,
   writeFileSync,
 } from 'node:fs';
@@ -153,6 +154,39 @@ export async function sweepAssets({ designRoot, s3, log = console, deps = {}, pr
 }
 
 /**
+ * Does `abs` still live under `root` once every symlink on the way is followed?
+ *
+ * Resolves the deepest EXISTING ancestor, because the target itself is about to
+ * be created and `realpathSync` on a missing path throws. Mirrors
+ * `realpathOfDeepestExisting` in `apps/studio/sync/index.ts` — the receiver on
+ * the other side of the same trust boundary.
+ */
+function containedReal(abs, root) {
+  // BOTH sides go through the same resolution, or the comparison is nonsense:
+  // on macOS a temp root under `/var` realpaths to `/private/var`, so resolving
+  // only the probe made every restore into a not-yet-created `assets/` look
+  // like an escape.
+  const realDeepest = (p) => {
+    let probe = p;
+    for (let i = 0; i < 64 && !existsSync(probe); i++) {
+      const parent = dirname(probe);
+      if (parent === probe) break;
+      probe = parent;
+    }
+    // The unresolved tail cannot introduce a link — nothing exists there yet —
+    // but `resolve` still collapses any `..` it contains.
+    return resolve(realpathSync(probe) + p.slice(probe.length));
+  };
+  try {
+    const realRoot = realDeepest(root);
+    const realAbs = realDeepest(abs);
+    return realAbs !== realRoot && realAbs.startsWith(realRoot + sep);
+  } catch {
+    return false; // unreadable is not admissible
+  }
+}
+
+/**
  * The names a bucket listing offers this checkout, given what is already on disk.
  *
  * Pure — the caller supplies the listing and the disk. Separated from the IO so
@@ -245,6 +279,23 @@ export async function hydrateAssets({ designRoot, s3, log = console, deps = {}, 
     const abs = resolve(dir, name);
     if (abs !== root && !abs.startsWith(root + sep)) {
       result.failed.push({ key: name, reason: 'resolves outside the assets directory' });
+      continue;
+    }
+    // …AND THE SAME CHECK AGAIN, THROUGH THE SYMLINKS.
+    //
+    // `resolve()` is purely lexical: it never follows a link, and
+    // `mkdirSync(recursive: true)` happily traverses one that already exists.
+    // The checkout is a clone of a repository the TENANT controls, so a
+    // committed symlink under `.design/assets/` is a write-outside primitive
+    // inside this cell — the exact hazard `sync/remote-docs.ts` documents and
+    // injects a realpath for, on a receiver that is otherwise this one's twin.
+    // Bounded (the `existsSync` re-check below still refuses to overwrite), and
+    // still the one guard this codebase already knows it needs.
+    if (!containedReal(abs, root)) {
+      result.failed.push({
+        key: name,
+        reason: 'a symlink on the path leaves the assets directory',
+      });
       continue;
     }
     try {
