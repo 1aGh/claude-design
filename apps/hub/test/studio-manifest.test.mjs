@@ -191,3 +191,68 @@ test('prefix rules resolve longest-match and cover the dynamic comment lane', ()
   assert.equal(decide('GET', '/_client/client.bundle.js', 'viewer').allow, true);
   assert.equal(decide('POST', '/_client/client.bundle.js', 'owner').allow, false);
 });
+
+// ── The design-system asset read lane ────────────────────────────────────────
+//
+// Reported 2026-08-13: in the cloud file browser every DS logo, font and photo
+// showed a broken-image icon, while the SAME files rendered inside canvases.
+// The canvas origin has always allowed `<designRoot>/…` (studio `isCanvasSafe`);
+// the main origin never did, so the default-closed manifest refused the preview
+// as `unclassified` and answered 404 without ever asking the studio child.
+//
+// What these pin is the boundary, not the feature: the lane must open exactly
+// the paths the desktop is allowed to PUSH (`checkoutAssetRel`, the one home
+// for that question) and nothing else — above all not the studio's repo-wide
+// fall-through, which on a cell would be the whole tenant repository.
+
+test('a design-system asset is readable — the file browser preview lane', () => {
+  assert.deepEqual(
+    decide('GET', '/.design/system/alligators/assets/logos/horizontal-green.svg', 'viewer'),
+    {
+      allow: true,
+      capability: 'read',
+    }
+  );
+  // Fonts and photographs travel the same lane.
+  assert.equal(decide('GET', '/.design/system/ds/assets/fonts/Body.woff2', 'viewer').allow, true);
+  assert.equal(decide('GET', '/.design/assets/acko-group-real.png', 'viewer').allow, true);
+});
+
+test('runtime state stays invisible, whatever it contains', () => {
+  // DDR-115: `_history/`, `_chat/`, `_comments/`, `_untrusted/` are per-user
+  // runtime state. A segment must start alphanumeric, so they never match.
+  for (const p of [
+    '/.design/_history/ui-home/assets/shot.png',
+    '/.design/_comments/assets/pasted.png',
+    '/.design/_untrusted/assets/hub-supplied.png',
+    '/.design/_chat/assets/attachment.png',
+  ]) {
+    assert.equal(decide('GET', p, 'owner').reason, 'unclassified', p);
+  }
+});
+
+test('the lane is assets-only — it is not a repository browser', () => {
+  for (const p of [
+    '/.design/ui/Home.tsx', // canvas SOURCE
+    '/.design/config.json', // project config
+    '/.design/system/ds/assets/logos/notes.txt', // wrong extension
+    '/.design/system/ds/preview/logo.tsx', // no assets segment
+    '/../../etc/passwd',
+    '/.design/system/ds/assets/../../../escape.svg',
+  ]) {
+    assert.equal(decide('GET', p, 'owner').allow, false, p);
+  }
+});
+
+test('it is READ-ONLY — an owner cannot write through it', () => {
+  const v = decide('PUT', '/.design/system/ds/assets/logos/mark.svg', 'owner');
+  assert.equal(v.allow, false);
+  assert.equal(v.reason, 'method');
+});
+
+test('a percent-encoded traversal is decoded before it is judged', () => {
+  assert.equal(
+    decide('GET', '/.design/system/ds/assets/%2e%2e/%2e%2e/config.json', 'owner').allow,
+    false
+  );
+});

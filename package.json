@@ -29,7 +29,7 @@
     "test:e2e:desktop:git": "pnpm --filter @maude/desktop-e2e e2e:git",
     "build": "pnpm -r --if-present --filter '!@maude/desktop' '!@maude/desktop-e2e' run build",
     "build:binary": "bun run apps/studio/build.ts --release",
-    "test": "node --test --test-reporter=spec cli/**/*.test.mjs",
+    "test": "node --test --test-reporter=spec cli/**/*.test.mjs && pnpm --filter @maude/hub test",
     "test:dev-server": "cd apps/studio && bun test",
     "lint": "biome check .",
     "format": "biome format --write .",

@@ -21,6 +21,7 @@
 // Every value is a capability from `role-matrix.mjs` — that is what makes the
 // role model ONE table rather than two that agree today.
 
+import { checkoutAssetRel } from './assets.mjs';
 import { CAPABILITIES, can } from './role-matrix.mjs';
 
 /** Methods that cannot change anything. */
@@ -225,6 +226,15 @@ export const STUDIO_ROUTES = Object.freeze({
   '/_api/hub/link': REFUSED,
   '/_api/debug-bundle': REFUSED,
   '/_api/design/init': REFUSED,
+  // Resync + the sweep cancel (v0.60.0) restart the SYNC RUNTIME of whatever
+  // process serves this project. On a laptop that is the person's own studio
+  // and the whole point of the button. On a cell it is shared infrastructure:
+  // one member could tear down and re-link every document for everyone, on
+  // demand, as often as they liked. That is an operator action, not a member
+  // one — and a cell's assets already live on the cell, so there is nothing for
+  // a sweep to fetch here anyway.
+  '/_api/sync/resync': REFUSED,
+  '/_api/sync/cancel-assets': REFUSED,
   // Signing in to a workspace from INSIDE that workspace is a loop; the proxy
   // already knows who this is, and the control plane is the only authority that
   // could say otherwise (DDR-204).
@@ -254,6 +264,45 @@ export const STUDIO_PREFIXES = Object.freeze([
 ]);
 
 /**
+ * The design-system asset read lane — `/<designRoot>/…/assets/…`.
+ *
+ * Why it needs its own matcher rather than a `STUDIO_PREFIXES` entry: a plain
+ * prefix would expose the studio's fall-through, which serves the designRoot
+ * AND everything else under the repo root. On a laptop that is right; on a cell
+ * it would hand a viewer the whole tenant repository.
+ *
+ * The readable set is therefore defined as EXACTLY the writable set:
+ * `checkoutAssetRel` is the same validator the desktop's asset PUT and the
+ * presence probe already run, so "what a peer may push" and "what a member may
+ * read back" cannot drift apart. It requires an `assets` path segment, caps
+ * depth and length, refuses traversal and control characters, allows only
+ * binary asset extensions — and, because every segment must START with an
+ * alphanumeric, it rejects DDR-115 runtime state (`_history/`, `_chat/`,
+ * `_comments/`, `_untrusted/`, …) without needing a second rule about it.
+ *
+ * Reported 2026-08-13: a design system's logos, fonts and photographs all 404'd
+ * in the cloud file browser while the same files rendered inside canvases. The
+ * canvas ORIGIN has always had this lane (`isCanvasSafe` in the studio's
+ * http.ts); the main origin never did, so nothing had declared it here and the
+ * default-closed `classify` refused it as `unclassified`.
+ *
+ * @returns {string | null} the matched prefix, or null when this is not one.
+ */
+function designAssetLane(pathname) {
+  const root = (process.env.MAUDE_DESIGN_ROOT ?? '.design').replace(/^\/+|\/+$/g, '');
+  if (!root) return null;
+  const prefix = `/${root}/`;
+  if (!pathname.startsWith(prefix)) return null;
+  let rel = pathname.slice(prefix.length);
+  try {
+    rel = decodeURIComponent(rel);
+  } catch {
+    return null;
+  }
+  return checkoutAssetRel(rel) === null ? null : prefix;
+}
+
+/**
  * Classify one request.
  *
  * @returns {{ capability: string, matched: string } | { capability: null, matched: string | null }}
@@ -265,6 +314,11 @@ export function classify(method, pathname) {
     if (exact === REFUSED) return { capability: null, matched: pathname };
     return { capability: safe ? exact.safe : exact.unsafe, matched: pathname };
   }
+  // Read-only by construction: an unsafe method here yields a null capability
+  // with a non-null `matched`, which `decide` reports as a METHOD refusal —
+  // the same shape every other read-only prefix produces.
+  const design = designAssetLane(pathname);
+  if (design) return { capability: safe ? 'read' : null, matched: design };
   let best = null;
   for (const rule of STUDIO_PREFIXES) {
     if (!pathname.startsWith(rule.prefix)) continue;
