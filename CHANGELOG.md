@@ -1,5 +1,19 @@
 # @1agh/maude
 
+## 0.60.1
+
+### Patch Changes
+
+- Photographs stop going missing from a cloud project after the server restarts.
+
+  A picture you upload is kept in two places, and a canvas can ask for it from
+  either one. Maude was only checking the first, so after a cloud server restart
+  it would report a project as fully uploaded while half its photographs had
+  quietly become grey boxes — and because it believed they were already there, it
+  never sent them again. Maude now treats a picture as uploaded only when both
+  copies are really present, so anything that goes missing comes back on the next
+  sync instead of staying broken.
+
 ## 0.60.0
 
 ### Minor Changes
