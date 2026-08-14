@@ -7,7 +7,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { DOCUMENTS_PATH, handleDocumentsRoute } from '../src/documents.mjs';
+import {
+  DOCUMENTS_PATH,
+  handleDocumentItemRoute,
+  handleDocumentsRoute,
+} from '../src/documents.mjs';
 
 const DOCS = [
   { name: 'ui-welcome', bytes: 2931 },
@@ -76,6 +80,126 @@ describe('GET /api/documents', () => {
 
   it('declines paths that are not its own', () => {
     const { handled, sent } = call({ path: '/api/export' });
+    assert.equal(handled, false);
+    assert.equal(sent.length, 0);
+  });
+
+  it('carries the tombstones a peer needs to stop resurrecting a delete', () => {
+    const { sent } = call({ listTombstones: () => [{ name: 'ui-gone', deletedAt: 1000 }] });
+    assert.deepEqual(sent[0].payload.tombstones, [{ name: 'ui-gone', deletedAt: 1000 }]);
+  });
+
+  it('scope-filters tombstones exactly like documents', () => {
+    // "Which canvases were deleted" leaks the same names "which canvases exist"
+    // does — one gate, both lists.
+    const { sent } = call({
+      verify: () => ({ scope: 'ws/acme/main/' }),
+      matchesScope: (scope, name) => name.startsWith(scope),
+      listTombstones: () => [
+        { name: 'ui-gone', deletedAt: 1 },
+        { name: 'ws/acme/main/ui-secret', deletedAt: 2 },
+      ],
+    });
+    assert.deepEqual(
+      sent[0].payload.tombstones.map((t) => t.name),
+      ['ws/acme/main/ui-secret']
+    );
+  });
+
+  it('a hub with no tombstone store answers with an empty set, not a failure', () => {
+    const { sent } = call({ listTombstones: undefined });
+    assert.equal(sent[0].status, 200);
+    assert.deepEqual(sent[0].payload.tombstones, []);
+  });
+});
+
+function callItem(overrides = {}) {
+  const sent = [];
+  const deleted = [];
+  const revived = [];
+  const handled = handleDocumentItemRoute({
+    path: '/api/documents/ui-welcome',
+    method: 'DELETE',
+    bearer: 'good',
+    verify: (t) => (t === 'good' ? { scope: '*' } : null),
+    matchesScope: () => true,
+    deleteDocument: (n) => deleted.push(n),
+    reviveDocument: (n) => revived.push(n),
+    respondJson: (status, payload) => sent.push({ status, payload }),
+    ...overrides,
+  });
+  return { handled, sent, deleted, revived };
+}
+
+describe('DELETE/POST /api/documents/<name>', () => {
+  it('tombstones the named document', () => {
+    const { handled, sent, deleted } = callItem();
+    assert.equal(handled, true);
+    assert.equal(sent[0].status, 200);
+    assert.deepEqual(deleted, ['ui-welcome']);
+  });
+
+  it('POST revives instead of deleting, so a re-created name is not eaten', () => {
+    const { sent, deleted, revived } = callItem({ method: 'POST' });
+    assert.equal(sent[0].status, 200);
+    assert.deepEqual(deleted, []);
+    assert.deepEqual(revived, ['ui-welcome']);
+  });
+
+  it('decodes a percent-encoded name (document names contain `/`)', () => {
+    const { deleted } = callItem({ path: '/api/documents/ws%2Facme%2Fmain%2Fui-x' });
+    assert.deepEqual(deleted, ['ws/acme/main/ui-x']);
+  });
+
+  it('refuses a missing and an invalid token identically', () => {
+    const missing = callItem({ bearer: null });
+    const bad = callItem({ bearer: 'nope' });
+    assert.equal(missing.sent[0].status, 401);
+    assert.deepEqual(missing.sent[0].payload, bad.sent[0].payload);
+    assert.deepEqual(missing.deleted, []);
+  });
+
+  it('refuses a read-only token — deleting is the most destructive write', () => {
+    const { sent, deleted } = callItem({ verify: () => ({ scope: '*', readOnly: true }) });
+    assert.equal(sent[0].status, 403);
+    assert.deepEqual(deleted, []);
+  });
+
+  it('an out-of-scope name is not deleted, and answers like an in-scope one', () => {
+    // Distinguishable answers would make this an existence oracle for names the
+    // token may not open.
+    const outside = callItem({
+      verify: () => ({ scope: 'ws/acme/main/' }),
+      matchesScope: (scope, name) => name.startsWith(scope),
+    });
+    const inside = callItem({
+      path: '/api/documents/ws%2Facme%2Fmain%2Fui-x',
+      verify: () => ({ scope: 'ws/acme/main/' }),
+      matchesScope: (scope, name) => name.startsWith(scope),
+    });
+    assert.deepEqual(outside.deleted, []);
+    assert.equal(outside.sent[0].status, inside.sent[0].status);
+  });
+
+  it('refuses a name outside the document charset', () => {
+    const { sent, deleted } = callItem({ path: '/api/documents/..%2F..%2Fetc%2Fpasswd' });
+    assert.equal(sent[0].status, 400);
+    assert.deepEqual(deleted, []);
+  });
+
+  it('refuses a malformed percent-encoding rather than throwing', () => {
+    const { sent, deleted } = callItem({ path: '/api/documents/%E0%A4%A' });
+    assert.equal(sent[0].status, 400);
+    assert.deepEqual(deleted, []);
+  });
+
+  it('refuses a method that is neither delete nor revive', () => {
+    const { sent } = callItem({ method: 'PUT' });
+    assert.equal(sent[0].status, 405);
+  });
+
+  it('declines paths that are not its own', () => {
+    const { handled, sent } = callItem({ path: '/api/export' });
     assert.equal(handled, false);
     assert.equal(sent.length, 0);
   });

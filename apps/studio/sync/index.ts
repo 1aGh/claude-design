@@ -29,6 +29,7 @@ import type { Context, LinkedHub } from '../context.ts';
 import { createHistory } from '../history.ts';
 import { SYNTHETIC_FS_DELAY_MS } from '../hmr-broadcast.ts';
 import { type CanvasSyncAgent, createCanvasSyncAgent } from './agent.ts';
+import { pullAssets } from './asset-pull.ts';
 import { isPushableAssetRel } from './asset-push.ts';
 import { type AssetSweepHandle, runAssetSweep } from './asset-sweep.ts';
 import { atomicWrite } from './atomic-write.ts';
@@ -54,11 +55,16 @@ import { createDocProjection, type DocProjection } from './projection.ts';
 import {
   describeRemoteDiff,
   diffRemoteDocs,
-  fetchRemoteDocs,
+  fetchRemoteListing,
   pullTargets,
+  type RemoteTombstone,
   resolvePulledTarget,
+  slugFromDocName,
+  stateDocumentGone,
+  tombstonedSlugs,
 } from './remote-docs.ts';
 import { createSyncStatusStore, type SyncStatusStore } from './status.ts';
+import { quarantineCanvas } from './tombstone-apply.ts';
 import { writeUntrustedMarkers } from './untrusted.ts';
 
 /** A minimum-surface stand-in for the HocuspocusProvider's runtime API. */
@@ -250,7 +256,15 @@ export interface SyncRuntime {
    * discovery without the user authorising anything.
    */
   adopt(canvases: readonly CanvasDescriptor[]): Promise<number>;
-  /** Give up canvases that left the project. Returns how many were released. */
+  /**
+   * Give up canvases that left the project. Returns how many were released.
+   *
+   * NOT A DELETION, and the distinction is the whole delete lane: this says
+   * "this machine stopped carrying it", which the project is right to ignore.
+   * Stating that a canvas is GONE travels on the `canvas-deleted` bus event that
+   * `api.ts` emits from its privileged delete route — the one signal that
+   * carries intent rather than a filesystem observation.
+   */
   release(slugs: readonly string[]): Promise<number>;
   /**
    * Run the local canvas rescan immediately instead of waiting for the debounce.
@@ -697,6 +711,9 @@ export function createSyncRuntime(
    *  `stop()`. See the block that creates it and `discovery.ts`. */
   let discoveryRescan: RescanScheduler | null = null;
   let discoveryUnsub: (() => void) | null = null;
+  /** The outbound delete-lane subscriptions — see `noteToHub`. */
+  let deletedUnsub: (() => void) | null = null;
+  let createdUnsub: (() => void) | null = null;
   /** Periodic remote-document poll — the hub-side half of discovery. */
   let remotePollTimer: ReturnType<typeof setInterval> | null = null;
   /** Assigned by `start()`; the seam `pullRemoteNow()` and tests reach. */
@@ -723,6 +740,16 @@ export function createSyncRuntime(
   /** Every slug this run brought down, so the panel's "came down from the
    *  project" list accumulates instead of being replaced by the latest batch. */
   const everPulled = new Set<string>();
+
+  /**
+   * Every slug the PROJECT has deleted, as this run has learned it.
+   *
+   * The hub drops its `documents` row best-effort while the tombstone is the
+   * durable part, so a deleted canvas can still appear in one more listing. This
+   * set is what stops the pull lane from treating that listing as an invitation
+   * to write the canvas back — the resurrection, arrived at from the other side.
+   */
+  const tombstoned = new Set<string>();
 
   /**
    * The LIVE descriptor set, by slug.
@@ -889,10 +916,20 @@ export function createSyncRuntime(
     // design root — see `pullTargets` for why flat); local-only canvases go up
     // as they always did. Best-effort: an older hub without the listing route,
     // or an unreachable one, syncs exactly as before.
-    const remoteDocs = await fetchRemoteDocs(linkedHub.url, resolvedToken);
+    const remoteListing = await fetchRemoteListing(linkedHub.url, resolvedToken);
+    // BOOT LEARNS THE DELETIONS BEFORE IT PULLS ANYTHING. The peer-side apply
+    // lives further down (it needs the live descriptor map), so this boot pass
+    // only has to make sure the pull does not fetch a canvas the project has
+    // deleted — the first poll then quarantines whatever is still on disk. Doing
+    // it in the other order would materialise a deleted canvas on every launch
+    // and delete it again seconds later, which is worse than the bug.
+    for (const stone of remoteListing?.tombstones ?? []) {
+      const slug = slugFromDocName(stone.name);
+      if (slug) tombstoned.add(slug);
+    }
     const remoteDiff = diffRemoteDocs(
       localCanvases.map((c) => docNameFor(c.slug)),
-      remoteDocs
+      remoteListing?.documents ?? null
     );
     // PROVISIONAL targets. The listing carries names and byte counts only — a
     // document's own `syncMeta.path` lives INSIDE it, so every target here is
@@ -1002,6 +1039,8 @@ export function createSyncRuntime(
     // Both were missing here too; the incremental lane just made their absence
     // permanent instead of momentary. See `admitPulledBody` and MAX_PULLS_PER_POLL.
     const admittedPulls = pulled
+      // A canvas the project deleted is never pulled, however it is still listed.
+      .filter((t) => !tombstoned.has(t.slug))
       .filter((t) => admitPullTarget(ctx, t.slug, t.bodyAbs))
       .filter((t) => admitPulledBody(t.slug, t.bodyAbs))
       .slice(0, Math.max(0, maxPinnedRooms() - localCanvases.length));
@@ -2083,6 +2122,74 @@ export function createSyncRuntime(
     discoveryRescan = rescan;
     discoveryUnsub = ctx.bus.on('canvas-list-update', () => rescan.schedule());
 
+    // The OUTBOUND half of the delete lane. `api.ts` emits these two only from
+    // its privileged create/delete routes, never from the filesystem watcher —
+    // see the comment at the emit site for why that distinction is what makes
+    // them safe to act on.
+    const noteToHub = (slug: unknown, revive: boolean): void => {
+      if (typeof slug !== 'string' || !slug) return;
+      if (revive) tombstoned.delete(slug);
+      else tombstoned.add(slug);
+      void stateDocumentGone(linkedHub.url, token, docNameFor(slug), { revive }).then((ok) => {
+        if (!ok) {
+          console.warn(
+            `[sync] could not tell the project that ${slug} was ${revive ? 're-created' : 'deleted'} — it stays ${revive ? 'buried' : 'in the project'} for other peers until this succeeds.`
+          );
+        }
+      });
+    };
+    deletedUnsub = ctx.bus.on('canvas-deleted', (p: { slug?: unknown }) =>
+      noteToHub(p?.slug, false)
+    );
+    createdUnsub = ctx.bus.on('canvas-created', (p: { slug?: unknown }) =>
+      noteToHub(p?.slug, true)
+    );
+
+    /**
+     * Apply the project's deletions to this machine.
+     *
+     * The runtime releases the canvas first and moves the bytes second: a live
+     * agent flushing its Y.Doc onto a path we are about to rename is how a
+     * "deleted" canvas comes back as a half-written file.
+     *
+     * `tombstoned` outlives the individual poll. The hub drops the `documents`
+     * row on a best-effort basis, so a tombstone and a still-listed document can
+     * coexist for a tick; without a local memory of what was deleted, that
+     * window is enough for the pull lane to fetch the canvas straight back.
+     */
+    const applyTombstones = async (stones: readonly RemoteTombstone[]): Promise<void> => {
+      if (stones.length === 0) return;
+      // Remember EVERY deletion, including names this peer never had — that is
+      // what makes the pull lane below refuse a document the project deleted but
+      // whose row has not gone yet.
+      for (const stone of stones) {
+        const slug = slugFromDocName(stone.name);
+        if (slug) tombstoned.add(slug);
+      }
+      const gone = tombstonedSlugs(stones, descriptors.keys());
+      if (gone.length === 0) return;
+      for (const slug of gone) {
+        const canvas = descriptors.get(slug);
+        await releaseOne(slug);
+        if (canvas) {
+          quarantineCanvas({
+            designRoot: ctx.paths.designRoot,
+            slug,
+            lanes: {
+              html: canvas.html,
+              meta: canvas.meta,
+              css: canvas.css,
+              annotations: canvas.annotations,
+            },
+          });
+        }
+        descriptors.delete(slug);
+      }
+      console.log(`[sync] the project deleted ${gone.length} canvas(es): ${gone.join(', ')}`);
+      // The set the DDR-054 §3 F3 markers describe just shrank.
+      markUntrusted();
+    };
+
     // ─── THE HUB HALF OF DISCOVERY ────────────────────────────────────────
     //
     // The rescan above sees this DISK. A document that exists only on the hub
@@ -2102,13 +2209,19 @@ export function createSyncRuntime(
     const pullRemoteOnce = async (): Promise<void> => {
       if (stopped) return;
       // Read `token` at call time: a silent renewal swaps it in place.
-      const docs = await fetchRemoteDocs(linkedHub.url, token);
+      const listing = await fetchRemoteListing(linkedHub.url, token);
       // null = unreachable, refused, or a hub without the route. Not an error
       // here any more than it is at boot — sync continues, we ask again later.
-      if (docs === null) return;
+      if (listing === null) return;
+      // ABSENCE BEFORE PRESENCE. A canvas the project deleted must leave before
+      // the pull runs, or a slug that is tombstoned AND still listed (the window
+      // between the tombstone and the row actually going) would be trashed and
+      // immediately pulled back — the resurrection this lane exists to end,
+      // reintroduced inside one tick.
+      await applyTombstones(listing.tombstones);
       const diff = diffRemoteDocs(
         [...descriptors.keys()].map((slug) => docNameFor(slug)),
-        docs
+        listing.documents
       );
       if (diff.hubOnly.length === 0) return;
       const targets = pullTargets(
@@ -2125,6 +2238,9 @@ export function createSyncRuntime(
         }
       );
       const admitted = targets
+        // A canvas the project deleted is not a canvas to fetch, even while the
+        // hub is still listing it — see `tombstoned`.
+        .filter((t) => !tombstoned.has(t.slug))
         .filter((t) => admitPullTarget(ctx, t.slug, t.bodyAbs))
         .filter((t) => admitPulledBody(t.slug, t.bodyAbs));
       const fresh = admitted.filter(
@@ -2169,10 +2285,35 @@ export function createSyncRuntime(
       notePulledAll();
       markUntrusted();
     };
-    const pollRemote = (): void => {
-      void pullRemoteOnce().catch((err) => console.error('[sync] remote poll failed:', err));
+    /**
+     * Fetch the referenced assets this machine is missing.
+     *
+     * RUNS ON EVERY PEER, cell included — unlike the PUSH sweep, which is a
+     * desktop job because the desktop is the side that has the bytes. Wanting an
+     * asset you can see referenced and do not hold is symmetric, and so is the
+     * fix; making this desktop-only would rebuild the same one-way street facing
+     * the other way.
+     *
+     * After the document poll, deliberately: a canvas that arrives in this tick
+     * brings its references with it, and this is the pass that resolves them.
+     */
+    const pullAssetsOnce = async (): Promise<void> => {
+      if (stopped) return;
+      await pullAssets({
+        designRoot: ctx.paths.designRoot,
+        hubUrl: linkedHub.url,
+        token: () => token,
+      });
     };
-    remotePull = pullRemoteOnce;
+    const pollRemote = (): void => {
+      void pullRemoteOnce()
+        .then(() => pullAssetsOnce())
+        .catch((err) => console.error('[sync] remote poll failed:', err));
+    };
+    remotePull = async () => {
+      await pullRemoteOnce();
+      await pullAssetsOnce();
+    };
     remotePollTimer = setInterval(pollRemote, REMOTE_POLL_MS);
     // `setInterval` keeps a Bun process alive; a poll is not a reason for the
     // dev server to refuse to exit.
@@ -2192,6 +2333,10 @@ export function createSyncRuntime(
     attachOne = null;
     discoveryUnsub?.();
     discoveryUnsub = null;
+    deletedUnsub?.();
+    deletedUnsub = null;
+    createdUnsub?.();
+    createdUnsub = null;
     discoveryRescan?.stop();
     discoveryRescan = null;
     if (remotePollTimer !== null) clearInterval(remotePollTimer);

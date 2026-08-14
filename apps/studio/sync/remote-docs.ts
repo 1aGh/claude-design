@@ -32,6 +32,29 @@ export interface RemoteDoc {
   bytes: number;
 }
 
+/** One deletion the project has stated — see the hub's `tombstones.mjs`. */
+export interface RemoteTombstone {
+  name: string;
+  deletedAt: number;
+}
+
+/**
+ * The whole listing: what the project HAS, and what it has DELETED.
+ *
+ * Both halves are needed, and for symmetric reasons. Presence alone made a
+ * hub-only document authority to create a local file — correct, and the reason
+ * a project arrives in full. Absence alone was un-representable, so a delete was
+ * indistinguishable from "this peer has not discovered it yet" and got refilled
+ * on the next tick. One request carries both.
+ */
+export interface RemoteListing {
+  documents: RemoteDoc[];
+  /** Empty against a hub older than the tombstone route — never null, because
+   *  "this hub cannot say" and "nothing was deleted" call for the same
+   *  behaviour: change nothing on disk. */
+  tombstones: RemoteTombstone[];
+}
+
 export interface RemoteDocDiff {
   /** Documents on both sides — the ones actually syncing. */
   shared: string[];
@@ -54,11 +77,11 @@ const LIST_TIMEOUT_MS = 6000;
  * reporting improvement, and making it load-bearing would trade a real feature
  * for a nicer message.
  */
-export async function fetchRemoteDocs(
+export async function fetchRemoteListing(
   hubUrl: string,
   token: string,
   fetchImpl: typeof fetch = fetch
-): Promise<RemoteDoc[] | null> {
+): Promise<RemoteListing | null> {
   try {
     const base = hubUrl.replace(/\/+$/, '');
     const res = await fetchImpl(`${base}/api/documents`, {
@@ -66,16 +89,61 @@ export async function fetchRemoteDocs(
       signal: AbortSignal.timeout(LIST_TIMEOUT_MS),
     });
     if (!res.ok) return null;
-    const body = (await res.json()) as { documents?: unknown };
+    const body = (await res.json()) as { documents?: unknown; tombstones?: unknown };
     if (!Array.isArray(body?.documents)) return null;
-    return body.documents
+    const documents = body.documents
       .filter(
         (d): d is RemoteDoc =>
           !!d && typeof (d as RemoteDoc).name === 'string' && (d as RemoteDoc).name.length > 0
       )
       .map((d) => ({ name: d.name, bytes: Number(d.bytes) || 0 }));
+    // A hub without the route omits the field entirely; a hostile one could send
+    // anything. Both land on "no deletions", which changes nothing on disk — the
+    // safe direction for a signal whose only effect is to REMOVE local files.
+    const tombstones = Array.isArray(body?.tombstones)
+      ? (body.tombstones as unknown[])
+          .filter(
+            (t): t is RemoteTombstone =>
+              !!t &&
+              typeof (t as RemoteTombstone).name === 'string' &&
+              (t as RemoteTombstone).name.length > 0
+          )
+          .map((t) => ({ name: t.name, deletedAt: Number(t.deletedAt) || 0 }))
+      : [];
+    return { documents, tombstones };
   } catch {
     return null;
+  }
+}
+
+/**
+ * Tell the hub a document is gone (`DELETE`) or exists again (`POST`).
+ *
+ * BEST-EFFORT, LIKE EVERY OTHER HUB CALL HERE. A hub that is old, offline or
+ * refusing means the local delete still happened — the canvas is in `_trash/`
+ * and this peer has released it. What is lost is only the PROPAGATION, and the
+ * peer retries the statement on its next poll for anything it still sees on the
+ * hub but no longer has on disk. Returning false rather than throwing keeps a
+ * failed network call from turning a successful local delete into an error the
+ * user has to interpret.
+ */
+export async function stateDocumentGone(
+  hubUrl: string,
+  token: string,
+  docName: string,
+  opts: { revive?: boolean; fetchImpl?: typeof fetch } = {}
+): Promise<boolean> {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  try {
+    const base = hubUrl.replace(/\/+$/, '');
+    const res = await fetchImpl(`${base}/api/documents/${encodeURIComponent(docName)}`, {
+      method: opts.revive ? 'POST' : 'DELETE',
+      headers: { authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(LIST_TIMEOUT_MS),
+    });
+    return res.ok;
+  } catch {
+    return false;
   }
 }
 
@@ -144,6 +212,32 @@ export function slugFromDocName(docName: string): string | null {
   if (FLAT.test(raw)) return raw.toLowerCase();
   const ns = NAMESPACED.exec(raw);
   return ns ? ns[1].toLowerCase() : null;
+}
+
+/**
+ * The local slugs a tombstone set names — validated, deduplicated, safe.
+ *
+ * A tombstone is the one hub-supplied signal whose effect is to REMOVE work from
+ * a person's disk, so it runs through exactly the same name gate a pull does
+ * (`slugFromDocName`: whole-name match, no dots, no traversal, no extension
+ * smuggling) and anything that does not survive is dropped silently. A hub
+ * cannot name a file this way that it could not already have created.
+ *
+ * `known` is the set of slugs this peer actually holds; a tombstone for anything
+ * else is not an error, just nothing to do — that is the normal steady state
+ * once both sides have converged.
+ */
+export function tombstonedSlugs(
+  tombstones: readonly RemoteTombstone[],
+  known: Iterable<string>
+): string[] {
+  const have = new Set(known);
+  const out = new Set<string>();
+  for (const t of tombstones) {
+    const slug = slugFromDocName(t.name);
+    if (slug && have.has(slug)) out.add(slug);
+  }
+  return [...out].sort();
 }
 
 export interface PullTarget {

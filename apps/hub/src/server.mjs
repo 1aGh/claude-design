@@ -73,7 +73,12 @@ import { handleExportRoute, scheduleMirror, scheduleRevocationSweep } from './ce
 import { clientIpFor, parseTrustedProxies } from './client-ip.mjs';
 import { designRootFor } from './design-root.mjs';
 import { groupCanvases } from './doc-namespace.mjs';
-import { DOCUMENTS_PATH, handleDocumentsRoute } from './documents.mjs';
+import {
+  DOCUMENT_PATH_PREFIX,
+  DOCUMENTS_PATH,
+  handleDocumentItemRoute,
+  handleDocumentsRoute,
+} from './documents.mjs';
 import { seedFirstUserOnBoot } from './first-user.mjs';
 import { createGitRunner } from './git-runner.mjs';
 import { LOOPBACK_HOSTS, sanitizeForLog } from './log-safety.mjs';
@@ -105,6 +110,7 @@ import {
   rotateToken,
   verifyToken,
 } from './tokens.mjs';
+import { clearTombstone, listTombstones, recordTombstone } from './tombstones.mjs';
 import { createWorkspaceAgent } from './workspace-agent.mjs';
 
 const HUB_VERSION = readOwnVersion();
@@ -765,6 +771,29 @@ export function createHub(config = {}) {
           verify: (token) => verifyToken(dataDir, token, secret),
           matchesScope,
           listDocuments: () => listCanvases(sqlitePath, peers),
+          listTombstones: () => listTombstones(dataDir),
+          respondJson: (status, payload) => respondAdminJson(response, status, payload),
+        });
+        if (handled) bailFromOnRequest();
+      }
+      // The absence half — a peer stating that a canvas is gone, so the other
+      // side stops treating "the hub has it" as authority to write the file
+      // back. See tombstones.mjs.
+      if (authPath.startsWith(DOCUMENT_PATH_PREFIX)) {
+        const handled = handleDocumentItemRoute({
+          path: authPath,
+          method,
+          bearer: (request.headers?.authorization ?? '').replace(/^Bearer\s+/i, '').trim() || null,
+          verify: (token) => verifyToken(dataDir, token, secret),
+          matchesScope,
+          deleteDocument: (name) => deleteDocument({ name, server, sqlitePath, dataDir }),
+          reviveDocument: (name) => {
+            try {
+              clearTombstone(dataDir, name);
+            } catch {
+              /* an unwritable store degrades to today's behaviour */
+            }
+          },
           respondJson: (status, payload) => respondAdminJson(response, status, payload),
         });
         if (handled) bailFromOnRequest();
@@ -2010,6 +2039,73 @@ function listCanvases(sqlitePath, peers) {
     return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
   } catch {
     return docsFromPeers(peerCounts);
+  } finally {
+    try {
+      db?.close();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/**
+ * Delete one document: tombstone it, drop the live copy, drop the persisted row.
+ *
+ * ORDER IS LOAD-BEARING. The tombstone is written FIRST, because it is the only
+ * step that survives a crash halfway through. A hub that recorded the tombstone
+ * and then died leaves a row in `documents` that peers already know to ignore
+ * and re-delete; a hub that dropped the row first and then died has forgotten
+ * the deletion entirely, and the next peer to connect uploads the canvas again
+ * from its own disk. One of those converges and one resurrects.
+ *
+ * CLOSE THE LIVE DOCUMENT BEFORE DELETING THE ROW. A connected peer holds the
+ * canvas in memory, and the Hocuspocus store hook writes it back on the next
+ * update or on unload — so deleting the row underneath a live document just
+ * re-creates it moments later. `closeConnections` drops the peers and
+ * `unloadDocument` releases the in-memory copy; both are best-effort, since a
+ * document nobody has open is the normal case and must not error.
+ *
+ * Every step is independently guarded: this route's promise to the caller is
+ * "the tombstone is recorded", which is what actually stops the resurrection.
+ * A locked SQLite file costs a stale row, not a failed delete.
+ */
+function deleteDocument({ name, server, sqlitePath, dataDir }) {
+  try {
+    recordTombstone(dataDir, name);
+  } catch {
+    /* a store we cannot write is reported by the absent tombstone, not a 500 */
+  }
+  try {
+    server?.closeConnections?.(name);
+  } catch {
+    /* nobody connected */
+  }
+  try {
+    server?.unloadDocument?.(server?.documents?.get?.(name));
+  } catch {
+    /* not loaded */
+  }
+  deleteDocumentRow(sqlitePath, name);
+}
+
+/**
+ * Remove one row from the Hocuspocus `documents` table.
+ *
+ * The read path (`listCanvases`) opens this file read-only and documents the
+ * schema; this is the one place that writes to it. Defensive in the same shape:
+ * a missing file / absent native binding / lock never throws, because the
+ * tombstone is what the caller was promised.
+ */
+function deleteDocumentRow(sqlitePath, name) {
+  if (!sqlitePath || !existsSync(sqlitePath)) return;
+  const Database = loadSqlite();
+  if (!Database) return;
+  let db;
+  try {
+    db = new Database(sqlitePath, { fileMustExist: true });
+    db.prepare('DELETE FROM "documents" WHERE name = ?').run(name);
+  } catch {
+    /* stale row is recoverable; a thrown delete is not */
   } finally {
     try {
       db?.close();

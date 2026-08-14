@@ -2577,6 +2577,11 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     // via git "Get latest" — the file travels through git, this event is only a
     // "refresh your list" nudge for online local tabs (loopback inspector WS).
     ctx.bus.emit('canvas-list-update', { action: 'added', rel, slug });
+    // The inverse of `canvas-deleted` (see deleteCanvas for why this is its own
+    // event). Creating a name the project buried earlier has to lift the
+    // tombstone, or every peer would dutifully trash the new canvas for as long
+    // as the gravestone lives.
+    ctx.bus.emit('canvas-created', { slug });
     // designRel-prefixed path — matches the file-tree `file.path` shape so the
     // client can open it directly after reloadTree().
     return { ok: true, file: path.posix.join(paths.designRel, rel), rel, slug };
@@ -2690,6 +2695,15 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
 
     // Phase 30 — live tree refresh for other local tabs (see createCanvas).
     ctx.bus.emit('canvas-list-update', { action: 'removed', rel, slug });
+    // A SEPARATE EVENT, DELIBERATELY. `canvas-list-update` is emitted by this
+    // API *and* by the filesystem watcher, so its payload can describe a file
+    // an agent or a `git checkout` produced — which is why discovery treats it
+    // as a nudge and re-derives the truth itself. This one is only ever emitted
+    // HERE, from a privileged route the canvas origin cannot reach, so it
+    // carries something the watcher's version cannot: the user meant it. Sync
+    // needs exactly that, because "gone from this disk" and "deleted from the
+    // project" are different claims and only the second may travel.
+    ctx.bus.emit('canvas-deleted', { slug });
     return {
       ok: true,
       rel,

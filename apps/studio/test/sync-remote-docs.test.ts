@@ -10,9 +10,11 @@ import { canvasSlugFromRel } from '../canvas-slug.ts';
 import {
   describeRemoteDiff,
   diffRemoteDocs,
-  fetchRemoteDocs,
+  fetchRemoteListing,
   pullTargets,
   slugFromDocName,
+  stateDocumentGone,
+  tombstonedSlugs,
 } from '../sync/remote-docs.ts';
 
 const okFetch = (documents: unknown) =>
@@ -22,14 +24,14 @@ const okFetch = (documents: unknown) =>
       headers: { 'content-type': 'application/json' },
     })) as unknown as typeof fetch;
 
-describe('fetchRemoteDocs', () => {
+describe('fetchRemoteListing', () => {
   test('reads the hub listing', async () => {
-    const docs = await fetchRemoteDocs(
+    const listing = await fetchRemoteListing(
       'https://hub.example',
       't',
       okFetch([{ name: 'ui-welcome', bytes: 2931 }])
     );
-    expect(docs).toEqual([{ name: 'ui-welcome', bytes: 2931 }]);
+    expect(listing?.documents).toEqual([{ name: 'ui-welcome', bytes: 2931 }]);
   });
 
   test('carries the token as a bearer, and strips a trailing slash', async () => {
@@ -40,7 +42,7 @@ describe('fetchRemoteDocs', () => {
       seenAuth = String((init.headers as Record<string, string>).authorization);
       return new Response(JSON.stringify({ documents: [] }), { status: 200 });
     }) as unknown as typeof fetch;
-    await fetchRemoteDocs('https://hub.example/', 'tok123', spy);
+    await fetchRemoteListing('https://hub.example/', 'tok123', spy);
     expect(seenUrl).toBe('https://hub.example/api/documents');
     expect(seenAuth).toBe('Bearer tok123');
   });
@@ -51,16 +53,124 @@ describe('fetchRemoteDocs', () => {
     const boom = (async () => {
       throw new Error('offline');
     }) as unknown as typeof fetch;
-    expect(await fetchRemoteDocs('https://h', 't', boom)).toBeNull();
+    expect(await fetchRemoteListing('https://h', 't', boom)).toBeNull();
 
     const notFound = (async () => new Response('nope', { status: 404 })) as unknown as typeof fetch;
-    expect(await fetchRemoteDocs('https://h', 't', notFound)).toBeNull();
+    expect(await fetchRemoteListing('https://h', 't', notFound)).toBeNull();
 
     const junk = (async () =>
       new Response(JSON.stringify({ documents: 'not-an-array' }), {
         status: 200,
       })) as unknown as typeof fetch;
-    expect(await fetchRemoteDocs('https://h', 't', junk)).toBeNull();
+    expect(await fetchRemoteListing('https://h', 't', junk)).toBeNull();
+  });
+
+  test('reads the tombstones a peer needs to stop resurrecting a delete', async () => {
+    const withStones = (async () =>
+      new Response(
+        JSON.stringify({ documents: [], tombstones: [{ name: 'ui-gone', deletedAt: 42 }] }),
+        { status: 200 }
+      )) as unknown as typeof fetch;
+    const listing = await fetchRemoteListing('https://h', 't', withStones);
+    expect(listing?.tombstones).toEqual([{ name: 'ui-gone', deletedAt: 42 }]);
+  });
+
+  test('a hub with no tombstone route reports no deletions, not a failure', async () => {
+    // "This hub cannot say" and "nothing was deleted" must behave identically:
+    // change nothing on disk. Anything else would make an old hub delete work.
+    const listing = await fetchRemoteListing(
+      'https://h',
+      't',
+      okFetch([{ name: 'ui-welcome', bytes: 1 }])
+    );
+    expect(listing?.tombstones).toEqual([]);
+    expect(listing?.documents).toHaveLength(1);
+  });
+
+  test('a junk tombstone field is read as no deletions', async () => {
+    const hostile = (async () =>
+      new Response(JSON.stringify({ documents: [], tombstones: 'everything' }), {
+        status: 200,
+      })) as unknown as typeof fetch;
+    expect((await fetchRemoteListing('https://h', 't', hostile))?.tombstones).toEqual([]);
+  });
+});
+
+describe('tombstonedSlugs', () => {
+  test('names only the slugs this peer actually holds', () => {
+    const slugs = tombstonedSlugs(
+      [
+        { name: 'ui-gone', deletedAt: 1 },
+        { name: 'ui-never-had-it', deletedAt: 2 },
+      ],
+      ['ui-gone', 'ui-welcome']
+    );
+    expect(slugs).toEqual(['ui-gone']);
+  });
+
+  test('refuses a name that could place a file outside the design root', () => {
+    // The one hub-supplied signal whose effect is to REMOVE work, so it runs
+    // through the same gate a pull does.
+    expect(
+      tombstonedSlugs(
+        [
+          { name: '../../etc/passwd', deletedAt: 1 },
+          { name: 'ui/../../x', deletedAt: 1 },
+          { name: 'ui-real.tsx', deletedAt: 1 },
+        ],
+        ['passwd', 'x', 'ui-real', 'ui-real.tsx']
+      )
+    ).toEqual([]);
+  });
+
+  test('deduplicates a hub naming the same canvas flat and namespaced', () => {
+    expect(
+      tombstonedSlugs(
+        [
+          { name: 'ui-gone', deletedAt: 1 },
+          { name: 'ws/acme/main/ui-gone', deletedAt: 2 },
+        ],
+        ['ui-gone']
+      )
+    ).toEqual(['ui-gone']);
+  });
+});
+
+describe('stateDocumentGone', () => {
+  test('DELETEs the document, percent-encoding the name', async () => {
+    let seenUrl = '';
+    let seenMethod = '';
+    const spy = (async (url: string, init: RequestInit) => {
+      seenUrl = String(url);
+      seenMethod = String(init.method);
+      return new Response('{}', { status: 200 });
+    }) as unknown as typeof fetch;
+    const ok = await stateDocumentGone('https://hub.example/', 't', 'ws/acme/main/ui-x', {
+      fetchImpl: spy,
+    });
+    expect(ok).toBe(true);
+    expect(seenMethod).toBe('DELETE');
+    expect(seenUrl).toBe('https://hub.example/api/documents/ws%2Facme%2Fmain%2Fui-x');
+  });
+
+  test('POSTs to revive, so a re-created name is not eaten by its gravestone', async () => {
+    let seenMethod = '';
+    const spy = (async (_url: string, init: RequestInit) => {
+      seenMethod = String(init.method);
+      return new Response('{}', { status: 200 });
+    }) as unknown as typeof fetch;
+    await stateDocumentGone('https://h', 't', 'ui-x', { revive: true, fetchImpl: spy });
+    expect(seenMethod).toBe('POST');
+  });
+
+  test('an old or unreachable hub is false, never a throw', async () => {
+    // The local delete already happened; a failed call costs the propagation.
+    const boom = (async () => {
+      throw new Error('offline');
+    }) as unknown as typeof fetch;
+    expect(await stateDocumentGone('https://h', 't', 'ui-x', { fetchImpl: boom })).toBe(false);
+    const gone = (async () => new Response('nope', { status: 404 })) as unknown as typeof fetch;
+    expect(await stateDocumentGone('https://h', 't', 'ui-x', { fetchImpl: gone })).toBe(false);
   });
 });
 
