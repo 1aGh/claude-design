@@ -2,6 +2,24 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "annotations-survive-cold-start",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "Your drawings survive a cloud restart",
+      "summary": "Stickers, drawings and dropped images on the canvas no longer vanish after the cloud restarts, and a freshly added image now reaches your other machines instead of showing a broken frame. Annotations keep their own edit time now, and an empty record can never silently replace real strokes.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "self-contained-asset-sweep",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "Asset upload works on a clean machine",
+      "summary": "The desktop app uploads your project images with its own bundled runtime, so the upload no longer fails with an executable-not-found error on machines without developer tools installed.",
+      "surface": "design-ui"
+    },
+    {
       "id": "continuous-sync-discovery",
       "version": "0.60.3",
       "date": "2026-08-13",

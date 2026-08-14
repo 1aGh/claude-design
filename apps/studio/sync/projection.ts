@@ -39,6 +39,7 @@ import {
   htmlFromDoc,
   mergeSharedMetaIntoLocal,
   metaFromDoc,
+  stampAnnotationsEdit,
   stampBodyEdit,
 } from './codec.ts';
 import { type EchoGuard, hashBytes } from './echo-guard.ts';
@@ -354,7 +355,15 @@ export function createDocProjection(opts: DocProjectionOptions): DocProjection {
     }
     if (evt.path === paths.annotations) {
       clearStrike(evt.path);
-      return applyAnnotationsToDoc(doc, str, importOrigin);
+      // Apply + per-lane stamp in ONE transaction (mirrors agent.applyFromFs)
+      // so a deliberate delete-all (empty wrapper) carries its freshness and
+      // survives cold start on other peers (the 2026-08-14 eraser fix).
+      let changed = false;
+      doc.transact(() => {
+        changed = applyAnnotationsToDoc(doc, str, importOrigin);
+        if (changed) stampAnnotationsEdit(doc, importOrigin);
+      }, importOrigin);
+      return changed;
     }
     return false;
   }

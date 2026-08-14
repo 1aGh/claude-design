@@ -196,3 +196,99 @@ export function decideColdStart(input: ColdStartInput): ColdStartDecision {
         : 'diverged — timestamps tied, falling back to hub-wins (recoverable: both sides snapshotted)',
   };
 }
+
+/* ------------------------------------------------- annotations (per-lane) */
+
+export interface AnnotationsColdStartInput {
+  /** Local `.annotations.svg` content, or null when the file doesn't exist. */
+  local: string | null;
+  /** Annotations currently held by the doc (`''` when the lane is unset). */
+  doc: string;
+  /** True when the value carries zero strokes — callers pass
+   *  `isEmptyAnnotationsSvg` (codec.ts) so this table stays Y-free. */
+  isEmpty: (svg: string | null) => boolean;
+  /** Local annotations file mtime (ms epoch), or null when unavailable. */
+  localMtimeMs: number | null;
+  /** Doc-side syncMeta.annotationsEditAt stamp, or null when no peer ever
+   *  stamped (pre-stamp interop). */
+  docEditAtMs: number | null;
+  /** The body lane's resolved winner — the legacy coupling, used only as the
+   *  fallback when both sides are non-empty and neither is stamped. */
+  bodyWinner: 'local' | 'hub';
+}
+
+export interface AnnotationsColdStartDecision {
+  winner: 'local' | 'hub' | 'none';
+  reason: string;
+}
+
+/**
+ * Per-lane cold-start resolution for annotations (extends DDR-102 to the
+ * annotations lane; the 2026-08-14 annotations eraser).
+ *
+ * Annotations used to blindly follow the body winner — but annotation edits
+ * don't move the body's edit time, so a hub with a newer body and a STALE
+ * (empty-wrapper) annotations lane erased newer local strokes on every cold
+ * start, and with the strokes went the `assets/<sha8>` references the asset
+ * pull scans. The one load-bearing rule here: **unstamped emptiness never
+ * beats content.** A STAMPED emptiness that is provably newer is a deliberate
+ * delete-all and is honored; everything else prefers the side with strokes.
+ */
+export function decideAnnotationsColdStart(
+  input: AnnotationsColdStartInput
+): AnnotationsColdStartDecision {
+  const { local, doc, isEmpty, localMtimeMs, docEditAtMs, bodyWinner } = input;
+  const localEmpty = isEmpty(local);
+  const docEmpty = isEmpty(doc === '' ? null : doc);
+
+  if (localEmpty && docEmpty) return { winner: 'none', reason: 'both sides empty' };
+
+  if (docEmpty && !localEmpty) {
+    // A stamped hub emptiness NEWER than the local file is a deliberate
+    // delete-all made while this peer was offline — honor it.
+    if (docEditAtMs !== null && localMtimeMs !== null && docEditAtMs > localMtimeMs) {
+      return {
+        winner: 'hub',
+        reason: `hub delete-all is newer than local strokes (annotationsEditAt ${new Date(docEditAtMs).toISOString()} > local mtime ${new Date(localMtimeMs).toISOString()})`,
+      };
+    }
+    return {
+      winner: 'local',
+      reason:
+        'hub annotations are empty but local has strokes — keeping local + seeding it up (unstamped emptiness never beats content)',
+    };
+  }
+
+  if (!docEmpty && localEmpty) {
+    // Symmetric: a local delete-all (empty wrapper on disk) newer than the
+    // doc's stamp is honored; an absent/stale local file materializes the hub.
+    if (
+      local !== null &&
+      localMtimeMs !== null &&
+      docEditAtMs !== null &&
+      localMtimeMs > docEditAtMs
+    ) {
+      return {
+        winner: 'local',
+        reason: `local delete-all is newer than hub strokes (local mtime ${new Date(localMtimeMs).toISOString()} > annotationsEditAt ${new Date(docEditAtMs).toISOString()})`,
+      };
+    }
+    return { winner: 'hub', reason: 'local annotations empty/absent — materializing hub strokes' };
+  }
+
+  // Both non-empty.
+  if (doc === local) return { winner: 'none', reason: 'both sides equal' };
+  if (docEditAtMs !== null && localMtimeMs !== null && docEditAtMs !== localMtimeMs) {
+    const winner = localMtimeMs > docEditAtMs ? 'local' : 'hub';
+    return {
+      winner,
+      reason: `diverged — newest wins: local mtime ${new Date(localMtimeMs).toISOString()} ${
+        winner === 'local' ? '>' : '<'
+      } doc annotationsEditAt ${new Date(docEditAtMs).toISOString()}`,
+    };
+  }
+  return {
+    winner: bodyWinner,
+    reason: `diverged — no per-lane stamp on one side, following the body winner (${bodyWinner})`,
+  };
+}

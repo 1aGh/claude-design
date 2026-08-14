@@ -36,16 +36,19 @@ import type * as Y from 'yjs';
 
 import { Y_TYPES } from '../collab/persistence.ts';
 import {
+  annotationsEditAtFromDoc,
   applyAnnotationsToDoc,
   applyCommentsToDoc,
   applyCssToDoc,
   applyHtmlToDoc,
   applyMetaToDoc,
   bodyEditAtFromDoc,
+  isEmptyAnnotationsSvg,
+  stampAnnotationsEdit,
   stampBodyEdit,
   Y_SYNC_TYPES,
 } from './codec.ts';
-import { decideColdStart, unionCommentsById } from './cold-start.ts';
+import { decideAnnotationsColdStart, decideColdStart, unionCommentsById } from './cold-start.ts';
 import { hashBytes } from './echo-guard.ts';
 import type { SyncJournal } from './journal.ts';
 import { ORIGINS } from './origins.ts';
@@ -133,7 +136,17 @@ export async function migrateSeed(opts: MigrateSeedOptions): Promise<MigrateSeed
         const parsed = tryParseJsonArray(localComments);
         if (parsed) applyCommentsToDoc(doc, parsed, ORIGINS.MIGRATION);
       }
-      if (localAnnotations) applyAnnotationsToDoc(doc, localAnnotations, ORIGINS.MIGRATION);
+      if (localAnnotations) {
+        if (applyAnnotationsToDoc(doc, localAnnotations, ORIGINS.MIGRATION)) {
+          // Stamp with the FILE's mtime — adopt seeds pre-existing content,
+          // which must not claim apply-time freshness over a newer peer.
+          stampAnnotationsEdit(
+            doc,
+            ORIGINS.MIGRATION,
+            localMtimeMs(paths.annotations) ?? undefined
+          );
+        }
+      }
       if (paths.meta && localMeta) applyMetaToDoc(doc, localMeta, ORIGINS.MIGRATION);
       if (paths.css && localCss) applyCssToDoc(doc, localCss, ORIGINS.MIGRATION);
     }, ORIGINS.MIGRATION);
@@ -164,17 +177,16 @@ export async function migrateSeed(opts: MigrateSeedOptions): Promise<MigrateSeed
 
   let result: MigrateSeedResult = 'hub-wins';
 
-  /** Rebuild body (+ visually-coupled css/annotations) from local, in ONE
-   *  MIGRATION transaction — one source per type, never a two-history merge. */
+  /** Rebuild body (+ visually-coupled css) from local, in ONE MIGRATION
+   *  transaction — one source per type, never a two-history merge.
+   *  Annotations are deliberately NOT here any more: they resolve per-lane
+   *  below (decideAnnotationsColdStart), independent of the body winner. */
   const rebuildBodyFromLocal = (): void => {
     doc.transact(() => {
       if (applyHtmlToDoc(doc, localHtml as string, ORIGINS.MIGRATION)) {
         stampBodyEdit(doc, ORIGINS.MIGRATION);
       }
       if (paths.css && localCss !== null) applyCssToDoc(doc, localCss, ORIGINS.MIGRATION);
-      if (localAnnotations !== null) {
-        applyAnnotationsToDoc(doc, localAnnotations, ORIGINS.MIGRATION);
-      }
     }, ORIGINS.MIGRATION);
     opts.journal?.record(slug, {
       bodyHash: hashBytes(localHtml as string),
@@ -244,6 +256,39 @@ export async function migrateSeed(opts: MigrateSeedOptions): Promise<MigrateSeed
       });
       break;
     }
+  }
+
+  // ---- annotations: PER-LANE newest-wins (the 2026-08-14 eraser fix; the
+  // same table as agent.ts reconcile). Under sharedDoc the collab room's
+  // persistJson materializes the doc's annotations to disk, so a stale hub
+  // EMPTY WRAPPER (non-'' but zero strokes) in the doc erased local strokes
+  // right after this seed ran. Resolve the lane here, before the room
+  // materializes: unstamped emptiness never beats content.
+  {
+    const docSvg = doc.getMap<unknown>(Y_TYPES.annotations).get('svg');
+    const docAnnotations = typeof docSvg === 'string' ? docSvg : '';
+    const annDecision = decideAnnotationsColdStart({
+      local: localAnnotations,
+      doc: docAnnotations,
+      isEmpty: isEmptyAnnotationsSvg,
+      localMtimeMs: localMtimeMs(paths.annotations),
+      docEditAtMs: annotationsEditAtFromDoc(doc),
+      bodyWinner: result === 'body-seed-up' || result === 'conflict-local-wins' ? 'local' : 'hub',
+    });
+    if (annDecision.winner === 'local' && localAnnotations !== null) {
+      console.warn(`[sync/${slug}] shared-doc cold-start annotations: ${annDecision.reason}`);
+      doc.transact(() => {
+        if (applyAnnotationsToDoc(doc, localAnnotations, ORIGINS.MIGRATION)) {
+          stampAnnotationsEdit(
+            doc,
+            ORIGINS.MIGRATION,
+            localMtimeMs(paths.annotations) ?? undefined
+          );
+        }
+      }, ORIGINS.MIGRATION);
+    }
+    // winner 'hub' → nothing to write here: the collab room owns the
+    // annotations doc→file half and materializes it (persistJson).
   }
 
   // Comments id-union (DDR-102): rebuild from merged JSON via the
