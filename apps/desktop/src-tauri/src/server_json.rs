@@ -67,3 +67,75 @@ pub fn read_server_url(design_root: &std::path::Path) -> Option<String> {
 pub fn is_loopback_url(url: &tauri::Url) -> bool {
     url.scheme() == "http" && matches!(url.host_str(), Some("localhost") | Some("127.0.0.1"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn url(s: &str) -> tauri::Url {
+        s.parse().expect("test url should parse")
+    }
+
+    #[test]
+    fn accepts_loopback_http() {
+        assert!(is_loopback_url(&url("http://localhost:4399")));
+        assert!(is_loopback_url(&url("http://127.0.0.1:4399")));
+        // Path/query on the loopback origin is still the same origin.
+        assert!(is_loopback_url(&url("http://localhost:4399/ui/foo?x=1")));
+    }
+
+    #[test]
+    fn rejects_non_loopback_host() {
+        // The whole point of the guard: `_server.json` lives under a possibly
+        // untrusted project root, so a rewritten `url` must not steer the
+        // webview off-box (DDR-109 §1 / security review F3).
+        assert!(!is_loopback_url(&url("http://evil.example/")));
+        assert!(!is_loopback_url(&url("http://127.0.0.1.evil.example/")));
+        // A loopback-looking host that is NOT one of the two accepted spellings.
+        assert!(!is_loopback_url(&url("http://[::1]:4399")));
+    }
+
+    #[test]
+    fn rejects_non_http_scheme() {
+        assert!(!is_loopback_url(&url("https://localhost:4399")));
+        assert!(!is_loopback_url(&url("file:///Applications/Maude.app")));
+        assert!(!is_loopback_url(&url("javascript:alert(1)")));
+    }
+
+    #[tokio::test]
+    async fn wait_for_server_times_out_without_server_json() {
+        // The recovery path's failure mode: no `_server.json` yet. Must return
+        // Err (so the splash keeps retrying) rather than hang or panic.
+        let dir = std::env::temp_dir().join("maude-server-json-test-empty");
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let _ = std::fs::remove_file(dir.join("_server.json"));
+
+        let err = wait_for_server(dir, 200).await.expect_err("should time out");
+        assert!(err.contains("timed out"), "unexpected error: {err}");
+    }
+
+    #[tokio::test]
+    async fn wait_for_server_reads_url_then_falls_back_to_port() {
+        let dir = std::env::temp_dir().join("maude-server-json-test-read");
+        std::fs::create_dir_all(&dir).expect("temp dir");
+
+        std::fs::write(
+            dir.join("_server.json"),
+            br#"{"url":"http://localhost:4401","port":4399}"#,
+        )
+        .expect("write _server.json");
+        assert_eq!(
+            wait_for_server(dir.clone(), 1_000).await.expect("url"),
+            "http://localhost:4401"
+        );
+
+        // `port` only when `url` is absent — the DDR-106 verbatim-url rule.
+        std::fs::write(dir.join("_server.json"), br#"{"port":4399}"#).expect("write _server.json");
+        assert_eq!(
+            wait_for_server(dir.clone(), 1_000).await.expect("port fallback"),
+            "http://localhost:4399"
+        );
+
+        let _ = std::fs::remove_file(dir.join("_server.json"));
+    }
+}

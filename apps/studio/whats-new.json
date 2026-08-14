@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "desktop-splash-recovers-itself",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "No more getting stuck on “Starting…”",
+      "summary": "The desktop app could go black and sit on the startup screen for good — often right after a command finished — with a force-quit as the only way out. It now finds its way back on its own, in about a second, and keeps your session instead of losing it.",
+      "surface": "desktop"
+    },
+    {
       "id": "continuous-sync-discovery",
       "version": "0.60.3",
       "date": "2026-08-13",
