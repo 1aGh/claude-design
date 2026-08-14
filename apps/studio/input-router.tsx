@@ -398,12 +398,36 @@ export function isEditableTarget(t: EventTarget | null): boolean {
  */
 export function isOverlayTarget(t: EventTarget | null): boolean {
   if (!t || !(t as Element).closest) return false;
+  const el = t as Element;
+  // Security review (issue-90) — `.dc-world` is exactly the subtree the
+  // active canvas's own JSX renders into (`canvas-lib.tsx`'s
+  // `<div className="dc-world">{children}</div>`); every selector below is
+  // shell-owned chrome that NEVER renders inside it (ToolPalette/
+  // AnnotationsLayer/ContextMenuView are siblings of `.dc-canvas`,
+  // DCZoomToolbar/DCMiniMap are children of `.dc-canvas` but siblings of
+  // `.dc-world`). Since untrusted, AI/user-authored canvas content is the one
+  // thing that DOES render inside `.dc-world`, it could otherwise spoof one
+  // of these class names on its own element to make the router yield to it
+  // (skip `preventDefault`) instead of claiming the gesture — bail out first
+  // so a same-name imposter inside the canvas never qualifies.
+  if (el.closest('.dc-world')) return false;
   // [data-mediaref-player] — the inline <video>/<audio controls> on a media
   // reference chip (DDR-150 dogfood #8). The router must never claim (and
   // preventDefault) pointerdowns over the player, or its native controls
   // (play button, scrubber drag, volume) die under the move tool.
-  return !!(t as Element).closest(
-    '.cm-composer, .cm-thread, .cm-mention-popup, .cm-pin, [data-mediaref-player]'
+  //
+  // .dc-tool-palette, .dc-zoom-tb, .dc-mm, .dc-context-menu (issue-90) — the
+  // shell's floating chrome renders as SIBLINGS of `.dc-canvas` but INSIDE
+  // this router's host (`[data-mc-host]` wraps the whole surface, chrome
+  // included). Without this exemption, once comment mode is armed every
+  // click on the palette/zoom-pill/minimap/context-menu was claimed as
+  // `drop-comment` (preventDefault + stopImmediatePropagation) and dropped a
+  // stray pin at the chrome's own coordinates instead of reaching its React
+  // onClick — `classifyContextKind` (canvas-shell.tsx) already treats these
+  // same selectors as `'overlay'`, non-canvas chrome; this router's claim
+  // gate was the one place that didn't.
+  return !!el.closest(
+    '.cm-composer, .cm-thread, .cm-mention-popup, .cm-pin, [data-mediaref-player], .dc-tool-palette, .dc-zoom-tb, .dc-mm, .dc-context-menu'
   );
 }
 

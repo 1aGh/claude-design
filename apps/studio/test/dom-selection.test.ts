@@ -19,7 +19,7 @@ afterAll(() => {
   GlobalRegistrator.unregister();
 });
 
-import { resolveByDomPath } from '../dom-selection.ts';
+import { buildComposeSelection, openCommentComposer, resolveByDomPath } from '../dom-selection.ts';
 
 function setArtboard(html: string): void {
   document.body.innerHTML = `<div data-dc-screen="art1">${html}</div>`;
@@ -126,5 +126,73 @@ describe('resolveByDomPath', () => {
     // The art2 button structurally matches perfectly, but art1 is the requested
     // scope — the only art1 candidate is a shallower, shorter-suffix match.
     expect(found?.getAttribute('data-cd-id')).toBe('aaa11111');
+  });
+});
+
+// issue-90 — right-click "Add comment" on empty canvas background or an
+// artboard's chrome/border (neither carries a `data-cd-id`) used to have no
+// menu entry at all, and even where the entry DID exist (on an element) it
+// never actually opened the composer (see `openCommentComposer` below).
+// `buildComposeSelection` is the shared builder canvas-shell.tsx's
+// context-menu registry now calls for all three target kinds.
+describe('buildComposeSelection', () => {
+  test('with an element under the cursor — delegates to hoverTargetToSelection (same anchor a comment-tool click gets)', () => {
+    setArtboard(`<button class="cta" data-cd-id="aaa11111">Buy now</button>`);
+    const el = document.querySelector('[data-cd-id="aaa11111"]');
+    const sel = buildComposeSelection({ el, cdId: 'aaa11111', artboardId: 'art1' }, 100, 200);
+    expect(sel.selector).toBe('[data-dc-screen="art1"] [data-cd-id="aaa11111"]');
+    expect(sel.id).toBe('aaa11111');
+    expect(sel.tag).toBe('button');
+  });
+
+  test('with no element (empty canvas background) — a FLOATING selection anchored to the click point', () => {
+    document.body.innerHTML = '';
+    const sel = buildComposeSelection({ el: null, cdId: null, artboardId: null }, 100, 200);
+    expect(sel.selector).toBe('');
+    expect(sel.tag).toBe('');
+    expect(sel.artboardId).toBeNull();
+    expect(sel.bounds).toEqual({ x: 88, y: 188, w: 24, h: 24 });
+  });
+
+  test('with no element but INSIDE an artboard (right-click on its chrome/border) — floating, but keeps the artboardId', () => {
+    document.body.innerHTML = '';
+    const sel = buildComposeSelection({ el: null, cdId: null, artboardId: 'art1' }, 50, 60);
+    expect(sel.selector).toBe('');
+    expect(sel.artboardId).toBe('art1');
+    expect(sel.bounds).toEqual({ x: 38, y: 48, w: 24, h: 24 });
+  });
+});
+
+describe('openCommentComposer', () => {
+  // The regression: canvas-shell.tsx's context-menu "Add comment" used to
+  // ONLY postMessage the parent shell (which merely mirrors the target for
+  // the StatusBar/sidebar) and never dispatched `cm:open-composer` — the one
+  // event `comments-overlay.tsx` listens on to actually render the composer.
+  // Selecting the menu item silently did nothing.
+  test('dispatches cm:open-composer carrying the selection + click point', () => {
+    let detail: { selection?: unknown; clientX?: number; clientY?: number } | null = null;
+    const onOpen = (e: Event) => {
+      detail = (e as CustomEvent).detail;
+    };
+    document.addEventListener('cm:open-composer', onOpen);
+    const sel = {
+      selector: '',
+      artboardId: null,
+      tag: '',
+      classes: '',
+      text: '',
+      dom_path: [],
+      bounds: { x: 30, y: 40, w: 24, h: 24 },
+      html: '',
+    };
+    try {
+      openCommentComposer(sel, 42, 52);
+    } finally {
+      document.removeEventListener('cm:open-composer', onOpen);
+    }
+    expect(detail).not.toBeNull();
+    expect(detail?.selection).toBe(sel);
+    expect(detail?.clientX).toBe(42);
+    expect(detail?.clientY).toBe(52);
   });
 });
