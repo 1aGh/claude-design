@@ -25,19 +25,29 @@
    - Menu items visible: `Add comment` · `Copy CSS` · `Copy data-cd-id` · `Inspect` (disabled) · `Hide` · `Deselect`.
    - Right-aligned shortcut hints render in monospace (`C`, `⌘⇧C`, `⌘⇧H`, `Esc`).
    - Capture screenshot (`/_menu-element.png`).
+   - Click `Add comment`. (issue-90) Assert the in-place composer actually
+     opens, anchored near the clicked heading — before the fix, this item
+     posted a message to the parent shell but never dispatched the event the
+     composer overlay listens on, so nothing visibly happened.
 2. **Copy data-cd-id works.**
    - Click `Copy data-cd-id`.
    - Assert clipboard contains the element's `data-cd-id` value.
    - Menu dismisses after click.
 3. **Right-click on artboard chrome.**
    - Right-click on the artboard label strip (`.dc-artboard-label`) of CV-05.
-   - Assert menu items: `Fit just this artboard` · `Fit to view` · `Reset view`.
+   - Assert menu items: `Add comment` · `Fit just this artboard` · `Fit to view` · `Reset view`.
+   - (issue-90) `Add comment` anchors a FLOATING pin at the click point (the
+     label strip carries no `data-cd-id`) — assert the composer opens instead
+     of silently doing nothing.
 4. **Right-click on empty world.**
    - Right-click on the blank area between artboards.
-   - Assert menu items: `Fit to view` · `Reset view`.
+   - Assert menu items: `Add comment` · `Fit to view` · `Reset view`.
    - Click `Reset view`.
    - Assert viewport zoom reset to 100% + pan to (0, 0).
    - Capture screenshot (`/_menu-world.png`).
+   - (issue-90) Re-open the menu and click `Add comment` instead — assert the
+     composer opens anchored at the click point (previously this menu item
+     didn't exist at all).
 5. **Esc dismiss.**
    - Right-click anywhere to re-open.
    - Press Esc.

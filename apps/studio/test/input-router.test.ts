@@ -9,6 +9,7 @@ import {
   DRAG_THRESHOLD_PX,
   isArtboardDragChrome,
   isEditableTarget,
+  isOverlayTarget,
   type Tool,
   yieldsClickToArtboardChrome,
   yieldsToArtboardDrag,
@@ -493,6 +494,74 @@ describe('input-router / isArtboardDragChrome', () => {
 
   test('inside .dc-artboard-body (the canvas content, not chrome) → false', () => {
     expect(isArtboardDragChrome(fakeTarget(['[data-dc-screen]', '.dc-artboard-body']))).toBe(false);
+  });
+});
+
+// issue-90 — once comment mode is armed, a bare click anywhere on the shell's
+// floating chrome (tool palette, zoom pill, minimap, right-click context
+// menu) was claimed as `drop-comment` and dropped a stray pin at the
+// chrome's own coordinates instead of reaching the chrome's own React
+// onClick — the palette became unusable the moment the user picked the
+// Comment tool. `classifyContextKind` (canvas-shell.tsx) already treats
+// these same selectors as non-canvas `'overlay'` chrome; `isOverlayTarget`
+// was the one claim gate that didn't.
+describe('input-router / isOverlayTarget — shell chrome exemptions (issue-90)', () => {
+  // isOverlayTarget makes ONE `closest(a, b, c, ...)` call against the full
+  // comma-joined selector list, unlike isArtboardDragChrome's fakeTarget
+  // above (which mimics one call per bare selector) — so the stub instead
+  // checks whether any of the target's own classes appears among the
+  // selector's comma-separated parts, same as a real `Element.closest` would
+  // resolve for a node carrying that class.
+  const fakeTarget = (memberOf: string[]): EventTarget =>
+    ({
+      closest: (sel: string) => (memberOf.some((cls) => sel.includes(cls)) ? {} : null),
+    }) as unknown as EventTarget;
+
+  test('null target → false', () => {
+    expect(isOverlayTarget(null)).toBe(false);
+  });
+
+  test('a click on the tool palette is exempt', () => {
+    expect(isOverlayTarget(fakeTarget(['.dc-tool-palette']))).toBe(true);
+  });
+
+  test('a click on the zoom toolbar is exempt', () => {
+    expect(isOverlayTarget(fakeTarget(['.dc-zoom-tb']))).toBe(true);
+  });
+
+  test('a click on the minimap is exempt', () => {
+    expect(isOverlayTarget(fakeTarget(['.dc-mm']))).toBe(true);
+  });
+
+  test('a click on the right-click context menu is exempt', () => {
+    expect(isOverlayTarget(fakeTarget(['.dc-context-menu']))).toBe(true);
+  });
+
+  test('a click on ordinary canvas content is NOT exempt', () => {
+    expect(isOverlayTarget(fakeTarget([]))).toBe(false);
+  });
+
+  test('the pre-existing comment-overlay exemptions still hold', () => {
+    expect(isOverlayTarget(fakeTarget(['.cm-composer']))).toBe(true);
+    expect(isOverlayTarget(fakeTarget(['.cm-thread']))).toBe(true);
+    expect(isOverlayTarget(fakeTarget(['.cm-mention-popup']))).toBe(true);
+    expect(isOverlayTarget(fakeTarget(['.cm-pin']))).toBe(true);
+    expect(isOverlayTarget(fakeTarget(['[data-mediaref-player]']))).toBe(true);
+  });
+
+  // Security review finding (issue-90) — `.dc-world` is where the ACTIVE
+  // CANVAS's own untrusted, AI/user-authored JSX renders. None of the real
+  // chrome ever lives there, so an element inside `.dc-world` that ALSO
+  // carries one of these class names is necessarily a same-name imposter —
+  // untrusted canvas content spoofing the shell's own chrome to make the
+  // router yield (skip preventDefault) on it instead of claiming the
+  // gesture. Must be rejected regardless of which chrome class it copies.
+  test('an element inside .dc-world carrying a spoofed chrome class is NOT exempt', () => {
+    expect(isOverlayTarget(fakeTarget(['.dc-world', '.dc-tool-palette']))).toBe(false);
+    expect(isOverlayTarget(fakeTarget(['.dc-world', '.dc-zoom-tb']))).toBe(false);
+    expect(isOverlayTarget(fakeTarget(['.dc-world', '.dc-mm']))).toBe(false);
+    expect(isOverlayTarget(fakeTarget(['.dc-world', '.dc-context-menu']))).toBe(false);
+    expect(isOverlayTarget(fakeTarget(['.dc-world', '.cm-composer']))).toBe(false);
   });
 });
 
