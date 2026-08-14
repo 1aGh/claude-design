@@ -53,7 +53,11 @@ describe('exporters/jobs — concurrency gate', () => {
       let sawThirdQueued = false;
       let maxRunningObserved = 0;
       let allDone = false;
-      const deadline = Date.now() + 4000;
+      // Generous: the assertion below is "the queue drains at all", not "it
+      // drains fast". The budget only has to outlast DEFLATE over the seeded
+      // sandbox on the slowest machine we run on — a budget tuned to one
+      // machine's disk speed fails there while the queue is working fine.
+      const deadline = Date.now() + 20_000;
       while (Date.now() < deadline && !allDone) {
         const jobs = await listJobs(port);
         const byId = new Map(jobs.map((j) => [j.id, j]));
@@ -74,7 +78,7 @@ describe('exporters/jobs — concurrency gate', () => {
     } finally {
       await killProc(proc);
     }
-  });
+  }, 30_000);
 });
 
 describe('exporters/jobs — pending-queue cap (security fan-out, /flow:done)', () => {
@@ -109,7 +113,9 @@ describe('exporters/jobs — pending-queue cap (security fan-out, /flow:done)', 
       // Once jobs drain below the cap, enqueue works again — this is a
       // capacity limit, not a permanent lockout.
       let drained = false;
-      const deadline = Date.now() + 5000;
+      // Same reasoning as the concurrency gate above — budget for the slowest
+      // machine, since what's under test is that the cap lifts, not latency.
+      const deadline = Date.now() + 20_000;
       while (Date.now() < deadline && !drained) {
         const jobs = await listJobs(port);
         drained = jobs.every((j) => j.status === 'done' || j.status === 'failed');
@@ -121,7 +127,7 @@ describe('exporters/jobs — pending-queue cap (security fan-out, /flow:done)', 
     } finally {
       await killProc(proc);
     }
-  });
+  }, 30_000);
 });
 
 describe('exporters/jobs — list() + history under concurrency', () => {
