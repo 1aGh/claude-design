@@ -2433,7 +2433,7 @@ function CanvasRouter({
   distributeArtboards: (axis: 'x' | 'y') => void;
   alignArtboards: (mode: 'left' | 'right' | 'center-x' | 'top' | 'bottom' | 'center-y') => void;
 }) {
-  const { tool, setTool, clearSticky } = useToolMode();
+  const { tool, setTool, resetTool, clearSticky } = useToolMode();
   const selSet = useSelectionSet();
   const annotSel = useAnnotationSelection();
   const ctxMenu = useContextMenu();
@@ -3269,10 +3269,11 @@ function CanvasRouter({
         } catch {
           /* non-DOM env */
         }
-        // T19 — clear sticky-tool lock + flip back to Move. Esc is the
-        // canonical "back to default state" gesture across canvas apps.
+        // T19 — clear sticky-tool lock + flip back to the mode's resting tool
+        // (DDR-223: move in edit, browse in preview). Esc is the canonical
+        // "back to default state" gesture across canvas apps.
         clearSticky();
-        if (tool !== 'move') setTool('move');
+        resetTool();
         ctxMenu.close();
         selSet.clear();
         annotSel.clear();

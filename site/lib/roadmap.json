@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-14T12:46:04.523Z",
+  "generated": "2026-08-14T14:31:45.948Z",
   "currentPhase": null,
   "phases": [
     {
@@ -2078,6 +2078,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-video-tracking-and-stabilization.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "issue-93-canvas-boot-posture-and-preview-edit-toggle",
+      "title": "Feature: Canvas boot posture — respond to issue #93 (default tool / preview-edit toggle request)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/issue-93-canvas-boot-posture-and-preview-edit-toggle.md",
       "archived": false,
       "phaseKey": null
     }

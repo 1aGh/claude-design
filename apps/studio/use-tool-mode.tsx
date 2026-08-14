@@ -44,14 +44,42 @@ export interface ToolDescriptor {
  */
 export type ShapeKind = 'square' | 'rounded' | 'circle' | 'diamond' | 'triangle' | 'triangle-down';
 
+/**
+ * DDR-223 (issue #93) — the binary canvas mode over the tool set. `preview`
+ * rests on `browse` (pure pass-through, the mock is alive; annotation tools
+ * stay usable); `edit` rests on `move` (the Figma select ladder). The mode is
+ * a store-level layer — `classify()` and every `tool === 'move'` gate are
+ * untouched (DDR-187's decomposition stands).
+ */
+export type CanvasMode = 'preview' | 'edit';
+
+/** The resting tool each mode arms (and returns to via `resetTool`). */
+export const MODE_DEFAULT_TOOL: Readonly<Record<CanvasMode, Tool>> = Object.freeze({
+  preview: 'browse',
+  edit: 'move',
+});
+
+/**
+ * Mode implied by arming a mode-exclusive resting tool. `browse` and `move`
+ * are the only mode-carrying tools; everything else (comment, draw set) is
+ * mode-NEUTRAL — arming pen in preview keeps you in preview (the issue-#93
+ * "annotations work in preview" contract).
+ */
+function modeForTool(t: Tool): CanvasMode | null {
+  if (t === 'browse') return 'preview';
+  if (t === 'move') return 'edit';
+  return null;
+}
+
 // Phase 21 — every tool ships a custom 32×32 SVG cursor (canvas-cursors.ts)
 // with a white outline halo so the glyph reads on any background. The native
 // crosshair/text/cell were thin + tiny ("pen almost invisible"); these mirror
 // the tool-palette icons. `move` keeps the system arrow on purpose.
 export const DEFAULT_TOOLS: readonly ToolDescriptor[] = Object.freeze([
-  // feature-4 — Browse is the BOOT default: the mock is alive (buttons click).
-  // Press V for the Move (select) tool. No letter shortcut — it's a deliberate
-  // "I'm done editing" choice via the palette / Esc-from-a-draw-tool.
+  // feature-4 — Browse is the pure pass-through tool: the mock is alive
+  // (buttons click). Since DDR-223 it is the PREVIEW mode's resting tool (the
+  // boot default moved to edit/`move`); no letter shortcut — it's armed via
+  // the Preview toggle / Esc-in-preview.
   { id: 'browse', label: 'Browse', shortcut: '', cursor: TOOL_CURSORS.browse },
   { id: 'move', label: 'Select', shortcut: 'V', cursor: TOOL_CURSORS.move },
   { id: 'hand', label: 'Hand', shortcut: 'H', cursor: TOOL_CURSORS.hand },
@@ -91,6 +119,14 @@ interface ToolContextValue {
   tool: Tool;
   setTool: (t: Tool) => void;
   tools: readonly ToolDescriptor[];
+  /** DDR-223 — the binary canvas mode. Kept coherent with `tool` (arming
+   *  `move`/`browse` moves the mode; `setMode` arms the mode's resting tool). */
+  mode: CanvasMode;
+  setMode: (m: CanvasMode) => void;
+  /** Arm the current mode's resting tool — the Esc / post-draw-commit flip.
+   *  `move` in edit (byte-identical to the pre-DDR-223 hardcode), `browse` in
+   *  preview (drawing an annotation never silently exits the alive posture). */
+  resetTool: () => void;
   /** T19 — sticky-tool double-click lock. When `sticky.locked === true` AND
    *  `sticky.tool === tool`, draw tools stay armed after each shape commit
    *  (T18 auto-flip is suppressed). Single-click on any other tool clears
@@ -111,23 +147,33 @@ const ToolContext = createContext<ToolContextValue | null>(null);
 export function ToolProvider({
   children,
   tools: toolsProp = DEFAULT_TOOLS,
-  // feature-4 (browse/move split, DDR-187) — boot into `browse` so a freshly
-  // opened mock is ALIVE (native pass-through). V flips to the Move (select)
-  // tool. This is the user-decided boot posture (2026-07-15), zero regression
-  // for existing canvases + every native-input surface.
-  initial = 'browse',
+  // DDR-223 (issue #93, supersedes DDR-187's boot half) — authoring surfaces
+  // boot into EDIT with `move` (V) armed: click-selects from the first frame,
+  // Preview (the alive pass-through posture) is one always-visible toggle
+  // away. Read-only canvases (cloud viewers) keep the DDR-187 posture and
+  // boot preview/`browse` — a viewer's job is to use the live mock. The
+  // comment-mount layer passes `initial='browse'` explicitly so bare DS
+  // specimens stay alive too.
+  initial,
+  initialMode,
 }: {
   children: ReactNode;
   tools?: readonly ToolDescriptor[];
   initial?: Tool;
+  initialMode?: CanvasMode;
 }) {
   // Cloud Phase 25 C2 — a read-only canvas keeps only navigate/inspect tools.
   // Filtering HERE covers every consumer at once: the palette renders from
   // `tools`, the input router's letter shortcuts resolve against `tools`, and
   // `setTool` below refuses anything outside the list (the shell `tool-set`
   // postMessage lane included).
-  const tools = useMemo(() => filterToolsForReadOnly(toolsProp, isReadOnlyCanvas()), [toolsProp]);
-  const [tool, setToolState] = useState<Tool>(initial);
+  const readOnly = isReadOnlyCanvas();
+  const tools = useMemo(() => filterToolsForReadOnly(toolsProp, readOnly), [toolsProp, readOnly]);
+  const bootTool: Tool = initial ?? (readOnly ? 'browse' : 'move');
+  const bootMode: CanvasMode =
+    initialMode ?? modeForTool(bootTool) ?? (readOnly ? 'preview' : 'edit');
+  const [tool, setToolState] = useState<Tool>(bootTool);
+  const [mode, setModeState] = useState<CanvasMode>(bootMode);
   const [sticky, setSticky] = useState<{ tool: Tool | null; locked: boolean }>(() => ({
     tool: null,
     locked: false,
@@ -138,12 +184,39 @@ export function ToolProvider({
       // shortcut or postMessage can't arm a tool the palette doesn't show.
       if (!tools.some((d) => d.id === t)) return;
       setToolState(t);
+      // DDR-223 — mode⇄tool invariant: arming a resting tool moves the mode
+      // with it, so V, the menubar `tool-set` lane, and the Cmd+click-in-
+      // browse escape hatch all land in EDIT coherently (and arming browse
+      // lands in PREVIEW). Annotation tools leave the mode alone. This is
+      // also what keeps `move` structurally unreachable inside preview — the
+      // moment it arms, the mode is edit, so no `tool === 'move'` gate can
+      // ever fire while the UI claims preview.
+      const m = modeForTool(t);
+      if (m) setModeState(m);
       // Single-click on a different tool clears any sticky lock — sticky is
       // a per-tool flag, not global.
       setSticky((prev) => (prev.locked && prev.tool === t ? prev : { tool: null, locked: false }));
     },
     [tools]
   );
+  const setMode = useCallback(
+    (m: CanvasMode) => {
+      // Switching mode arms its resting tool (Figma-style: the toggle IS the
+      // posture). Read-only keeps both browse+move on its allowlist, so the
+      // guard below never fires there; it exists for exotic custom `tools`.
+      const rest = MODE_DEFAULT_TOOL[m];
+      if (!tools.some((d) => d.id === rest)) return;
+      setModeState(m);
+      setToolState(rest);
+      setSticky((prev) =>
+        prev.locked && prev.tool === rest ? prev : { tool: null, locked: false }
+      );
+    },
+    [tools]
+  );
+  const resetTool = useCallback(() => {
+    setTool(MODE_DEFAULT_TOOL[mode]);
+  }, [mode, setTool]);
   const toggleSticky = useCallback((t: Tool) => {
     setSticky((prev) => {
       if (prev.locked && prev.tool === t) return { tool: null, locked: false };
@@ -227,8 +300,20 @@ export function ToolProvider({
   }, [tool, tools]);
 
   const value = useMemo<ToolContextValue>(
-    () => ({ tool, setTool, tools, sticky, toggleSticky, clearSticky, shapeKind, setShapeKind }),
-    [tool, setTool, tools, sticky, toggleSticky, clearSticky, shapeKind]
+    () => ({
+      tool,
+      setTool,
+      tools,
+      mode,
+      setMode,
+      resetTool,
+      sticky,
+      toggleSticky,
+      clearSticky,
+      shapeKind,
+      setShapeKind,
+    }),
+    [tool, setTool, tools, mode, setMode, resetTool, sticky, toggleSticky, clearSticky, shapeKind]
   );
 
   return <ToolContext.Provider value={value}>{children}</ToolContext.Provider>;
@@ -240,10 +325,24 @@ export function ToolProvider({
  * `DesignCanvas` consumes that instance instead of double-mounting. The hook
  * is called unconditionally; only the returned tree branches (hook rules).
  */
-export function MaybeToolProvider({ children }: { children: ReactNode }) {
+export function MaybeToolProvider({
+  children,
+  initial,
+  initialMode,
+}: {
+  children: ReactNode;
+  /** DDR-223 — forwarded so the comment-mount layer can pin bare DS
+   *  specimens to the preview/`browse` posture (see canvas-comment-mount). */
+  initial?: Tool;
+  initialMode?: CanvasMode;
+}) {
   const outer = useContext(ToolContext);
   if (outer) return <>{children}</>;
-  return <ToolProvider>{children}</ToolProvider>;
+  return (
+    <ToolProvider initial={initial} initialMode={initialMode}>
+      {children}
+    </ToolProvider>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

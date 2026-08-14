@@ -370,16 +370,20 @@ function shellToast(message, ok = false, action) {
   );
 }
 
-// feature-4 (browse/move split, DDR-187) — one-time first-run teaching hint.
-// The boot default is `browse` (the mock is ALIVE — buttons click), so the
-// Figma muscle-memory gesture (plain click = select) does nothing until V is
-// pressed. Surface that ONCE, gated by a localStorage marker (same family as
-// `mdcc-whatsnew-seen`). Auto-dismisses; a V press (learned) clears it early.
-const BROWSE_HINT_SEEN = 'maude-browse-hint-seen';
+// DDR-223 (issue #93, supersedes DDR-187's boot half) — one-time first-run
+// teaching hint. Authoring canvases now boot into EDIT (`move`/V armed): click
+// selects like Figma, and the mock is inert until the Preview toggle flips the
+// alive posture back on. Teach exactly that ONCE, gated by a NEW localStorage
+// marker (`maude-mode-hint-seen` — deliberately not the old
+// `maude-browse-hint-seen`, which taught the opposite posture; every existing
+// user should see the new hint once). Read-only viewers still boot preview
+// (alive) and keep the DDR-187 wording. Auto-dismisses; the taught gesture
+// (V in read-only) clears it early.
+const MODE_HINT_SEEN = 'maude-mode-hint-seen';
 function browseFirstRunHint(readOnly = false) {
   if (typeof document === 'undefined' || typeof localStorage === 'undefined') return;
   try {
-    if (localStorage.getItem(BROWSE_HINT_SEEN) === '1') return;
+    if (localStorage.getItem(MODE_HINT_SEEN) === '1') return;
   } catch {
     return;
   }
@@ -393,18 +397,21 @@ function browseFirstRunHint(readOnly = false) {
     'font:12px/1.5 var(--font-ui,system-ui,sans-serif);background:var(--surface-2,#1b1e24);' +
     'color:var(--text-1,#e7eaf0);border:1px solid var(--border-1,#333a45);' +
     'box-shadow:0 10px 34px rgba(0,0,0,.42);opacity:0;transition:opacity 160ms ease;';
+  const kbd =
+    '<kbd style="padding:1px 6px;border-radius:5px;border:1px solid var(--border-1,#333a45);' +
+    'background:var(--surface-3,#262b33);font-family:var(--font-mono,monospace)">V</kbd>';
   el.innerHTML =
-    '<span>Your mock is <strong>live</strong> — click things to try it. ' +
-    'Press <kbd style="padding:1px 6px;border-radius:5px;border:1px solid var(--border-1,#333a45);' +
-    'background:var(--surface-3,#262b33);font-family:var(--font-mono,monospace)">V</kbd> ' +
     // Cloud Phase 25 C2 — a viewer selects to inspect, never to edit; the
     // hint must not promise an editor the role doesn't have.
-    (readOnly ? 'to select &amp; inspect.</span>' : 'to select &amp; edit like Figma.</span>') +
+    (readOnly
+      ? `<span>Your mock is <strong>live</strong> — click things to try it. Press ${kbd} to select &amp; inspect.</span>`
+      : '<span>You’re in <strong>Edit</strong> — click selects, like Figma. ' +
+        'Switch to <strong>Preview</strong> in the toolbar to use the live mock.</span>') +
     '<button type="button" aria-label="Dismiss" style="background:none;border:none;color:inherit;' +
     'cursor:pointer;font-size:15px;line-height:1;opacity:.65;padding:2px">×</button>';
   const dismiss = () => {
     try {
-      localStorage.setItem(BROWSE_HINT_SEEN, '1');
+      localStorage.setItem(MODE_HINT_SEEN, '1');
     } catch {
       /* private mode */
     }
@@ -416,7 +423,7 @@ function browseFirstRunHint(readOnly = false) {
     if ((e.key === 'v' || e.key === 'V') && !e.metaKey && !e.ctrlKey && !e.altKey) dismiss();
   };
   el.querySelector('button')?.addEventListener('click', dismiss);
-  document.addEventListener('keydown', onV, true);
+  if (readOnly) document.addEventListener('keydown', onV, true);
   document.body.appendChild(el);
   requestAnimationFrame(() => {
     el.style.opacity = '1';

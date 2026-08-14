@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import {
   DEFAULT_TOOLS,
   filterToolsForReadOnly,
+  MODE_DEFAULT_TOOL,
   ToolProvider,
   useToolMode,
   useToolModeOptional,
@@ -47,6 +48,11 @@ describe('use-tool-mode / static', () => {
 
   test('DEFAULT_TOOLS is immutable (Object.freeze applied)', () => {
     expect(Object.isFrozen(DEFAULT_TOOLS)).toBe(true);
+  });
+
+  test('MODE_DEFAULT_TOOL — DDR-223 resting tools: preview→browse, edit→move', () => {
+    expect(MODE_DEFAULT_TOOL).toEqual({ preview: 'browse', edit: 'move' });
+    expect(Object.isFrozen(MODE_DEFAULT_TOOL)).toBe(true);
   });
 
   test('cursors per tool (Phase 24 — ONE Kenney library for every tool + native fallback)', () => {
@@ -97,16 +103,40 @@ describe('use-tool-mode / useToolModeOptional', () => {
 describe('use-tool-mode / SSR render', () => {
   test('ToolProvider with consumer renders without throwing', () => {
     function Consumer() {
-      const { tool } = useToolMode();
-      return <span data-tool={tool}>{tool}</span>;
+      const { tool, mode } = useToolMode();
+      return (
+        <span data-tool={tool} data-mode={mode}>
+          {tool}
+        </span>
+      );
     }
     const html = renderToStaticMarkup(
       <ToolProvider>
         <Consumer />
       </ToolProvider>
     );
-    // feature-4 — boot default is browse (the mock is alive until V is pressed).
+    // DDR-223 (issue #93) — boot posture is EDIT with the Move (select) tool
+    // armed; Preview (the DDR-187 alive posture) is one toggle away.
+    expect(html).toContain('data-tool="move"');
+    expect(html).toContain('data-mode="edit"');
+  });
+
+  test('ToolProvider initial="browse" boots the preview mode (comment-mount / specimens)', () => {
+    function Consumer() {
+      const { tool, mode } = useToolMode();
+      return (
+        <span data-tool={tool} data-mode={mode}>
+          {tool}
+        </span>
+      );
+    }
+    const html = renderToStaticMarkup(
+      <ToolProvider initial="browse">
+        <Consumer />
+      </ToolProvider>
+    );
     expect(html).toContain('data-tool="browse"');
+    expect(html).toContain('data-mode="preview"');
   });
 
   test('ToolProvider honors initial tool', () => {

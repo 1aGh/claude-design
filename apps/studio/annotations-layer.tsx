@@ -956,7 +956,7 @@ function scaleStrokeInGroup(
 export function AnnotationsLayer() {
   countRender('annotationRenders');
   ensureAnnotStyles();
-  const { tool, setTool, sticky, tools, shapeKind } = useToolMode();
+  const { tool, setTool, resetTool, sticky, tools, shapeKind } = useToolMode();
   const theme = useCanvasChromeTheme();
   const controller = useViewportControllerContext();
   const vp = controller?.viewport ?? null;
@@ -2008,7 +2008,9 @@ export function AnnotationsLayer() {
           setEditCaretPoint({ x: e.clientX, y: e.clientY });
           setEditingId(strokeId);
           if (annotSel) annotSel.replace(strokeId);
-          setTool('move');
+          // DDR-223 — back to the MODE's resting tool (move in edit, browse in
+          // preview): editing a text annotation shouldn't exit preview.
+          resetTool();
           return true;
         }
         const editableTarget = findEditableElementAt(e.clientX, e.clientY);
@@ -2020,7 +2022,7 @@ export function AnnotationsLayer() {
             showCanvasToast(
               'This text is filled in from code (a variable) — edit it via chat or /design:edit.'
             );
-            setTool('move');
+            resetTool();
             return true;
           }
           document.dispatchEvent(
@@ -2028,6 +2030,9 @@ export function AnnotationsLayer() {
               detail: { el: editableTarget, clientX: e.clientX, clientY: e.clientY },
             })
           );
+          // Deliberately `move`, not `resetTool` — editing ARTBOARD content is
+          // an edit-mode activity, so this one flips to edit even from preview
+          // (DDR-223 mode⇄tool sync).
           setTool('move');
           return true;
         }
@@ -2037,7 +2042,7 @@ export function AnnotationsLayer() {
         setPendingText({ x: wx, y: wy });
         if (annotSel) annotSel.clear();
         const stickyOnText = sticky.locked && sticky.tool === 'text';
-        if (!stickyOnText) setTool('move');
+        if (!stickyOnText) resetTool();
         return true;
       }
       return true;
@@ -2061,6 +2066,7 @@ export function AnnotationsLayer() {
       annotSel,
       sticky,
       setTool,
+      resetTool,
     ]
   );
 
@@ -2209,21 +2215,24 @@ export function AnnotationsLayer() {
         showOnceHint('chain', '⌘Enter commits and creates the next one beside it.');
       }
     }
-    // T18 / T19 — flip the tool back to Move after every commit UNLESS sticky
-    // mode is locked on this tool. Sticky lets the user draw many shapes in a
-    // row (canonical pattern: tldraw double-click to lock). Eraser stays
-    // armed by default — that tool is destructive, not constructive.
-    // Map a highlighter pen (a 'pen' stroke with the flag) back to the
-    // 'highlighter' tool id so its sticky-lock check matches the active tool.
+    // T18 / T19 — flip the tool back to the MODE's resting tool after every
+    // commit UNLESS sticky mode is locked on this tool (DDR-223: move in edit
+    // — byte-identical to the old hardcode — browse in preview, so drawing an
+    // annotation never silently exits the alive posture). Sticky lets the user
+    // draw many shapes in a row (canonical pattern: tldraw double-click to
+    // lock). Eraser stays armed by default — that tool is destructive, not
+    // constructive. Map a highlighter pen (a 'pen' stroke with the flag) back
+    // to the 'highlighter' tool id so its sticky-lock check matches the
+    // active tool.
     const toolJustUsed = cur.tool === 'pen' && cur.highlighter ? 'highlighter' : cur.tool;
     if (toolJustUsed !== 'eraser') {
       const stickyOnThis = sticky.locked && sticky.tool === toolJustUsed;
-      if (!stickyOnThis) setTool('move');
+      if (!stickyOnThis) resetTool();
     }
     drawAnchorRef.current = null;
     lastDrawPointRef.current = null;
     setDrawing(null);
-  }, [isActive, isErase, visible, commitStrokes, annotSel, setTool, sticky]);
+  }, [isActive, isErase, visible, commitStrokes, annotSel, resetTool, sticky]);
 
   // T21 — abort a mid-stroke draw without committing. Dispatched by the
   // canvas-shell Esc handler (`maude:cancel-stroke`). Safe to call when

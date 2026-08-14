@@ -39,7 +39,16 @@ describe('comment-mount / MaybeToolProvider dedup', () => {
     const html = renderToStaticMarkup(
       createElement(MaybeToolProvider, null, createElement(ToolReader))
     );
-    // feature-4 (browse/move split) — the default boot tool is `browse`.
+    // DDR-223 — the default boot tool is `move` (edit mode).
+    expect(html).toContain('data-tool="move"');
+  });
+
+  test('forwards initial="browse" — the comment-mount specimen posture (DDR-223)', () => {
+    // buildCanvasTree passes this explicitly so bare DS specimens keep the
+    // DDR-187 alive posture + native cursors.
+    const html = renderToStaticMarkup(
+      createElement(MaybeToolProvider, { initial: 'browse' }, createElement(ToolReader))
+    );
     expect(html).toContain('data-tool="browse"');
   });
 });
