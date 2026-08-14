@@ -50,6 +50,13 @@
    - Hover over an element. Assert `.dc-cv-halo--hover` paints (no Cmd needed in comment mode).
    - Click on the element. Assert the shell-side comment composer opens for that target AND the halo persists as `.dc-cv-halo--selected` on the clicked element.
    - Click Cancel on the composer. Assert the halo clears (composer posts `force-clear`).
+   - (issue-90) With comment mode still active, click the **Move** button in
+     `.dc-tool-palette`. Assert the tool actually switches back to Move
+     (`[aria-pressed="true"]` moves to the Move button) and NO stray comment
+     pin is dropped at the palette's own screen coordinates — before the fix,
+     every click on the palette/zoom-toolbar/minimap while comment mode was
+     armed was swallowed as a `drop-comment` and the palette became
+     unusable until Esc.
 8. **Right-click context menu.**
    - Press V to return to Move.
    - Right-click on a button. Assert `.dc-context-menu` shows with items: `Add comment` · `Copy CSS` · `Copy data-cd-id` · `Inspect` (disabled) · `Hide` · `Deselect`.

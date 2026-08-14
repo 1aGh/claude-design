@@ -511,3 +511,70 @@ export function hoverTargetToSelection(target: HoverTarget, file?: string): Sele
     ...styleMapsFor(el),
   };
 }
+
+/**
+ * Build the comment-composer Selection for a right-click "Add comment"
+ * (context-menu.tsx's `element` / `artboard-chrome` / `world` targets share
+ * this one builder). When an element was under the cursor, delegates to
+ * `hoverTargetToSelection` — the exact anchor a comment-tool CLICK on that
+ * same element would produce, so a menu-driven comment and a drop-comment
+ * pin resolve identically. When there wasn't (empty canvas background, or an
+ * artboard's chrome/border rather than its body), returns a FLOATING
+ * selection pinned to the click point — the same shape
+ * canvas-comment-mount.tsx's `dropComment` uses for its own no-target
+ * fallback (issue-90).
+ */
+export function buildComposeSelection(
+  target: { el: Element | null; cdId?: string | null; artboardId?: string | null },
+  clientX: number,
+  clientY: number,
+  file?: string
+): Selection {
+  if (target.el) {
+    return hoverTargetToSelection(
+      { el: target.el, cdId: target.cdId ?? null, artboardId: target.artboardId ?? null },
+      file
+    );
+  }
+  return {
+    file: file ?? deriveFile(),
+    selector: '',
+    artboardId: target.artboardId ?? null,
+    index: 0,
+    tag: '',
+    classes: '',
+    text: '',
+    dom_path: [],
+    bounds: { x: clientX - 12, y: clientY - 12, w: 24, h: 24 },
+    html: '',
+  };
+}
+
+/**
+ * Open the in-place comment composer for `selection`, anchored at
+ * `(clientX, clientY)`. The single choke point for the two-part signal every
+ * "add a comment here" affordance must send: `cm:open-composer` is what
+ * ACTUALLY opens the composer (`comments-overlay.tsx`'s own listener); the
+ * `comment-compose` postMessage is a secondary mirror so the parent shell's
+ * StatusBar/sidebar reflect the target too. A caller that only sends the
+ * second half opens nothing — canvas-shell.tsx's context-menu "Add comment"
+ * did exactly that until issue-90.
+ */
+export function openCommentComposer(selection: Selection, clientX: number, clientY: number): void {
+  if (typeof document !== 'undefined') {
+    try {
+      document.dispatchEvent(
+        new CustomEvent('cm:open-composer', { detail: { selection, clientX, clientY } })
+      );
+    } catch {
+      /* CustomEvent unsupported — fall through */
+    }
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      window.parent.postMessage({ dgn: 'comment-compose', selection }, '*');
+    } catch {
+      /* parent detached */
+    }
+  }
+}

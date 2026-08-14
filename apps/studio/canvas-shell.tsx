@@ -67,15 +67,13 @@ import {
 import { ContextualToolbar } from './contextual-toolbar.tsx';
 import { CursorsOverlay } from './cursors-overlay.tsx';
 import {
+  buildComposeSelection,
   cssPath,
   deriveFile,
-  domPath,
   hoverTargetToSelection,
+  openCommentComposer,
   realClasses,
   resolveSelectionEl,
-  scopedCdSelector,
-  selectorIndex,
-  shortText,
 } from './dom-selection.ts';
 import { setElementDragActive } from './drag-state.ts';
 import { EqualSpacingHandles } from './equal-spacing-handles.tsx';
@@ -1378,33 +1376,17 @@ function buildRegistry(deps: {
     });
   };
 
+  // issue-90 — right-click "Add comment" (element / artboard-chrome / world)
+  // used to only postMessage the parent shell, which merely mirrors the
+  // target for the StatusBar/sidebar; it never dispatched `cm:open-composer`,
+  // the event `comments-overlay.tsx` actually listens on to open the
+  // composer. Selecting the menu item did nothing. `openCommentComposer`
+  // sends both, matching the working comment-tool-click path
+  // (canvas-comment-mount.tsx's `dropComment`).
   const postComposeForTarget = (target: ContextTarget): void => {
     if (typeof window === 'undefined') return;
-    const composeSelector = target.cdId
-      ? scopedCdSelector(target.cdId, target.artboardId)
-      : cssPath(target.el);
-    const sel: Selection | null = target.el
-      ? {
-          file: deriveFile(),
-          id: target.cdId ?? undefined,
-          selector: composeSelector,
-          artboardId: target.artboardId,
-          index: target.cdId ? selectorIndex(document, composeSelector, target.el) : 0,
-          tag: target.el.tagName.toLowerCase(),
-          classes: realClasses(target.el),
-          text: shortText(target.el, 240),
-          dom_path: domPath(target.el),
-          bounds: (target.el as HTMLElement).getBoundingClientRect
-            ? boundsOf(target.el as HTMLElement)
-            : null,
-          html: (target.el.outerHTML ?? '').slice(0, 4000),
-        }
-      : null;
-    try {
-      window.parent.postMessage({ dgn: 'comment-compose', selection: sel }, '*');
-    } catch {
-      /* ignore */
-    }
+    const sel = buildComposeSelection(target, target.clientX, target.clientY);
+    openCommentComposer(sel, target.clientX, target.clientY);
   };
 
   const fitItem: MenuItem = {
@@ -2142,6 +2124,18 @@ function buildRegistry(deps: {
     ],
     'artboard-chrome': [
       [
+        // issue-90 — right-click on an artboard's own label/border chrome
+        // (outside its body, where `data-cd-id` never resolves) had no
+        // "Add comment" entry at all; only a hit inside the body counted as
+        // `element`. Anchors at the click point (no element under it).
+        {
+          id: 'add-comment',
+          label: 'Add comment',
+          shortcut: 'C',
+          onSelect: postComposeForTarget,
+        },
+      ],
+      [
         {
           id: 'fit-one',
           label: 'Fit just this artboard',
@@ -2273,6 +2267,17 @@ function buildRegistry(deps: {
       [exportItem('export-artboard', 'Export this artboard…', 'artboard')],
     ],
     world: [
+      // issue-90 — right-click on empty canvas background (no artboard, no
+      // element) had no "Add comment" entry at all. Anchors at the click
+      // point, same as the comment tool's own floating-pin fallback.
+      [
+        {
+          id: 'add-comment',
+          label: 'Add comment',
+          shortcut: 'C',
+          onSelect: postComposeForTarget,
+        },
+      ],
       [fitItem, resetItem],
       [
         exportItem('export-canvas', 'Export canvas as separate…', 'canvas-as-separate'),
@@ -2318,16 +2323,6 @@ function filterRegistryForReadOnly(registry: ContextRegistry): ContextRegistry {
       .filter((section) => section.length > 0);
   }
   return out;
-}
-
-function boundsOf(el: HTMLElement) {
-  const r = el.getBoundingClientRect();
-  return {
-    x: Math.round(r.left),
-    y: Math.round(r.top),
-    w: Math.round(r.width),
-    h: Math.round(r.height),
-  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
