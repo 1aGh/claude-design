@@ -124,16 +124,19 @@ echo '{
     "rationale": "<why>",
     "date": "<real ISO date>",
     "mutations": [
-      { "op": "upsert_element", "kind": "decision", "name": "<slug>" },
+      { "op": "upsert_element", "kind": "decision", "name": "<repo>/<slug>" },
       { "op": "upsert_element", "kind": "repo", "name": "<config.scope.repo>" },
       { "op": "upsert_element", "kind": "dept", "name": "<config.scope.dept>" },
-      { "op": "add_link", "from": "decision:<slug>", "to": "repo:<repo>", "link": "IN_REPO" },
-      { "op": "add_link", "from": "decision:<slug>", "to": "dept:<dept>", "link": "IN_DEPT" },
-      { "op": "add_link", "from": "decision:<slug>", "to": "decision:<other>", "link": "SUPERSEDES" }
+      { "op": "add_link", "from": "decision:<repo>/<slug>", "to": "repo:<repo>", "link": "IN_REPO" },
+      { "op": "add_link", "from": "decision:<repo>/<slug>", "to": "dept:<dept>", "link": "IN_DEPT" },
+      { "op": "add_link", "from": "decision:<repo>/<slug>", "to": "decision:<repo>/<other>", "link": "SUPERSEDES" }
     ]
   }
 }' | maude kg ingest
 ```
+
+- **Namespace every repo-local anchor `<repo>/<slug>`** — for kinds `decision`, `milestone`, `plan`, `doc`, `rca`, `code-review`, `security-review`, `execution-report`, `working-state`. Identity is `hash(kind:name)` **across the whole store**, and a shared org store holds many repos: a bare `plan:dependency-debt-eradication` or `decision:DDR-018` is one node that two repos silently overwrite for each other. Shared kinds (`repo:`, `dept:`, `topic:`, `area:`) are never namespaced — collapsing those across repos is the point.
+- **Scope is not optional and not decision-only.** EVERY anchor a write creates — a plan close, a milestone, a working-state snapshot, a recorded verdict — carries `IN_REPO` + `IN_DEPT`, exactly like the decision above. An anchor without them is invisible to every scoped read (`--about` a dept, an admin dashboard filtered by repo) even though `kg search` still finds it, which is the failure mode that reads as "the graph is fine" right up until someone filters it. Measured on the StudyFi store 2026-08-14: 254 of 578 decisions (44%) had no `IN_REPO`, and the un-namespaced anchors were concentrated in exactly the plan/working-state writes this recipe used to leave untagged.
 
 - **Author is automatic** — kgai's `guessActor()` resolves `KGAI_ACTOR` env → **`git config user.name`** → `$USER`, stamped at `kg init` (verified: `kg init` on this repo recorded `actor: 1aGh`). Do NOT wire author; inject `KGAI_ACTOR` only for a richer identity string.
 - **Identity is deterministic** — `hash(kind:name)` means `dept:dev`, `footage:<sha8>`, `reel:<slug>` converge to one node across machines/repos with zero coordination. Content-addressed ids (`assetSha8()`/`edlSlug()`) map 1:1.
@@ -178,11 +181,14 @@ maude kg session-sync     # SessionStart hook (pull) — runs `kg sync --auto` u
 
 kgai is schema-free; a "kind" is just a string. This glossary is the shared vocabulary so decisions record into a consistent shape. **A new command/skill inherits the backend automatically** — it only needs to (1) name any new node kind here, and (2) if its output lands via a dev-server route rather than a model file-edit, add one server-side emit site (see Task 8 / the footage note).
 
+**Repo-local kinds are namespaced `<repo>/<slug>`; shared kinds never are.** The `<repo>/` prefix below is part of the name, not a display convention — see the namespacing rule in the WRITE section.
+
 | Kind | Source | Notable edges |
 | --- | --- | --- |
-| `decision:<slug>` | `/flow:record-ddr`, DDR-worthy writes, log verdicts | `SUPERSEDES`/`OVERRIDES`/`REFERENCES`/`EXTENDS` → decision; `DECIDED_IN` → plan; `IN_REPO`/`IN_DEPT` → scope |
-| `plan:<slug>` | `/flow:plan`, `/flow:setup-prd` | `path` prop → on-disk MD (prose stays on disk) |
-| `repo:<name>` / `dept:<name>` | `config.scope` (every write) | scope anchors |
+| `decision:<repo>/<slug>` | `/flow:record-ddr`, DDR-worthy writes, log verdicts | `SUPERSEDES`/`OVERRIDES`/`REFERENCES`/`EXTENDS` → decision; `DECIDED_IN` → plan; `IN_REPO`/`IN_DEPT` → scope (**both mandatory**) |
+| `plan:<repo>/<slug>` | `/flow:plan`, `/flow:setup-prd` | `path` prop → on-disk MD (prose stays on disk); `IN_REPO`/`IN_DEPT` → scope (**both mandatory**) |
+| `milestone:<repo>/<slug>` / `working-state:<repo>/<slug>` | `/flow:done`, `/flow:pause`, plan closes | `IN_REPO`/`IN_DEPT` → scope (**both mandatory**) |
+| `repo:<name>` / `dept:<name>` | `config.scope` (every write) | scope anchors — **never namespaced** |
 | `ds:<name>` | `/design:setup-ds` LOCK gate | `direction:<ds>-locked` ← `research:<sha>` |
 | `canvas:<slug>` | `/design:new`, `.meta.json` | `RENDERS` → ds; `USES_BRAND` → brand |
 | `edit:<slug>-NNN` | `/design:edit` | `MUTATES` → canvas (verbatim feedback prop) |
