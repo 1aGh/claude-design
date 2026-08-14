@@ -1,65 +1,41 @@
-// Desktop→cell asset push — DDR-217 + the 2026-08-11 addendum (fix 6 of the
-// 2026-08-10 sync RCA, completed).
+// Desktop→cell file push — DDR-217, the 2026-08-11 addendum, and the
+// feature-sync-file-plane widening (binding decision
+// maude/sync-two-plane-manifest-architecture).
 //
 // The sync lanes are text-only (`html`/`css`/`meta`/`syncMeta`), so a
-// desktop-linked project's binary assets never reached the cell — the grey
-// boxes. The desktop is the one peer that HAS the bytes and already holds an
-// authenticated channel to the hub, so it pushes them. There are TWO asset
-// classes, served two different ways, so they push to two different routes:
+// desktop-linked project's other files never reached the cell — first seen as
+// grey boxes (binary assets), then as a whole design system that never
+// arrived (the 103-file RCA). The desktop is the one peer that HAS the bytes
+// and already holds an authenticated channel to the hub, so it pushes them.
+//
+// MEMBERSHIP IS THE CLASSIFIER'S (`file-membership.ts`) — the same positive
+// enumeration the downward plane and the hub's own admission use: inert
+// media, companion text (`brand.css`, `README.md`), and code modules
+// (`_brand-css.ts`), with `canvas-owned` (the CRDT lanes') and `never`
+// (config, runtime state, everything unclassified) excluded. The old
+// assets-dir walk + binary-extension pair lived here; it is subsumed, not
+// joined, by the classifier.
+//
+// TWO ROUTES REMAIN, split by PATH (`routeFor`):
 //
 //   1. TOP-LEVEL content-addressed uploads (`<designRoot>/assets/<sha8>.<ext>`)
 //      — referenced by the `/assets/<key>` shortcut, served on the cloud from
 //      the BUCKET proxy. Push → `PUT /assets/<key>` (bucket + checkout mirror).
-//   2. DS / BRAND assets (`<designRoot>/system/<ds>/assets/logos/x.svg`, fonts,
-//      photos) — referenced by their FULL designRoot path
-//      (`/.design/system/<ds>/assets/…`) and served from the CHECKOUT by the
-//      studio child, never the bucket. The original fix only swept class 1, so
-//      these stayed grey (alligators has 93 of them). Push → `PUT
-//      /_asset-file/<designRoot-rel>` (checkout only, no bucket).
+//   2. EVERYTHING ELSE (DS assets, stylesheets, docs, shared modules) —
+//      referenced by designRoot path, served from the CHECKOUT. Push →
+//      `PUT /_asset-file/<designRoot-rel>` (classifier-gated on the hub too).
 //
-// Both are HEAD-first (skip what the cloud already holds) and streamed. The
+// Both are probe-first (skip what the cloud already holds) and streamed. The
 // HUB's validation is the authoritative gate at each trust boundary; the
 // filters here are the courtesy layer that keeps junk off the wire.
 
-import { type Dirent, readdirSync, statSync } from 'node:fs';
+import { type Dirent, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 
-/** One path segment charset — matches the hub's component regexes. */
-const SEGMENT = /^[A-Za-z0-9][A-Za-z0-9 ._-]*$/;
+import { type CanvasGroupLike, classifyProjectFile, isFilePlaneClass } from './file-membership.ts';
 
-/** Max designRoot-relative depth (matches the hub's 8-segment cap). */
+/** Max designRoot-relative depth (matches the classifier's 8-segment cap). */
 const MAX_SEGMENTS = 8;
-
-/** Max relative-path length (matches the hub's 512 cap). */
-const MAX_REL_LEN = 512;
-
-/**
- * The binary asset extensions that actually render — images, fonts, media.
- * Deliberately NOT `.json`/`.meta.json`/`.photo.json`/`.tsx`/`.css`: a
- * `.photo.json` sidecar is edit metadata, not a served asset, and the checkout
- * route refuses non-asset extensions anyway (so pushing them would just waste
- * the wire and 400). Case-insensitive — a DS ships `…P1020428.JPG`.
- */
-const ASSET_EXTS = new Set([
-  'png',
-  'jpg',
-  'jpeg',
-  'gif',
-  'webp',
-  'avif',
-  'svg',
-  'mp4',
-  'webm',
-  'mov',
-  'mp3',
-  'wav',
-  'm4a',
-  'ogg',
-  'woff2',
-  'woff',
-  'ttf',
-  'otf',
-]);
 
 /** A 2 GB file in an assets dir is a mistake — don't move it silently. */
 const MAX_PUSH_BYTES = 512 * 1024 * 1024;
@@ -181,51 +157,63 @@ export function putTimeoutMs(bytes: number): number {
  *  final emit always go out regardless. */
 const PROGRESS_INTERVAL_MS = 200;
 
-function extOf(name: string): string {
-  const dot = name.lastIndexOf('.');
-  return dot < 0 ? '' : name.slice(dot + 1).toLowerCase();
+/**
+ * Canvas groups + the file-plane flag from `<designRoot>/config.json`. Read
+ * here rather than threaded through the worker protocol: the sweep runs
+ * out-of-process, and the config is the ONE source both processes share.
+ */
+function readProjectConfig(designRoot: string): {
+  canvasGroups?: readonly CanvasGroupLike[];
+  syncFiles: boolean;
+} {
+  let parsed: { canvasGroups?: unknown; linkedHub?: { syncFiles?: unknown } } | null = null;
+  try {
+    parsed = JSON.parse(readFileSync(path.join(designRoot, 'config.json'), 'utf8'));
+  } catch {
+    parsed = null;
+  }
+  return {
+    canvasGroups: Array.isArray(parsed?.canvasGroups)
+      ? (parsed.canvasGroups as CanvasGroupLike[])
+      : undefined,
+    syncFiles: process.env.MAUDE_SYNC_FILES === '1' || parsed?.linkedHub?.syncFiles === true,
+  };
 }
 
-/**
- * Every pushable binary asset under designRoot, as a designRoot-relative path.
- * Walks into any directory named `assets` at any level (top-level `assets/`,
- * `system/<ds>/assets/`, …) and collects the asset-extension files inside it.
- * Skips runtime-state (`_*`), `.git`, `node_modules`. Missing root → [].
- */
 /**
  * Would `listPushableAssets` have returned this designRoot-relative path?
  *
  * The cheap, no-disk half of the same rule, for deciding whether an `fs:any`
- * event is worth a sweep. It must not drift from the walk below — the two are
- * kept adjacent for that reason — but it is deliberately CONSERVATIVE where it
- * cannot be sure: a `false` here means an asset silently never uploads until
- * the next boot, which is the bug this predicate exists to end, so anything
- * shaped like an asset under an `assets/` directory answers true and lets the
- * sweep itself decide.
+ * event is worth a sweep. Classifier-judged, with NO tree knowledge on
+ * purpose: this is a scheduling hint, and the conservative direction is
+ * answering true — a group `.css` whose sibling status is unknowable here
+ * answers true and lets the sweep itself decide with the disk in hand. A
+ * `false` means a file silently never uploads until the next boot, which is
+ * the bug this predicate exists to end.
  */
-export function isPushableAssetRel(rel: string): boolean {
+export function isPushableAssetRel(
+  rel: string,
+  canvasGroups?: readonly CanvasGroupLike[]
+): boolean {
   if (typeof rel !== 'string' || !rel) return false;
   const norm = rel.replace(/\\/g, '/');
-  if (norm.length > MAX_REL_LEN) return false;
-  const parts = norm.split('/');
-  if (parts.length < 2 || parts.length > MAX_SEGMENTS) return false;
-  let insideAssets = false;
-  for (let i = 0; i < parts.length - 1; i++) {
-    const seg = parts[i];
-    if (seg.startsWith('_') || seg === '.git' || seg === 'node_modules') return false;
-    if (!SEGMENT.test(seg)) return false;
-    if (seg === 'assets') insideAssets = true;
-  }
-  if (!insideAssets) return false;
-  const name = parts[parts.length - 1];
-  if (name.startsWith('_') || !SEGMENT.test(name)) return false;
-  return ASSET_EXTS.has(extOf(name));
+  return isFilePlaneClass(classifyProjectFile(norm, { canvasGroups }));
 }
 
-export function listPushableAssets(designRoot: string): string[] {
-  const out: string[] = [];
-  // Walk the tree; once inside an `assets` dir, collect asset files below it.
-  const walk = (dir: string, rel: string, insideAssets: boolean): void => {
+/**
+ * Every pushable project file under designRoot, as a designRoot-relative
+ * path: the classifier's three flowing classes, judged against the walked
+ * snapshot (so a canvas's sibling css is recognized as canvas-owned and
+ * stays home). Skips runtime-state directories (`_*`), dotfiles,
+ * `node_modules`; refuses oversized files. Missing root → [].
+ */
+export function listPushableAssets(
+  designRoot: string,
+  opts: { canvasGroups?: readonly CanvasGroupLike[]; syncFiles?: boolean } = {}
+): string[] {
+  const found: string[] = [];
+  const walk = (dir: string, rel: string, depth: number): void => {
+    if (depth > MAX_SEGMENTS) return;
     let entries: Dirent[];
     try {
       entries = readdirSync(dir, { withFileTypes: true });
@@ -234,26 +222,43 @@ export function listPushableAssets(designRoot: string): string[] {
     }
     for (const entry of entries) {
       const name = entry.name;
-      if (name.startsWith('_') || name === '.git' || name === 'node_modules') continue;
-      if (!SEGMENT.test(name)) continue; // dotfiles + odd charset
+      if (name.startsWith('.') || name === 'node_modules') continue;
+      if (name.startsWith('_') && entry.isDirectory()) continue;
       const childRel = rel ? `${rel}/${name}` : name;
-      if (childRel.length > MAX_REL_LEN || childRel.split('/').length > MAX_SEGMENTS) continue;
       if (entry.isDirectory()) {
-        walk(path.join(dir, name), childRel, insideAssets || name === 'assets');
-      } else if (entry.isFile()) {
-        if (!insideAssets) continue; // only files under some assets/ dir
-        if (!ASSET_EXTS.has(extOf(name))) continue;
-        try {
-          if (statSync(path.join(dir, name)).size > MAX_PUSH_BYTES) continue;
-        } catch {
-          continue;
-        }
-        out.push(childRel);
+        walk(path.join(dir, name), childRel, depth + 1);
+        continue;
       }
+      if (!entry.isFile()) continue; // symlinks stay home
+      try {
+        if (statSync(path.join(dir, name)).size > MAX_PUSH_BYTES) continue;
+      } catch {
+        continue;
+      }
+      found.push(childRel);
     }
   };
-  walk(designRoot, '', false);
-  return out.sort();
+  walk(designRoot, '', 1);
+
+  const cfg = readProjectConfig(designRoot);
+  const syncFiles = opts.syncFiles ?? cfg.syncFiles;
+  const fileSet = new Set(found);
+  const clsOpts = {
+    canvasGroups: opts.canvasGroups ?? cfg.canvasGroups,
+    hasFile: (r: string) => fileSet.has(r),
+  };
+  return found
+    .filter((rel) => {
+      const cls = classifyProjectFile(rel, clsOpts);
+      if (!isFilePlaneClass(cls)) return false;
+      if (syncFiles) return true;
+      // Flag OFF ⇒ today's DDR-217 lane, unchanged in reach: binary media
+      // under some `assets/` directory. The file plane (companion text, code
+      // modules, media outside assets/) waits for `linkedHub.syncFiles` /
+      // MAUDE_SYNC_FILES=1 — the flag gates ONLY the new plane.
+      return cls === 'inert-media' && rel.split('/').slice(0, -1).includes('assets');
+    })
+    .sort();
 }
 
 /** Where a given asset pushes: the bucket-backed route (top-level `assets/`) or
@@ -408,6 +413,11 @@ export async function pushAssets(opts: {
   hubUrl: string;
   /** Read at call time — silent renewal swaps the credential in place. */
   token: () => string;
+  /** Declared canvas groups; absent ⇒ read from `<designRoot>/config.json`
+   *  (the out-of-process worker's path — see `readProjectConfig`). */
+  canvasGroups?: readonly CanvasGroupLike[];
+  /** The file-plane flag; absent ⇒ read from config/env the same way. */
+  syncFiles?: boolean;
   fetchImpl?: typeof fetch;
   log?: Pick<Console, 'log' | 'warn'>;
   /** feature-sync-progress-modal — incremental progress (throttled; failures
@@ -436,7 +446,10 @@ export async function pushAssets(opts: {
   const base = hubUrl.replace(/\/+$/, '');
   const out: AssetPushResult = { pushed: [], skipped: 0, failed: [] };
 
-  const assets = listPushableAssets(designRoot);
+  const assets = listPushableAssets(designRoot, {
+    canvasGroups: opts.canvasGroups,
+    syncFiles: opts.syncFiles,
+  });
   // -Infinity seeds the throttle open, so the first emit always passes.
   let lastEmit = -Infinity;
   const emitProgress = (active: string | null, finished: boolean, force = false): void => {

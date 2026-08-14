@@ -651,6 +651,12 @@ async function serveCanvasTsx(
     try {
       result = await buildCanvasModule(absPath, source, {
         designRoot: ctx.paths.designRoot,
+        // UNCONDITIONAL, desktop included (feature-sync-file-plane, Task 9 —
+        // the binding debate's CONDITION on the `code-module` class): a
+        // canvas import resolves inside the design root on EVERY runtime, so
+        // a synced module cannot make the build read the wider filesystem.
+        // The cell worker has always armed this (canvas-build-worker.ts).
+        restrictImportsTo: ctx.paths.designRoot,
       });
     } catch (err) {
       if (err instanceof TranspileError) {
@@ -769,7 +775,12 @@ async function serveHistoricalCanvas(
     const source = await gitShowFile(ctx.paths.repoRoot, sha, repoRel);
     if (source == null) return new Response('No saved version of this canvas', { status: 404 });
     try {
-      const result = await buildCanvasModule(absPath, source, { designRoot: ctx.paths.designRoot });
+      const result = await buildCanvasModule(absPath, source, {
+        designRoot: ctx.paths.designRoot,
+        // Same unconditional allowlist as the live build above — a HISTORICAL
+        // source is still tenant/peer-authored content.
+        restrictImportsTo: ctx.paths.designRoot,
+      });
       cached = {
         js: result.js,
         etag: `${result.etag}-${sha}-${RUNTIME_BOOT_ID}-${CHROME_EPOCH}`,

@@ -442,8 +442,13 @@ async function callCheckout({
   return { handled, ...captured };
 }
 
-test('parseCheckoutAssetPath admits nested DS assets, refuses everything dangerous', () => {
-  // The shapes real DS assets take — under some `assets/` segment, binary ext.
+test('parseCheckoutAssetPath is the SHAPE gate — class admission moved to the route', () => {
+  // feature-sync-file-plane: the parser refuses only what no checkout
+  // configuration could ever admit (the shape); membership — which needs the
+  // checkout's own canvas groups and tree — is judged in the route by
+  // `resolveCheckoutFileWrite`, and refuses with 400 rather than falling
+  // through. So shapes that used to be refused HERE now parse, and the tests
+  // below pin where each refusal lives.
   assert.equal(
     parseCheckoutAssetPath('/_asset-file/system/alligators/assets/logos/horizontal-green.svg'),
     'system/alligators/assets/logos/horizontal-green.svg'
@@ -453,19 +458,76 @@ test('parseCheckoutAssetPath admits nested DS assets, refuses everything dangero
     'system/ds/assets/fonts/Gators-Bold.woff2'
   );
   assert.equal(parseCheckoutAssetPath('/_asset-file/assets/x.png'), 'assets/x.png');
+  // The classes the plane carries now parse (and the route decides):
+  assert.equal(parseCheckoutAssetPath('/_asset-file/system/ds/brand.css'), 'system/ds/brand.css');
+  assert.equal(
+    // The underscore FILE the DDR-115 shape accident left laneless.
+    parseCheckoutAssetPath('/_asset-file/system/ds/preview/_brand-css.ts'),
+    'system/ds/preview/_brand-css.ts'
+  );
+  // Shape-clean but class-refused at the route (400 there, not null here):
+  assert.equal(parseCheckoutAssetPath('/_asset-file/config.json'), 'config.json');
+  assert.equal(parseCheckoutAssetPath('/_asset-file/assets/x'), 'assets/x');
 
   for (const bad of [
-    '/_asset-file/system/ds/preview/logo.tsx', // no assets/ segment → refused (can't touch a canvas)
-    '/_asset-file/system/ds/assets/config.json', // json is not an asset ext
-    '/_asset-file/system/ds/assets/logo.css', // css is not an asset ext
     '/_asset-file/../etc/passwd', // traversal
     '/_asset-file/system/ds/assets/../../../../etc/x.png', // traversal with a valid tail
     '/_asset-file//assets/x.png', // empty component
-    '/_asset-file/assets/x', // no extension
-    '/_asset-file/config.json', // top-level, no assets/ segment
     '/_asset-file/', // empty
+    '/_asset-file/_history/x.png', // underscore DIRECTORY — runtime state, structurally out
+    '/_asset-file/system/ds/assets/.hidden.png', // dotfile
+    '/_asset-file/a/b/c/d/e/f/g/h/i.png', // 9 segments
   ]) {
     assert.equal(parseCheckoutAssetPath(bad), null, `expected null for ${bad}`);
+  }
+});
+
+test('the route refuses never + canvas-owned with 400, and admits the flowing classes', async () => {
+  const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-ck-'));
+  try {
+    mkdirSync(join(designRoot, 'system/ds/preview'), { recursive: true });
+    writeFileSync(join(designRoot, 'system/ds/preview/specimen.tsx'), 'export default 1');
+    // never: the design root's trust anchors and unclassified extensions.
+    for (const rel of ['config.json', 'system/ds/assets/config.json', 'assets/x']) {
+      const res = await callCheckout({
+        pathname: `/_asset-file/${rel}`,
+        token: minted.value,
+        designRoot,
+        body: Buffer.from('x'),
+      });
+      assert.equal(res.status, 400, `${rel} must refuse`);
+      assert.equal(existsSync(join(designRoot, rel)), false, `${rel} must not land`);
+    }
+    // canvas-owned: a body and its sibling css are the CRDT lanes' — the
+    // file route must not become a way to overwrite them.
+    for (const rel of ['system/ds/preview/specimen.tsx', 'system/ds/preview/specimen.css']) {
+      const res = await callCheckout({
+        pathname: `/_asset-file/${rel}`,
+        token: minted.value,
+        designRoot,
+        body: Buffer.from('overwrite'),
+      });
+      assert.equal(res.status, 400, `${rel} must refuse`);
+    }
+    // The flowing classes land — including the RCA's laneless files.
+    for (const rel of [
+      'system/ds/brand.css',
+      'system/ds/preview/_layout.css',
+      'system/ds/preview/_brand-css.ts',
+      'system/ds/README.md',
+    ]) {
+      const res = await callCheckout({
+        pathname: `/_asset-file/${rel}`,
+        token: minted.value,
+        designRoot,
+        body: Buffer.from('content'),
+      });
+      assert.equal(res.status, 200, `${rel} must be admitted`);
+      assert.equal(readFileSync(join(designRoot, rel), 'utf8'), 'content');
+    }
+  } finally {
+    rmSync(designRoot, { recursive: true, force: true });
   }
 });
 
@@ -537,11 +599,11 @@ test('an unauthenticated checkout PUT is 401 and writes nothing', async () => {
 test('a symlink-escaping checkout PUT is refused (same guard as the bucket PUT)', async () => {
   const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
   const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-ck-'));
+  const outside = mkdtempSync(join(tmpdir(), 'maude-hub-outside-'));
   try {
     mkdirSync(join(designRoot, 'system/ds/assets'), { recursive: true });
-    mkdirSync(join(designRoot, 'ui'), { recursive: true });
-    // A peer-committed symlink: system/ds/assets/escape -> ../../../ui
-    symlinkSync(join(designRoot, 'ui'), join(designRoot, 'system/ds/assets/escape'));
+    // A peer-committed symlink pointing OUT of the design root entirely.
+    symlinkSync(outside, join(designRoot, 'system/ds/assets/escape'));
     const res = await callCheckout({
       pathname: '/_asset-file/system/ds/assets/escape/pwn.svg',
       token: minted.value,
@@ -549,7 +611,53 @@ test('a symlink-escaping checkout PUT is refused (same guard as the bucket PUT)'
       body: Buffer.from('<svg/>'),
     });
     assert.equal(res.status, 400, 'symlink escape refused');
-    assert.equal(existsSync(join(designRoot, 'ui', 'pwn.svg')), false);
+    assert.equal(existsSync(join(outside, 'pwn.svg')), false);
+  } finally {
+    rmSync(designRoot, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('a symlink landing on runtime state is refused — the class is judged on the REAL path', async () => {
+  // feature-sync-file-plane: the old assets-parent rule is gone; what
+  // replaces it is stronger — a committed link that stays INSIDE the root
+  // but maps a benign lexical path onto runtime state (`media -> _history`)
+  // is refused because the LANDING path classifies `never`.
+  const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-ck-'));
+  try {
+    mkdirSync(join(designRoot, '_history'), { recursive: true });
+    symlinkSync(join(designRoot, '_history'), join(designRoot, 'media'));
+    const res = await callCheckout({
+      pathname: '/_asset-file/media/x.png',
+      token: minted.value,
+      designRoot,
+      body: Buffer.from('x'),
+    });
+    assert.equal(res.status, 400, 'runtime-state landing refused');
+    assert.equal(existsSync(join(designRoot, '_history', 'x.png')), false);
+  } finally {
+    rmSync(designRoot, { recursive: true, force: true });
+  }
+});
+
+test('a symlink landing on a CRDT-owned sidecar is refused for the same reason', async () => {
+  const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-ck-'));
+  try {
+    mkdirSync(join(designRoot, 'system/ds/preview'), { recursive: true });
+    writeFileSync(join(designRoot, 'system/ds/preview/specimen.tsx'), 'export default 1');
+    symlinkSync(join(designRoot, 'system/ds/preview'), join(designRoot, 'p'));
+    // Lexically `p/specimen.css` is a plain companion stylesheet; it LANDS as
+    // the canvas's own css lane, which plane B must never write.
+    const res = await callCheckout({
+      pathname: '/_asset-file/p/specimen.css',
+      token: minted.value,
+      designRoot,
+      body: Buffer.from('.pwn{}'),
+    });
+    assert.equal(res.status, 400, 'CRDT-owned landing refused');
+    assert.equal(existsSync(join(designRoot, 'system/ds/preview/specimen.css')), false);
   } finally {
     rmSync(designRoot, { recursive: true, force: true });
   }
@@ -750,21 +858,23 @@ test('a GET probe is refused for an unauthenticated peer, like every other verb'
   }
 });
 
-test('a GET probe cannot follow a symlink out of the assets semantic', async () => {
+test('a GET probe cannot follow a symlink onto runtime state', async () => {
+  // Same decision as the write (`resolveCheckoutFileWrite`): the probe judges
+  // the REAL landing path, so a link onto `_history/` answers 400 exactly
+  // like the write would — never an existence oracle for runtime state.
   const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
   const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-ck-'));
   try {
-    mkdirSync(join(designRoot, 'system/ds/assets'), { recursive: true });
-    mkdirSync(join(designRoot, 'ui'), { recursive: true });
-    writeFileSync(join(designRoot, 'ui/welcome.png'), 'x');
-    symlinkSync(join(designRoot, 'ui'), join(designRoot, 'system/ds/assets/escape'));
+    mkdirSync(join(designRoot, '_history'), { recursive: true });
+    writeFileSync(join(designRoot, '_history/welcome.png'), 'x');
+    symlinkSync(join(designRoot, '_history'), join(designRoot, 'media'));
     const res = await callCheckout({
-      pathname: '/_asset-file/system/ds/assets/escape/welcome.png',
+      pathname: '/_asset-file/media/welcome.png',
       method: 'GET',
       token: minted.value,
       designRoot,
     });
-    assert.equal(res.status, 400, 'the probe obeys the same containment as the write');
+    assert.equal(res.status, 400, 'the probe obeys the same admission as the write');
   } finally {
     rmSync(designRoot, { recursive: true, force: true });
   }

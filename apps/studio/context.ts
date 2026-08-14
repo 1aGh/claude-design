@@ -47,6 +47,15 @@ export interface LinkedHub {
    * would split peers of the same project apart. See sync/doc-name.ts.
    */
   workspaceId?: string;
+  /**
+   * feature-sync-file-plane — opt-in for the manifest-driven file plane
+   * (Plane B): the downward project-file pull AND the widened upward sweep
+   * (stylesheets, docs, code modules — classifier membership, see
+   * sync/file-membership.ts). Default OFF this release; `MAUDE_SYNC_FILES=1`
+   * forces it on for a session. The flag gates ONLY the new plane — the
+   * canvas CRDT lanes and the DDR-217 asset lanes run regardless.
+   */
+  syncFiles?: boolean;
 }
 
 export interface DevServerConfig {

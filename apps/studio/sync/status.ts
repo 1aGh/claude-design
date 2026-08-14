@@ -53,6 +53,22 @@ export interface SyncStatusPayload extends SyncStatusSnapshot {
    * payload as the doc counts so the Sync panel has one source, not two.
    */
   assets?: AssetPushProgress;
+  /**
+   * feature-sync-file-plane — Plane B's counts (additive; absent until the
+   * first flag-on file pull of a boot). `conflicts` names losers parked in
+   * `_trash/<rel>-conflict-<ts>` — the panel line points there, because a
+   * conflict a person cannot find is silent loss with extra steps.
+   */
+  files?: FilePlaneStatus;
+}
+
+export interface FilePlaneStatus {
+  /** Plane files present and equal after the last pass — the steady state. */
+  synced: number;
+  /** Cumulative files landed this boot. */
+  pulled: number;
+  /** Cumulative conflicts this boot (either winner); losers are in _trash/. */
+  conflicts: number;
 }
 
 export interface SyncStatusStoreOptions {
@@ -78,6 +94,9 @@ export interface SyncStatusStore {
    *  broadcast. Kept in the store (not the monitor): assets are a push lane,
    *  not a connection, and the monitor's state machine must not learn them. */
   updateAssets(progress: AssetPushProgress): void;
+  /** feature-sync-file-plane — merge Plane B counts + persist + broadcast.
+   *  Same reasoning as `updateAssets`: a lane, not a connection. */
+  updateFiles(files: FilePlaneStatus): void;
   /** Current payload (defensive copy). */
   get(): SyncStatusPayload;
 }
@@ -102,6 +121,7 @@ export function createSyncStatusStore(opts: SyncStatusStoreOptions): SyncStatusS
   };
 
   let assets: AssetPushProgress | undefined;
+  let files: FilePlaneStatus | undefined;
 
   function payload(): SyncStatusPayload {
     return {
@@ -111,6 +131,7 @@ export function createSyncStatusStore(opts: SyncStatusStoreOptions): SyncStatusS
       conflicts: conflicts.slice(),
       ...(opts.sharedDoc ? { sharedDoc: true } : {}),
       ...(assets ? { assets } : {}),
+      ...(files ? { files } : {}),
     };
   }
 
@@ -140,6 +161,10 @@ export function createSyncStatusStore(opts: SyncStatusStoreOptions): SyncStatusS
     },
     updateAssets(progress) {
       assets = progress;
+      flush();
+    },
+    updateFiles(next) {
+      files = next;
       flush();
     },
     get: payload,

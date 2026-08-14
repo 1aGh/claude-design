@@ -22,6 +22,43 @@
 import { existsSync, mkdirSync, renameSync } from 'node:fs';
 import path from 'node:path';
 
+/**
+ * Park ONE file in `_trash/<rel>-conflict-<ts>` — the file plane's LWW
+ * loser's parking spot (feature-sync-file-plane), generalized out of
+ * `quarantineCanvas` below: same posture (quarantine, never delete; never
+ * throw — a failed quarantine costs the overwrite, not the sync runtime),
+ * scoped to a single file rather than a canvas's lane bundle.
+ *
+ * Returns the design-root-relative destination, or null when nothing moved —
+ * and the CALLER must treat null as "do not overwrite": a conflict loser
+ * that could not be parked is a conflict loser that stays.
+ */
+export function quarantineFile(opts: {
+  designRoot: string;
+  /** Design-root-relative path of the file to park. */
+  rel: string;
+  now?: number;
+  log?: (line: string) => void;
+}): string | null {
+  const { designRoot, rel } = opts;
+  const log = opts.log ?? ((line: string) => console.log(line));
+  const abs = path.join(designRoot, rel);
+  if (!existsSync(abs)) return null;
+  const trashedTo = `_trash/${rel}-conflict-${opts.now ?? Date.now()}`;
+  const trashAbs = path.join(designRoot, trashedTo);
+  try {
+    mkdirSync(path.dirname(trashAbs), { recursive: true });
+    renameSync(abs, trashAbs);
+  } catch (err) {
+    log(
+      `[sync/files] could not park ${rel} in _trash/: ${(err as Error).message} — keeping the local copy`
+    );
+    return null;
+  }
+  log(`[sync/files] conflict on ${rel} — the local copy moved to ${trashedTo}`);
+  return trashedTo;
+}
+
 export interface TombstoneMove {
   slug: string;
   /** Design-root-relative quarantine dir the canvas landed in. */

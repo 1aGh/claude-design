@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-13T21:41:54.231Z",
+  "generated": "2026-08-14T12:15:55.564Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1143,6 +1143,17 @@
       "date": null,
       "summary": "A repo linked to Maude Cloud drifts away from its desktop copy: duplicate canvas files (ui-welcome.tsx next to ui/welcome.tsx), cloud canvases that die with TypeError: Failed to fetch dynamically i...",
       "planPath": ".ai/plans/archive/feature-sync-completion-fixes-4-8.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-sync-file-plane",
+      "title": "Feature: The file plane — \"what's in `.design` syncs\", as a manifest, not a folder",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-sync-file-plane.md",
       "archived": true,
       "phaseKey": null
     },

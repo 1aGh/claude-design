@@ -21,7 +21,7 @@ function scratchDesignRoot(): string {
   return mkdtempSync(join(tmpdir(), 'asset-push-'));
 }
 
-describe('listPushableAssets — every assets/ dir, asset extensions only', () => {
+describe('listPushableAssets — classifier membership over the whole design root', () => {
   test('finds top-level content-addressed AND nested DS/brand assets', () => {
     const designRoot = scratchDesignRoot();
     // Class 1 — top-level content-addressed uploads (+ a .photo.json sidecar).
@@ -66,6 +66,51 @@ describe('listPushableAssets — every assets/ dir, asset extensions only', () =
     mkdirSync(join(designRoot, 'assets/a/b/c/d/e/f/g'), { recursive: true });
     writeFileSync(join(designRoot, 'assets/a/b/c/d/e/f/g/x.png'), 'x');
     expect(listPushableAssets(designRoot)).toEqual([]);
+  });
+
+  test('the file-plane widening: the RCA miss-list goes up, canvas lanes stay home', () => {
+    // feature-sync-file-plane — the sweep now carries what the fresh-link RCA
+    // named laneless: token stylesheets, docs, shared modules, underscore
+    // FILES. A canvas body and its named sidecars stay the CRDT lanes'.
+    const designRoot = scratchDesignRoot();
+    mkdirSync(join(designRoot, 'system/ds/preview'), { recursive: true });
+    writeFileSync(join(designRoot, 'config.json'), '{}');
+    writeFileSync(join(designRoot, 'system/ds/brand.css'), 'x');
+    writeFileSync(join(designRoot, 'system/ds/README.md'), 'x');
+    writeFileSync(join(designRoot, 'system/ds/preview/_brand-css.ts'), 'x');
+    writeFileSync(join(designRoot, 'system/ds/preview/_layout.css'), 'x');
+    writeFileSync(join(designRoot, 'system/ds/preview/specimen.tsx'), 'x');
+    writeFileSync(join(designRoot, 'system/ds/preview/specimen.css'), 'x'); // sibling css lane
+    writeFileSync(join(designRoot, 'system/ds/preview/specimen.meta.json'), '{}');
+    expect(listPushableAssets(designRoot, { syncFiles: true })).toEqual([
+      'system/ds/README.md',
+      'system/ds/brand.css',
+      'system/ds/preview/_brand-css.ts',
+      'system/ds/preview/_layout.css',
+    ]);
+    // Flag OFF ⇒ today's reach, byte-for-byte: none of these are binary
+    // media under an assets/ dir, so none of them move.
+    expect(listPushableAssets(designRoot)).toEqual([]);
+  });
+
+  test('declared canvasGroups decide what a canvas body IS', () => {
+    const designRoot = scratchDesignRoot();
+    mkdirSync(join(designRoot, 'mocks'), { recursive: true });
+    mkdirSync(join(designRoot, 'lib'), { recursive: true });
+    writeFileSync(join(designRoot, 'mocks/screen.tsx'), 'x');
+    writeFileSync(join(designRoot, 'lib/helpers.tsx'), 'x');
+    const groups = [{ path: 'mocks' }];
+    // `mocks/screen.tsx` is a canvas here; `lib/helpers.tsx` a shared module.
+    expect(listPushableAssets(designRoot, { canvasGroups: groups, syncFiles: true })).toEqual([
+      'lib/helpers.tsx',
+    ]);
+    // …and both the groups and the flag reach the walk through config.json —
+    // the out-of-process worker's path.
+    writeFileSync(
+      join(designRoot, 'config.json'),
+      JSON.stringify({ canvasGroups: groups, linkedHub: { url: 'http://h', syncFiles: true } })
+    );
+    expect(listPushableAssets(designRoot)).toEqual(['lib/helpers.tsx']);
   });
 });
 
@@ -790,7 +835,12 @@ describe('the runtime sweeps on change, not only at boot', () => {
   const SYNC = readFileSync(join(import.meta.dir, '..', 'sync', 'index.ts'), 'utf8');
 
   test('the fs watcher decides with isPushableAssetRel and schedules a sweep', () => {
-    expect(SYNC).toContain('if (isPushableAssetRel(rel)) scheduleAssetSweep(');
+    // The predicate gets the project's OWN canvas groups — with the default
+    // set a custom-group project's shared module would answer canvas-owned
+    // and silently never schedule the sweep that uploads it.
+    expect(SYNC).toContain(
+      'if (isPushableAssetRel(rel, ctx.cfg.canvasGroups)) scheduleAssetSweep('
+    );
   });
 
   test('bursts coalesce, and a change DURING a sweep is not lost', () => {

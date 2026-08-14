@@ -28,6 +28,8 @@ import { createWriteStream, existsSync, mkdirSync, renameSync, rmSync } from 'no
 import { basename, dirname, join, resolve, sep } from 'node:path';
 
 import { assetObjectKey, assetPrefixFromEnv } from './asset-key.mjs';
+import { resolveCheckoutFileWrite } from './file-manifest.mjs';
+import { isProjectFileShape } from './file-membership.mjs';
 import { isContainedReal, realpathOfDeepestExisting } from './path-contain.mjs';
 import { getObject, headObject } from './s3.mjs';
 import { verifyToken } from './tokens.mjs';
@@ -381,21 +383,21 @@ const CHECKOUT_ASSET_EXTS = new Set([
 ]);
 
 /**
- * Accept a checkout-relative asset path from the desktop push, or null.
+ * Parse `/_asset-file/<rel>` → the decoded rel, SHAPE-checked, or null.
  *
- * DDR-217 addendum (2026-08-11): brand/DS assets live under
- * `system/<ds>/assets/…` and are referenced by their FULL designRoot path
- * (`/.design/system/<ds>/assets/logos/x.svg`), served from the checkout by the
- * studio child — NOT the bucket `/assets/` proxy. So they must land on the
- * checkout at their real relative path, which the bucket-keyed `/assets/` route
- * cannot address (its keys are relative to `assets/`, and `..` is refused).
+ * feature-sync-file-plane: membership on this write surface is decided by the
+ * positive classifier (`file-membership.mjs`), not by the assets-segment +
+ * binary-extension rule any more — the sweep now carries `brand.css`,
+ * `_brand-css.ts`, `README.md` up, and the DDR-217 asset classes ride the
+ * same admission. This parser applies only the SHAPE half (relative, bounded,
+ * charset-safe, leading `_` on the final segment only): a parse-stage refusal
+ * is final (the request falls through), so it may refuse only what no
+ * checkout configuration could ever admit. The CLASS half — which needs the
+ * checkout's own canvas groups and tree — is `admitCheckoutFileRel`, applied
+ * in the route where the checkout is known.
  *
- * The path is UNTRUSTED (DDR-054). It is admitted ONLY when: it is relative,
- * has no `..`/backslash/leading-slash/control char, EVERY component is
- * charset-safe, SOME component is exactly `assets` (so it is under an assets
- * directory — never a canvas or config path), and the final component carries
- * a whitelisted binary asset extension. Containment through symlinks is checked
- * at the write site.
+ * The path stays UNTRUSTED (DDR-054); containment through symlinks is still
+ * checked at the write site.
  */
 export function parseCheckoutAssetPath(pathname) {
   const m = String(pathname ?? '').match(/^\/_asset-file\/([^?#]+)$/);
@@ -406,17 +408,20 @@ export function parseCheckoutAssetPath(pathname) {
   } catch {
     return null;
   }
-  return checkoutAssetRel(rel);
+  return isProjectFileShape(rel) ? rel : null;
 }
 
 /**
- * The shape rules for a checkout-relative asset path, independent of how it
- * arrived — a URL segment on `/_asset-file/`, or an entry in the batch probe's
- * JSON list. Returns the path, or null.
+ * The ASSET-lane shape rules — `assets`-segment + binary extension on top of
+ * `checkoutRelShape`. Returns the path, or null.
  *
- * Extracted so the probe cannot admit a path the write route would refuse
- * (a probe that answers about paths the writer rejects is an oracle for a
- * surface that does not exist).
+ * feature-sync-file-plane: this is NO LONGER the `/_asset-file/` write
+ * surface's gate — that surface admits by classifier membership
+ * (`admitCheckoutFileRel`), and the probe/writer byte-for-byte agreement now
+ * lives there. What still judges by THIS function is the cell main-origin
+ * READ lane (`studio-manifest.mjs` `designAssetLane`), which was reviewed as
+ * "the readable set is exactly the binary-asset set" and must not silently
+ * widen because the write surface did.
  */
 export function checkoutAssetRel(rel) {
   const parts = checkoutRelShape(rel);
@@ -542,12 +547,20 @@ export async function handleCheckoutAssetRoute(ctx) {
     return true;
   }
 
-  const target = resolveCheckoutAssetTarget(ctx.designRoot, rel);
+  // Classifier membership (feature-sync-file-plane): the three flowing
+  // classes are admitted; `never` (config.json, runtime state, unclassified
+  // extensions) and `canvas-owned` (a body or sidecar the CRDT lanes own)
+  // refuse with 400. This is the PAIRED refusal the leading-underscore
+  // relaxation ships with — `_brand-css.ts` is now writable exactly because
+  // `_active.json` is now refused by NAME, not by its underscore. The class
+  // is judged on the REAL landing path (symlink-resolved), and containment
+  // rides in the same call — see `resolveCheckoutFileWrite`.
+  const target = resolveCheckoutFileWrite(ctx.designRoot, rel);
   if (!target.ok) {
     respond(response, 400, 'invalid path');
     return true;
   }
-  const writeAbs = target.writeAbs;
+  const writeAbs = target.abs;
   // Rate-limit BEFORE the HEAD branch too (F4) — otherwise the weakest role
   // gets an unmetered filesystem existence oracle with realpath amplification.
   // Same per-label write bucket as the bucket route's PUT (RCA 2026-08-11): the
@@ -736,10 +749,11 @@ export async function handleAssetProbeRoute(ctx) {
         return false;
       }
     }
-    // Class 2 — DS/brand, lives in the checkout.
-    if (checkoutAssetRel(rel) === null) return false;
-    const target = resolveCheckoutAssetTarget(ctx.designRoot, rel);
-    return target.ok && existsSync(target.writeAbs);
+    // Class 2 — checkout-resident project files. Judged by the SAME decision
+    // the write route uses (`resolveCheckoutFileWrite`), so the probe can
+    // never answer about a path the writer would refuse.
+    const target = resolveCheckoutFileWrite(ctx.designRoot, rel);
+    return target.ok && existsSync(target.abs);
   };
   for (let i = 0; i < paths.length; i += PROBE_CONCURRENCY) {
     const slice = paths.slice(i, i + PROBE_CONCURRENCY);

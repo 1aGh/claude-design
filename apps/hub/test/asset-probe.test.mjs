@@ -176,15 +176,18 @@ test('a path the WRITE route would refuse is reported absent, never an error', a
   assert.deepEqual(res.json.present, ['system/ds/assets/logos/real.svg']);
 });
 
-test('a symlink that leaves the assets semantic is absent, like it is unwritable', async () => {
+test('a symlink landing where the writer would refuse is absent, like it is unwritable', async () => {
+  // feature-sync-file-plane: probe and writer share ONE decision
+  // (`resolveCheckoutFileWrite`), judged on the REAL landing path. A link
+  // onto runtime state answers absent; a link onto a legitimate plane
+  // location answers like the real path itself would.
   const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
-  mkdirSync(join(designRoot, 'system/ds/assets'), { recursive: true });
-  mkdirSync(join(designRoot, 'ui'), { recursive: true });
-  writeFileSync(join(designRoot, 'ui/welcome.png'), 'x');
-  symlinkSync(join(designRoot, 'ui'), join(designRoot, 'system/ds/assets/escape'));
+  mkdirSync(join(designRoot, '_history'), { recursive: true });
+  writeFileSync(join(designRoot, '_history/welcome.png'), 'x');
+  symlinkSync(join(designRoot, '_history'), join(designRoot, 'media'));
   const res = await probe({
     token: minted.value,
-    paths: ['system/ds/assets/escape/welcome.png'],
+    paths: ['media/welcome.png'],
   });
   assert.deepEqual(res.json.present, []);
 });

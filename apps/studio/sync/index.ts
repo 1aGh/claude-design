@@ -44,6 +44,7 @@ import {
 import { createRescanScheduler, diffCanvasSet, type RescanScheduler } from './discovery.ts';
 import { createDocNameResolver } from './doc-name.ts';
 import { createEchoGuard } from './echo-guard.ts';
+import { type FilePullResult, pullFiles } from './file-pull.ts';
 import { createFsReader, type FsReader } from './fs-mirror.ts';
 import { getHubRecord } from './hubs-config.ts';
 import { loadJournal, type SyncJournal } from './journal.ts';
@@ -515,6 +516,16 @@ export function createSyncRuntime(
   // Through validExpiry (F2) — the stored value came off disk written from a
   // hub body, so a bogus/far-future stamp must not schedule a renewal at boot.
   let tokenExpiresAt: number | null = validExpiry(storedRecord?.expiresAt);
+
+  // feature-sync-file-plane — Plane B, behind its flag. The flag gates ONLY
+  // the new plane (the downward file pull here + the widened sweep inside
+  // `listPushableAssets`); with it off, behavior is today's, byte-for-byte.
+  const syncFilesOn = linkedHub.syncFiles === true || process.env.MAUDE_SYNC_FILES === '1';
+  // The owner-hub gate for `code-module` entries, decided from LOCAL state
+  // only: the role this machine's credential store vouched for at sign-in
+  // (never a hub-supplied claim), or the hub being this cell's own loopback
+  // pairing — where the hub and the checkout are the same trust domain.
+  const allowCodeModules = cellPairing !== null || storedRecord?.role === 'owner';
 
   // DDR-102 — the default factory multiplexes every provider over ONE shared
   // WebSocket per hub URL; the runtime owns its disposal (stop(), after the
@@ -1211,7 +1222,7 @@ export function createSyncRuntime(
       // nobody had sent: a permanent empty frame that looked like a broken path.
       // Reported three times in one day on alligators, each time with a
       // different asset, which is what finally named it.
-      if (isPushableAssetRel(rel)) scheduleAssetSweep(linkedHub.url);
+      if (isPushableAssetRel(rel, ctx.cfg.canvasGroups)) scheduleAssetSweep(linkedHub.url);
     });
 
     /**
@@ -2305,14 +2316,46 @@ export function createSyncRuntime(
         token: () => token,
       });
     };
+    // Cumulative per boot — the Sync panel's one line. `synced` is the last
+    // pass's converged count; `pulled`/`conflicts` accumulate.
+    const fileTotals = { synced: 0, pulled: 0, conflicts: 0 };
+    const noteFilePull = (result: FilePullResult): void => {
+      fileTotals.synced = result.skipped + result.pulled.length;
+      fileTotals.pulled += result.pulled.length;
+      fileTotals.conflicts += result.conflicts.length;
+      statusStore?.updateFiles?.({ ...fileTotals });
+    };
+    /**
+     * Plane B's downward pass — after the doc poll and the asset pull, so a
+     * canvas that arrived this tick has its design system resolved in the
+     * same tick. Flag-gated; a no-op when off.
+     *
+     * On a cell the hub shares the checkout, so every manifest entry is
+     * hash-equal by construction and the pass skips itself — deliberately
+     * NOT special-cased: the invariant covers it, and a special case would
+     * be one more branch that can drift.
+     */
+    const pullFilesOnce = async (): Promise<void> => {
+      if (stopped || !syncFilesOn) return;
+      const result = await pullFiles({
+        designRoot: ctx.paths.designRoot,
+        hubUrl: linkedHub.url,
+        token: () => token,
+        canvasGroups: ctx.cfg.canvasGroups,
+        allowCodeModules,
+      });
+      noteFilePull(result);
+    };
     const pollRemote = (): void => {
       void pullRemoteOnce()
         .then(() => pullAssetsOnce())
+        .then(() => pullFilesOnce())
         .catch((err) => console.error('[sync] remote poll failed:', err));
     };
     remotePull = async () => {
       await pullRemoteOnce();
       await pullAssetsOnce();
+      await pullFilesOnce();
     };
     remotePollTimer = setInterval(pollRemote, REMOTE_POLL_MS);
     // `setInterval` keeps a Bun process alive; a poll is not a reason for the

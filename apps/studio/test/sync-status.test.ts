@@ -171,4 +171,22 @@ describe('sync status store — asset lane (feature-sync-progress-modal)', () =>
     store.update(snap());
     expect('assets' in store.get()).toBe(false);
   });
+
+  test('updateFiles() merges the file plane into the payload + flushes', () => {
+    // feature-sync-file-plane — same slice discipline as assets: a lane, not
+    // a connection, surviving later monitor updates untouched.
+    const { store, writes, broadcasts } = makeStore();
+    const files = { synced: 103, pulled: 103, conflicts: 1 };
+    store.updateFiles(files);
+    expect(writes[writes.length - 1].files).toEqual(files);
+    expect(broadcasts[broadcasts.length - 1].files).toEqual(files);
+    store.update(snap({ state: 'online' }));
+    expect(store.get().files).toEqual(files);
+  });
+
+  test('payloads before the first file-plane emit carry no files field', () => {
+    const { store } = makeStore();
+    store.update(snap());
+    expect('files' in store.get()).toBe(false);
+  });
 });

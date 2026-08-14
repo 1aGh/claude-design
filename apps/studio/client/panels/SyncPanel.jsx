@@ -89,6 +89,15 @@ function readAssets(raw) {
   return { ...raw, failures };
 }
 
+/** The file plane (feature-sync-file-plane), or null when unreadable/absent —
+ *  absent is the norm: the payload carries `files` only once a flag-on pull
+ *  has run this boot. */
+function readFiles(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  if (![raw.synced, raw.pulled, raw.conflicts].every(isCount)) return null;
+  return raw;
+}
+
 export default function SyncPanel({
   status, // the live `sync:status` payload (never null while mounted)
   project, // display name for the header sentence (hub-supplied → safeName'd)
@@ -150,6 +159,7 @@ export default function SyncPanel({
   const truncated = isCount(status?.itemsTruncated) ? status.itemsTruncated : 0;
   const assets = readAssets(status?.assets);
   const assetFailures = assets?.failures || [];
+  const files = readFiles(status?.files);
 
   const { attention, byGroup } = useMemo(() => {
     const attention = items.filter((i) => i.state === 'auth-rejected');
@@ -326,6 +336,23 @@ export default function SyncPanel({
             )}
             {assets.failedCount > 0 && assets.finished && (
               <div className="sp-assets-retry">Failed assets retry on the next launch.</div>
+            )}
+          </section>
+        )}
+
+        {files && (
+          <section aria-label="Project files" data-testid="sync-files">
+            <div className="gp-sect-label">
+              project files <span className="gp-group-count">{files.synced}</span>
+            </div>
+            <div className="sp-assets-line">
+              {`${files.synced} synced` + (files.pulled > 0 ? ` · ${files.pulled} pulled` : '')}
+            </div>
+            {files.conflicts > 0 && (
+              <div className="sp-assets-retry" data-testid="sync-files-conflicts">
+                {files.conflicts} conflict{files.conflicts === 1 ? '' : 's'} — the older copies are
+                kept in _trash/.
+              </div>
             )}
           </section>
         )}

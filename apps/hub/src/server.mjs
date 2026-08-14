@@ -79,6 +79,12 @@ import {
   handleDocumentItemRoute,
   handleDocumentsRoute,
 } from './documents.mjs';
+import {
+  FILES_PATH,
+  handleFilesRoute,
+  handleProjectFileRoute,
+  PROJECT_FILE_PREFIX,
+} from './file-manifest.mjs';
 import { seedFirstUserOnBoot } from './first-user.mjs';
 import { createGitRunner } from './git-runner.mjs';
 import { LOOPBACK_HOSTS, sanitizeForLog } from './log-safety.mjs';
@@ -333,6 +339,12 @@ export function createHub(config = {}) {
 
   /** Per-token rate limit buckets (authenticated asset writes): label → { count, windowStart } */
   const assetWriteBuckets = new Map();
+
+  /** Per-token rate limit buckets (authenticated file-plane reads): label → { count, windowStart }.
+   *  Its OWN map, deliberately: a fresh link pulls a whole design system in one
+   *  pass (the RCA-2026-08-11 lesson), and that burst must not eat the asset
+   *  WRITE budget of the same label. Same generous per-label ceiling. */
+  const fileReadBuckets = new Map();
 
   /** Activity feed ring buffer (newest last). Bounded to ACTIVITY_CAP. */
   const activity = [];
@@ -795,6 +807,55 @@ export function createHub(config = {}) {
             }
           },
           respondJson: (status, payload) => respondAdminJson(response, status, payload),
+        });
+        if (handled) bailFromOnRequest();
+      }
+      // The file plane's manifest (feature-sync-file-plane) — what plane-B
+      // files this project offers, classified by the shared positive
+      // classifier. Scope-bound to the same peer token the sync uses, like
+      // the documents listing above; canvas-owned files are absent at the
+      // SOURCE so the CRDT lanes can never be shadowed by a second transport.
+      if (authPath === FILES_PATH) {
+        const handled = handleFilesRoute({
+          path: authPath,
+          method,
+          bearer: (request.headers?.authorization ?? '').replace(/^Bearer\s+/i, '').trim() || null,
+          verify: (token) => verifyToken(dataDir, token, secret),
+          matchesScope,
+          designRoot:
+            workspaceMode && repoDir
+              ? join(repoDir, process.env.MAUDE_DESIGN_ROOT ?? '.design')
+              : null,
+          respondJson: (status, payload) => respondAdminJson(response, status, payload),
+        });
+        if (handled) bailFromOnRequest();
+      }
+      // The file plane's read half — one manifest entry's bytes. A NEW route,
+      // deliberately NOT a widening of `/_asset-file/` (its GET-is-presence-
+      // only posture is a recorded review decision). Read-only by
+      // construction; every post-auth refusal is 404 — no oracle.
+      if (authPath.startsWith(PROJECT_FILE_PREFIX)) {
+        const handled = await handleProjectFileRoute({
+          request,
+          response,
+          pathname: authPath,
+          method,
+          dataDir,
+          secret,
+          matchesScope,
+          designRoot:
+            workspaceMode && repoDir
+              ? join(repoDir, process.env.MAUDE_DESIGN_ROOT ?? '.design')
+              : null,
+          checkRateLimit: rateLimit
+            ? (req) => checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
+            : undefined,
+          // The GENEROUS per-label bucket, its own map — a fresh link pulls a
+          // whole design system in one pass and must not starve (or be
+          // starved by) the asset write budget.
+          checkReadRateLimit: rateLimit
+            ? (label) => checkConnRateLimit(fileReadBuckets, label, assetWriteRateLimitMax)
+            : undefined,
         });
         if (handled) bailFromOnRequest();
       }
