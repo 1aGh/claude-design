@@ -1499,11 +1499,14 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
   // shared `.meta.json` document. It lives in `_canvas-state/<slug>.view.json`
   // ({ viewport }) — gitignored, swept on delete, export-excluded. DISTINCT from
   // the legacy `_canvas-state/<slug>.json` ({ sections, viewport:{x,y,scale} })
-  // store: that uses `scale` clamped 0.05–8, this uses `zoom` clamped 0.1–4, so
+  // store: that uses `scale` clamped 0.05–8, this uses `zoom` clamped 0.02–4, so
   // overloading one file would let the two writers clobber each other's shape.
 
-  /** Validate a candidate viewport — finite x/y, zoom clamped [0.1, 4] (the
-   *  Phase 4 rule). Returns the normalized viewport, or null when invalid. */
+  /** Validate a candidate viewport — finite x/y, zoom clamped [0.02, 4] (the
+   *  Phase 4 rule). Mirrors `ZOOM_MIN` in canvas-lib.tsx (issue #91) — keep the
+   *  two floors in lockstep or a save/reload round-trip silently re-clamps a
+   *  zoom the client just let the user reach. Returns the normalized viewport,
+   *  or null when invalid. */
   function normalizeViewport(v: unknown): { x: number; y: number; zoom: number } | null {
     if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
     const vv = v as { x?: unknown; y?: unknown; zoom?: unknown };
@@ -1512,7 +1515,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       Number.isFinite(vv.y as number) &&
       Number.isFinite(vv.zoom as number)
     ) {
-      const zoom = Math.min(4, Math.max(0.1, vv.zoom as number));
+      const zoom = Math.min(4, Math.max(0.02, vv.zoom as number));
       return { x: vv.x as number, y: vv.y as number, zoom };
     }
     return null;
@@ -1569,6 +1572,41 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       out.push(k);
     }
     return [...new Set(out)];
+  }
+
+  // Issue #91 security follow-up — `layout.artboards[]` (DDR-027 position-only
+  // entries) is reachable from the untrusted canvas origin (DDR-054) via the
+  // same PATCH lane as overlays/locked above, but previously had no count or
+  // magnitude bound. `fit()`/`computeFit` (canvas-lib.tsx) now correctly frames
+  // whatever bounding box this describes — before the zoom-floor fix, a hard
+  // 0.1 zoom clamp accidentally masked an unbounded layout into a cropped,
+  // mismatched view; after it, an oversized synced layout can legitimately be
+  // framed whole, promoting every artboard in it to its own GPU layer at once
+  // (canvas-lib.tsx `content-visibility` comment). Cap count + coordinate
+  // magnitude the same way `normalizeOverlays`/`normalizeLocked` cap theirs.
+  const MAX_LAYOUT_ARTBOARDS = 2000;
+  const MAX_LAYOUT_COORD = 1_000_000;
+
+  function normalizeLayoutArtboards(
+    v: unknown
+  ): Array<{ id: string; x: number; y: number }> | null {
+    if (!Array.isArray(v) || v.length > MAX_LAYOUT_ARTBOARDS) return null;
+    const out: Array<{ id: string; x: number; y: number }> = [];
+    for (const entry of v) {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+      const e = entry as { id?: unknown; x?: unknown; y?: unknown };
+      if (typeof e.id !== 'string' || e.id.length === 0 || e.id.length > 128) return null;
+      if (
+        !Number.isFinite(e.x as number) ||
+        !Number.isFinite(e.y as number) ||
+        Math.abs(e.x as number) > MAX_LAYOUT_COORD ||
+        Math.abs(e.y as number) > MAX_LAYOUT_COORD
+      ) {
+        return null;
+      }
+      out.push({ id: e.id, x: e.x as number, y: e.y as number });
+    }
+    return out;
   }
 
   /** Raw view-file contents, tolerant of a missing/corrupt file (→ `{}`) — the
@@ -1819,7 +1857,18 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       if (patch.layout === null) {
         next.layout = undefined;
       } else if (typeof patch.layout === 'object' && !Array.isArray(patch.layout)) {
-        next.layout = patch.layout;
+        const rawLayout = patch.layout as Record<string, unknown>;
+        if ('artboards' in rawLayout) {
+          // Bounded — see normalizeLayoutArtboards. An oversized/malformed
+          // `artboards` array is a silent no-op (leaves the prior persisted
+          // layout in place), matching the overlays/locked lanes' convention.
+          const artboards = normalizeLayoutArtboards(rawLayout.artboards);
+          if (artboards !== null) {
+            next.layout = { ...rawLayout, artboards };
+          }
+        } else {
+          next.layout = patch.layout;
+        }
       }
       // Defensive: a stale inline viewport must never persist in the versioned
       // file (the camera lane owns it now). JSON.stringify drops undefined keys.
