@@ -4704,6 +4704,11 @@ function StatusBar({
   onOpenSync,
   changesCount = 0,
   unpushed = 0,
+  // Somebody else commits this project (a cloud cell, or the cell behind a
+  // linked+credentialed desktop repo — DDR-218). The chip then names the
+  // mechanism that IS saving rather than reporting a working-tree count the
+  // user has no reason to act on. Default false = today's local-first chip.
+  savingIsManaged = false,
   changesOpen = false,
   onOpenChanges,
   version,
@@ -4811,11 +4816,17 @@ function StatusBar({
           <span className="st-sb-changes-dot" aria-hidden="true" />
           <span className="lbl">changes</span>
           <span className="val">
-            {changesCount > 0
-              ? `${changesCount} unsaved`
-              : unpushed > 0
-                ? `${unpushed} to publish`
-                : 'all saved'}
+            {savingIsManaged
+              ? // Not "all saved": assets and project config are written into the
+                // cell's checkout but never committed there, so asserting a clean
+                // save would overstate what the cloud actually holds. Naming the
+                // mechanism is both honest and the thing the user needs to know.
+                'cloud saving'
+              : changesCount > 0
+                ? `${changesCount} unsaved`
+                : unpushed > 0
+                  ? `${unpushed} to publish`
+                  : 'all saved'}
           </span>
         </button>
       )}
@@ -11383,7 +11394,26 @@ function App() {
     for (const f of gitStatus?.files || []) m.set(f.path, KIND[f.status]);
     return m;
   }, [gitStatus]);
-  const unsavedCount = gitStatus?.files?.length || 0;
+  // WHO IS SAVING THIS PROJECT — one expression, read by every surface that
+  // would otherwise offer to save it (DDR-218 + the cell's `historyOnly`).
+  //
+  // These two flags were previously derived at the GitPanel call site alone, so
+  // the panel withdrew correctly while the toolbar menu and the status-bar chip
+  // kept rendering a raw dirty count from `gitStatus.files.length` — the very
+  // "lie about work that is already saved" the withdrawal exists to delete. The
+  // count is the claim, wherever it is drawn; hoisting the rule here is what
+  // keeps a third surface from re-introducing it.
+  //
+  // PRESENTATION, NOT A CONTROL — unchanged from DDR-218. `.git` is untouched,
+  // a terminal `git` behaves exactly as before, the server routes keep their own
+  // gates, and Disconnect restores every surface live.
+  const cellManaged = !!cfg.cloud;
+  const cloudManaged = !cfg.cloud && !!cloudLinkedHub?.credentialed;
+  const savingIsManaged = cellManaged || cloudManaged;
+  // The raw truth stays available for surfaces that legitimately need it (the
+  // panel's own file list, `dirtyByPath`); only the COUNT — the thing that reads
+  // as a to-do — is withheld when this project's saving is somebody else's job.
+  const unsavedCount = savingIsManaged ? 0 : gitStatus?.files?.length || 0;
 
   // Phase 28 (E3) — keep remote ahead/behind fresh so the "Get latest" nudge
   // surfaces on its own: probe once a repo is known, again whenever the Changes
@@ -14446,7 +14476,7 @@ function App() {
           // mislead, it does not remove a capability. The real gates are
           // server-side (`projectReadOnly`, the manifest's role matrix), and
           // they are unchanged by this flag.
-          historyOnly={!!cfg.cloud}
+          historyOnly={cellManaged}
           // DDR-218 (fix 8) — the DESKTOP half of the same withdrawal: a repo
           // linked+credentialed to Maude Cloud is cloud-managed (the cell
           // commits every edit as it lands), so the local Changes surface is
@@ -14454,7 +14484,7 @@ function App() {
           // Live: CloudBar lifts every link change (resolve/attach/detach)
           // into `cloudLinkedHub`. Same presentation-not-a-control rule as
           // `historyOnly` above; Disconnect restores the panel in place.
-          cloudManaged={!cfg.cloud && !!cloudLinkedHub?.credentialed}
+          cloudManaged={cloudManaged}
           resizing={resizingFor('changes')}
           onClose={() => setChangesOpen(false)}
           onCommit={gitCommit}
@@ -15521,7 +15551,11 @@ function App() {
           // holds (opening Sync closes whatever else the right slot shows).
           onOpenSync={syncStatus ? () => toggleRightPanel('sync') : undefined}
           changesCount={unsavedCount}
-          unpushed={gitStatus?.unpushed || 0}
+          // `unpushed` is a LOCAL-git offer ("N to publish"), and the panel has
+          // withdrawn Publish under either managed posture — so the chip must
+          // not keep advertising it either.
+          unpushed={savingIsManaged ? 0 : gitStatus?.unpushed || 0}
+          savingIsManaged={savingIsManaged}
           changesOpen={changesOpen}
           onOpenChanges={gitStatus?.repo ? () => setChangesOpen(true) : undefined}
           version={cfg?.version}

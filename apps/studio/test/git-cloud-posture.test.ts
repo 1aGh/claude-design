@@ -37,8 +37,17 @@ describe('a cloud-linked repo shows ONE save mechanism (DDR-218)', () => {
   });
 
   test('the app gate is the CORROBORATED link, and the cell posture is untouched', () => {
-    expect(APP).toContain('cloudManaged={!cfg.cloud && !!cloudLinkedHub?.credentialed}');
-    expect(APP).toContain('historyOnly={!!cfg.cloud}');
+    // Hoisted to a single top-level definition (2026-08-14) so the toolbar and
+    // status bar read the SAME posture the panel does — see
+    // cloud-managed-save-surfaces.test.ts. The gate itself is unchanged, and
+    // `credentialed` is the load-bearing half: config.json alone is
+    // attacker-authorable (B2), so a link claim without corroboration must
+    // never reach this posture.
+    expect(APP).toContain('const cloudManaged = !cfg.cloud && !!cloudLinkedHub?.credentialed;');
+    expect(APP).toContain('const cellManaged = !!cfg.cloud;');
+    // …and the panel is fed from those names, not a re-derivation.
+    expect(APP).toContain('cloudManaged={cloudManaged}');
+    expect(APP).toContain('historyOnly={cellManaged}');
   });
 
   test('CloudBar lifts every link change the posture depends on', () => {
