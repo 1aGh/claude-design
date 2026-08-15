@@ -353,6 +353,16 @@ export function writeCompileEntry(target: PlatformTarget): string {
 // Side-effect module: must be imported BEFORE any oxc-parser usage.
 import bindingPath from ${JSON.stringify(bindingSpec)} with { type: 'file' };
 process.env.NAPI_RS_NATIVE_LIBRARY_PATH = bindingPath;
+// DDR-177 — a compiled binary must be self-contained: every runtime-spawned
+// child (canvas-build worker, asset-sweep worker) resolves its JS runtime via
+// resolveBunPath() = MAUDE_BUN_PATH || 'bun'. The desktop app launches this
+// binary with a GUI PATH that has no 'bun', and NOTHING set MAUDE_BUN_PATH —
+// so the asset sweep died with "Executable not found in $PATH" on machines
+// without a user-installed bun. Default it to THIS binary: workerEnv() adds
+// BUN_BE_BUN=1 when MAUDE_BUN_PATH === process.execPath, so children re-enter
+// the sidecar as a plain JS runtime. An explicit launcher-set value (the
+// cell's studio-child.mjs) still wins.
+process.env.MAUDE_BUN_PATH ||= process.execPath;
 `;
   writeFileSync(initPath, initContent);
 

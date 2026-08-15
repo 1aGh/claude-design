@@ -186,6 +186,25 @@ export function annotationsFromDoc(doc: Y.Doc): string | null {
   return typeof svg === 'string' ? svg : null;
 }
 
+/**
+ * True when an annotations value carries ZERO strokes: null, `''`, or the bare
+ * serialized wrapper `<svg …></svg>` with no child elements (what
+ * `strokesToSvg([])` emits — 72 bytes, constant across peers).
+ *
+ * This distinction is load-bearing for cold start (the 2026-08-14 annotations
+ * eraser): the wrapper is a non-empty STRING, so every `!== ''` emptiness
+ * guard let a stale hub wrapper overwrite a peer's real strokes — and with the
+ * strokes went the `assets/<sha8>` references `asset-pull` scans, so freshly
+ * dropped images never crossed machines. Live delete-all still materializes
+ * the wrapper through `writeAnnotationsIfChanged` (deletes must propagate);
+ * only COLD-START decisions treat it as emptiness.
+ */
+export function isEmptyAnnotationsSvg(svg: string | null): boolean {
+  if (svg === null) return true;
+  if (svg.trim() === '') return true;
+  return /^\s*<svg\b[^>]*>\s*<\/svg>\s*$/i.test(svg);
+}
+
 export function applyAnnotationsToDoc(doc: Y.Doc, next: string | null, origin?: unknown): boolean {
   if (next !== null && byteLengthUtf8(next) > MAX_ANNOTATIONS_BYTES) {
     console.warn(
@@ -341,6 +360,34 @@ export function stampBodyEdit(doc: Y.Doc, origin?: unknown, nowMs?: number): voi
  *  peers don't write syncMeta → callers fall back to hub-wins, interop-safe). */
 export function bodyEditAtFromDoc(doc: Y.Doc): number | null {
   const v = doc.getMap<unknown>(Y_SYNC_TYPES.syncMeta).get('bodyEditAt');
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+/**
+ * Stamp `syncMeta.annotationsEditAt` — the annotations lane's own newest-wins
+ * timestamp (extends DDR-102's `bodyEditAt` per-lane). Call in the SAME
+ * transaction + origin as every local→doc annotations apply (agent applyFromFs
+ * annotations branch, cold-start local-wins seed, adopt) so peers receive ONE
+ * update. Before this stamp existed, cold start resolved annotations by the
+ * BODY winner — but annotation edits don't move the body's edit time, so a
+ * hub with a newer body and a stale (empty) annotations lane erased newer
+ * local strokes (the 2026-08-14 annotations eraser).
+ *
+ * `nowMs` override: cold-start seeding passes the local FILE's mtime so stale
+ * content can't claim apply-time freshness.
+ */
+export function stampAnnotationsEdit(doc: Y.Doc, origin?: unknown, nowMs?: number): void {
+  const map = doc.getMap<unknown>(Y_SYNC_TYPES.syncMeta);
+  doc.transact(() => {
+    map.set('annotationsEditAt', nowMs ?? Date.now());
+  }, origin);
+}
+
+/** The doc-side annotations-edit stamp, or null when no peer ever stamped
+ *  (pre-annotationsEditAt docs → callers fall back to the body-winner
+ *  coupling, interop-safe). */
+export function annotationsEditAtFromDoc(doc: Y.Doc): number | null {
+  const v = doc.getMap<unknown>(Y_SYNC_TYPES.syncMeta).get('annotationsEditAt');
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 

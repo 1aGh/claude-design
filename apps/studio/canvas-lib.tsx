@@ -214,7 +214,15 @@ export function AIPlaceholder({
 // ─────────────────────────────────────────────────────────────────────────────
 // Module constants
 
-const ZOOM_MIN = 0.1;
+// Issue #91 — was 0.1. A board spanning more world units than ~10x the
+// viewport could never be framed whole: `fit()` and manual zoom-out both
+// funnel through `clampZoom` (below), so the old floor blocked "fit to
+// screen" from ever reaching the zoom a wide board actually needs. 0.02
+// matches the interactive floor other canvas tools (Figma, tldraw) ship.
+// Keep in lockstep with the mirror clamp in `api.ts`'s `normalizeViewport`
+// (the per-machine camera persisted to `_canvas-state/<slug>.view.json`,
+// DDR-115) — that one re-clamps on save/reload independently of this file.
+const ZOOM_MIN = 0.02;
 const ZOOM_MAX = 4.0;
 const ZOOM_STEP_IN = 1.2;
 const ZOOM_STEP_OUT = 1 / 1.2;
@@ -685,7 +693,9 @@ function synthDefaultGrid(seeds: ArtboardSeed[]): ArtboardRect[] {
   });
 }
 
-function computeFit(rects: ArtboardRect[], hostEl: HTMLElement, pad = 24): ViewportState {
+// Exported for the same reason as `clampZoom` above — lets a unit test prove
+// the raw fit computation for a wide board isn't what's clamping the zoom.
+export function computeFit(rects: ArtboardRect[], hostEl: HTMLElement, pad = 24): ViewportState {
   if (rects.length === 0) return { x: 0, y: 0, zoom: 1 };
   let xMin = Number.POSITIVE_INFINITY;
   let yMin = Number.POSITIVE_INFINITY;
@@ -907,7 +917,10 @@ export interface ViewportControllerHandle {
   isInteracting: boolean;
 }
 
-function clampZoom(z: number): number {
+// Exported (like `revealAxisDelta` in canvas-shell.tsx) so a pure-logic unit
+// test can pin the zoom floor without booting the DOM/host-dependent
+// viewport controller.
+export function clampZoom(z: number): number {
   if (!Number.isFinite(z)) return 1;
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
 }
