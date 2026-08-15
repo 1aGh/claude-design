@@ -496,7 +496,13 @@ export interface MountCanvasOptions {
 function buildCanvasTree(Canvas: ComponentType, file: string | undefined): ReactNode {
   return createElement(
     MaybeToolProvider,
-    null,
+    // DDR-223 — this layer's provider instance keeps the DDR-187 posture:
+    // bare DS specimens stay ALIVE with native cursors (there is no palette,
+    // no editing, nothing to boot into edit for). On a UI canvas the inner
+    // canvas-lib ToolProvider (a separate bundle, separate context) owns the
+    // real boot posture (edit/`move`); this ancestor instance only carries the
+    // comment tool + claim layer and converges on the first tool keydown.
+    { initial: 'browse' as const },
     createElement(
       MaybeSelectionSetProvider,
       null,
