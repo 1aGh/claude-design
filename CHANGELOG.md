@@ -1,5 +1,43 @@
 # @1agh/maude
 
+## 0.60.6
+
+### Patch Changes
+
+- 2f43224: A picture you drop on a canvas now reaches your other machines while you
+  watch — and heals on screen the moment it lands, without a reload.
+
+  Four holes lined up behind one symptom (a broken-image frame that never
+  recovered):
+
+  - The cloud served pictures only from its durable object store, not from its
+    own working copy — so a freshly uploaded file that the cloud itself was
+    already displaying answered "not found" to every other machine asking for
+    it. The working copy now serves first, the object store stays the fallback.
+  - One of the three upload doors never told the object-store mirror it had
+    written anything, so files pushed through it survived only until the next
+    cloud restart.
+  - When the mirror DID fail, it failed silently — no log line anywhere. It now
+    says loudly what failed and why, and retries once on its own.
+  - Browsers never retry an image that failed to load. When the missing file
+    finally arrives on disk, open canvases now get a signal and re-point the
+    broken images at it — the glyph heals in place instead of waiting for a
+    manual reload.
+
+- 7195fc1: Mouse-wheel panning on the canvas is smoother and faster.
+
+  The wheel handler fed the browser's raw `WheelEvent` delta straight into the
+  pan distance, but a wheel event isn't always reported in pixels — a physical
+  mouse (notably on Firefox, and on some browser/OS driver combinations
+  elsewhere) reports "line" units instead, a few small integers per notch.
+  Treating that as pixels moved the canvas only a few pixels per wheel notch,
+  which read as almost frozen; trackpad panning was unaffected because
+  trackpads already report pixel units.
+
+  Wheel deltas are now normalized against the unit the browser actually
+  reports before they're applied, so a physical mouse wheel pans at a normal,
+  visible speed again.
+
 ## 0.60.5
 
 ### Patch Changes
