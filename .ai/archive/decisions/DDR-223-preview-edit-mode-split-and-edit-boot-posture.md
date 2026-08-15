@@ -112,3 +112,14 @@ the mode-toggle build with **boot=edit** (AskUserQuestion, this session).
 - If real-world use shows "always edit" is wrong for second-screen/present-style
   usage, the remember-last-mode variant is the designated follow-up (a localStorage
   read in the same `initialMode` seam), not another posture re-litigation.
+
+## Addendum (2026-08-15) — first review round
+
+Owner steer on the toggle's form: **icon segments, not text labels.** The glyphs
+are lifted from the tools each mode rests on — `IconBrowse` (pointing hand) for
+Preview, `IconMove` (selection arrow) for Edit — so the toggle inherits the
+identity of the buttons it replaced. Consequence: the separate **Select (move)
+button leaves the edit nav group** — a second identical arrow right next to the
+Edit segment would be noise; the Edit segment IS the select affordance (clicking
+the active segment re-arms `move`, V and Esc unchanged). Nav group is therefore
+`hand/comment` in both modes; the words moved into `aria-label` + `title`.

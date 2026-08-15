@@ -217,17 +217,12 @@ const PALETTE_CSS = `
   background: color-mix(in oklab, var(--maude-hud-accent, #d63b1f) 14%, transparent);
   color: var(--maude-hud-accent, #d63b1f);
 }
-/* DDR-223 — Preview/Edit segmented mode toggle at the head of the palette.
-   Text labels (not icons): a MODE is a posture, not a recalled tool, and the
-   two words are the teaching. Active state reuses the aria-pressed tint +
-   underbar treatment. */
-.dc-tool-palette .dc-tp-mode button {
-  width: auto;
-  padding: 0 10px;
-  font-family: inherit;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-}
+/* DDR-223 — Preview/Edit segmented mode toggle at the head of the palette
+   (owner steer 2026-08-15: icons, not text labels). The glyphs are LIFTED from
+   the tools each mode rests on — IconBrowse (pointing hand, "the mock is
+   alive") for Preview, IconMove (selection arrow) for Edit — so the toggle
+   inherits the identity of the browse/move buttons it replaced. Standard
+   32 × 32 buttons; active state reuses the aria-pressed tint + underbar. */
 /* Stage I3 tail — "+ Element" insert popover. A vertical labeled list (not the
    shape popover's icon grid): Div/Text/Image have no recognizable glyph on
    their own, and this is a rare, must-be-legible action, not a recalled tool. */
@@ -268,12 +263,13 @@ function ensurePaletteStyles(): void {
   document.head.appendChild(s);
 }
 
-// DDR-223 — the Preview/Edit toggle replaces the browse button in the nav
-// group: `browse` is armed by the Preview segment (and Esc-in-preview), `move`
-// keeps its button in edit (V parity + visible active state). Annotation tools
-// render in BOTH modes (issue #93: preview keeps annotations).
-const EDIT_NAV_TOOLS = ['move', 'hand', 'comment'] as const;
-const PREVIEW_NAV_TOOLS = ['hand', 'comment'] as const;
+// DDR-223 — the Preview/Edit toggle replaces BOTH resting-tool buttons in the
+// nav group: `browse` is armed by the Preview segment, `move` by the Edit
+// segment (which wears the same IconMove glyph the old Select button had — a
+// second identical arrow next to it would just be noise; V and Esc still arm
+// move directly). Annotation tools render in BOTH modes (issue #93: preview
+// keeps annotations).
+const NAV_TOOLS = ['hand', 'comment'] as const;
 // Phase 24 — the two rect/ellipse buttons collapse into one Shape tool (with a
 // kind popover); sticky/arrow/text/eraser keep their order. Wave H — section
 // joins the row (it was ⇧S-only before; users couldn't discover it).
@@ -409,8 +405,7 @@ export function ToolPalette() {
   if (chrome?.present) return null;
 
   const byId = new Map(tools.map((t) => [t.id, t]));
-  const navIds = mode === 'edit' ? EDIT_NAV_TOOLS : PREVIEW_NAV_TOOLS;
-  const navList = navIds.map((id) => byId.get(id)).filter(Boolean);
+  const navList = NAV_TOOLS.map((id) => byId.get(id)).filter(Boolean);
   const drawList = DRAW_TOOLS.map((id) => byId.get(id)).filter(Boolean);
   // Cloud Phase 25 C2 — read-only canvas: the draw group is already empty
   // (ToolProvider filters `tools`), and the hardcoded write affordances
@@ -502,29 +497,38 @@ export function ToolPalette() {
 
   // DDR-223 — the mode toggle. Clicking the ACTIVE segment re-arms the mode's
   // resting tool (the "get me out of the pen tool" gesture — especially in
-  // preview, where browse has no palette button of its own).
-  const renderModeToggle = () => (
-    <div className="dc-tp-group dc-tp-mode" role="group" aria-label="Canvas mode">
-      <button
-        type="button"
-        data-testid="palette-mode-preview"
-        aria-pressed={mode === 'preview'}
-        title="Preview — the mock is live (buttons click); annotation tools stay on"
-        onClick={() => (mode === 'preview' ? resetTool() : setMode('preview'))}
-      >
-        Preview
-      </button>
-      <button
-        type="button"
-        data-testid="palette-mode-edit"
-        aria-pressed={mode === 'edit'}
-        title="Edit — click selects & edits, like Figma (V)"
-        onClick={() => (mode === 'edit' ? resetTool() : setMode('edit'))}
-      >
-        Edit
-      </button>
-    </div>
-  );
+  // preview, where browse has no palette button of its own). Icon-only (owner
+  // steer 2026-08-15): the glyphs are the browse/move tool icons the toggle
+  // replaced, so the identity carries over; the words live in aria-label +
+  // title.
+  const renderModeToggle = () => {
+    const PreviewIcon = TOOL_ICONS.browse;
+    const EditIcon = TOOL_ICONS.move;
+    return (
+      <div className="dc-tp-group dc-tp-mode" role="group" aria-label="Canvas mode">
+        <button
+          type="button"
+          data-testid="palette-mode-preview"
+          aria-label="Preview mode — the mock is live; annotation tools stay on"
+          aria-pressed={mode === 'preview'}
+          title="Preview — the mock is live (buttons click); annotation tools stay on"
+          onClick={() => (mode === 'preview' ? resetTool() : setMode('preview'))}
+        >
+          {PreviewIcon ? <PreviewIcon /> : null}
+        </button>
+        <button
+          type="button"
+          data-testid="palette-mode-edit"
+          aria-label="Edit mode — click selects & edits, like Figma (V)"
+          aria-pressed={mode === 'edit'}
+          title="Edit — click selects & edits, like Figma (V)"
+          onClick={() => (mode === 'edit' ? resetTool() : setMode('edit'))}
+        >
+          {EditIcon ? <EditIcon /> : null}
+        </button>
+      </div>
+    );
+  };
 
   return (
     <div ref={containerRef} className="dc-tool-palette" role="toolbar" aria-label="Canvas tools">

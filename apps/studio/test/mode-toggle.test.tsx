@@ -168,16 +168,23 @@ describe('mode-toggle / palette segmented toggle', () => {
   const seg = (which: 'preview' | 'edit'): HTMLButtonElement | null =>
     document.querySelector(`[data-testid="palette-mode-${which}"]`);
 
-  test('renders both segments; Edit is pressed on boot; Move button present, browse absent', () => {
+  test('renders both segments as icon buttons; Edit is pressed on boot; no browse/move tool buttons', () => {
     mountPalette();
     expect(seg('preview')).not.toBeNull();
     expect(seg('edit')?.getAttribute('aria-pressed')).toBe('true');
     expect(seg('preview')?.getAttribute('aria-pressed')).toBe('false');
-    expect(document.querySelector('[aria-label^="Select (V)"]')).not.toBeNull();
-    expect(document.querySelector('[aria-label^="Browse"]')).toBeNull();
+    // Owner steer 2026-08-15 — icon-only segments (the browse/move glyphs the
+    // toggle replaced); the words live in aria-label/title.
+    expect(seg('preview')?.querySelector('svg')).not.toBeNull();
+    expect(seg('edit')?.querySelector('svg')).not.toBeNull();
+    // The segments ARE the resting-tool affordances — no separate Select /
+    // Browse buttons in the nav group (a duplicate IconMove arrow would sit
+    // right next to the Edit segment).
+    expect(document.querySelector('[aria-label^="Select (V)"]')).toBeNull();
+    expect(document.querySelector('[aria-label^="Browse ("]')).toBeNull();
   });
 
-  test('clicking Preview flips the posture and hides the Move button; insert (+) is edit-only', () => {
+  test('clicking Preview flips the posture; insert (+) is edit-only', () => {
     mountPalette();
     expect(
       document.querySelector('[aria-label="Insert element — Div, Text, or Image"]')
@@ -187,10 +194,14 @@ describe('mode-toggle / palette segmented toggle', () => {
     });
     expect(pair()).toEqual({ tool: 'browse', mode: 'preview' });
     expect(seg('preview')?.getAttribute('aria-pressed')).toBe('true');
-    expect(document.querySelector('[aria-label^="Select (V)"]')).toBeNull();
     expect(document.querySelector('[aria-label="Insert element — Div, Text, or Image"]')).toBeNull();
     // Draw tools stay available in preview (issue #93: annotations in preview).
     expect(document.querySelector('[aria-label^="Pen (B)"]')).not.toBeNull();
+    // And the Edit segment arms move again.
+    act(() => {
+      seg('edit')?.click();
+    });
+    expect(pair()).toEqual({ tool: 'move', mode: 'edit' });
   });
 
   test('clicking the ACTIVE segment re-arms the resting tool', () => {
