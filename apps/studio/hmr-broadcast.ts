@@ -33,7 +33,7 @@ const DEBOUNCE_MS = 50;
 
 export interface HmrMessage {
   type: 'canvas-hmr';
-  mode: 'css' | 'module' | 'hard' | 'meta';
+  mode: 'css' | 'module' | 'hard' | 'meta' | 'asset';
   /**
    * Canvas-relative path of the file that changed, slash-normalised. Absent
    * when mode === 'hard' (the change is global — every canvas reloads).
@@ -74,7 +74,13 @@ export function createHmrBroadcaster(
   // meta is the lightest signal — it doesn't trigger a reload, just re-fetches
   // the sidecar. CSS still ranks above it so a same-window CSS write wins over
   // a meta echo; hard tops everything.
-  const rank: Record<HmrMessage['mode'], number> = { meta: 0, css: 1, module: 2, hard: 3 };
+  const rank: Record<HmrMessage['mode'], number> = {
+    meta: 0,
+    asset: 0,
+    css: 1,
+    module: 2,
+    hard: 3,
+  };
 
   function flush() {
     // A pending `hard` supersedes the per-file queue — every open canvas does a
@@ -169,8 +175,40 @@ export function classifyChange(
   if (ext === '.tsx' || ext === '.jsx' || ext === '.ts' || ext === '.js') {
     return { type: 'canvas-hmr', mode: 'module', file: rel, version, scope: 'canvas' };
   }
+  // 2026-08-15 annotations-assets RCA — a MEDIA file landing on disk (asset
+  // pull, file-plane pull, desktop push echo) is a heal signal, not a reload:
+  // any <img>/<image> that already 404'd on this name keeps the broken glyph
+  // forever (browsers never retry a failed load on their own). `mode:'asset'`
+  // tells open canvases to re-point matching, still-broken elements — no
+  // reload, no React state loss. Covers top-level `assets/` AND DS trees
+  // (`system/<ds>/assets/…`); `.part` staging files never match the ext set.
+  if (ASSET_MEDIA_EXTS.has(ext)) {
+    return { type: 'canvas-hmr', mode: 'asset', file: rel, version, scope: 'canvas' };
+  }
   return null;
 }
+
+/** Media extensions worth a heal broadcast — the renderable subset of the
+ *  asset lanes' vocabulary (fonts excluded: a font 404 heals only via a CSS
+ *  re-evaluation, which is a reload — not worth forcing for the rare case). */
+const ASSET_MEDIA_EXTS = new Set([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+  '.gif',
+  '.avif',
+  '.svg',
+  '.mp4',
+  '.webm',
+  '.mov',
+  '.m4v',
+  '.mp3',
+  '.wav',
+  '.m4a',
+  '.aac',
+  '.ogg',
+]);
 
 // ---------------------------------------------------------------------------
 // Container write bridge — inspector-edits-live-render RCA.

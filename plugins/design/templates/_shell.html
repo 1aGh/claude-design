@@ -463,6 +463,37 @@
                 .catch(() => {
                   /* network blip — next interaction will retry */
                 });
+            } else if (msg.mode === 'asset') {
+              // 2026-08-15 annotations-assets RCA — a synced-down media file
+              // just landed on disk. Any <img> / SVG <image> that already
+              // 404'd on it shows the broken glyph FOREVER (browsers never
+              // retry a failed load), so the heal was invisible: the bytes
+              // arrived, the canvas stayed broken until a manual reload.
+              // Re-point matching, still-broken elements at a cache-busted
+              // URL — no reload, no React state loss. A later React render
+              // restoring the clean URL refetches it fresh (the file exists
+              // now), so both URLs converge on the good bytes.
+              const assetName = (msg.file || '').split('/').pop();
+              if (!assetName) return;
+              const v = msg.version || Date.now();
+              const nameMatches = function (u) {
+                if (!u) return false;
+                return u.indexOf(assetName) !== -1 || u.indexOf(encodeURIComponent(assetName)) !== -1;
+              };
+              for (const img of document.querySelectorAll('img')) {
+                const src = img.getAttribute('src');
+                if (!nameMatches(src)) continue;
+                // Already rendering fine — don't churn a working image.
+                if (img.complete && img.naturalWidth > 0) continue;
+                img.setAttribute('src', src.split('?')[0] + '?v=' + v);
+              }
+              for (const el of document.querySelectorAll('image')) {
+                const href = el.getAttribute('href') || el.getAttribute('xlink:href');
+                if (!nameMatches(href)) continue;
+                // SVG <image> exposes no broken-state flag — re-pointing a
+                // working one is a cheap refetch of now-cached bytes.
+                el.setAttribute('href', href.split('?')[0] + '?v=' + v);
+              }
             }
           } catch (e) {
             console.warn('[canvas-shell] HMR message parse error', e);

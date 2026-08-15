@@ -217,6 +217,95 @@ test('a missing object is 404', async () => {
   assert.equal(res.status, 404);
 });
 
+/* --------------------- 2026-08-15 RCA — the checkout serves before the bucket */
+
+test('a file in the CHECKOUT is served even when the bucket misses it', async () => {
+  // The eraser-adjacent half of the annotations-assets RCA: a browser upload
+  // (or a peer push) lands in the checkout instantly, and the bucket mirror
+  // lags or fails. This route used to be bucket-only, so a peer's asset pull
+  // got 404 for a file the same process was serving to browsers.
+  const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-serve-'));
+  try {
+    mkdirSync(join(designRoot, 'assets'), { recursive: true });
+    writeFileSync(join(designRoot, 'assets/65c3a940.png'), 'checkout bytes');
+    // NOT in the bucket (store empty for this key).
+    const res = await call({
+      pathname: '/assets/65c3a940.png',
+      token: minted.value,
+      designRoot,
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.toString(), 'checkout bytes');
+    assert.equal(res.headers['Content-Type'], 'image/png');
+    assert.match(res.headers['Cache-Control'], /immutable/);
+
+    const head = await call({
+      pathname: '/assets/65c3a940.png',
+      method: 'HEAD',
+      token: minted.value,
+      designRoot,
+    });
+    assert.equal(head.status, 200);
+    assert.equal(head.headers['Content-Length'], 14);
+    assert.equal(head.body, null);
+  } finally {
+    rmSync(designRoot, { recursive: true, force: true });
+  }
+});
+
+test('checkout serve works with NO bucket configured — 404 is the miss, not 503', async () => {
+  const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-nos3-'));
+  try {
+    mkdirSync(join(designRoot, 'assets'), { recursive: true });
+    writeFileSync(join(designRoot, 'assets/deadbeef.png'), 'x');
+    const hit = await call({
+      pathname: '/assets/deadbeef.png',
+      token: minted.value,
+      withS3: false,
+      designRoot,
+    });
+    assert.equal(hit.status, 200);
+    const miss = await call({
+      pathname: '/assets/00000000.png',
+      token: minted.value,
+      withS3: false,
+      designRoot,
+    });
+    assert.equal(miss.status, 404, 'a real miss with a checkout present is 404');
+    const noStore = await call({
+      pathname: '/assets/00000000.png',
+      token: minted.value,
+      withS3: false,
+    });
+    assert.equal(noStore.status, 503, 'no checkout AND no bucket stays 503');
+  } finally {
+    rmSync(designRoot, { recursive: true, force: true });
+  }
+});
+
+test('a symlink inside assets/ cannot serve bytes from outside it', async () => {
+  const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-link-'));
+  try {
+    mkdirSync(join(designRoot, 'assets'), { recursive: true });
+    writeFileSync(join(designRoot, 'secret.txt'), 'not-an-asset');
+    symlinkSync(join(designRoot, 'secret.txt'), join(designRoot, 'assets/aaaabbbb.png'));
+    const res = await call({
+      pathname: '/assets/aaaabbbb.png',
+      token: minted.value,
+      withS3: false,
+      designRoot,
+    });
+    // Containment refuses the link target outside assets/; with no bucket the
+    // answer is the checkout miss.
+    assert.equal(res.status, 404);
+  } finally {
+    rmSync(designRoot, { recursive: true, force: true });
+  }
+});
+
 test('a hub without a checkout is NOT an upload endpoint', async () => {
   // The pre-DDR-217 posture, still true wherever there is no durable checkout
   // to write into: accepting writes there would make the hub an

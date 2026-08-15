@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "assets-arrive-and-heal",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "Dropped images reach every machine, live",
+      "summary": "A picture added on one machine now arrives on your others while you watch: the cloud serves it the moment it has it, and a broken-image frame heals in place when the file lands — no reload needed.",
+      "surface": "design-ui"
+    },
+    {
       "id": "preview-edit-mode-toggle",
       "version": null,
       "date": null,

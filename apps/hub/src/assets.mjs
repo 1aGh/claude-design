@@ -24,7 +24,15 @@
 
 import { randomBytes } from 'node:crypto';
 import { once } from 'node:events';
-import { createWriteStream, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
+import {
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+} from 'node:fs';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 
 import { assetObjectKey, assetPrefixFromEnv } from './asset-key.mjs';
@@ -184,8 +192,65 @@ export async function handleAssetRoute(ctx) {
     });
   }
 
+  // ---- CHECKOUT FIRST, bucket second (the 2026-08-15 annotations-assets RCA).
+  //
+  // This route used to be bucket-ONLY, which made it lie about what the cell
+  // can serve: a browser upload lands in the checkout instantly (and the studio
+  // serves it to browsers from there), a git-mirror pull lands there too — but
+  // until the bucket mirror caught up, a peer's asset pull got a 404 for a file
+  // the very same process was serving on another route. For every peer without
+  // the file plane that 404 was the ONLY downward path, so a freshly dropped
+  // annotation image stayed a broken glyph on every other machine. The checkout
+  // is exactly "what this cell can serve"; the bucket stays as the durable
+  // fallback (and remains authoritative for hubs with no checkout at all).
+  //
+  // Containment mirrors the PUT branch: `key` already passed ASSET_KEY (no
+  // `..`, bounded charset/depth), and `isContainedReal` resolves symlinks
+  // before a byte is read.
+  if (ctx.designRoot) {
+    try {
+      const assetsRoot = resolve(ctx.designRoot, 'assets');
+      const abs = resolve(assetsRoot, key);
+      if (
+        (abs === assetsRoot || abs.startsWith(assetsRoot + sep)) &&
+        isContainedReal(assetsRoot, abs) &&
+        existsSync(abs) &&
+        statSync(abs).isFile()
+      ) {
+        if (method === 'HEAD') {
+          response
+            .writeHead(200, {
+              'Content-Type': assetContentType(key),
+              'Content-Length': statSync(abs).size,
+              ...cacheHeadersFor(key),
+            })
+            .end();
+          return true;
+        }
+        // Buffered like the bucket branch below — same ceiling, same shape.
+        const bytes = readFileSync(abs);
+        response
+          .writeHead(200, {
+            'Content-Type': assetContentType(key),
+            'Content-Length': bytes.length,
+            ...cacheHeadersFor(key),
+          })
+          .end(bytes);
+        return true;
+      }
+    } catch {
+      /* checkout miss/unreadable — fall through to the bucket */
+    }
+  }
+
   if (!s3) {
-    respond(response, 503, 'this hub has no asset store configured');
+    // With a checkout present, a miss is a real answer (404); 503 stays for a
+    // hub that has NO store of either kind.
+    respond(
+      response,
+      ctx.designRoot ? 404 : 503,
+      ctx.designRoot ? 'not found' : 'this hub has no asset store configured'
+    );
     return true;
   }
 
@@ -598,6 +663,14 @@ export async function handleCheckoutAssetRoute(ctx) {
     respond(response, r.status, r.message);
     return true;
   }
+  // Mirror to the bucket now, exactly like the bucket-route PUT and the
+  // browser-upload door (B3). This route was the one write surface WITHOUT the
+  // hook ("no bucket mirror"), so a human-named `assets/…` file pushed here
+  // lived checkout-only until the next boot — one container teardown from
+  // gone, and a 404 on the `/assets/` proxy meanwhile (2026-08-15 RCA). The
+  // sweep lists only `<designRoot>/assets/`, so a `system/**` write is a
+  // cheap no-op pass, not a mis-mirror.
+  ctx.onWritten?.();
   const body = JSON.stringify({ ok: true, path: rel, bytes: r.total });
   response
     .writeHead(200, {

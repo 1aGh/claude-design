@@ -59,7 +59,24 @@ describe('classifyChange', () => {
 
   test('unrelated extensions → null', () => {
     expect(classifyChange('ui/notes.md', noSibling)).toBeNull();
-    expect(classifyChange('assets/logo.svg', noSibling)).toBeNull();
+    expect(classifyChange('assets/photo.png.part', noSibling)).toBeNull();
+    expect(classifyChange('system/x/assets/fonts/Gators-Bold.woff2', noSibling)).toBeNull();
+  });
+
+  test('media files → asset heal signal (2026-08-15 annotations-assets RCA)', () => {
+    // A synced-down media file landing on disk heals still-broken <img>/<image>
+    // elements in open canvases — no reload. Top-level assets/ and DS trees both.
+    for (const f of [
+      'assets/65c3a940.png',
+      'assets/807d7ba7.jpg',
+      'assets/logo.svg',
+      'assets/clip.mp4',
+      'system/alligators/assets/photos-cut/frame-helmet.jpg',
+    ]) {
+      const msg = classifyChange(f, noSibling);
+      expect(msg?.mode).toBe('asset');
+      expect(msg?.file).toBe(f);
+    }
   });
 
   test('backslash paths are normalised before classification', () => {

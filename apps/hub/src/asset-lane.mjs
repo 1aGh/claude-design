@@ -60,6 +60,11 @@ function servable(relPath) {
  *  is a mistake, and paying R2 to store it silently is the wrong response. */
 const MAX_ASSET_BYTES = 512 * 1024 * 1024;
 
+/** Delay before the one post-failure mirror retry (sweepNew). Long enough for
+ *  a transient bucket blip to pass, short enough that the bytes stop being
+ *  checkout-only within a session, not at the next boot. */
+const RETRY_DELAY_MS = 60_000;
+
 /**
  * Which files in an assets directory are eligible, given what the bucket has.
  * Pure — the caller supplies the listing and the existence check.
@@ -364,6 +369,8 @@ export function createAssetSweeper({ designRoot, s3, prefix, log = console, deps
   const mirrored = new Set();
   let running = null;
   let again = false;
+  /** Armed after a pass with failures — one delayed retry, never a storm. */
+  let retryTimer = null;
 
   function remember(result) {
     for (const name of result.uploaded) mirrored.add(name);
@@ -405,6 +412,36 @@ export function createAssetSweeper({ designRoot, s3, prefix, log = console, deps
           prefix,
           only: new Set(fresh),
         });
+        // LOUD, both ways (2026-08-15 annotations-assets RCA). This pass's
+        // per-file failures land in `result.failed` and nothing above ever
+        // read it: `onAssetWritten` catches only a rejected promise and this
+        // function never rejects, so a broken bucket write was invisible —
+        // an upload answered 201, the mirror silently didn't happen, and the
+        // asset survived exactly until the next container teardown.
+        if (result.uploaded.length > 0) {
+          log.log?.(`[assets] mirrored ${result.uploaded.length} new asset(s) to the bucket`);
+        }
+        if (result.failed.length > 0) {
+          log.error?.(
+            `[assets] bucket mirror FAILED for ${result.failed.length} asset(s): ` +
+              result.failed
+                .slice(0, 5)
+                .map((f) => `${f.key} (${f.reason})`)
+                .join(', ') +
+              (result.failed.length > 5 ? ` …+${result.failed.length - 5}` : '') +
+              ' — these bytes live only in the checkout until a retry lands them.'
+          );
+          // One retry per failed pass, off the hot path. `mirrored` never
+          // learned the failed names, so the retry pass re-lists them as
+          // fresh; single-flight + the trailing-run latch already serialize.
+          if (retryTimer === null) {
+            retryTimer = setTimeout(() => {
+              retryTimer = null;
+              void sweepNew();
+            }, RETRY_DELAY_MS);
+            retryTimer.unref?.();
+          }
+        }
         return remember(result);
       } finally {
         running = null;

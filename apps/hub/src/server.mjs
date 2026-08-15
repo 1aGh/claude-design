@@ -720,8 +720,9 @@ export function createHub(config = {}) {
       // their full designRoot path and served from the checkout by the studio
       // child, NOT the bucket `/assets/` proxy — so they land on the checkout
       // at their real relative path (which the bucket-keyed route can't
-      // address). Same peer-token + rate-limit + workspace gate; no bucket
-      // mirror. See handleCheckoutAssetRoute.
+      // address). Same peer-token + rate-limit + workspace gate; top-level
+      // `assets/…` writes here mirror to the bucket via onWritten (2026-08-15
+      // RCA — this door used to skip the B3 hook). See handleCheckoutAssetRoute.
       if (authPath.startsWith('/_asset-file/')) {
         const handled = await handleCheckoutAssetRoute({
           request,
@@ -734,6 +735,14 @@ export function createHub(config = {}) {
             workspaceMode && repoDir
               ? join(repoDir, process.env.MAUDE_DESIGN_ROOT ?? '.design')
               : null,
+          // 2026-08-15 RCA — this was the ONE write surface without the B3
+          // mirror hook; a top-level `assets/…` file pushed here stayed
+          // checkout-only until the next boot.
+          onWritten: () => {
+            assetSweeper?.sweepNew().catch((err) => {
+              console.error(`[assets] post-push mirror failed: ${err.message}`);
+            });
+          },
           checkRateLimit: rateLimit
             ? (req) => checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
             : undefined,

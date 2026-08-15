@@ -60,14 +60,16 @@ describe('hmr-broadcast / classification', () => {
     h.stop();
   });
 
-  test('unrelated extensions are dropped', async () => {
+  test('unrelated extensions are dropped; media becomes an asset heal', async () => {
     const ctx = mkCtx();
     const got: HmrMessage[] = [];
     const h = createHmrBroadcaster(ctx, (m) => got.push(m));
-    ctx.bus.emit('fs:any', 'ui/screenshot.png');
-    ctx.bus.emit('fs:any', '_locator.json');
+    ctx.bus.emit('fs:any', 'ui/screenshot.png'); // media → asset heal (2026-08-15 RCA)
+    ctx.bus.emit('fs:any', '_locator.json'); // runtime state → dropped
     await awaitNextFlush();
-    expect(got).toHaveLength(0);
+    expect(got).toHaveLength(1);
+    expect(got[0]?.mode).toBe('asset');
+    expect(got[0]?.file).toBe('ui/screenshot.png');
     h.stop();
   });
 });
