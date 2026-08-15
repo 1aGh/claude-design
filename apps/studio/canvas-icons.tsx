@@ -52,6 +52,31 @@ export function IconBrowse(props: IconProps) {
   );
 }
 
+// DDR-223 addendum 2 — the Preview/Edit/Present toggle glyphs (owner steer
+// 2026-08-15): lucide `eye` + `pencil-ruler` (ISC), redrawn in the house
+// 24 × 24 / 1.75-stroke language. Mode segments deliberately do NOT reuse tool
+// glyphs — a mode is a way of looking at the canvas, not a recalled tool.
+export function IconEye(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" />
+      <circle cx="12" cy="12" r="3" />
+    </Svg>
+  );
+}
+export function IconPencilRuler(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M13 7 8.7 2.7a2.41 2.41 0 0 0-3.4 0L2.7 5.3a2.41 2.41 0 0 0 0 3.4L7 13" />
+      <path d="m8 6 2-2" />
+      <path d="m18 16 2-2" />
+      <path d="m17 11 4.3 4.3c.94.94.94 2.46 0 3.4l-2.6 2.6c-.94.94-2.46.94-3.4 0L11 17" />
+      <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+      <path d="m15 5 4 4" />
+    </Svg>
+  );
+}
+
 export function IconHand(props: IconProps) {
   return (
     <Svg {...props}>
@@ -146,11 +171,14 @@ export function IconLink(props: IconProps) {
   );
 }
 
+// DDR-223 addendum 2 — redrawn to the lucide `presentation` glyph so the three
+// mode-segment icons (eye / pencil-ruler / presentation) read as one family.
 export function IconPresentation(props: IconProps) {
   return (
     <Svg {...props}>
-      <rect x="3" y="4" width="18" height="12" rx="1.5" />
-      <path d="M9 21l3-5 3 5" />
+      <path d="M2 3h20" />
+      <path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3" />
+      <path d="m7 21 5-5 5 5" />
     </Svg>
   );
 }

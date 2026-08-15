@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-14T14:30:52.630Z",
+  "generated": "2026-08-15T07:36:09.089Z",
   "currentPhase": null,
   "phases": [
     {
@@ -2038,6 +2038,17 @@
       "phaseKey": null
     },
     {
+      "id": "feature-desktop-splash-recovery",
+      "title": "Feature: Desktop splash self-recovery + back-navigation hardening",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-desktop-splash-recovery.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
       "id": "feature-goal-unattended-pipelines",
       "title": "Feature: /goal-aware unattended pipelines for flow + design commands",
       "status": "planned",
@@ -2078,6 +2089,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-video-tracking-and-stabilization.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "issue-93-canvas-boot-posture-and-preview-edit-toggle",
+      "title": "Feature: Canvas boot posture — respond to issue #93 (default tool / preview-edit toggle request)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/issue-93-canvas-boot-posture-and-preview-edit-toggle.md",
       "archived": false,
       "phaseKey": null
     }

@@ -2,6 +2,24 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "preview-edit-mode-toggle",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Preview, Edit and Present in one switch",
+      "summary": "Canvases open in Edit — clicking selects right away, like Figma. A new three-way switch in the toolbar flips to Preview (the mock is live and clickable; comments and drawing still work) or straight into Presentation.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "desktop-splash-recovers-itself",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "No more getting stuck on “Starting…”",
+      "summary": "The desktop app could go black and sit on the startup screen for good — often right after a command finished — with a force-quit as the only way out. It now finds its way back on its own, in about a second, and keeps your session instead of losing it.",
+      "surface": "desktop"
+    },
+    {
       "id": "annotations-survive-cold-start",
       "version": "0.60.5",
       "date": "2026-08-14",
