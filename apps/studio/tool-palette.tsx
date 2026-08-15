@@ -333,8 +333,18 @@ export function resolveInsertAnchor(
 
 export function ToolPalette() {
   ensurePaletteStyles();
-  const { tool, setTool, tools, mode, setMode, resetTool, sticky, toggleSticky, shapeKind, setShapeKind } =
-    useToolMode();
+  const {
+    tool,
+    setTool,
+    tools,
+    mode,
+    setMode,
+    resetTool,
+    sticky,
+    toggleSticky,
+    shapeKind,
+    setShapeKind,
+  } = useToolMode();
   const chrome = useChromeVisibility();
   const [mounted, setMounted] = useState(false);
   const [shapeOpen, setShapeOpen] = useState(false);
@@ -504,6 +514,7 @@ export function ToolPalette() {
   // here from the palette's right end so all three "ways of looking at the
   // canvas" sit in one control.
   const renderModeToggle = () => (
+    // biome-ignore lint/a11y/useSemanticElements: segmented control of buttons, not a form — fieldset semantics (and its default box styling) don't apply
     <div className="dc-tp-group dc-tp-mode" role="group" aria-label="Canvas mode">
       <button
         type="button"

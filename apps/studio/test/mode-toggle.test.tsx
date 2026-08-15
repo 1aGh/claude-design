@@ -19,11 +19,10 @@ afterAll(() => {
 
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-
+import type { Tool } from '../input-router.tsx';
 import { _resetReadOnlyCache } from '../read-only-mode.ts';
 import { ToolPalette } from '../tool-palette.tsx';
 import { type CanvasMode, ToolProvider, useToolMode } from '../use-tool-mode.tsx';
-import type { Tool } from '../input-router.tsx';
 
 // Capture the live context value so tests can drive setMode/setTool/resetTool
 // directly and assert the resulting (tool, mode) pair.
@@ -200,7 +199,9 @@ describe('mode-toggle / palette segmented toggle', () => {
     });
     expect(pair()).toEqual({ tool: 'browse', mode: 'preview' });
     expect(seg('preview')?.getAttribute('aria-pressed')).toBe('true');
-    expect(document.querySelector('[aria-label="Insert element — Div, Text, or Image"]')).toBeNull();
+    expect(
+      document.querySelector('[aria-label="Insert element — Div, Text, or Image"]')
+    ).toBeNull();
     // Draw tools stay available in preview (issue #93: annotations in preview).
     expect(document.querySelector('[aria-label^="Pen (B)"]')).not.toBeNull();
     // And the Edit segment arms move again.
