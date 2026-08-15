@@ -917,6 +917,21 @@ export interface ViewportControllerHandle {
   isInteracting: boolean;
 }
 
+// Issue #94 — wheel pan used raw WheelEvent deltas as CSS pixels, but the
+// Wheel Events spec lets a browser report deltas in three different units
+// (`deltaMode`): pixel (0, trackpads and most Chromium mice), line (1,
+// Firefox's default for physical mice — one notch is a small integer like
+// 3), or page (2). Consuming a line-mode `3` as 3px of pan per notch is why
+// wheel-driven panning read as "very slow" while trackpad panning (already
+// pixel-mode) felt fine. LINES_TO_PIXELS mirrors the pixels-per-line browsers
+// themselves use for native line-scrolling at default font size.
+const LINES_TO_PIXELS = 16;
+export function wheelDeltaToPixels(delta: number, deltaMode: number, pageSize: number): number {
+  if (deltaMode === 1) return delta * LINES_TO_PIXELS; // DOM_DELTA_LINE
+  if (deltaMode === 2) return delta * pageSize; // DOM_DELTA_PAGE
+  return delta; // DOM_DELTA_PIXEL (0) — already pixels
+}
+
 // Exported (like `revealAxisDelta` in canvas-shell.tsx) so a pure-logic unit
 // test can pin the zoom floor without booting the DOM/host-dependent
 // viewport controller.
@@ -1412,6 +1427,13 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
       const rect = host.getBoundingClientRect();
       const cx = e.clientX - rect.left;
       const cy = e.clientY - rect.top;
+      // Normalize line/page-mode deltas to pixels before anything below
+      // reads them — see `wheelDeltaToPixels` (issue #94). Zoom's own
+      // [-50, 50] clamp already absorbed this for the pinch/ctrl+wheel path,
+      // but pan had no such clamp so a line-mode mouse wheel panned at only
+      // a few px per notch.
+      const dx = wheelDeltaToPixels(e.deltaX, e.deltaMode, host.clientWidth);
+      const dy = wheelDeltaToPixels(e.deltaY, e.deltaMode, host.clientHeight);
       // Mac trackpad pinch fires wheel with ctrlKey:true automatically, even
       // without a physical Ctrl press — so the same branch covers both
       // Ctrl+wheel (mouse) and pinch-zoom (trackpad).
@@ -1422,7 +1444,7 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
         // notch = ±100) onto the same perceived-speed curve. Mouse-wheel
         // users still get smooth zoom (clamped notches accumulate at the
         // same exp rate), trackpad-pinch users no longer outpace them.
-        const clamped = Math.max(-50, Math.min(50, e.deltaY));
+        const clamped = Math.max(-50, Math.min(50, dy));
         const factor = Math.exp(-clamped * WHEEL_ZOOM_K);
         zoomAt(factor, cx, cy);
         return;
@@ -1432,14 +1454,14 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
       // doesn't, Safari sometimes does); some don't. Read whichever axis
       // actually carries energy so the gesture lands horizontally either way.
       if (e.shiftKey) {
-        const d = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+        const d = Math.abs(dy) >= Math.abs(dx) ? dy : dx;
         panBy(-d, 0);
         return;
       }
       // Default: trackpad two-finger scroll → 2D pan. The negation keeps the
       // "content follows your fingers" mapping (Mac natural scroll). Mouse
       // wheels with only deltaY pan vertically.
-      panBy(-e.deltaX, -e.deltaY);
+      panBy(-dx, -dy);
     };
 
     // Safari/WKWebView-only trackpad pinch. WebKit exposes the native pinch via
