@@ -120,12 +120,14 @@ mode⇄tool invariant (arming `move` implies `edit`, arming `browse` implies
       `canvas-shell.tsx` Esc handler go through `resetTool()`. The Cmd+click
       escape hatch (`canvas-shell.tsx` ~3211) stays `setTool('move')` — the
       auto-sync makes it a mode flip too, which is the intended semantics.
-- [x] **T4 — `tool-palette.tsx`: Preview/Edit segmented toggle** heading the
-      palette; icon segments (IconBrowse/IconMove — owner steer 2026-08-15, see
-      DDR-223 addendum), nav group `hand/comment` in both modes (the segments
-      are the resting-tool affordances); draw group in both; `+ Element` insert
-      edit-only; clicking the active segment re-arms the resting tool.
-      `data-testid="palette-mode-preview"` / `"palette-mode-edit"`.
+- [x] **T4 — `tool-palette.tsx`: Preview/Edit/Present segmented toggle** heading
+      the palette; icon segments (lucide eye / pencil-ruler / presentation —
+      owner steers 2026-08-15, see DDR-223 addenda 1+2), nav group
+      `hand/comment` in both modes (the segments are the resting-tool
+      affordances); Present = the existing shell-level enter-only state, moved
+      in from the palette's right end; draw group in both modes; `+ Element`
+      insert edit-only; clicking the active Preview/Edit segment re-arms the
+      resting tool. `data-testid="palette-mode-{preview,edit,present}"`.
 - [ ] **T5 — `client/app.jsx`: first-run hint** re-keyed to
       `maude-mode-hint-seen`, copy teaches Edit-boot + the Preview toggle;
       read-only branch keeps the alive-mock wording.

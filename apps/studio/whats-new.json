@@ -6,8 +6,8 @@
       "version": null,
       "date": null,
       "kind": "feature",
-      "title": "Preview and Edit are now one toggle",
-      "summary": "Canvases open in Edit — clicking selects right away, like Figma. Flip the new Preview/Edit switch in the toolbar to make the mock live and clickable; comments and drawing tools work in both.",
+      "title": "Preview, Edit and Present in one switch",
+      "summary": "Canvases open in Edit — clicking selects right away, like Figma. A new three-way switch in the toolbar flips to Preview (the mock is live and clickable; comments and drawing still work) or straight into Presentation.",
       "surface": "design-ui"
     },
     {

@@ -123,3 +123,22 @@ button leaves the edit nav group** — a second identical arrow right next to th
 Edit segment would be noise; the Edit segment IS the select affordance (clicking
 the active segment re-arms `move`, V and Esc unchanged). Nav group is therefore
 `hand/comment` in both modes; the words moved into `aria-label` + `title`.
+
+## Addendum 2 (2026-08-15) — second review round: dedicated glyphs + Present joins the toggle
+
+Two further owner steers, superseding addendum 1's glyph choice:
+
+1. **Dedicated mode glyphs, not tool glyphs** — lucide `eye` (Preview) and
+   `pencil-ruler` (Edit), redrawn in the house 24×24/1.75-stroke icon language.
+   A mode is a *way of looking at the canvas*, not a recalled tool, so reusing
+   the browse/move tool icons conflated the two vocabularies (and the reused
+   `IconMove` was the reason addendum 1 had to drop the Select button — the
+   duplicate-arrow problem dissolves with a dedicated glyph, but the Select
+   button stays dropped: the segment remains the resting-tool affordance).
+2. **Presentation becomes the toggle's third segment** (lucide `presentation`;
+   the existing `IconPresentation` redrawn to match). It stays a SHELL-level
+   state exactly as before — enter-only via `dgn:'present-enter'`, exit via
+   Esc/floating pill, NOT a `use-tool-mode` mode — but its entry point moves
+   from the palette's right end into the toggle, so all three "ways of looking"
+   (Preview / Edit / Present) live in one control. The standalone right-end
+   presentation button is removed.
