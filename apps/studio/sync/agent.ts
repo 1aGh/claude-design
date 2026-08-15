@@ -40,6 +40,7 @@ import type * as Y from 'yjs';
 
 import { atomicWrite } from './atomic-write.ts';
 import {
+  annotationsEditAtFromDoc,
   annotationsFromDoc,
   applyAnnotationsToDoc,
   applyCommentsToDoc,
@@ -50,14 +51,21 @@ import {
   commentsFromDoc,
   cssFromDoc,
   htmlFromDoc,
+  isEmptyAnnotationsSvg,
   markSeeded,
   mergeSharedMetaIntoLocal,
   metaFromDoc,
   seededByFromDoc,
+  stampAnnotationsEdit,
   stampBodyEdit,
   Y_SYNC_TYPES,
 } from './codec.ts';
-import { decideColdStart, isExactRepeat, unionCommentsById } from './cold-start.ts';
+import {
+  decideAnnotationsColdStart,
+  decideColdStart,
+  isExactRepeat,
+  unionCommentsById,
+} from './cold-start.ts';
 import { type EchoGuard, hashBytes } from './echo-guard.ts';
 import type { SyncJournal } from './journal.ts';
 
@@ -364,7 +372,15 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
       return changed;
     }
     if (evt.path === paths.annotations) {
-      const changed = applyAnnotationsToDoc(doc, str, origin);
+      // Apply + per-lane stamp in ONE transaction (mirrors the html branch) so
+      // peers receive a single update and the annotations newest-wins stamp
+      // rides the edit — this is what makes a deliberate delete-all (empty
+      // wrapper written by saveAnnotations) cold-start-safe on other peers.
+      let changed = false;
+      doc.transact(() => {
+        changed = applyAnnotationsToDoc(doc, str, origin);
+        if (changed) stampAnnotationsEdit(doc, origin);
+      }, origin);
       if (changed) lastAnnotations = str;
       return changed;
     }
@@ -419,7 +435,15 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
         const parsed = tryParseJsonArray(localComments);
         if (parsed !== null) applyCommentsToDoc(doc, parsed, origin);
       }
-      if (localAnnotations !== null) applyAnnotationsToDoc(doc, localAnnotations, origin);
+      if (localAnnotations !== null) {
+        doc.transact(() => {
+          if (applyAnnotationsToDoc(doc, localAnnotations, origin)) {
+            // Stamp with the FILE's mtime — adopt seeds pre-existing content,
+            // which must not claim apply-time freshness over a newer peer.
+            stampAnnotationsEdit(doc, origin, localMtimeMs(paths.annotations) ?? undefined);
+          }
+        }, origin);
+      }
       if (paths.meta && localMeta !== null) applyMetaToDoc(doc, localMeta, origin);
       if (paths.css && localCss !== null) applyCssToDoc(doc, localCss, origin);
       lastHtml = localHtml ?? '';
@@ -574,14 +598,47 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
       }
     }
 
-    // ---- annotations + css: follow the body winner (visually coupled) ------
-    if (bodyWinner === 'local') {
-      if (localAnnotations !== null && localAnnotations !== docAnnotations) {
-        applyAnnotationsToDoc(doc, localAnnotations, origin);
+    // ---- annotations: PER-LANE newest-wins (the 2026-08-14 eraser fix) -----
+    // Annotations used to blindly follow the body winner, but annotation edits
+    // don't move the body's edit time — so a hub with a newer body and a stale
+    // EMPTY-WRAPPER annotations lane (72 bytes, not '') erased newer local
+    // strokes on every cold start, taking the `assets/<sha8>` references the
+    // asset pull scans with them. decideAnnotationsColdStart owns the table;
+    // the rule that matters: unstamped emptiness never beats content.
+    {
+      const annDecision = decideAnnotationsColdStart({
+        local: localAnnotations,
+        doc: docAnnotations,
+        isEmpty: isEmptyAnnotationsSvg,
+        localMtimeMs: localMtimeMs(paths.annotations),
+        docEditAtMs: annotationsEditAtFromDoc(doc),
+        bodyWinner,
+      });
+      if (annDecision.winner === 'local' && localAnnotations !== null) {
+        console.warn(`[sync/${slug}] cold-start annotations: ${annDecision.reason}`);
+        doc.transact(() => {
+          if (applyAnnotationsToDoc(doc, localAnnotations, origin)) {
+            stampAnnotationsEdit(doc, origin, localMtimeMs(paths.annotations) ?? undefined);
+          }
+        }, origin);
         lastAnnotations = localAnnotations;
+      } else if (annDecision.winner === 'hub' && localAnnotations !== docAnnotations) {
+        // Warn only when this overwrites real local content — the clean
+        // first-sync materialize (local empty/absent) is the common quiet path.
+        if (!isEmptyAnnotationsSvg(localAnnotations)) {
+          console.warn(`[sync/${slug}] cold-start annotations: ${annDecision.reason}`);
+        }
+        const hash = hashBytes(docAnnotations);
+        echoGuard.record(paths.annotations, hash);
+        writer(paths.annotations, docAnnotations);
+        lastAnnotations = docAnnotations;
       } else {
         lastAnnotations = docAnnotations;
       }
+    }
+
+    // ---- css: follow the body winner (visually coupled) --------------------
+    if (bodyWinner === 'local') {
       if (paths.css && localCss !== null && localCss !== docCss) {
         applyCssToDoc(doc, localCss, origin);
         lastCss = localCss;
@@ -590,12 +647,6 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
         lastCss = docCss;
       }
     } else {
-      lastAnnotations = docAnnotations;
-      if (docAnnotations !== '' && localAnnotations !== docAnnotations) {
-        const hash = hashBytes(docAnnotations);
-        echoGuard.record(paths.annotations, hash);
-        writer(paths.annotations, docAnnotations);
-      }
       lastCss = docCss;
       if (paths.css && docCss !== null && localCss !== docCss) {
         const hash = hashBytes(docCss);

@@ -115,7 +115,7 @@ describe('/_api/canvas-meta — GET/PATCH (DDR-115 camera split)', () => {
     }
   });
 
-  test('PATCH clamps zoom to [0.1, 4.0]', async () => {
+  test('PATCH clamps zoom to [0.02, 4.0]', async () => {
     const { root, designRoot } = makeSandbox();
     const port = nextPort();
     const proc = await bootServer(root, port);
@@ -137,10 +137,45 @@ describe('/_api/canvas-meta — GET/PATCH (DDR-115 camera split)', () => {
       const r2 = await fetch(`http://localhost:${port}/_api/canvas-meta`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ file, patch: { viewport: { x: 0, y: 0, zoom: 0.001 } } }),
+        body: JSON.stringify({ file, patch: { viewport: { x: 0, y: 0, zoom: 0.0001 } } }),
       });
       const m2 = (await r2.json()) as MetaShape;
-      expect(m2.viewport?.zoom).toBe(0.1);
+      expect(m2.viewport?.zoom).toBe(0.02);
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  // Issue #91 — a board wider than ~10x the viewport needs a zoom below the
+  // OLD 0.1 floor to ever be framed whole ("fit to screen") or dragged across
+  // in one motion. Before the fix, this value was silently re-clamped up to
+  // 0.1 on save, so even a client that could reach 0.05 lost it on reload.
+  test('PATCH preserves a deep zoom-out that the old [0.1, 4.0] floor used to clamp away (issue #91)', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      mkdirSync(join(designRoot, 'ui'), { recursive: true });
+      const tsxAbs = join(designRoot, 'ui', 'DeepZoom.tsx');
+      writeFileSync(tsxAbs, 'export default function D(){return <main/>}\n');
+      writeFileSync(tsxAbs.replace(/\.tsx$/, '.meta.json'), '{"title":"DeepZoom"}');
+      const file = repoRel(designRoot, tsxAbs);
+
+      const r = await fetch(`http://localhost:${port}/_api/canvas-meta`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ file, patch: { viewport: { x: 0, y: 0, zoom: 0.05 } } }),
+      });
+      const m = (await r.json()) as MetaShape;
+      expect(m.viewport?.zoom).toBe(0.05);
+
+      // Round-trips through a fresh GET too (the persisted view file, not just
+      // the PATCH response) — this is what a page reload would read back.
+      const g = await fetch(
+        `http://localhost:${port}/_api/canvas-meta?file=${encodeURIComponent(file)}`
+      );
+      const gm = (await g.json()) as MetaShape;
+      expect(gm.viewport?.zoom).toBe(0.05);
     } finally {
       await killProc(proc);
     }
@@ -312,6 +347,82 @@ describe('/_api/canvas-meta — GET/PATCH (DDR-115 camera split)', () => {
       const diskArts = onDisk.layout?.artboards as Array<Record<string, unknown>> | undefined;
       expect(diskArts?.[0]).not.toHaveProperty('w');
       expect(diskArts?.[0]).not.toHaveProperty('h');
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  // Security follow-up to issue #91 — `layout.artboards[]` is reachable from
+  // the untrusted canvas origin (DDR-054) and previously had no count/magnitude
+  // bound. Now that the zoom-floor fix lets `fit()` correctly frame whatever
+  // bounding box a synced layout describes, an unbounded artboard count could
+  // promote hundreds/thousands of simultaneous GPU layers on the viewer's
+  // client (a DoS). Caps mirror the existing overlays/locked lanes.
+  test('PATCH layout rejects an oversized artboards array as a silent no-op', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      mkdirSync(join(designRoot, 'ui'), { recursive: true });
+      const tsxAbs = join(designRoot, 'ui', 'Oversized.tsx');
+      writeFileSync(tsxAbs, 'export default function O(){return <main/>}\n');
+      const metaAbs = tsxAbs.replace(/\.tsx$/, '.meta.json');
+      writeFileSync(metaAbs, JSON.stringify({ title: 'Oversized', sections: [] }));
+      const file = repoRel(designRoot, tsxAbs);
+
+      // Seed a valid, small layout first.
+      await fetch(`http://localhost:${port}/_api/canvas-meta`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ file, patch: { layout: { artboards: [{ id: 'a', x: 0, y: 0 }] } } }),
+      });
+
+      // A crafted, oversized layout (2001 > the 2000-entry cap) must not land.
+      const huge = Array.from({ length: 2001 }, (_, i) => ({ id: `a${i}`, x: i, y: 0 }));
+      const r = await fetch(`http://localhost:${port}/_api/canvas-meta`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ file, patch: { layout: { artboards: huge } } }),
+      });
+      expect(r.status).toBe(200);
+      const merged = (await r.json()) as MetaShape;
+      // Silent no-op — the prior small, valid layout is still what's live.
+      const arts = merged.layout?.artboards as Array<Record<string, unknown>> | undefined;
+      expect(arts).toEqual([{ id: 'a', x: 0, y: 0 }]);
+
+      const onDisk = JSON.parse(readFileSync(metaAbs, 'utf8')) as MetaShape;
+      const diskArts = onDisk.layout?.artboards as Array<Record<string, unknown>> | undefined;
+      expect(diskArts).toEqual([{ id: 'a', x: 0, y: 0 }]);
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  test('PATCH layout rejects an out-of-range artboard coordinate as a silent no-op', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      mkdirSync(join(designRoot, 'ui'), { recursive: true });
+      const tsxAbs = join(designRoot, 'ui', 'OutOfRange.tsx');
+      writeFileSync(tsxAbs, 'export default function R(){return <main/>}\n');
+      writeFileSync(
+        tsxAbs.replace(/\.tsx$/, '.meta.json'),
+        JSON.stringify({ title: 'OutOfRange' })
+      );
+      const file = repoRel(designRoot, tsxAbs);
+
+      const r = await fetch(`http://localhost:${port}/_api/canvas-meta`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          file,
+          patch: { layout: { artboards: [{ id: 'a', x: 50_000_000, y: 0 }] } },
+        }),
+      });
+      expect(r.status).toBe(200);
+      const merged = (await r.json()) as MetaShape;
+      expect(merged.layout).toBeUndefined();
     } finally {
       await killProc(proc);
     }

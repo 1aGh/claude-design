@@ -74,6 +74,43 @@ fn install_signal_handler(handle: tauri::AppHandle) {
     }
 }
 
+/// Recovery poll budget for `resolve_dev_server_url`, deliberately far shorter
+/// than `SERVER_WAIT_MS`: that constant is sized for a COLD start (first-run
+/// `bun install` + build). A recovering splash is asking about a server that is
+/// normally already up, so a long single wait would just delay the retry loop
+/// on the page. The page retries, so a miss here is cheap.
+const RECOVERY_WAIT_MS: u64 = 5_000;
+
+/// Resolve the CURRENT project's dev-server URL for the boot splash to navigate
+/// itself back to (#92).
+///
+/// `apps/desktop/src/index.html` is the webview's ENTRY document. WKWebView
+/// returns to it on a content-process crash reload (WebKit reloads the window's
+/// original URL) and on an uncaught back-navigation, and the startup navigate in
+/// `setup()` is a one-shot — so before this command the app parked on
+/// "Starting…" until the user force-quit.
+///
+/// SECURITY (DDR-109 §1): takes NO input from the page. The root comes from
+/// `SidecarState` (so a project switch is respected) and the URL from that
+/// project's own `_server.json`, validated loopback-only right here. The page
+/// receives an already-validated `http://localhost:*` / `http://127.0.0.1:*`
+/// string and can never steer the navigate — this is not an open-navigate
+/// primitive, and must not become one.
+#[tauri::command]
+async fn resolve_dev_server_url(app: tauri::AppHandle) -> Result<String, String> {
+    let project_root = {
+        let state = app.state::<SidecarState>();
+        let root = state.project_root.lock().expect("sidecar mutex poisoned").clone();
+        PathBuf::from(root)
+    };
+    let url = server_json::wait_for_server(project_root.join(".design"), RECOVERY_WAIT_MS).await?;
+    match url.parse::<tauri::Url>() {
+        Ok(parsed) if server_json::is_loopback_url(&parsed) => Ok(parsed.to_string()),
+        Ok(parsed) => Err(format!("refusing non-loopback url (DDR-109): {parsed}")),
+        Err(e) => Err(format!("invalid server url {url}: {e}")),
+    }
+}
+
 /// Native folder picker for "pull a local copy" — returns the chosen parent dir,
 /// or `None` if the user cancelled. The clone lands in `<dir>/<repo-name>`.
 #[tauri::command]
@@ -410,6 +447,7 @@ pub fn run() {
             keychain::github_is_signed_in,
             keychain::github_sign_out,
             pick_directory,
+            resolve_dev_server_url,
             save_export,
             pick_media_file,
             pick_media_files,

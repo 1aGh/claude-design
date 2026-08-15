@@ -14,6 +14,7 @@ fn main() {
                 "github_is_signed_in",
                 "github_sign_out",
                 "pick_directory",
+                "resolve_dev_server_url",
                 "open_local_project",
                 "app_is_first_run",
                 "app_get_last_project",
