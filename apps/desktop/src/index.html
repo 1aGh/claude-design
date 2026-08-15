@@ -25,6 +25,17 @@
       }
       .wordmark { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; }
       .status { color: #8a8a92; font-size: 13px; }
+      .retry {
+        padding: 6px 16px;
+        border: 1px solid #2a2a2e;
+        border-radius: 6px;
+        background: #161618;
+        color: #e7e7ea;
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .retry:hover { background: #1d1d20; }
       .spinner {
         width: 22px; height: 22px;
         border: 2px solid #2a2a2e;
@@ -42,5 +53,100 @@
       <div class="wordmark">Maude</div>
       <div class="status">Starting…</div>
     </main>
+    <script>
+      // Self-healing splash (#92). This document is the webview's ENTRY
+      // document: WKWebView returns here on a content-process crash reload (it
+      // reloads the window's ORIGINAL url) and on any uncaught back-navigation.
+      // The Rust startup navigate (lib.rs setup) is a one-shot, so without this
+      // script any such return parked the app on "Starting…" until a
+      // force-quit. On every show, ask Rust for the dev-server URL and replace
+      // ourselves with it. The page never chooses or constructs the target —
+      // `resolve_dev_server_url` takes no input and returns only a
+      // DDR-109-validated loopback URL.
+      (function () {
+        var tauri = window.__TAURI__;
+        var invoke = tauri && tauri.core && tauri.core.invoke;
+        // Opened outside the Tauri shell — stay a static splash, don't throw.
+        if (!invoke) return;
+
+        // A FIRST launch legitimately sits here a long time: the dev-server runs
+        // boot-self-heal (bun install + build) before it writes `_server.json`.
+        // So the "still not up" notice waits well past that normal case rather
+        // than crying wolf at every cold start — the silent retry loop below is
+        // what actually recovers, and it starts immediately either way.
+        var NOTICE_AFTER_MS = 45000;
+        var startedAt = Date.now();
+        var attempt = 0;
+        var inFlight = false;
+        var timer = null;
+        var noticeShown = false;
+
+        function setStatus(text) {
+          var el = document.querySelector('.status');
+          if (el) el.textContent = text;
+        }
+
+        // Escape hatch: name the state and offer a manual kick, so a genuinely
+        // wedged boot is VISIBLY stuck rather than silently stuck. The auto
+        // retries keep running underneath — this only adds honesty and a nudge.
+        function showNotice() {
+          if (noticeShown) return;
+          noticeShown = true;
+          setStatus('Still starting — the local server hasn’t come up yet.');
+          var btn = document.createElement('button');
+          btn.className = 'retry';
+          btn.type = 'button';
+          btn.textContent = 'Try again';
+          btn.addEventListener('click', function () {
+            attempt = 0;
+            startedAt = Date.now();
+            noticeShown = false;
+            setStatus('Starting…');
+            btn.remove();
+            schedule(0);
+          });
+          var splash = document.querySelector('.splash');
+          if (splash) splash.appendChild(btn);
+        }
+
+        // One timer, always — a manual retry must not leave a second loop
+        // running alongside the automatic one.
+        function schedule(delay) {
+          if (timer) clearTimeout(timer);
+          timer = setTimeout(recover, delay);
+        }
+
+        function recover() {
+          timer = null;
+          if (inFlight) return;
+          inFlight = true;
+          attempt += 1;
+          invoke('resolve_dev_server_url').then(
+            function (url) {
+              // replace(), not href: leave no splash entry in session history
+              // for a future back-navigation to land on.
+              window.location.replace(url);
+            },
+            function () {
+              inFlight = false;
+              if (Date.now() - startedAt > NOTICE_AFTER_MS) showNotice();
+              // 300ms → 600ms → 1.2s → capped 2s between attempts. Each invoke
+              // itself waits up to RECOVERY_WAIT_MS server-side, so the loop is
+              // patient without ever going dead.
+              schedule(Math.min(300 * Math.pow(2, attempt - 1), 2000));
+            }
+          );
+        }
+
+        // pageshow fires on a fresh load AND on a WKWebView back-forward-cache
+        // restore (where `load` does NOT re-fire) — the back-navigation return
+        // path this exists for.
+        window.addEventListener('pageshow', function () {
+          attempt = 0;
+          startedAt = Date.now();
+          schedule(0);
+        });
+      })();
+    </script>
   </body>
 </html>

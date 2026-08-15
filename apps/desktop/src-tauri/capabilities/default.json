@@ -15,6 +15,7 @@
     "allow-github-is-signed-in",
     "allow-github-sign-out",
     "allow-pick-directory",
+    "allow-resolve-dev-server-url",
     "allow-save-export",
     "allow-pick-media-file",
     "allow-pick-media-files",
