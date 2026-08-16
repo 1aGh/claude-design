@@ -551,4 +551,4 @@ Do not paste the full report.
 - Don't flag *creation* — a mark/component/glyph the DS ships no specimen for is legitimate new work at every fidelity; you gate reinvention only.
 - Don't run when `--skip-ds-keeper` was on the orchestrator's invocation (the orchestrator gates the spawn; you only run when invoked).
 
-See `.ai/logs/system-reviews/docs-site-design-generation-review.md` and `.ai/decisions/DDR-010-design-system-keeper-agent.md` for the rationale this agent encodes.
+See `.ai/archive/logs/system-reviews/docs-site-design-generation-review.md` and `.ai/archive/decisions/DDR-010-design-system-keeper-agent.md` for the rationale this agent encodes.

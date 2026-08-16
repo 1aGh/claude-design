@@ -7,7 +7,7 @@ argument-hint: "\"<prompt>\" [--source assets/<sha8>.<ext>] [--provider gemini] 
 
 # /design:generate — BYOK AI-media generation
 
-Generate a **net-new image** (v1) from your own provider key and drop it onto the canvas — Maude arranges and edits media; this verb *creates* it (feature-ai-media-generation, [DDR-164](../../.ai/decisions/DDR-164-byok-ai-media-generation-provider-adapter-spine.md)). The pixels are produced **server-side**: the dev-server resolves your Google/Nano-Banana key from the OS keychain / `~/.config/maude/keys.json` and calls the provider directly. **This command never sees or handles a key** — it POSTs a prompt to the privileged `/_api/generate-jobs` route (via `maude design generate`) and gets back a content-addressed `assets/<sha8>.png`.
+Generate a **net-new image** (v1) from your own provider key and drop it onto the canvas — Maude arranges and edits media; this verb *creates* it (feature-ai-media-generation, [DDR-164](../../.ai/archive/decisions/DDR-164-byok-ai-media-generation-provider-adapter-spine.md)). The pixels are produced **server-side**: the dev-server resolves your Google/Nano-Banana key from the OS keychain / `~/.config/maude/keys.json` and calls the provider directly. **This command never sees or handles a key** — it POSTs a prompt to the privileged `/_api/generate-jobs` route (via `maude design generate`) and gets back a content-addressed `assets/<sha8>.png`.
 
 > **First load `Skill design:ai-generation`** — the provider capability map, prompt conventions, aspect vocabulary, and the licensing/consent caveats you must surface.
 

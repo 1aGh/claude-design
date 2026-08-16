@@ -12,7 +12,7 @@ match the source" requires looking at the untrusted source image a SECOND
 time (once by `reconstruct-agent` to author it, once by you to judge it), and
 the default `design-critic` holds `Bash` — using it here would put untrusted
 image content and shell access in the same turn, exactly what
-[DDR-174](../../../.ai/decisions/DDR-174-vision-reconstruction-trust-boundary-and-experimental-posture.md)
+[DDR-174](../../../.ai/archive/decisions/DDR-174-vision-reconstruction-trust-boundary-and-experimental-posture.md)
 Decision 1's Round-2 revision closes. Same reasoning as `reconstruct-agent`:
 you have no tool call that reaches a shell or the network, so even a
 successfully-steered read of either image can't turn into exfiltration or a

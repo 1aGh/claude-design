@@ -5,7 +5,7 @@ description: One self-hostable Yjs sync hub, deployable to Fly or any box that r
 
 The Maude hub is the only cross-machine collaboration path in v1.1. Phase 8 multi-tab collab is loopback-only — to share a canvas with someone on another network, you deploy a hub, they `maude design link` to it, and both `.design/` folders mirror through it.
 
-The hub is a pre-configured [Hocuspocus](https://tiptap.dev/docs/hocuspocus) server (production-tested, MIT, Node-native — [DDR-052](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-052-hocuspocus-over-partykit-for-hub.md) explains why not PartyKit) with token auth and SQLite persistence. You never touch Yjs.
+The hub is a pre-configured [Hocuspocus](https://tiptap.dev/docs/hocuspocus) server (production-tested, MIT, Node-native — [DDR-052](https://github.com/1aGh/maude/blob/main/.ai/archive/decisions/DDR-052-hocuspocus-over-partykit-for-hub.md) explains why not PartyKit) with token auth and SQLite persistence. You never touch Yjs.
 
 Two deploy targets ship in v1.1: **Fly** (one command) and **Docker** (everywhere else). Both run the same image.
 

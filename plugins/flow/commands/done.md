@@ -94,7 +94,7 @@ The override path is intentional: not every PR ships user-visible change (chore,
 
 ### 4c. Design handoff sweep (soft gate — design plugin)
 
-> Skip silently when the project has no design plugin. This is a **soft prompt, not an enforced gate** — see [DDR-066](../../../.ai/decisions/DDR-066-soft-handoff-prompt-in-flow-done.md): auto-handoff would burn user context and `/design:handoff` is itself an active decision (which target, which DS), so flow surfaces the choice and lets the user decide.
+> Skip silently when the project has no design plugin. This is a **soft prompt, not an enforced gate** — see [DDR-066](../../../.ai/archive/decisions/DDR-066-soft-handoff-prompt-in-flow-done.md): auto-handoff would burn user context and `/design:handoff` is itself an active decision (which target, which DS), so flow surfaces the choice and lets the user decide.
 
 Before committing, surface any canvas the user marked **`ready-for-handoff`** so an approved design doesn't ship a feature without its production-ready registry drop.
 

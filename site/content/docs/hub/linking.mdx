@@ -32,11 +32,11 @@ Linking to a **non-loopback** hub grants that hub the same write access to your 
 Link this repo to https://maude-hub-acme.fly.dev? [y/N]
 ```
 
-Confirm once and the hub is recorded in your per-machine trust list — re-linking won't re-prompt. `--yes` confirms non-interactively (for scripts); a non-TTY without `--yes` refuses. Loopback hubs (local dev) are exempt. The trust list lives per-machine, never in a committed file, so a malicious PR can't pre-seed trust. See [DDR-054](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-054-linked-mode-trust-model-and-task-4-hardening.md).
+Confirm once and the hub is recorded in your per-machine trust list — re-linking won't re-prompt. `--yes` confirms non-interactively (for scripts); a non-TTY without `--yes` refuses. Loopback hubs (local dev) are exempt. The trust list lives per-machine, never in a committed file, so a malicious PR can't pre-seed trust. See [DDR-054](https://github.com/1aGh/maude/blob/main/.ai/archive/decisions/DDR-054-linked-mode-trust-model-and-task-4-hardening.md).
 
 ## What syncs: TSX canvases, by per-canvas opt-in
 
-Your canvases are `.tsx` — the only canvas format since Phase 3.6 ([DDR-060](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-060-tsx-only-format-breaks-html-centric-sync.md)). A `.tsx` body is executable code, so a hostile hub pushing one would otherwise run arbitrary JS in your browser (the audit's CRITICAL **F1**). For that reason **nothing syncs the moment you link** — a `.tsx` canvas crosses the wire only once you explicitly opt it in. `maude design status` shows the gap loudly (`0 syncable · N tsx`).
+Your canvases are `.tsx` — the only canvas format since Phase 3.6 ([DDR-060](https://github.com/1aGh/maude/blob/main/.ai/archive/decisions/DDR-060-tsx-only-format-breaks-html-centric-sync.md)). A `.tsx` body is executable code, so a hostile hub pushing one would otherwise run arbitrary JS in your browser (the audit's CRITICAL **F1**). For that reason **nothing syncs the moment you link** — a `.tsx` canvas crosses the wire only once you explicitly opt it in. `maude design status` shows the gap loudly (`0 syncable · N tsx`).
 
 To make a `.tsx` canvas syncable, BOTH locks must hold (they are deliberately coupled — the opt-in is inert without the sandbox):
 
@@ -67,7 +67,7 @@ maude design adopt https://maude-hub-acme.fly.dev --token mau_...
 
 ## What happens when both sides have work
 
-Boot order doesn't matter and never loses bytes ([DDR-102](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-102-cold-start-divergence-resolution.md)). On every connect, each canvas resolves through a decision table:
+Boot order doesn't matter and never loses bytes ([DDR-102](https://github.com/1aGh/maude/blob/main/.ai/archive/decisions/DDR-102-cold-start-divergence-resolution.md)). On every connect, each canvas resolves through a decision table:
 
 - **Clean first sync** — you have no local body, or the hub has none: the non-empty side wins, silently.
 - **Clean catch-up (fast-forward)** — your local file matches the last state *this machine* synced (tracked as a content hash in the per-machine journal, `.design/_state/sync-journal.json`): the hub is simply ahead, your disk fast-forwards. Silent, no snapshots, no noise. This is the everyday case.
@@ -117,7 +117,7 @@ Linked mode uses one gitignore strategy in v1.1 — **`full`**: canvases and the
 # maude:end
 ```
 
-Committed: `.design/config.json` (carries the `linkedHub` URL), your `.tsx` canvases + their `.meta.json` sidecars, `*.layout.json`, `*.annotations.svg`, `_comments/*.json`, `system/`. `maude design init` and `maude design link --adopt` write the block between the markers, idempotently — re-running never duplicates it, and `unlink` leaves it intact. See [DDR-056](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-056-linked-mode-gitignore-strategy.md).
+Committed: `.design/config.json` (carries the `linkedHub` URL), your `.tsx` canvases + their `.meta.json` sidecars, `*.layout.json`, `*.annotations.svg`, `_comments/*.json`, `system/`. `maude design init` and `maude design link --adopt` write the block between the markers, idempotently — re-running never duplicates it, and `unlink` leaves it intact. See [DDR-056](https://github.com/1aGh/maude/blob/main/.ai/archive/decisions/DDR-056-linked-mode-gitignore-strategy.md).
 
 ## When the hub goes offline
 

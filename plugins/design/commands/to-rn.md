@@ -9,7 +9,7 @@ argument-hint: "\"<animated mark | IR handle | canvas>\" [--out <Component.tsx>]
 
 The **fallback** motion handoff for **light / occasional** animation where you want
 a native `react-native-svg` + Reanimated component instead of a Lottie runtime
-([DDR-094](../../../.ai/decisions/DDR-094-draw-animation-keyframe-ir-native-authoring-lottie-export.md)).
+([DDR-094](../../../.ai/archive/decisions/DDR-094-draw-animation-keyframe-ir-native-authoring-lottie-export.md)).
 
 > **Prefer `/design:to-lottie` for anything rich.** The POC proved native fidelity
 > is *possible* but hit three real walls (DDR-094 Update): **(1)** `feTurbulence`/

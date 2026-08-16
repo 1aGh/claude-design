@@ -7,7 +7,7 @@ argument-hint: "\"<animated mark | IR handle | canvas>\" [--out <path>] [--web] 
 
 # /design:to-lottie — emit ONE Lottie from code (web + mobile)
 
-The **production-delivery** handoff for maude animation ([DDR-094](../../../.ai/decisions/DDR-094-draw-animation-keyframe-ir-native-authoring-lottie-export.md)).
+The **production-delivery** handoff for maude animation ([DDR-094](../../../.ai/archive/decisions/DDR-094-draw-animation-keyframe-ir-native-authoring-lottie-export.md)).
 You iterate the animation natively in maude (the keyframe IR → SMIL/JSX preview);
 when it's time to ship, this emits **ONE `.lottie`** that renders **1:1 on web**
 (`lottie-web` / `dotlottie-react`) **AND mobile** (`lottie-react-native`) — 1:1 by

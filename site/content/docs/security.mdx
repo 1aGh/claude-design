@@ -16,22 +16,22 @@ This page is for someone deciding whether to trust maude with their repo. It is 
 
 The only executable logic maude ships is the open-source **`maude` CLI** and the zero-dependency **dev server**. Both run locally, resolve *your* repo root (`--root` → `$CLAUDE_PROJECT_DIR` → current directory), and do not phone home — no telemetry, no analytics, no account.
 
-The plugin **commands, skills, and agents are markdown prompts**, not compiled binaries. There is no hidden executable behind a slash command: every slash command that needs to *run* something reaches it through the on-PATH `maude` binary, which resolves bundled helpers from its own package and nothing else ([DDR-062](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-062-plugins-reach-executable-logic-via-maude.md)). What you audit is what runs: the CLI, the dev server, and the prompts.
+The plugin **commands, skills, and agents are markdown prompts**, not compiled binaries. There is no hidden executable behind a slash command: every slash command that needs to *run* something reaches it through the on-PATH `maude` binary, which resolves bundled helpers from its own package and nothing else ([DDR-062](https://github.com/1aGh/maude/blob/main/.ai/archive/decisions/DDR-062-plugins-reach-executable-logic-via-maude.md)). What you audit is what runs: the CLI, the dev server, and the prompts.
 
 ## Solo mode (default)
 
 With no `linkedHub` in `.design/config.json`, there is **no network trust surface**. Two browser tabs (or two Claude Code sessions) on the same machine can sync cursors, comments, and annotations live — but only over a **loopback** WebSocket. The dev server refuses any non-loopback `Host` header on the collab endpoint, so nothing leaves your machine.
 
-On top of that, the **canvas sandbox is on by default**. Even your *own* canvas code is served from a separate origin under a strict Content-Security-Policy, an iframe `sandbox` attribute, and a route allowlist — so a canvas can't reach your repo files, the export API, your config, or the network, regardless of who wrote it ([DDR-063](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-063-canvas-origin-split-default-on-tsx-sync-opt-in.md)). For solo users this is purely protective with no functional change. Opt out with `MAUDE_CANVAS_ORIGIN_SPLIT=0` to fall back to the legacy same-origin path.
+On top of that, the **canvas sandbox is on by default**. Even your *own* canvas code is served from a separate origin under a strict Content-Security-Policy, an iframe `sandbox` attribute, and a route allowlist — so a canvas can't reach your repo files, the export API, your config, or the network, regardless of who wrote it ([DDR-063](https://github.com/1aGh/maude/blob/main/.ai/archive/decisions/DDR-063-canvas-origin-split-default-on-tsx-sync-opt-in.md)). For solo users this is purely protective with no functional change. Opt out with `MAUDE_CANVAS_ORIGIN_SPLIT=0` to fall back to the legacy same-origin path.
 
 ## Linked / hub mode (opt-in)
 
 Cross-machine collaboration needs a [hub](/docs/hub) you deploy yourself and an explicit `maude design link <url> --token <…>`. Until you run that, none of this section applies to you.
 
-Once linked, the hub is **semi-trusted**: hub-pushed content lands on your disk verbatim, the same posture as `git pull` from a remote branch ([DDR-054](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-054-linked-mode-trust-model-and-task-4-hardening.md)). Four mechanisms bound what that buys an attacker:
+Once linked, the hub is **semi-trusted**: hub-pushed content lands on your disk verbatim, the same posture as `git pull` from a remote branch ([DDR-054](https://github.com/1aGh/maude/blob/main/.ai/archive/decisions/DDR-054-linked-mode-trust-model-and-task-4-hardening.md)). Four mechanisms bound what that buys an attacker:
 
 - **Trust gate.** The first link to a **non-loopback** hub prompts `[y/N]` showing the URL, scheme, and host, and warns that the hub can write to your `.design/`. Confirmed trust is recorded **per-machine** (`~/.config/maude/hubs.json`), never in a committed file — so a malicious PR can't pre-seed trust to skip the prompt. Loopback hubs (local dev) are exempt.
-- **Tokens.** Your token is stored per-machine at `~/.config/maude/hubs.json`, mode `0600`, and is **never committed** (only the hub *URL* lands in git). On the hub side, tokens are stored **HMAC-SHA256-hashed at rest** — the raw token is never written to disk — and are **scope-bound**, so a leaked token reaches only the documents it authorizes, not the whole hub ([DDR-053](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-053-hub-admin-auth-architecture.md)).
+- **Tokens.** Your token is stored per-machine at `~/.config/maude/hubs.json`, mode `0600`, and is **never committed** (only the hub *URL* lands in git). On the hub side, tokens are stored **HMAC-SHA256-hashed at rest** — the raw token is never written to disk — and are **scope-bound**, so a leaked token reaches only the documents it authorizes, not the whole hub ([DDR-053](https://github.com/1aGh/maude/blob/main/.ai/archive/decisions/DDR-053-hub-admin-auth-architecture.md)).
 - **CI-gate.** The sync agent refuses to run under `CI` / `GITHUB_ACTIONS`. This closes the side-door where a PR-controlled `linkedHub.url` could silently grant a remote actor write access inside a CI job that holds a `GITHUB_TOKEN`.
 - **Size caps + schema guards.** Synced payloads have hard byte caps, and JSON is parsed through a reviver that strips `__proto__` / `constructor` / `prototype` keys to block prototype-pollution propagation between machines.
 
@@ -47,7 +47,7 @@ The sandbox closes the high-value attack lanes. A hub-pushed canvas **cannot**:
 - reach cloud-metadata endpoints (IMDS) or your LAN,
 - make cross-origin `fetch` / WebSocket calls to an attacker's server.
 
-What it does **not** fully close: a determined hostile canvas *you have opted into syncing* can still leak **collab metadata** — committer names and emails, comment text — over **WebRTC or self-navigation**, channels no current browser fully blocks (the CSP `webrtc` directive is unimplemented as of 2026). That residual is exactly why the original audit's CRITICAL finding **F1** is now rated **MEDIUM rather than closed**: the file-read / remote-code-execution / privileged-route legs are shut, the metadata lane remains ([DDR-063](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-063-canvas-origin-split-default-on-tsx-sync-opt-in.md)). It is bounded, opt-in, and reachable only for a canvas you chose to sync from a hub you chose to trust.
+What it does **not** fully close: a determined hostile canvas *you have opted into syncing* can still leak **collab metadata** — committer names and emails, comment text — over **WebRTC or self-navigation**, channels no current browser fully blocks (the CSP `webrtc` directive is unimplemented as of 2026). That residual is exactly why the original audit's CRITICAL finding **F1** is now rated **MEDIUM rather than closed**: the file-read / remote-code-execution / privileged-route legs are shut, the metadata lane remains ([DDR-063](https://github.com/1aGh/maude/blob/main/.ai/archive/decisions/DDR-063-canvas-origin-split-default-on-tsx-sync-opt-in.md)). It is bounded, opt-in, and reachable only for a canvas you chose to sync from a hub you chose to trust.
 
 ## `.tsx` sync is doubly opt-in
 
@@ -56,7 +56,7 @@ A `.tsx` canvas body is executable code, so a hostile hub pushing one would othe
 1. **The sandbox is active** (on by default; `MAUDE_CANVAS_ORIGIN_SPLIT=0` disables it and `.tsx` sync with it), and
 2. **The per-canvas opt-in** — a hand-set `"syncable": true` in the canvas's `.meta.json` sidecar. That flag is excluded from the remote-writable metadata PATCH whitelist, so neither a hub nor a canvas can set it for itself.
 
-Because the canvas format is `.tsx`-only ([DDR-060](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-060-tsx-only-format-breaks-html-centric-sync.md)), a typical linked project syncs **nothing** until you opt a specific canvas in — and `maude design status` says so loudly. See [Linking peers](/docs/hub/linking#what-syncs-tsx-canvases-by-per-canvas-opt-in) for the operational detail.
+Because the canvas format is `.tsx`-only ([DDR-060](https://github.com/1aGh/maude/blob/main/.ai/archive/decisions/DDR-060-tsx-only-format-breaks-html-centric-sync.md)), a typical linked project syncs **nothing** until you opt a specific canvas in — and `maude design status` says so loudly. See [Linking peers](/docs/hub/linking#what-syncs-tsx-canvases-by-per-canvas-opt-in) for the operational detail.
 
 ## Untrusted-context handling (AI safety)
 
@@ -69,7 +69,7 @@ Be candid about the limit: **automatic** removal of those files from Claude's co
 
 ## Supply chain
 
-- **The self-hostable hub's release image installs frozen.** Its Docker build runs `bun install --frozen-lockfile` against a committed lockfile and copies the resolved dependencies into the runtime stage — there is no second, fresh dependency resolution at build time. The hub is the one component designated **untrusted to peers** ([DDR-054](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-054-linked-mode-trust-model-and-task-4-hardening.md)), so a fresh re-resolve at build time could let a poisoned transitive dependency reach every self-hoster's hub. Hub dependencies are bumped via the lockfile, never by re-resolving in the Dockerfile.
+- **The self-hostable hub's release image installs frozen.** Its Docker build runs `bun install --frozen-lockfile` against a committed lockfile and copies the resolved dependencies into the runtime stage — there is no second, fresh dependency resolution at build time. The hub is the one component designated **untrusted to peers** ([DDR-054](https://github.com/1aGh/maude/blob/main/.ai/archive/decisions/DDR-054-linked-mode-trust-model-and-task-4-hardening.md)), so a fresh re-resolve at build time could let a poisoned transitive dependency reach every self-hoster's hub. Hub dependencies are bumped via the lockfile, never by re-resolving in the Dockerfile.
 - **Dev-server runtime bundles are committed and size-gated.** CI validates every shipped bundle against a per-file size floor, so a broken or tampered bundle fails the release loudly instead of shipping silently.
 - **Zero npm runtime dependencies** for the CLI and dev server themselves.
 
@@ -78,7 +78,7 @@ Be candid about the limit: **automatic** removal of those files from Claude's co
 - **The sandbox.** `MAUDE_CANVAS_ORIGIN_SPLIT=0` turns off the canvas sandbox (and `.tsx` sync with it). Leaving it on is the safer default.
 - **Whether you link at all, and to whom.** Solo mode never reaches a network. The first link to a remote hub always prompts; only link to hubs you operate or fully trust.
 - **The `.tsx` sync opt-in.** A `.tsx` becomes synced (and thus untrusted-content-bearing) only when you hand-set `"syncable": true` on that canvas.
-- **What's in git vs. per-machine.** A managed, idempotent `.gitignore` block separates committed source from regenerable per-machine runtime state ([DDR-056](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-056-linked-mode-gitignore-strategy.md)). Your token lives outside the repo and is never in it.
+- **What's in git vs. per-machine.** A managed, idempotent `.gitignore` block separates committed source from regenerable per-machine runtime state ([DDR-056](https://github.com/1aGh/maude/blob/main/.ai/archive/decisions/DDR-056-linked-mode-gitignore-strategy.md)). Your token lives outside the repo and is never in it.
 
 ## Reporting a vulnerability
 

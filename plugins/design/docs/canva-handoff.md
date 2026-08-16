@@ -26,7 +26,7 @@ Canva's import-fidelity ladder, [per their docs](https://www.canva.dev/docs/conn
 | SVG | One non-decomposable element. Requires Canva Pro / Teams. |
 | PNG | Flat raster. Nothing editable. |
 
-PPTX is the top of the ladder. Maude authors PPTX from a normalized canvas model (`canvas-model.ts` → `modelToPptx`) via `pptxgenjs` — one slide per artboard, native shapes, native text, base64-embedded images. See [DDR-039](../../../.ai/decisions/DDR-039-export-pptx-via-pptxgenjs.md) for the engine rationale.
+PPTX is the top of the ladder. Maude authors PPTX from a normalized canvas model (`canvas-model.ts` → `modelToPptx`) via `pptxgenjs` — one slide per artboard, native shapes, native text, base64-embedded images. See [DDR-039](../../../.ai/archive/decisions/DDR-039-export-pptx-via-pptxgenjs.md) for the engine rationale.
 
 ## Path A — drag-drop (universal, any Canva tier)
 
@@ -65,7 +65,7 @@ The agent reads the prompt, calls your Canva MCP's import tool with that path, p
 
 ### Maude doesn't see your credentials
 
-This is the load-bearing property. Maude exports a markdown file containing instructions; **your MCP** holds the Canva auth and runs the import. No `_canva-auth.json`, no OAuth dance in `.design/`, no token rotation for Maude to worry about. See [DDR-040](../../../.ai/decisions/DDR-040-export-canva-via-pptx-and-mcp-prompt.md) for the security rationale.
+This is the load-bearing property. Maude exports a markdown file containing instructions; **your MCP** holds the Canva auth and runs the import. No `_canva-auth.json`, no OAuth dance in `.design/`, no token rotation for Maude to worry about. See [DDR-040](../../../.ai/archive/decisions/DDR-040-export-canva-via-pptx-and-mcp-prompt.md) for the security rationale.
 
 ## Fidelity caveats
 
@@ -80,7 +80,7 @@ PPTX is the most editable Canva format, **and** it has limits. Real users someti
 | **Inline `<svg>` icons** | Rasterize on PPTX import. Canva can't edit them as vector primitives. | Replace with native Canva icons after import if you need to recolor frequently. |
 | **CSS animations** | Lost. PPTX has its own animation model; Maude doesn't translate. | If the canvas was demoing an animation, capture it separately as MP4 / GIF. |
 
-These caveats are inherent to PPTX-as-intermediate, not Maude bugs. The PPTX → Canva path is **best-in-class** for editable handoff today; if a future Canva integration ships (a Canva App via the Apps SDK — see [DDR-040 open questions](../../../.ai/decisions/DDR-040-export-canva-via-pptx-and-mcp-prompt.md#open-questions)), some of these caveats may lift.
+These caveats are inherent to PPTX-as-intermediate, not Maude bugs. The PPTX → Canva path is **best-in-class** for editable handoff today; if a future Canva integration ships (a Canva App via the Apps SDK — see [DDR-040 open questions](../../../.ai/archive/decisions/DDR-040-export-canva-via-pptx-and-mcp-prompt.md#open-questions)), some of these caveats may lift.
 
 ## `--canva=raster` — legacy reference bundle
 
@@ -117,7 +117,7 @@ Most Canva imports finish in 10–30 seconds. If yours hangs past 60 seconds, ch
 
 ## See also
 
-- [DDR-039: PPTX engine](../../../.ai/decisions/DDR-039-export-pptx-via-pptxgenjs.md) — why pptxgenjs + canvas model IR, not DOM walker
-- [DDR-040: Canva path](../../../.ai/decisions/DDR-040-export-canva-via-pptx-and-mcp-prompt.md) — why PPTX + MCP-prompt, not OAuth + Connect API
+- [DDR-039: PPTX engine](../../../.ai/archive/decisions/DDR-039-export-pptx-via-pptxgenjs.md) — why pptxgenjs + canvas model IR, not DOM walker
+- [DDR-040: Canva path](../../../.ai/archive/decisions/DDR-040-export-canva-via-pptx-and-mcp-prompt.md) — why PPTX + MCP-prompt, not OAuth + Connect API
 - [Phase 6.5 plan](../../../.ai/plans/phase-6.5-export.md) — full export feature spec
 - [Canva Design Imports API reference](https://www.canva.dev/docs/connect/api-reference/design-imports/create-design-import-job/) — for MCP authors implementing the import call

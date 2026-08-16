@@ -99,4 +99,4 @@ The helper exits `0` only if every canvas is `OK` **and** the import-graph lint 
 
 ## What this loop drills against
 
-The Phase 3.6 + 3.6.1 retros repeatedly documented the same pattern: build green + tests green + scope "infra change, not UI change" → badly broken canvases only surfaced by user-driven exploration. `/design:smoke` is the structural gate that interrupts that pattern at phase-end, not in post-validate triage. See `.ai/decisions/DDR-021-design-smoke-gate-for-infra-and-bulk-ui-work.md`.
+The Phase 3.6 + 3.6.1 retros repeatedly documented the same pattern: build green + tests green + scope "infra change, not UI change" → badly broken canvases only surfaced by user-driven exploration. `/design:smoke` is the structural gate that interrupts that pattern at phase-end, not in post-validate triage. See `.ai/archive/decisions/DDR-021-design-smoke-gate-for-infra-and-bulk-ui-work.md`.

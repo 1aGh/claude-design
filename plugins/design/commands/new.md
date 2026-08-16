@@ -995,7 +995,7 @@ The agent replaces the hand-written `<svg>` with an engine-built, verified mark 
 
 ### 9.7. AI-media generation pass → `maude design generate` (conditional)
 
-**Fires when the brief explicitly asks for AI-generated raster imagery** — "generate an AI carousel about X", "scaffold with AI hero photos", "vygeneruj obrázky…". Distinct from 9.6 (vector marks via the geometry engine): this is provider-generated photo/render content (feature-ai-media-generation, [DDR-164](../../.ai/decisions/DDR-164-byok-ai-media-generation-provider-adapter-spine.md)). **Skip** when the brief names no AI imagery — most scaffolds use DS-authored placeholders, not generated pixels.
+**Fires when the brief explicitly asks for AI-generated raster imagery** — "generate an AI carousel about X", "scaffold with AI hero photos", "vygeneruj obrázky…". Distinct from 9.6 (vector marks via the geometry engine): this is provider-generated photo/render content (feature-ai-media-generation, [DDR-164](../../.ai/archive/decisions/DDR-164-byok-ai-media-generation-provider-adapter-spine.md)). **Skip** when the brief names no AI imagery — most scaffolds use DS-authored placeholders, not generated pixels.
 
 **Load `Skill design:ai-generation`** for prompt conventions + licensing, then for each image slot the brief calls for:
 

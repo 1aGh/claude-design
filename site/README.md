@@ -49,7 +49,7 @@ Client-side via Orama. New MDX files are picked up on next build — no manual i
 
 ## Deploy
 
-Target: **Vercel** (project [`maude`](https://vercel.com/iagh/maude) in team `iagh`). Custom domain: `maude.sh`. See [DDR-005](../.ai/decisions/DDR-005-docs-site-stack-and-hosting.md) for the why.
+Target: **Vercel** (project [`maude`](https://vercel.com/iagh/maude) in team `iagh`). Custom domain: `maude.sh`. See [DDR-005](../.ai/archive/decisions/DDR-005-docs-site-stack-and-hosting.md) for the why.
 
 Vercel's **native GitHub integration** handles deploys — push to `main` ships production; PRs get automatic preview URLs (commented on the PR). No GitHub Actions workflow needed.
 

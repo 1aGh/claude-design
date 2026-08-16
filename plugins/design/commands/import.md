@@ -145,7 +145,7 @@ iterates against a reality-check comparator until the render is a reasonable
 match or a round cap is hit. **Labeled experimental** — reconstruction is
 lossy and non-deterministic (never present its output as final/lossless).
 
-Governed by [DDR-174](../../../.ai/decisions/DDR-174-vision-reconstruction-trust-boundary-and-experimental-posture.md)
+Governed by [DDR-174](../../../.ai/archive/decisions/DDR-174-vision-reconstruction-trust-boundary-and-experimental-posture.md)
 — read it before touching this command's implementation. The short version:
 **you (the turn running this command) are the orchestrator, and the
 orchestrator never reads the source image, the reconstruction screenshot, the
