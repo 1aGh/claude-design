@@ -567,3 +567,68 @@ export async function pushAssets(opts: {
   }
   return out;
 }
+
+/**
+ * The FAST LANE — push exactly ONE just-written asset, now (2026-08-16
+ * latency fix).
+ *
+ * The sweep is the reconciler, and a good one — but it is also a spawn, a
+ * debounce, and a walk-and-probe of the whole project, so a sticker dropped
+ * on a canvas reached the hub MINUTES after its annotation stroke got there
+ * over the doc lane. The other side rendered the placeholder frame the whole
+ * time. This pushes the single file the moment the local write lands: one
+ * probe (the batch route, which survives the cloud's HEAD→GET conversion),
+ * one PUT. In-process on purpose — the out-of-process boundary exists because
+ * the FULL sweep destabilizes Bun next to the dev server; a single fetch is
+ * the same class of work `pullAssets` already does in-process on every poll.
+ *
+ * Failures are the sweep's problem: this never throws, and a miss here is
+ * retried by the very next sweep pass for free.
+ */
+export async function pushOneAsset(opts: {
+  designRoot: string;
+  /** designRoot-relative path, slash-normalised. */
+  rel: string;
+  hubUrl: string;
+  token: () => string;
+  canvasGroups?: readonly CanvasGroupLike[];
+  fetchImpl?: typeof fetch;
+  timeoutFor?: (bytes: number) => number;
+}): Promise<{ ok: boolean; skipped?: boolean; reason?: string }> {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const rel = opts.rel.split('\\').join('/');
+  if (!isPushableAssetRel(rel, opts.canvasGroups)) {
+    return { ok: false, reason: 'not a pushable asset' };
+  }
+  const abs = path.join(opts.designRoot, rel);
+  try {
+    if (statSync(abs).size > MAX_PUSH_BYTES) return { ok: false, reason: 'over the size cap' };
+  } catch {
+    return { ok: false, reason: 'unreadable' };
+  }
+  const base = opts.hubUrl.replace(/\/+$/, '');
+  const headers = { authorization: `Bearer ${opts.token()}` };
+  try {
+    // One probe — mainly to skip the echo of a file we just PULLED from this
+    // very hub (the pull writes it, the watcher fires, and without this the
+    // fast lane would upload the hub's own bytes straight back at it).
+    const known = await probePresent({ fetchImpl, base, headers, paths: [rel] });
+    if (known?.has(rel)) return { ok: true, skipped: true };
+    const put = await putWithRetry({
+      fetchImpl,
+      url: `${base}${routeFor(rel).url}`,
+      headers,
+      file: abs,
+      sleep: (ms) =>
+        new Promise<void>((res) => {
+          setTimeout(res, ms);
+        }),
+      backoff: { remainingMs: 60_000 },
+      timeoutFor: opts.timeoutFor ?? putTimeoutMs,
+    });
+    if (put.ok) return { ok: true };
+    return { ok: false, reason: `HTTP ${put.status}` };
+  } catch (err) {
+    return { ok: false, reason: (err as Error).message };
+  }
+}

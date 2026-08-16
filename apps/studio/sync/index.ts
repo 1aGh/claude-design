@@ -30,7 +30,7 @@ import { createHistory } from '../history.ts';
 import { SYNTHETIC_FS_DELAY_MS } from '../hmr-broadcast.ts';
 import { type CanvasSyncAgent, createCanvasSyncAgent } from './agent.ts';
 import { pullAssets } from './asset-pull.ts';
-import { isPushableAssetRel } from './asset-push.ts';
+import { isPushableAssetRel, pushOneAsset } from './asset-push.ts';
 import { type AssetSweepHandle, runAssetSweep } from './asset-sweep.ts';
 import { atomicWrite } from './atomic-write.ts';
 import { createAutoCommit } from './autocommit.ts';
@@ -645,6 +645,57 @@ export function createSyncRuntime(
     assetSweepTimer.unref?.();
   }
 
+  // ---- FAST LANES (2026-08-16 latency fix) --------------------------------
+  // The sweep reconciles; these make the COMMON case instant. A sticker
+  // dropped on a canvas syncs its stroke over the doc lane in milliseconds,
+  // while its bytes waited for a debounced, spawned, walk-everything sweep
+  // (minutes) — and the other direction waited for the next 20 s poll. The
+  // fast push sends the ONE just-written file now; the fast pull runs the
+  // (missing-only, idempotent) asset pull the moment a reference-bearing
+  // file lands, instead of at the next tick.
+  const fastPushTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Serialize fast pushes — assets run to videos; two at once starve sync. */
+  let fastPushChain: Promise<void> = Promise.resolve();
+  /** Let the write settle (atomic tmp+rename bursts) before reading it. */
+  const FAST_PUSH_DEBOUNCE_MS = 400;
+  /** Debounced trigger for an off-schedule pullAssetsOnce — set in start(). */
+  let requestFastPull: (() => void) | null = null;
+  /** Files whose annotations/tsx/css/meta content can reference assets —
+   *  mirrors asset-pull's SCANNED_EXT. */
+  const REFERENCE_FILE_RE = /\.(?:annotations\.svg|tsx|jsx|css|meta\.json)$/i;
+
+  function queueFastPush(rel: string, hubUrl: string): void {
+    if (stopped || cellPairing) return; // the cell never pushes (same as the sweep)
+    const prev = fastPushTimers.get(rel);
+    if (prev) clearTimeout(prev);
+    const timer = setTimeout(() => {
+      fastPushTimers.delete(rel);
+      if (stopped) return;
+      fastPushChain = fastPushChain.then(async () => {
+        if (stopped) return;
+        try {
+          const r = await pushOneAsset({
+            designRoot: ctx.paths.designRoot,
+            rel,
+            hubUrl,
+            token: () => token,
+            canvasGroups: ctx.cfg.canvasGroups,
+          });
+          if (r.ok && !r.skipped) {
+            console.log(`[sync/assets] fast-pushed ${rel}`);
+          } else if (!r.ok) {
+            // Not an error surface — the sweep is the reconciler and retries.
+            console.warn(`[sync/assets] fast push ${rel}: ${r.reason} — the sweep will retry.`);
+          }
+        } catch {
+          /* the sweep reconciles */
+        }
+      });
+    }, FAST_PUSH_DEBOUNCE_MS);
+    timer.unref?.();
+    fastPushTimers.set(rel, timer);
+  }
+
   // Task 8 — offline-mode status surface, initialized in start() once the
   // canvas count is known. The store writes `_sync.json` + broadcasts
   // 'sync:status' on the bus; the monitor aggregates provider WS status into
@@ -1222,7 +1273,17 @@ export function createSyncRuntime(
       // nobody had sent: a permanent empty frame that looked like a broken path.
       // Reported three times in one day on alligators, each time with a
       // different asset, which is what finally named it.
-      if (isPushableAssetRel(rel, ctx.cfg.canvasGroups)) scheduleAssetSweep(linkedHub.url);
+      if (isPushableAssetRel(rel, ctx.cfg.canvasGroups)) {
+        // Fast lane first (this ONE file, now — seconds, not minutes), sweep
+        // second (the reconciler that catches anything the fast lane missed).
+        queueFastPush(rel.split('\\').join('/'), linkedHub.url);
+        scheduleAssetSweep(linkedHub.url);
+      }
+      // The DOWNWARD fast lane: a reference-bearing file just landed (a peer's
+      // annotation/body materialized through the doc lane, or a local edit).
+      // Run the missing-only asset pull now instead of at the next 20 s tick,
+      // so the other side's freshly dropped image renders in seconds.
+      if (REFERENCE_FILE_RE.test(rel)) requestFastPull?.();
     });
 
     /**
@@ -2316,6 +2377,39 @@ export function createSyncRuntime(
         token: () => token,
       });
     };
+    // The downward fast lane's trigger (2026-08-16 latency fix): debounced,
+    // single-flight, and a no-op in the steady state (the pull is missing-only
+    // — every referenced asset present costs one directory scan and zero
+    // requests). Fired from the fs:any listener when a reference-bearing file
+    // lands; the 20 s poll stays as the schedule-driven reconciler.
+    {
+      let fastPullTimer: ReturnType<typeof setTimeout> | null = null;
+      let fastPullRunning = false;
+      let fastPullAgain = false;
+      const runFastPull = (): void => {
+        if (stopped) return;
+        if (fastPullRunning) {
+          fastPullAgain = true;
+          return;
+        }
+        fastPullRunning = true;
+        void pullAssetsOnce().finally(() => {
+          fastPullRunning = false;
+          if (fastPullAgain && !stopped) {
+            fastPullAgain = false;
+            runFastPull();
+          }
+        });
+      };
+      requestFastPull = () => {
+        if (stopped || fastPullTimer !== null) return;
+        fastPullTimer = setTimeout(() => {
+          fastPullTimer = null;
+          runFastPull();
+        }, 750);
+        fastPullTimer.unref?.();
+      };
+    }
     // Cumulative per boot — the Sync panel's one line. `synced` is the last
     // pass's converged count; `pulled`/`conflicts` accumulate.
     const fileTotals = { synced: 0, pulled: 0, conflicts: 0 };
@@ -2372,6 +2466,10 @@ export function createSyncRuntime(
   async function stop(): Promise<void> {
     if (stopped) return;
     stopped = true;
+    // Fast lanes down first — no push/pull may fire into a dying runtime.
+    for (const t of fastPushTimers.values()) clearTimeout(t);
+    fastPushTimers.clear();
+    requestFastPull = null;
     // Nothing may be adopted into a runtime that is going away.
     attachOne = null;
     discoveryUnsub?.();

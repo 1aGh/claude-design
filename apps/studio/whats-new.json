@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "instant-asset-sync",
+      "version": null,
+      "date": null,
+      "kind": "improvement",
+      "title": "Pictures sync in seconds",
+      "summary": "A picture you drop on a canvas is pushed by itself the moment it lands, and the other side fetches it the moment the reference arrives — seconds end to end, instead of waiting for the next full sweep or polling tick.",
+      "surface": "design-ui"
+    },
+    {
       "id": "assets-arrive-and-heal",
       "version": "0.60.6",
       "date": "2026-08-15",
