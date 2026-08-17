@@ -13,9 +13,11 @@ import {
   applyCssToDoc,
   applyMetaToDoc,
   cssFromDoc,
-  META_LOCAL_KEYS,
   mergeSharedMetaIntoLocal,
+  META_LOCAL_KEYS,
   metaFromDoc,
+  normalizeSharedMeta,
+  repairSharedMeta
 } from '../sync/codec.ts';
 
 describe('Gap 2 — meta codec: shared layout syncs, per-user keys stay local', () => {
@@ -119,5 +121,79 @@ describe('Gap 3 — css codec (opaque wholesale text)', () => {
     applyCssToDoc(doc, '.x{}');
     expect(applyCssToDoc(doc, '.x{}')).toBe(false);
     expect(applyCssToDoc(doc, '.x{ color: blue }')).toBe(true);
+  });
+});
+
+describe('a duplicated meta lane — the shape two peers publishing at once leaves', () => {
+  // Meta is a WHOLE VALUE in a Y.Text, written delete-all + insert-all. Two
+  // peers inserting the same string into an empty lane produce two inserts Yjs
+  // has no reason to merge, and the result — `{"a":1}{"a":1}` — is not empty
+  // and not parseable. Every consumer ran it through JSON.parse and bailed, so
+  // a canvas silently lost its title, kind and design-system binding on every
+  // machine that synced the project afterwards.
+  //
+  // Observed live on nine canvases at once, all created on the same laptop.
+
+  const ONE = '{"kind":"web","title":"Home"}';
+
+  function docWith(text: string): Y.Doc {
+    const d = new Y.Doc();
+    d.getText('meta').insert(0, text);
+    return d;
+  }
+
+  test('normalizeSharedMeta collapses identical copies to one', () => {
+    expect(normalizeSharedMeta(ONE + ONE)).toBe(ONE);
+    expect(normalizeSharedMeta(ONE + ONE + ONE)).toBe(ONE);
+  });
+
+  test('a single value passes through untouched', () => {
+    expect(normalizeSharedMeta(ONE)).toBe(ONE);
+  });
+
+  test('empty stays null — that is a real answer, not a broken one', () => {
+    expect(normalizeSharedMeta('')).toBeNull();
+    expect(normalizeSharedMeta(null)).toBeNull();
+  });
+
+  test('it repairs only what it can PROVE — differing copies stay null', () => {
+    // Two DIFFERENT values concatenated is not a duplication; it is a
+    // disagreement, and picking one would be inventing a winner. Null routes it
+    // to "the doc has no usable opinion", where local meta seeds instead.
+    expect(normalizeSharedMeta('{"title":"A"}{"title":"B"}')).toBeNull();
+    expect(normalizeSharedMeta('not json at all')).toBeNull();
+    expect(normalizeSharedMeta('[1,2]')).toBeNull();
+  });
+
+  test('a value CONTAINING "}{" is not mistaken for a seam', () => {
+    // Each segment must itself parse as a complete object, so a brace pair
+    // inside a string cannot manufacture a false split.
+    const tricky = JSON.stringify({ title: 'a}{b' });
+    expect(normalizeSharedMeta(tricky)).toBe(tricky);
+  });
+
+  test('metaFromDoc hands consumers the single value', () => {
+    expect(metaFromDoc(docWith(ONE + ONE))).toBe(ONE);
+  });
+
+  test('repairSharedMeta collapses the lane in place', () => {
+    const d = docWith(ONE + ONE);
+    expect(repairSharedMeta(d)).toBe(true);
+    expect(d.getText('meta').toString()).toBe(ONE);
+    // Idempotent — a repaired lane is not repaired again, so this cannot churn.
+    expect(repairSharedMeta(d)).toBe(false);
+  });
+
+  test('repair leaves an unrepairable lane exactly as it found it', () => {
+    const d = docWith('{"title":"A"}{"title":"B"}');
+    expect(repairSharedMeta(d)).toBe(false);
+    expect(d.getText('meta').toString()).toBe('{"title":"A"}{"title":"B"}');
+  });
+
+  test('applying the same meta over a duplicated lane is a no-op, not a rewrite', () => {
+    // Comparing against the literal text would see a difference every pass and
+    // rewrite forever.
+    const d = docWith(ONE + ONE);
+    expect(applyMetaToDoc(d, ONE)).toBe(false);
   });
 });

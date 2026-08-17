@@ -55,6 +55,7 @@ import {
   markSeeded,
   mergeSharedMetaIntoLocal,
   metaFromDoc,
+  repairSharedMeta,
   seededByFromDoc,
   stampAnnotationsEdit,
   stampBodyEdit,
@@ -597,7 +598,14 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
       }
     }
 
-    // ---- meta: shared-subset merge, unchanged in all cases -----------------
+    // ---- meta: hub wins where it has an opinion, local seeds where it does not
+    //
+    // Repair first. Two peers publishing the same meta into an empty lane leave
+    // two identical copies in the Y.Text, which every consumer's `JSON.parse`
+    // rejects — so the canvas reads as having no meta at all on any machine
+    // that syncs it afterwards. Collapsing it here, on a doc that has synced,
+    // is the only place the duplication is provable rather than suspected.
+    repairSharedMeta(doc, origin);
     lastMeta = docMeta;
     if (paths.meta && docMeta !== null) {
       const merged = mergeSharedMetaIntoLocal(localMeta, docMeta);
@@ -606,6 +614,30 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
         echoGuard.record(paths.meta, hash);
         writer(paths.meta, merged);
       }
+    } else if (paths.meta && localMeta !== null) {
+      // AN EMPTY DOC IS NOT A CANVAS WITH NO TITLE.
+      //
+      // This branch used to not exist, and the comment above it said meta was
+      // "unchanged in all cases". The consequence: a canvas created on a peer
+      // reached the hub as a body with NO meta — no title, no kind, no
+      // design-system binding — and stayed that way until somebody happened to
+      // move an artboard, because a meta EDIT was the only thing that ever
+      // pushed meta up.
+      //
+      // It looked fine from the cloud, which is what kept it hidden: a cell's
+      // studio child arms `activity:suppress` on create, the container write
+      // bridge turns that into an `fs:any` a quarter-second later, and by then
+      // the new canvas has an agent to receive it. A desktop has no bridge — its
+      // real `fs.watch` fires immediately, before the agent for a
+      // just-created canvas exists, and the event lands nowhere. So the race
+      // was won on one side and lost on the other, and the underlying gap
+      // (cold-start meta was doc→file only) was invisible from the winning end.
+      //
+      // Seeding here is safe by construction: it runs ONLY when the doc carries
+      // no shared meta at all, so it cannot overwrite another peer's opinion —
+      // the same "absence is never authority" rule the rest of the sync applies
+      // to files, applied to the one sidecar that was exempt from it.
+      if (applyMetaToDoc(doc, localMeta, origin)) lastMeta = metaFromDoc(doc);
     }
   }
 
