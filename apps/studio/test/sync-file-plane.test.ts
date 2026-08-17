@@ -429,6 +429,27 @@ describe('the doručenka answers "where is this file"', () => {
     expect(['on-hub', 'local-only']).toContain(states['assets/local.png']);
   });
 
+  test('a CONVERGED file reads on-hub, not local-only', async () => {
+    // The lie this closes, seen live in a local run: a delta never mentions a
+    // settled file, so reading the page instead of the remembered remote made
+    // every converged file report `local-only` — a panel saying "not
+    // delivered" about files that had been on the hub for hours.
+    const hub = fakeHub({ 'system/ds/brand.css': 'v1' });
+    const p = plane(hub);
+    await p.reconcile();
+    await p.reconcile(); // the converged pass, where the delta is silent
+    expect(p.doruceka()['system/ds/brand.css']).toBe('on-hub');
+  });
+
+  test('a REFUSED path says it is refused, not that it is merely local', async () => {
+    // A refusal outranks everything (DDR-214). A code module this peer
+    // declines is not "local-only" — it is not here, and will not be.
+    const hub = fakeHub({ 'system/ds/preview/_x.ts': 'export const a = 1' });
+    const p = plane(hub);
+    await p.reconcile();
+    expect(p.doruceka()['system/ds/preview/_x.ts']).toBe('stuck');
+  });
+
   test('a failure is named, not swallowed', async () => {
     const hub = fakeHub({ 'system/ds/brand.css': 'v1' });
     const broken = (async (url: string, init?: RequestInit) => {

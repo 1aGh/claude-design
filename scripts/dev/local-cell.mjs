@@ -64,8 +64,19 @@ if (has('help')) {
                   is the only path a file arrival can travel. Use this.
   --no-events     also disable the control channel (MAUDE_FILE_EVENTS=0) — the
                   before picture: with --no-watch this is the bug, live.
+  --no-peer       skip the desktop-side project (cloud side only)
   --keep          do not delete the scratch dir on exit
   --help
+
+Prepared for you on boot:
+
+  • the CLOUD side  — this hub, serving the project a browser opens
+  • the DESKTOP side — a SECOND project directory, already linked to this hub
+                       with its own token, so 'pnpm dev:desktop' opens a real
+                       peer rather than a solo project
+
+Credentials live in a scratch hubs.json inside the run directory, so your own
+config store is never read or written.
 `);
   process.exit(0);
 }
@@ -77,6 +88,13 @@ const repoDir = join(root, 'repo');
 const dataDir = join(root, 'data');
 const backupDir = join(root, 'object-storage');
 const designRoot = join(repoDir, '.design');
+/** The DESKTOP side: a second machine, in a second directory. */
+const peerRepo = join(root, 'desktop-project');
+const peerDesign = join(peerRepo, '.design');
+/** Scratch credential store — your real ~/.config/maude is never touched. */
+const hubsConfig = join(root, 'hubs.json');
+const ADMIN_EMAIL = 'you@local.test';
+const ADMIN_PASSWORD = 'local-cell-password';
 
 /* ------------------------------------------------------------ the project */
 
@@ -96,7 +114,8 @@ function seedProject() {
       },
       null,
       2
-    )}\n`
+    )}
+\n`
   );
 
   // A canvas — plane A. It must NOT appear in the journal; the two planes are
@@ -142,6 +161,70 @@ function seedProject() {
   );
 }
 
+/**
+ * The DESKTOP side — a second machine, prepared so `pnpm dev:desktop` opens a
+ * real peer instead of a solo project.
+ *
+ * It gets its OWN token and its own `.design/`, and it starts almost empty on
+ * purpose: watching a project arrive is the clearest way to see the file plane
+ * work, and "a fresh peer pulls the project down" is the path a new machine
+ * actually takes.
+ */
+function seedPeer(token) {
+  mkdirSync(join(peerDesign, 'ui'), { recursive: true });
+  writeFileSync(
+    join(peerDesign, 'config.json'),
+    `${JSON.stringify(
+      {
+        name: 'desktop-side',
+        canvasGroups: [{ path: 'ui' }, { path: 'system' }],
+        linkedHub: {
+          url: `http://127.0.0.1:${port}`,
+          linkedAt: Date.now(),
+          // The file plane is opt-in this release; the whole point of this run
+          // is to exercise it, so it is on.
+          syncFiles: true,
+        },
+      },
+      null,
+      2
+    )}\n`
+  );
+  // One canvas, so the CRDT doc lanes have something to carry too — the two
+  // planes running side by side is the thing worth watching.
+  writeFileSync(
+    join(peerDesign, 'ui/desktop-home.tsx'),
+    `export default function DesktopHome() {
+  return (
+    <main style={{ padding: 48, fontFamily: 'system-ui' }}>
+      <h1>Desktop side</h1>
+      <p>Edit me, or drop a picture on me, and watch the cloud.</p>
+    </main>
+  );
+}
+`
+  );
+  writeFileSync(
+    join(peerDesign, 'ui/desktop-home.meta.json'),
+    `${JSON.stringify({ title: 'Desktop home', kind: 'web' }, null, 2)}\n`
+  );
+  // The credential, in a scratch store keyed by hub URL — the same shape
+  // `maude design link` writes, minus touching your real one.
+  writeFileSync(
+    hubsConfig,
+    `${JSON.stringify(
+      {
+        hubs: {
+          [`http://127.0.0.1:${port}`]: { token, linkedAt: Date.now(), role: 'owner' },
+        },
+      },
+      null,
+      2
+    )}\n`,
+    { mode: 0o600 }
+  );
+}
+
 function run(cmd, args, opts = {}) {
   const r = spawn(cmd, args, { stdio: 'ignore', ...opts });
   return new Promise((res, rej) => {
@@ -184,6 +267,11 @@ async function main() {
   await seedRepo();
   line('[local-cell] seeded a real .design/ project (canvas + DS + assets)');
   const token = await mintToken();
+  const withPeer = !has('no-peer');
+  if (withPeer) {
+    seedPeer(token);
+    line('[local-cell] prepared the desktop-side project (linked, syncFiles on)');
+  }
 
   const env = {
     ...process.env,
@@ -204,6 +292,11 @@ async function main() {
     MAUDE_BACKUP_INTERVAL_MS: String(2 * 60_000),
     // A dev checkout resolves dev modules the containment assert would refuse.
     MAUDE_WORKSPACE_ALLOW_DEV_MODULES: '1',
+    // A browser needs somebody to sign in AS. Seeded on first boot only; the
+    // password is printed below because this hub is loopback-only and
+    // throwaway by construction.
+    MAUDE_ADMIN_EMAIL: ADMIN_EMAIL,
+    MAUDE_ADMIN_PASSWORD: ADMIN_PASSWORD,
     ...(has('no-watch') ? { MAUDE_NO_WATCH: '1' } : {}),
     ...(has('no-events') ? { MAUDE_FILE_EVENTS: '0' } : {}),
   };
@@ -217,29 +310,43 @@ async function main() {
   setTimeout(() => {
     line();
     line('  ── local cell up ────────────────────────────────────────────────');
-    line(`  hub            ${base}`);
-    line(`  project        ${repoDir}`);
-    line(`  peer token     ${token}`);
-    line(`  object storage ${backupDir}`);
+    line();
+    line('  THE CLOUD SIDE — open this in a browser:');
+    line();
+    line(`      ${base}`);
+    line(`      sign in as   ${ADMIN_EMAIL}  /  ${ADMIN_PASSWORD}`);
+    line();
+    if (withPeer) {
+      line('  THE DESKTOP SIDE — already linked to that hub. Launch it with:');
+      line();
+      line(`      HUBS_CONFIG_PATH=${hubsConfig} \\`);
+      line(`      MAUDE_PROJECT_ROOT=${peerRepo} \\`);
+      line('      pnpm dev:desktop');
+      line();
+    }
     line(
-      `  watcher        ${has('no-watch') ? 'OFF — the container gap, reproduced' : 'ON (macOS fires for tmp+rename — the poke is NOT isolated)'}`
+      `  watcher     ${has('no-watch') ? 'OFF — the container gap, reproduced. The poke is the ONLY way an arrival becomes visible.' : 'ON — macOS fires for tmp+rename, so the poke is NOT isolated'}`
     );
-    line(`  file events    ${has('no-events') ? 'OFF — the BEFORE picture' : 'ON'}`);
+    line(`  file events ${has('no-events') ? 'OFF — the BEFORE picture' : 'ON'}`);
+    line(`  project     ${repoDir}`);
+    line(`  storage     ${backupDir}`);
+    line(`  peer token  ${token}`);
     line();
-    line('  Link a desktop to it, from a project you want to sync:');
+    line('  Watch it work:');
     line();
-    line(`      node cli/bin/maude.mjs design link ${base} --token ${token}`);
-    line('      pnpm dev:desktop');
-    line();
-    line('  Watch the journal fill as writes land:');
-    line();
-    line(`      curl -s -H 'authorization: Bearer ${token}' '${base}/api/journal?since=0' | jq`);
     line(`      curl -s ${base}/health | jq .capabilities`);
-    line(`      cat ${join(backupDir, 'journal/tail.ndjson')}`);
+    line(
+      `      curl -s -H 'authorization: Bearer ${token}' '${base}/api/journal?since=0' | jq '.head, (.entries|length)'`
+    );
+    line(`      cat ${join(backupDir, 'journal/tail.ndjson')} | tail -3`);
+    if (withPeer) {
+      line(`      cat ${join(peerDesign, '_sync.json')} | jq .files      # the doručenka`);
+    }
     line();
-    line('  Assert the whole thing end to end (in another terminal):');
+    line('  Assert the whole loop automatically:');
     line();
     line(`      node scripts/dev/journal-e2e.mjs --hub ${base} --token ${token} --repo ${repoDir}`);
+    line();
     line('  ─────────────────────────────────────────────────────────────────');
     line();
   }, 2500);

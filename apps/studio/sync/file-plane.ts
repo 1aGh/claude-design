@@ -436,11 +436,16 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
           hasFile: (r) => local.has(r) || existsSync(path.join(designRoot, r)),
         });
         if (!isFilePlaneClass(cls)) {
-          drop(out, rel, `classifies '${cls}' here`);
+          drop(out, rel, `classifies '${cls}' here`, ledger);
           continue;
         }
         if (cls === 'code-module' && !opts.allowCodeModules) {
-          drop(out, rel, 'code modules replicate only from an owner-vouched or loopback hub');
+          drop(
+            out,
+            rel,
+            'code modules replicate only from an owner-vouched or loopback hub',
+            ledger
+          );
           continue;
         }
       }
@@ -459,11 +464,19 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
       if (decision.action === 'noop' && !decision.parkRemote) {
         if (decision.adoptAncestor && here) {
           // Record agreement so the next pass is a stat and nothing more.
+          //
+          // The state comes from the REMEMBERED remote, not from this page. A
+          // converged file is precisely the one a delta never mentions, so
+          // reading `row` here made every settled file report `local-only` —
+          // a panel saying "not delivered" about files that had been on the
+          // hub for hours. That is the status-lies failure DDR-214 exists to
+          // end, and it is worse than no panel: it teaches people to distrust
+          // the one surface meant to answer the question.
           void ledger.adoptAfter(rel, here.hash, () => {}, {
             ...(row ? { remoteSeq: row.seq } : {}),
             size: here.size,
             mtimeMs: here.mtimeMs,
-            state: row ? 'on-hub' : 'local-only',
+            state: remoteHash !== null ? 'on-hub' : 'local-only',
           });
           out.synced += 1;
         }
@@ -722,8 +735,14 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
   };
 }
 
-function drop(out: FilePlaneResult, rel: string, reason: string): void {
+function drop(out: FilePlaneResult, rel: string, reason: string, ledger?: FileLedger): void {
   out.dropped.push({ rel, reason });
+  // A REFUSAL OUTRANKS EVERYTHING (DDR-214, applied to files). A path this
+  // peer declines is not "local-only" — it is not here at all, and never will
+  // be until something changes. Letting it fall through to the default state
+  // would put a file in the panel's ordinary column that is in fact being
+  // actively refused, which is the shape of "we didn't know it was stuck".
+  ledger?.setState(rel, 'stuck', { reason });
 }
 
 /** `assets/<name>` referenced anywhere in the tree — the priority front-queue. */
