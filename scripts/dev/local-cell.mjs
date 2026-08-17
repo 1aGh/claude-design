@@ -1,0 +1,275 @@
+#!/usr/bin/env node
+// A LOCAL CELL — the sync stack on your laptop, from source.
+//
+// A Maude "cell" is not a special program. It is this repo's hub running in
+// workspace mode: it owns a git checkout, supervises a studio child over
+// loopback, journals every file write, and mirrors to object storage. The
+// Cloudflare parts (the Worker, the Durable Object, R2) are transport and
+// durability around exactly that. So the whole sync arc — the journal, the
+// poke, the heal, the tail, the restore drill — is reproducible here, against
+// a scratch repo, with no account and no network.
+//
+// What this stands up:
+//
+//   • a scratch git repo with a real `.design/` project (canvas + design
+//     system + an asset), so the classifier has a genuine tree to judge
+//     rather than a fixture that flatters it;
+//   • the hub from SOURCE in workspace mode, with a peer token minted for you;
+//   • a `file://` backup target, so the journal tail and the restore drill are
+//     the real code paths and not stubs;
+//   • the studio child the hub supervises, which is what a browser talks to.
+//
+// ── The one flag that matters ────────────────────────────────────────────────
+//
+// `--no-watch` sets MAUDE_NO_WATCH=1 on the studio child. The container
+// watcher gap is inotify-specific: on macOS `fs.watch` DOES fire for the
+// atomic tmp+rename writes the hub makes, so an open canvas would heal on a
+// laptop whether or not the Sync v2 control channel works at all. With the
+// watcher gone, the poke is the ONLY way anything downstream can learn a file
+// landed — which is the cell's real situation, and the difference between
+// testing the fix and testing around it.
+//
+// USE IT. A green run without `--no-watch` proves almost nothing about the
+// thing this arc changed.
+//
+//   node scripts/dev/local-cell.mjs --no-watch
+//
+// Then, in a second terminal, link a desktop to it — the command is printed on
+// boot — and run `pnpm dev:desktop`.
+
+import { spawn } from 'node:child_process';
+
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+function arg(name, fallback = null) {
+  const i = process.argv.indexOf(`--${name}`);
+  return i !== -1 && process.argv[i + 1] && !process.argv[i + 1].startsWith('--')
+    ? process.argv[i + 1]
+    : fallback;
+}
+const has = (name) => process.argv.includes(`--${name}`);
+
+if (has('help')) {
+  process.stdout.write(`local-cell — the sync stack on your laptop, from source
+
+  --dir PATH      where to put the scratch cell (default: a fresh temp dir)
+  --port N        hub port (default 4599)
+  --no-watch      run the studio child WITHOUT its filesystem watcher, so the
+                  container watcher gap is reproduced and the control channel
+                  is the only path a file arrival can travel. Use this.
+  --no-events     also disable the control channel (MAUDE_FILE_EVENTS=0) — the
+                  before picture: with --no-watch this is the bug, live.
+  --keep          do not delete the scratch dir on exit
+  --help
+`);
+  process.exit(0);
+}
+
+const port = Number(arg('port', '4599'));
+const keep = has('keep');
+const root = arg('dir') ? resolve(arg('dir')) : mkdtempSync(join(tmpdir(), 'maude-local-cell-'));
+const repoDir = join(root, 'repo');
+const dataDir = join(root, 'data');
+const backupDir = join(root, 'object-storage');
+const designRoot = join(repoDir, '.design');
+
+/* ------------------------------------------------------------ the project */
+
+function seedProject() {
+  mkdirSync(join(designRoot, 'ui'), { recursive: true });
+  mkdirSync(join(designRoot, 'system/smoke/preview'), { recursive: true });
+  mkdirSync(join(designRoot, 'system/smoke/assets'), { recursive: true });
+  mkdirSync(join(designRoot, 'assets'), { recursive: true });
+
+  writeFileSync(
+    join(designRoot, 'config.json'),
+    `${JSON.stringify(
+      {
+        name: 'local-cell-smoke',
+        canvasGroups: [{ path: 'ui' }, { path: 'system' }],
+        designSystems: [{ name: 'smoke', path: 'system/smoke' }],
+      },
+      null,
+      2
+    )}\n`
+  );
+
+  // A canvas — plane A. It must NOT appear in the journal; the two planes are
+  // disjoint at classification, and this is the tree that proves it.
+  writeFileSync(
+    join(designRoot, 'ui/home.tsx'),
+    `export default function Home() {
+  return (
+    <main style={{ padding: 48, fontFamily: 'system-ui' }}>
+      <h1>Local cell smoke</h1>
+      {/* The asset below is the one the journal should carry. */}
+      <img src="assets/smoke-mark.svg" alt="" width={96} height={96} />
+    </main>
+  );
+}
+`
+  );
+  writeFileSync(
+    join(designRoot, 'ui/home.meta.json'),
+    `${JSON.stringify({ title: 'Home', kind: 'web' }, null, 2)}\n`
+  );
+
+  // Plane B, all three flowing classes.
+  writeFileSync(
+    join(designRoot, 'system/smoke/brand.css'),
+    ':root { --bg-0: #0b0b0c; --fg-0: #f5f5f4; --accent: #7c5cff; }\n'
+  );
+  writeFileSync(
+    join(designRoot, 'system/smoke/README.md'),
+    '# Smoke design system\n\nA real tree for the classifier to judge.\n'
+  );
+  writeFileSync(
+    join(designRoot, 'system/smoke/preview/_brand-css.ts'),
+    'export const brand = { accent: "#7c5cff" };\n'
+  );
+  writeFileSync(
+    join(designRoot, 'system/smoke/assets/logo.svg'),
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>\n'
+  );
+  writeFileSync(
+    join(designRoot, 'assets/smoke-mark.svg'),
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6"/></svg>\n'
+  );
+}
+
+function run(cmd, args, opts = {}) {
+  const r = spawn(cmd, args, { stdio: 'ignore', ...opts });
+  return new Promise((res, rej) => {
+    r.on('exit', (code) => (code === 0 ? res() : rej(new Error(`${cmd} exited ${code}`))));
+    r.on('error', rej);
+  });
+}
+
+async function seedRepo() {
+  mkdirSync(repoDir, { recursive: true });
+  await run('git', ['init', '-q', '-b', 'main'], { cwd: repoDir });
+  // The hub commits as itself; give it an identity so nothing prompts.
+  await run('git', ['config', 'user.email', 'cell@local'], { cwd: repoDir });
+  await run('git', ['config', 'user.name', 'Local Cell'], { cwd: repoDir });
+  seedProject();
+  await run('git', ['add', '-A'], { cwd: repoDir });
+  await run('git', ['commit', '-q', '-m', 'seed: local cell smoke project'], { cwd: repoDir });
+}
+
+/* --------------------------------------------------------------- the token */
+
+async function mintToken() {
+  const { addToken } = await import(join(REPO_ROOT, 'apps/hub/src/tokens.mjs'));
+  // `addToken` MINTS the value — it does not accept one. (The raw token is
+  // never stored; only its HMAC is, so there is no way to hand one in.) Use
+  // what it returns, or every request 401s with a token nothing ever saw.
+  // `scope: '*'` because a local desktop opens every document in the project.
+  const { value } = addToken(dataDir, { label: 'local-desktop', scope: '*' });
+  return value;
+}
+
+/* ----------------------------------------------------------------- the run */
+
+const line = (s = '') => process.stdout.write(`${s}\n`);
+
+async function main() {
+  mkdirSync(dataDir, { recursive: true });
+  mkdirSync(backupDir, { recursive: true });
+  line(`[local-cell] scratch dir: ${root}`);
+  await seedRepo();
+  line('[local-cell] seeded a real .design/ project (canvas + DS + assets)');
+  const token = await mintToken();
+
+  const env = {
+    ...process.env,
+    PORT: String(port),
+    DATA_DIR: dataDir,
+    // Workspace mode IS what makes this a cell: the hub owns the checkout,
+    // supervises the studio child, and journals every accepted write.
+    MAUDE_WORKSPACE_MODE: '1',
+    HUB_WORKSPACE_MODE: '1',
+    MAUDE_REPO_DIR: repoDir,
+    MAUDE_DESIGN_ROOT: '.design',
+    HUB_PUBLIC_URL: `http://127.0.0.1:${port}`,
+    HUB_INSECURE_HTTP: '1',
+    // Object storage as a directory — the journal tail, the backup generations
+    // and the restore drill all run their real code paths against it.
+    MAUDE_BACKUP_TARGET: `file://${backupDir}`,
+    // Fast enough to watch a generation roll while you are sitting there.
+    MAUDE_BACKUP_INTERVAL_MS: String(2 * 60_000),
+    // A dev checkout resolves dev modules the containment assert would refuse.
+    MAUDE_WORKSPACE_ALLOW_DEV_MODULES: '1',
+    ...(has('no-watch') ? { MAUDE_NO_WATCH: '1' } : {}),
+    ...(has('no-events') ? { MAUDE_FILE_EVENTS: '0' } : {}),
+  };
+
+  const hub = spawn('node', [join(REPO_ROOT, 'apps/hub/src/server.mjs')], {
+    env,
+    stdio: 'inherit',
+  });
+
+  const base = `http://127.0.0.1:${port}`;
+  setTimeout(() => {
+    line();
+    line('  ── local cell up ────────────────────────────────────────────────');
+    line(`  hub            ${base}`);
+    line(`  project        ${repoDir}`);
+    line(`  peer token     ${token}`);
+    line(`  object storage ${backupDir}`);
+    line(
+      `  watcher        ${has('no-watch') ? 'OFF — the container gap, reproduced' : 'ON (macOS fires for tmp+rename — the poke is NOT isolated)'}`
+    );
+    line(`  file events    ${has('no-events') ? 'OFF — the BEFORE picture' : 'ON'}`);
+    line();
+    line('  Link a desktop to it, from a project you want to sync:');
+    line();
+    line(`      node cli/bin/maude.mjs design link ${base} --token ${token}`);
+    line('      pnpm dev:desktop');
+    line();
+    line('  Watch the journal fill as writes land:');
+    line();
+    line(`      curl -s -H 'authorization: Bearer ${token}' '${base}/api/journal?since=0' | jq`);
+    line(`      curl -s ${base}/health | jq .capabilities`);
+    line(`      cat ${join(backupDir, 'journal/tail.ndjson')}`);
+    line();
+    line('  Assert the whole thing end to end (in another terminal):');
+    line();
+    line(`      node scripts/dev/journal-e2e.mjs --hub ${base} --token ${token} --repo ${repoDir}`);
+    line('  ─────────────────────────────────────────────────────────────────');
+    line();
+  }, 2500);
+
+  const bye = () => {
+    hub.kill('SIGTERM');
+    if (!keep) {
+      setTimeout(() => {
+        try {
+          rmSync(root, { recursive: true, force: true });
+        } catch {
+          /* best-effort */
+        }
+        process.exit(0);
+      }, 1500);
+    } else {
+      line(`\n[local-cell] kept ${root}`);
+      setTimeout(() => process.exit(0), 1500);
+    }
+  };
+  process.on('SIGINT', bye);
+  process.on('SIGTERM', bye);
+  hub.on('exit', (code) => {
+    line(`[local-cell] hub exited ${code}`);
+    if (!keep && existsSync(root)) rmSync(root, { recursive: true, force: true });
+    process.exit(code ?? 0);
+  });
+}
+
+main().catch((err) => {
+  console.error(`[local-cell] ${err.message}`);
+  process.exit(1);
+});

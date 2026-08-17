@@ -1237,6 +1237,12 @@ export function createHub(config = {}) {
   // Sync v2 Increment 2 — the poke. Built here because it needs the running
   // instance's document map; subscribed to the journal in
   // `startJournalReconciler`, so a hub with no checkout never emits one.
+  //
+  // `server` is a `Server` — the HTTP/WS host — and its documents live one
+  // level down on `.hocuspocus`. `createFilesPoke` resolves either shape and
+  // says so loudly if it can find neither; passing the wrong one used to be a
+  // silent no-op, because "no document" is also what an unattached project
+  // legitimately looks like. See `documentMap` in files-ctl.mjs.
   const filesPoke = createFilesPoke({ instance: server });
 
   return {

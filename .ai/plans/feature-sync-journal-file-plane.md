@@ -283,11 +283,33 @@ real tree (alligators + alligators-mirror), verified against built artifacts.**
 > test that asserts present and absent paths read identically. Both journal
 > routes additionally refuse a canvas-origin request structurally (DDR-088).
 >
-> **Still owed, and it needs a deployed cell:** the LIVE drill — a hub-door
-> asset PUT on an UNPAIRED fleet cell healing an open cloud tab without a
-> reload, verified through the CF `containers` dataset. Unit + parity coverage
-> is green (21 studio cases, 15 hub cases); the fleet half is a post-release
-> verification step, not something a local suite can stand in for.
+> **The unit suites were green while the feature was DEAD.** `new Server()`
+> returns a `Server`, whose document map lives at `.hocuspocus.documents`;
+> `createFilesPoke` read `instance.documents`, got `undefined`, and took the
+> "nobody is attached" branch — which is a legitimate everyday state, so every
+> poke vanished in silence. The unit test passed throughout because its fake
+> instance had the shape the code wished for. Found by the local-cell harness
+> below, on its first real run. `documentMap()` now resolves either shape and
+> the no-map case is a LOUD error rather than a quiet return; the regression
+> test constructs a real `Server` instead of a fake.
+>
+> **Local verification harness (added with this increment):**
+> `scripts/dev/local-cell.mjs` stands up the hub from source in workspace mode
+> — a cell minus Cloudflare — over a seeded scratch repo, with a `file://`
+> object-storage target so the tail and the restore drill run their real code
+> paths. `--no-watch` sets `MAUDE_NO_WATCH=1` on the studio child, which
+> reproduces the container watcher gap on any platform: on macOS `fs.watch`
+> DOES fire for tmp+rename, so without it a green run proves nothing about
+> this fix. `scripts/dev/journal-e2e.mjs` drives that running stack as an
+> ordinary peer — **28 checks, all green**, including a real
+> `@hocuspocus/provider` attach that receives a real poke 302 ms after a real
+> PUT.
+>
+> **Still owed, and it needs a human at a browser:** the HEAL itself (open a
+> canvas under `--no-watch`, PUT an asset it references, the broken frame must
+> repair with no reload) and the desktop's end-to-end latency. The fleet drill
+> on an unpaired cell via the CF `containers` dataset remains the release-time
+> confirmation.
 
 
 - **Do**: ADD reserved dotted control doc **`maude.files`** (dotted name fails every old-client slug regex — verified `[A-Za-z0-9_-]`; branch-independent; scope-mapped in `onAuthenticate`; admitted read-only; never stored as Y content). Hub: `broadcastStateless({t:'files', head})` coalesced 250 ms. Cell studio child: attach **ctl-only loopback provider OUTSIDE the `CELL_LIVE_PAIRING` gate** (pairing preconditions govern shared-doc content, not a read-only stateless channel — this is what makes the fix fleet-wide, not pilot-only) → poke → synthesize `fs:any` → existing `asset`/`css` HMR heal. Desktop: attach capability-gated; poke triggers existing `pullAssetsOnce`/`pullFilesOnce`. Poll STAYS 20 s + add a poke-miss honesty counter.

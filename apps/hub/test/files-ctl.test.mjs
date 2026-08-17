@@ -14,8 +14,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { Server } from '@hocuspocus/server';
+
 import {
   createFilesPoke,
+  documentMap,
   FILES_CTL_DOC,
   isFilesCtlDoc,
   POKE_COALESCE_MS,
@@ -83,6 +86,54 @@ describe('withoutCtlPersistence', () => {
     const ext = withoutCtlPersistence({});
     await ext.onStoreDocument({ documentName: 'x' });
     await ext.onLoadDocument({ documentName: 'x' });
+  });
+});
+
+describe('documentMap — the wiring this got wrong once', () => {
+  it('finds the map on a REAL `new Server()`, whose documents are one level down', () => {
+    // The bug this test exists for: `new Server()` returns a Server, and a
+    // Server has NO `documents` — the map lives at `.hocuspocus.documents`.
+    // Reading `instance.documents` therefore yielded `undefined`, and because
+    // "no document" is a legitimate everyday state (nobody attached), every
+    // poke vanished in silence while the unit suite stayed green against a
+    // hand-made fake that had the shape the code wished for.
+    //
+    // Constructed, never listened on: the shape is the whole point.
+    const server = new Server({ port: 0, quiet: true });
+    assert.equal(server.documents, undefined, 'the library still has the shape that caused this');
+    const map = documentMap(server);
+    assert.ok(map, 'documentMap must reach through to the Hocuspocus instance');
+    assert.equal(typeof map.get, 'function');
+  });
+
+  it('accepts the Hocuspocus instance directly too', () => {
+    const documents = new Map();
+    assert.equal(documentMap({ documents }), documents);
+  });
+
+  it('returns null for anything that carries no map at all', () => {
+    for (const bad of [null, undefined, {}, { documents: {} }, { hocuspocus: {} }]) {
+      assert.equal(documentMap(bad), null);
+    }
+  });
+
+  it('a poke wired to an object with no map says so LOUDLY, once', () => {
+    // The silence is what made the original bug survive a green test run, so
+    // the absence of a map must be an error line, not a quiet return.
+    const errors = [];
+    const t = fakeTimers();
+    const poke = createFilesPoke({
+      instance: { not: 'an instance' },
+      log: { error: (m) => errors.push(m) },
+      ...t,
+    });
+    poke.schedule(1);
+    t.tick();
+    poke.schedule(2);
+    t.tick();
+    assert.equal(errors.length, 1, 'loud once, not a flood');
+    assert.match(errors[0], /wired to the wrong object/);
+    assert.equal(poke.sent(), 0);
   });
 });
 

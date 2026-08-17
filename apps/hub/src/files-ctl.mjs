@@ -63,6 +63,25 @@ export function withoutCtlPersistence(extension) {
 }
 
 /**
+ * Where the live documents actually live.
+ *
+ * `@hocuspocus/server` exposes TWO objects with confusingly similar roles:
+ * `Server` (the HTTP/WS host, which `new Server()` returns) and `Hocuspocus`
+ * (the document engine, reachable at `server.hocuspocus` and returned by
+ * `listen()`). Only the second has `documents`. Accepting either is not
+ * politeness — it is the difference between a poke that reaches peers and one
+ * that silently evaporates, and the failure is invisible because "no document"
+ * is a legitimate everyday state.
+ */
+export function documentMap(instance) {
+  const direct = instance?.documents;
+  if (direct && typeof direct.get === 'function') return direct;
+  const nested = instance?.hocuspocus?.documents;
+  if (nested && typeof nested.get === 'function') return nested;
+  return null;
+}
+
+/**
  * The poke emitter.
  *
  * Coalesces to the LATEST head: a fresh link that appends 500 rows sends one
@@ -83,15 +102,33 @@ export function createFilesPoke({
   let pendingHead = 0;
   let sent = 0;
   let stopped = false;
+  let warnedNoMap = false;
 
   const emit = () => {
     timer = null;
     const head = pendingHead;
     pendingHead = 0;
-    const doc = instance?.documents?.get(FILES_CTL_DOC);
-    // Nobody is listening. That is the ordinary state of a project with no
-    // peer attached, not a failure — and the next attach reads the journal
-    // from its cursor anyway, so nothing is missed.
+    const documents = documentMap(instance);
+    if (!documents) {
+      // NOT the same thing as "nobody is listening", and it must never be
+      // treated as such. No document map means this was wired to the wrong
+      // object — which is exactly what happened the first time: `new Server()`
+      // returns a Server whose map lives at `.hocuspocus.documents`, so
+      // `instance.documents` was `undefined` and every poke silently vanished.
+      // The unit tests passed throughout, because their fake instance had the
+      // shape the code expected rather than the shape the library has.
+      if (!warnedNoMap) {
+        warnedNoMap = true;
+        log.error?.(
+          '[files-ctl] no document map on the instance handed to createFilesPoke — the poke is wired to the wrong object and NO peer will ever be told a file landed. Pass the Hocuspocus instance (server.hocuspocus), not the Server.'
+        );
+      }
+      return;
+    }
+    const doc = documents.get(FILES_CTL_DOC);
+    // Nobody is listening. That IS the ordinary state of a project with no
+    // peer attached — and the next attach reads the journal from its cursor
+    // anyway, so nothing is missed.
     if (!doc) return;
     try {
       doc.broadcastStateless(JSON.stringify({ t: 'files', head }));
