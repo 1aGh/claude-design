@@ -109,7 +109,14 @@ function seedProject() {
     `${JSON.stringify(
       {
         name: 'local-cell-smoke',
-        canvasGroups: [{ path: 'ui' }, { path: 'system' }],
+        // `label` is REQUIRED by config.schema.json, and omitting it is not a
+        // cosmetic slip: the client renders `group.label.toUpperCase()`, so a
+        // group without one throws before React mounts and the whole app is a
+        // white screen with nothing in the log. Cost an afternoon once.
+        canvasGroups: [
+          { label: 'Canvases', path: 'ui' },
+          { label: 'Design system', path: 'system' },
+        ],
         designSystems: [{ name: 'smoke', path: 'system/smoke' }],
       },
       null,
@@ -177,7 +184,11 @@ function seedPeer(token) {
     `${JSON.stringify(
       {
         name: 'desktop-side',
-        canvasGroups: [{ path: 'ui' }, { path: 'system' }],
+        // See the note in `seedProject` — a missing label is a white screen.
+        canvasGroups: [
+          { label: 'Canvases', path: 'ui' },
+          { label: 'Design system', path: 'system' },
+        ],
         linkedHub: {
           url: `http://127.0.0.1:${port}`,
           linkedAt: Date.now(),
