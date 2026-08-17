@@ -39,7 +39,7 @@
 
 import { spawn } from 'node:child_process';
 
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -246,6 +246,26 @@ async function seedRepo() {
 
 /* --------------------------------------------------------------- the token */
 
+/**
+ * Is this run directory an EXISTING cell we should resume?
+ *
+ * A cell you cannot restart is a cell you cannot leave running while you work,
+ * and re-seeding would mint a second token while the desktop side still holds
+ * the first — the peer would 401 against its own hub for no reason a person
+ * could see. So a directory that already has a token store and a credential
+ * file is resumed: same repo, same token, same journal, same object storage.
+ */
+function existingRun() {
+  if (!existsSync(join(dataDir, 'tokens.db')) || !existsSync(hubsConfig)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(hubsConfig, 'utf8'));
+    const entry = parsed?.hubs?.[`http://127.0.0.1:${port}`];
+    return typeof entry?.token === 'string' && entry.token ? entry.token : null;
+  } catch {
+    return null;
+  }
+}
+
 async function mintToken() {
   const { addToken } = await import(join(REPO_ROOT, 'apps/hub/src/tokens.mjs'));
   // `addToken` MINTS the value — it does not accept one. (The raw token is
@@ -264,13 +284,20 @@ async function main() {
   mkdirSync(dataDir, { recursive: true });
   mkdirSync(backupDir, { recursive: true });
   line(`[local-cell] scratch dir: ${root}`);
-  await seedRepo();
-  line('[local-cell] seeded a real .design/ project (canvas + DS + assets)');
-  const token = await mintToken();
+  const resumed = existingRun();
   const withPeer = !has('no-peer');
-  if (withPeer) {
-    seedPeer(token);
-    line('[local-cell] prepared the desktop-side project (linked, syncFiles on)');
+  let token;
+  if (resumed) {
+    token = resumed;
+    line('[local-cell] resuming the existing cell — same repo, token, journal and storage');
+  } else {
+    await seedRepo();
+    line('[local-cell] seeded a real .design/ project (canvas + DS + assets)');
+    token = await mintToken();
+    if (withPeer) {
+      seedPeer(token);
+      line('[local-cell] prepared the desktop-side project (linked, syncFiles on)');
+    }
   }
 
   const env = {
