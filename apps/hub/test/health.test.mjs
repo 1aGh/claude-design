@@ -196,3 +196,16 @@ test('a hub with NO secret configured admits nobody to the counts', async () => 
   });
   assert.equal((await res.json()).stats, undefined);
 });
+
+test('/health advertises the sync-v2 capability set — the compat matrix is BINDING', async () => {
+  // A capability-gated client (DDR-226 §10) reads this to decide whether it may
+  // attach the control channel and relax its polling. A hub with no checkout —
+  // which is every self-hosted sync hub, and this test's hub — has no file
+  // plane and therefore no `ledger`, and a client MUST keep its legacy lanes
+  // against it. The field being present-and-empty is the point: it says "this
+  // hub speaks capabilities and has none", which is a different fact from an
+  // older hub that omits the field entirely.
+  const body = await (await fetch(`http://127.0.0.1:${PORT}/health`)).json();
+  assert.ok(Array.isArray(body.capabilities), 'capabilities must be advertised as an array');
+  assert.equal(body.capabilities.includes('ledger'), false, 'no checkout ⇒ no file journal');
+});

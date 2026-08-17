@@ -28,6 +28,7 @@ import { existsSync, readdirSync } from 'node:fs';
 
 import { listBackups, restoreLatest, targetFromEnv } from './backup.mjs';
 import { createGitRunner } from './git-runner.mjs';
+import { closeJournal, openJournal, replayTailFromTarget } from './journal.mjs';
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);
@@ -41,6 +42,44 @@ function isEmptyish(dir) {
     return readdirSync(dir).filter((n) => n !== 'lost+found').length === 0;
   } catch {
     return true;
+  }
+}
+
+/**
+ * Replay the journal tail, then and ONLY then decide the epoch (DDR-226 §3).
+ *
+ * This is the load-bearing amendment of the sync v2 redesign, and the order is
+ * the whole point. A cell rehydrates from a ≤6 h-old generation on EVERY wake —
+ * this is the normal path, not disaster recovery. The generation's `journal.db`
+ * is therefore routinely BEHIND what peers already hold.
+ *
+ *   - Replay first ⇒ the head is reconstructed past the generation, seqs are
+ *     the same ones peers checkpointed against, and the epoch survives. Cursors
+ *     stay valid, and nobody re-anchors.
+ *   - Rotate the epoch on every restore instead ⇒ a full re-anchor and a storm
+ *     of conflict copies become a DAILY event.
+ *   - Do neither ⇒ the journal silently rewinds and every cursor is stale
+ *     forever, which is worse than both.
+ *
+ * So the epoch rotates only when the tail genuinely cannot reconstruct the
+ * head: `state: 'lost'`. Best-effort — a hub that cannot settle its journal
+ * still boots, because refusing to start is not a better answer for the person
+ * opening the project.
+ */
+async function settleJournal(dataDir, target) {
+  if (!target) return;
+  try {
+    const journal = openJournal(dataDir);
+    const headBefore = journal.head();
+    const res = await replayTailFromTarget({ journal, target });
+    if (res.state === 'lost' && headBefore > 0) {
+      // The journal has rows peers may have consumed and no tail to prove where
+      // it got to. That is an unreconstructible rewind — say so and re-anchor.
+      journal.rotateEpoch('the journal tail could not be read at rehydrate');
+    }
+    closeJournal(dataDir);
+  } catch (err) {
+    console.error(`[rehydrate] journal tail replay failed: ${err.message}`);
   }
 }
 
@@ -74,6 +113,10 @@ async function main() {
     // no generation, something is wrong enough to stop for.
     if (isEmptyish(dataDir)) {
       console.log('[rehydrate] no backup generations and an empty working set — first boot');
+      // A tenant can have written journal rows before its first backup fired;
+      // those seqs are already in peers' cursors, so the tail is replayed even
+      // on the path that restores nothing else.
+      await settleJournal(dataDir, target);
       process.exit(0);
     }
     console.error(
@@ -155,6 +198,9 @@ async function main() {
       );
       process.exit(1);
     }
+    // The generation is on disk. NOW replay the tail and decide the epoch —
+    // in that order, never the other way round (see settleJournal).
+    await settleJournal(dataDir, target);
     process.exit(0);
   } catch (err) {
     console.error(`[rehydrate] restore failed: ${err.message}`);

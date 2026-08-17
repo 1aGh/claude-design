@@ -38,8 +38,22 @@ import { deleteObject, getObject, listObjects, putObject, s3ConfigFromEnv } from
 
 const require = createRequire(import.meta.url);
 
-/** The databases a hub must be able to come back from. */
-export const BACKUP_DATABASES = ['hub.db', 'tokens.db', 'users.db'];
+/**
+ * The databases a hub must be able to come back from.
+ *
+ * `journal.db` joined the set with Sync v2 (DDR-226): unlike `tombstones.db`
+ * — which is deliberately NOT here, because its failure mode is a resurrected
+ * canvas and it expires in 30 days anyway — a lost file journal silently
+ * rewinds every peer's cursor. It therefore rides the SAME generation as the
+ * documents and the checkout, which is the DDR-199 rule that mixing generations
+ * is corruption. The tail in object storage covers the ≤6 h gap between
+ * generations; this covers everything older.
+ *
+ * `snapshotDatabase` returns null for a database that does not exist and the
+ * restore only restores what a generation's manifest lists, so adding a name
+ * here is backwards-compatible in both directions.
+ */
+export const BACKUP_DATABASES = ['hub.db', 'tokens.db', 'users.db', 'journal.db'];
 
 /** Default retention: keep this many snapshot generations. */
 const DEFAULT_KEEP = 14;
@@ -422,6 +436,14 @@ export function scheduleBackups({
   log = console,
   repoDir = null,
   run = null,
+  /**
+   * Fired after a generation completes. Sync v2 uses it to rotate the journal
+   * tail: the generation's `journal.db` now carries every row up to this point,
+   * so the tail no longer has to. Best-effort by construction — replay is
+   * seq-guarded, so a missed rotation costs a slightly long tail and never a
+   * wrong journal.
+   */
+  onGeneration = null,
 }) {
   if (!target || !intervalMs || intervalMs <= 0) return () => {};
   const timer = setInterval(async () => {
@@ -437,11 +459,16 @@ export function scheduleBackups({
     }
     if (!resolved) return;
     runBackup({ dataDir, target: resolved, keep, repoDir, run })
-      .then((r) =>
+      .then(async (r) => {
         log.log?.(
           `[hub] backup ${r.prefix} (${r.files.length} file(s)${r.repo ? ' + checkout' : ''})`
-        )
-      )
+        );
+        try {
+          await onGeneration?.(r);
+        } catch (err) {
+          log.error?.(`[hub] post-generation hook failed: ${err.message}`);
+        }
+      })
       .catch((err) => log.error?.(`[hub] backup FAILED: ${err.message}`));
   }, intervalMs);
   timer.unref?.();

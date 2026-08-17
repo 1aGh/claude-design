@@ -1,0 +1,99 @@
+// The write-door tripwire — Sync v2 Increment 1 (DDR-226 §2, the Bill of
+// Lading graft).
+//
+// The journal's whole value rests on one property: **every accepted write to
+// the checkout appends a row.** A write site that lands bytes without one is
+// invisible to peers, invisible to the doručenka, and — because "no row" is a
+// meaningful statement in this protocol — actively misleading rather than
+// merely incomplete.
+//
+// That property cannot be tested by exercising the doors, because the failure
+// mode is a door nobody thought to exercise. So it is tested STRUCTURALLY: any
+// `rename(` in a hub source file that lands a checkout file must sit in a
+// module that also carries a journal hook (its own `recordWrite`, or an
+// arg-carrying `onWritten` the server binds to `noteCheckoutWrite`).
+//
+// When this test fires on a NEW write site, the fix is to hook it — never to
+// add it to the allowlist without reading the module first.
+
+import assert from 'node:assert/strict';
+import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', 'src');
+
+/**
+ * Modules whose `rename` is NOT a checkout file-plane write, with the reason.
+ * Every entry here is a deliberate, reviewed exemption.
+ */
+const NOT_A_FILE_PLANE_WRITE = new Map([
+  // Restores a whole generation into DATA_DIR (SQLite + a git bundle), not
+  // designRoot files. The journal it restores is one of those databases.
+  ['backup.mjs', 'restores databases into dataDir, not checkout files'],
+  ['repo-checkpoint.mjs', 'git bundle / clone plumbing, not per-file writes'],
+  ['rehydrate.mjs', 'the restore CLI — it REPLAYS the journal rather than appending'],
+  ['seed-repo.mjs', 'the first-boot clone; walk-import indexes the result'],
+  // Operator/credential state under DATA_DIR — never a designRoot path.
+  ['admin-auth.mjs', 'admin credential file in dataDir'],
+  ['bootstrap.mjs', 'the boot bootstrap token file in dataDir'],
+  ['settings.mjs', 'the hub settings JSON in dataDir'],
+  // Plane A. The doc→file projection writes canvas bodies, sibling css, meta
+  // and annotations — every one of them `canvas-owned`, which the classifier
+  // refuses from the file plane by construction (DDR-226 §1: the planes are
+  // disjoint at classification, so a row here could not exist even if this
+  // module asked for one).
+  ['workspace-agent.mjs', 'projects plane-A canvas lanes, which the classifier excludes'],
+]);
+
+/** Every hub source file, flat (the tree has no nested source dirs today). */
+function hubSources() {
+  return readdirSync(SRC, { withFileTypes: true })
+    .filter((e) => e.isFile() && e.name.endsWith('.mjs'))
+    .map((e) => e.name);
+}
+
+describe('every checkout write door is journal-hooked', () => {
+  it('a rename( that lands a checkout file sits beside a journal hook', () => {
+    const offenders = [];
+    for (const name of hubSources()) {
+      if (NOT_A_FILE_PLANE_WRITE.has(name)) continue;
+      const src = readFileSync(join(SRC, name), 'utf8');
+      if (!/\brenameSync\s*\(|\brename\s*\(/.test(src)) continue;
+      const hooked =
+        /recordWrite\s*\(/.test(src) || // appends itself
+        /onWritten\?\.\(\s*\{/.test(src); // arg-carrying hook the server binds
+      if (!hooked) {
+        offenders.push(name);
+      }
+    }
+    assert.deepEqual(
+      offenders,
+      [],
+      `these modules rename a file into place without a journal hook: ${offenders.join(', ')}. ` +
+        'Hook the write (arg-carrying `onWritten({ path })` or a direct `recordWrite`), ' +
+        'or add a reviewed exemption to NOT_A_FILE_PLANE_WRITE with the reason.'
+    );
+  });
+
+  it('the arg-carrying hooks really carry a path', () => {
+    // A hook that fires payload-free tells the journal nothing, which is the
+    // pre-Sync-v2 shape. Both asset doors must name what landed.
+    const assets = readFileSync(join(SRC, 'assets.mjs'), 'utf8');
+    const calls = assets.match(/onWritten\?\.\([^)]*\)/g) ?? [];
+    assert.ok(calls.length >= 2, 'expected both asset write doors to fire onWritten');
+    for (const call of calls) {
+      assert.match(call, /path:/, `payload-free onWritten hook: ${call}`);
+    }
+  });
+
+  it('the server binds both asset doors to the one write notifier', () => {
+    const server = readFileSync(join(SRC, 'server.mjs'), 'utf8');
+    const bindings = server.match(/onWritten:\s*([A-Za-z_.]+)/g) ?? [];
+    assert.equal(bindings.length, 2, 'expected exactly two onWritten bindings');
+    for (const b of bindings) {
+      assert.match(b, /noteCheckoutWrite/, `a write door bypasses the notifier: ${b}`);
+    }
+  });
+});

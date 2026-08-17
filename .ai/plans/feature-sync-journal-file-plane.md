@@ -222,7 +222,35 @@ real tree (alligators + alligators-mirror), verified against built artifacts.**
 - **Validate**: existing cold-start suite green through the new module; new fallthrough regression test; real-tree link smoke.
 - **Rollback**: git revert — no wire/schema change.
 
-### Task 2: Increment 1 — hub journal + tail durability, dark (M)
+### ✅ Task 2: Increment 1 — hub journal + tail durability, dark (M) — DONE 2026-08-17
+
+> **Deviation, recorded.** The journal lives in its OWN `journal.db`, not in
+> `hub.db`. `hub.db` belongs to the Hocuspocus SQLite extension — its schema is
+> upstream's to migrate — and `tombstones.mjs` already made and documented this
+> call. The consequence the plan's shape was protecting is handled explicitly
+> instead: `journal.db` is added to `BACKUP_DATABASES`, so it rides the SAME
+> generation as the documents and the checkout (DDR-199). `tombstones.db`
+> deliberately stays out of that set; the journal cannot.
+>
+> **The write-door tripwire earned its keep on day one.** It flagged
+> `hydrateAssets` — the bucket→checkout refill at boot — as a checkout write
+> door with no journal hook. On a rehydrated cell that is dozens of files
+> arriving with no row, which in this protocol reads as "never delivered". Now
+> hooked with `source:'hydrate'`.
+>
+> Shipped: `apps/hub/src/journal.mjs` (schema, `recordWrite` reading the hub's
+> OWN disk, compaction-as-manifest, cursors + persistent refused set, epoch,
+> `GET /api/journal` failing closed three ways, loopback-only
+> `POST /api/journal/report`, R2 tail write-behind + `replayTailFromTarget`,
+> permanent `walkImport`); arg-carrying `onWritten({path})` on both asset doors
+> bound to one `noteCheckoutWrite`; `scheduleBackups({onGeneration})` → tail
+> rotate; replay-before-epoch-decision in `rehydrate.mjs`; SIGTERM tail flush;
+> post-bind walk-import + 15-min belt; `/health` `capabilities: ['ledger']`.
+> Tests: 4 new files, 48 cases, incl. the full restore drill (backup → wipe →
+> restore → replay ⇒ head monotonic, epoch preserved) and the
+> crash-between-append-and-flush case (row lost, CONTENT not — walk-import
+> re-states it). Hub suite 681/681.
+
 
 - **Do**: CREATE `apps/hub/src/journal.mjs` per synthesis §2 (schema verbatim). Make the three existing door hook sites (`server.mjs:702/741/406` — verify live line numbers) **arg-carrying** `recordWrite({path})`. ADD `POST /api/journal/report` (loopback nudge; hub re-stats/re-hashes its own disk). ADD **R2 journal-tail write-behind** (one NDJSON line per append, `tenants/<id>/journal/tail.ndjson`, rotated per backup generation, loud + retried) and **replay-before-epoch-decision** in `rehydrate.mjs` + SIGTERM tail flush; epoch rotates ONLY on unreconstructible rewind. ADD permanent **walk-import reconciler** (post-bind, boot + periodic; reuses `file-manifest.mjs` walk; sha cache persisted in hub.db). ADD `GET /api/journal?since=&epoch=` + `peer_cursors`; `/health` advertises `ledger`. ADD CI grep pinning every write-door `rename(` to an adjacent journal append.
 - **Pattern**: hub.db table creation mirrors existing tables (see `tokens.mjs`/`users.mjs` migrations); R2 writes mirror `backup.mjs` client usage.

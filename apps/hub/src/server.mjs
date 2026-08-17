@@ -87,6 +87,14 @@ import {
 } from './file-manifest.mjs';
 import { seedFirstUserOnBoot } from './first-user.mjs';
 import { createGitRunner } from './git-runner.mjs';
+import {
+  createJournalTail,
+  handleJournalRoutes,
+  JOURNAL_PATH,
+  JOURNAL_REPORT_PATH,
+  openJournal,
+  walkImport,
+} from './journal.mjs';
 import { LOOPBACK_HOSTS, sanitizeForLog } from './log-safety.mjs';
 import { createRateStore } from './rate-store.mjs';
 import { mintRenderToken, verifyRenderToken } from './render-token.mjs';
@@ -320,6 +328,13 @@ export function createHub(config = {}) {
     // backup is a history that lasts until the next migration.
     repoDir: process.env.MAUDE_REPO_DIR || null,
     run: process.env.MAUDE_REPO_DIR ? createGitRunner() : null,
+    // The generation now carries `journal.db` up to this head, so the R2 tail
+    // can start again from here (DDR-226 §3). Guarded on both sides: replay
+    // skips rows at or below the restored head, so a missed rotation is a
+    // longer tail, never a wrong journal.
+    onGeneration: async () => {
+      if (journal && journalTail) await journalTail.rotate(journal.head());
+    },
   });
   if (backupTarget) {
     // Seconds below a minute: `every 0 min` (what a 15 s test interval printed)
@@ -373,6 +388,50 @@ export function createHub(config = {}) {
   // read by the proxy's post-upload hook. Null until then, and null forever on
   // a hub with no object storage, which is every self-hosted one.
   let assetSweeper = null;
+
+  // ── The file journal (Sync v2 Increment 1, DDR-226 §2) ───────────────────
+  //
+  // Workspace-mode only: the journal describes a CHECKOUT's file plane, and a
+  // self-hosted sync hub beside somebody's desktop has none. Absent ⇒ every
+  // journal surface answers the empty case, which is exactly what an
+  // un-upgraded hub looks like to a capability-gated client.
+  //
+  // DARK IN THIS INCREMENT. The table fills, the routes answer, the tail is
+  // written — and no client consumes any of it yet. That is deliberate: the
+  // durability half has to have soaked before anything depends on the seqs.
+  const journalDesignRoot = workspaceMode && repoDir ? designRootFor() : null;
+  const journal = journalDesignRoot ? openJournal(dataDir) : null;
+  /** @type {ReturnType<typeof createJournalTail>|null} */
+  let journalTail = null;
+  /** @type {ReturnType<typeof setInterval>|null} */
+  let walkImportTimer = null;
+
+  /**
+   * Every accepted write to the checkout, in ONE place.
+   *
+   * Two subscribers, and the ORDER matters only in that neither may fail the
+   * other: the journal append is synchronous and local (it is what makes the
+   * write knowable), the bucket mirror is fire-and-forget (the bytes are
+   * already durable in the checkout). A write door calls this with a PATH; what
+   * is at that path is read here, from disk.
+   */
+  const noteCheckoutWrite = (info) => {
+    const rel = typeof info?.path === 'string' ? info.path : null;
+    if (journal && journalDesignRoot && rel) {
+      try {
+        journal.recordWrite({ designRoot: journalDesignRoot, path: rel, source: 'peer-put' });
+      } catch (err) {
+        // A journal failure must never un-succeed a write that landed. It is
+        // loud, and the walk-import reconciler is the backstop that makes it
+        // recoverable rather than permanent.
+        console.error(`[journal] append failed for ${sanitizeForLog(rel)}: ${err.message}`);
+      }
+    }
+    assetSweeper?.sweepNew().catch((err) => {
+      console.error(`[assets] post-write mirror failed: ${err.message}`);
+    });
+  };
+
   const studioEnabled = workspaceMode && process.env.MAUDE_STUDIO_CHILD !== '0';
   // DESKTOP ↔ CLOUD LIVE PAIRING (variant C2) — mint the child's credential.
   //
@@ -403,6 +462,11 @@ export function createHub(config = {}) {
         // boot. Fire-and-forget: the upload has already succeeded, and a mirror
         // failure must not un-succeed it (the bytes are still in the checkout,
         // and the next boot sweep is the backstop it always was).
+        // The browser-upload door is PROXIED — the bytes stream through to the
+        // studio child, so the hub never learns which path landed and cannot
+        // name one to the journal. The child reports its own writes over
+        // `POST /api/journal/report` (a nudge; the hub still reads its own
+        // disk), and walk-import is the backstop. So this stays payload-free.
         onAssetWritten: () => {
           assetSweeper?.sweepNew().catch((err) => {
             console.error(`[assets] post-upload mirror failed: ${err.message}`);
@@ -575,6 +639,11 @@ export function createHub(config = {}) {
           studio,
           stats: privileged ? tenantStats({ designRoot: designRootFor() }) : null,
           render: privileged && studio ? await studio.renderStats() : null,
+          // Sync v2 capability advertisement (DDR-226 §5/§10 — the compat
+          // matrix is BINDING). A client never attaches the control channel or
+          // relaxes its polling against a hub that does not say `ledger` here.
+          // A protocol marker, not customer data, so it rides the public half.
+          capabilities: journal ? ['ledger'] : [],
         });
         // 503, not 200-with-ok-false. A router reads the STATUS; a payload it
         // has to parse to learn the truth is a payload it will not parse.
@@ -699,11 +768,8 @@ export function createHub(config = {}) {
               : null,
           // Mirror a pushed asset to the bucket now — the same fire-and-forget
           // hook a browser upload uses (B3); the checkout stays the backstop.
-          onWritten: () => {
-            assetSweeper?.sweepNew().catch((err) => {
-              console.error(`[assets] post-push mirror failed: ${err.message}`);
-            });
-          },
+          // Arg-carrying since Sync v2: the same hook appends the journal row.
+          onWritten: noteCheckoutWrite,
           checkRateLimit: rateLimit
             ? (req) => checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
             : undefined,
@@ -738,11 +804,7 @@ export function createHub(config = {}) {
           // 2026-08-15 RCA — this was the ONE write surface without the B3
           // mirror hook; a top-level `assets/…` file pushed here stayed
           // checkout-only until the next boot.
-          onWritten: () => {
-            assetSweeper?.sweepNew().catch((err) => {
-              console.error(`[assets] post-push mirror failed: ${err.message}`);
-            });
-          },
+          onWritten: noteCheckoutWrite,
           checkRateLimit: rateLimit
             ? (req) => checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
             : undefined,
@@ -835,6 +897,47 @@ export function createHub(config = {}) {
             workspaceMode && repoDir
               ? join(repoDir, process.env.MAUDE_DESIGN_ROOT ?? '.design')
               : null,
+          respondJson: (status, payload) => respondAdminJson(response, status, payload),
+        });
+        if (handled) bailFromOnRequest();
+      }
+      // The journal (Sync v2 Increment 1, DDR-226 §5). `GET /api/journal` is
+      // the cursor read — the manifest becomes its `since=0` case — and
+      // `POST /api/journal/report` is the studio child's loopback nudge.
+      //
+      // In NEITHER canvas allowlist (DDR-088): the canvas origin is untrusted
+      // content and has no business reading a project's write history, let
+      // alone asking the hub to stat paths.
+      if (authPath === JOURNAL_PATH || authPath === JOURNAL_REPORT_PATH) {
+        let journalBody = null;
+        if (authPath === JOURNAL_REPORT_PATH && method === 'POST') {
+          try {
+            journalBody = await readJsonBody(request);
+          } catch {
+            journalBody = null;
+          }
+        }
+        const handled = handleJournalRoutes({
+          path: authPath,
+          method,
+          query: Object.fromEntries(new URL(url, 'http://x').searchParams),
+          bearer: (request.headers?.authorization ?? '').replace(/^Bearer\s+/i, '').trim() || null,
+          verify: (token) => verifyToken(dataDir, token, secret),
+          matchesScope,
+          designRoot: journalDesignRoot,
+          journal,
+          body: journalBody,
+          // The nudge is for the process sharing this disk. `clientIp` already
+          // resolves the trusted-proxy chain, so a forwarded request from the
+          // internet cannot claim to be loopback here.
+          isLoopback: LOOPBACK_HOSTS.has(clientIp(request)),
+          // The same per-label bucket the file-plane READS use — a cursor poll
+          // is the same shape of traffic, and `GET /api/files` having no rate
+          // limit at all is a named below-floor finding this route does not
+          // repeat.
+          checkRateLimit: rateLimit
+            ? (label) => checkConnRateLimit(fileReadBuckets, label, assetWriteRateLimitMax)
+            : undefined,
           respondJson: (status, payload) => respondAdminJson(response, status, payload),
         });
         if (handled) bailFromOnRequest();
@@ -1250,6 +1353,57 @@ export function createHub(config = {}) {
     setAssetSweeper(sweeper) {
       assetSweeper = sweeper;
     },
+    /** The file journal, or null on a hub with no checkout. Tests read it. */
+    journal,
+    /**
+     * Arm the journal's durability + reconciliation, AFTER the port is bound.
+     *
+     * POST-BIND is not a detail. The first walk of a rehydrated checkout
+     * re-hashes every file — the restore reset every mtime, so the sha cache
+     * misses across the board — and `portReadyTimeoutMS` is already 30 minutes
+     * because rehydrate runs before the hub binds. Putting a full hash pass in
+     * front of the listener would make availability a function of project size
+     * all over again. So the cell SERVES STALE UNTIL REPAIRED: the manifest
+     * answers from whatever the journal already knows, and the walk corrects it
+     * moments later.
+     *
+     * Two things start here:
+     *   1. the R2 tail write-behind, subscribed to every append;
+     *   2. the walk-import reconciler — once now, then on a slow belt.
+     */
+    async startJournalReconciler({ target, intervalMs = 15 * 60_000 } = {}) {
+      if (!journal || !journalDesignRoot) return { state: 'off', reason: 'no checkout' };
+      journalTail = createJournalTail({ journal, target });
+      journal.onAppend(() => journalTail?.schedule());
+
+      // The reconciler is the TRUTH and the hooks are the optimization: a
+      // git-level restore, a write site nobody hooked, or a class flip all
+      // land here rather than being lost.
+      const first = walkImport({ journal, designRoot: journalDesignRoot });
+      if (first.appended > 0) await journalTail.flush();
+      walkImportTimer = setInterval(() => {
+        try {
+          walkImport({ journal, designRoot: journalDesignRoot });
+        } catch (err) {
+          console.error(`[journal] walk-import pass failed: ${err.message}`);
+        }
+      }, intervalMs);
+      walkImportTimer.unref?.();
+      console.log(
+        `[journal] armed — head ${journal.head()}, epoch ${journal.epoch().slice(0, 8)}, ` +
+          `walk-import every ${Math.round(intervalMs / 60000)} min${target ? ' + R2 tail' : ' (no object storage — no tail)'}`
+      );
+      return { state: 'on', head: journal.head(), imported: first.appended };
+    },
+    /** Land the tail inside the debounce window. The SIGTERM path needs this. */
+    async stopJournal() {
+      if (walkImportTimer !== null) {
+        clearInterval(walkImportTimer);
+        walkImportTimer = null;
+      }
+      await journalTail?.stop();
+      journalTail = null;
+    },
     /** Flush the pending commit and detach. The SIGTERM path depends on this. */
     async stopWorkspaceAgent() {
       if (!workspace) return;
@@ -1267,6 +1421,10 @@ export function createHub(config = {}) {
       stopBackups();
       mirror?.stop();
       rateStore.close();
+      if (walkImportTimer !== null) {
+        clearInterval(walkImportTimer);
+        walkImportTimer = null;
+      }
     },
   };
 }
@@ -1830,6 +1988,7 @@ function buildStatusPayload({
   studio = null,
   stats = null,
   render = null,
+  capabilities = null,
 }) {
   const { tokens } = readTokens(dataDir);
   const workspace = workspaceStatus();
@@ -1865,6 +2024,11 @@ function buildStatusPayload({
     tokenCount: tokens.length,
     authMode: tokens.length > 0 ? 'tokens' : secret ? 'env-secret' : 'dev',
     identity: identityPosture(),
+    // What protocol features this hub HAS. Omitted (not empty-arrayed) when the
+    // caller did not compute it, so "this hub predates capabilities" stays
+    // distinguishable from "this hub has none" — the same
+    // omitted-when-unknown rule the stats block follows.
+    ...(capabilities ? { capabilities } : {}),
     peersCount: peersCount ?? 0,
     // OMITTED when unknown, never zeroed. A cell on an older image, or one
     // whose studio is not up, must stay distinguishable from a project with no
@@ -2444,6 +2608,14 @@ async function runAsMain() {
 
   seedFirstUserOnBoot(dataDir);
 
+  // Sync v2 Increment 1 — the journal's durability and its reconciler, armed
+  // once the port is bound (see startJournalReconciler for why the order is
+  // load-bearing). Fire-and-forget: a hub whose journal cannot arm still
+  // serves, and says so.
+  built
+    .startJournalReconciler({ target: targetFromEnv() })
+    .catch((err) => console.error(`[journal] could not arm: ${err.message}`));
+
   // Cloud Phase 16 — server-owned history + the server-side asset lane.
   // Both are workspace-mode-only and both report rather than throw.
   if (workspaceMode) {
@@ -2483,7 +2655,23 @@ async function runAsMain() {
           // Hydrating first also makes the sweep that follows cheap and correct:
           // the gaps are filled, so it HEADs them, finds them present, and skips
           // — instead of racing a restore it cannot see.
-          const restored = await hydrateAssets({ designRoot, s3 });
+          const restored = await hydrateAssets({
+            designRoot,
+            s3,
+            // Sync v2 — a bucket→checkout refill IS an arrival, and peers have
+            // to be able to see it. `hydrate` rather than `peer-put`: the row's
+            // source is forensics, and "this came back from the bucket after a
+            // wake" is a different fact from "a desktop pushed it".
+            onWritten: ({ path: rel }) => {
+              if (journal && journalDesignRoot) {
+                journal.recordWrite({
+                  designRoot: journalDesignRoot,
+                  path: rel,
+                  source: 'hydrate',
+                });
+              }
+            },
+          });
           if (restored.restored.length || restored.failed.length) {
             built.recordAssetHydrate({
               restored: restored.restored.length,
@@ -2546,6 +2734,11 @@ async function runAsMain() {
     built
       .stopWorkspaceAgent()
       .catch((err) => console.error('[hub] workspace flush error:', err))
+      // Land the journal tail BEFORE anything else tears down. A cell is
+      // migrated mid-session as the NORMAL path, and a tail stuck inside its
+      // debounce window is exactly the rewind the tail exists to prevent.
+      .then(() => built.stopJournal())
+      .catch((err) => console.error('[hub] journal tail flush error:', err))
       // The studio owns `_server.json` and a couple of pending writes; stopping
       // it politely is what keeps the next boot from reading stale state as a
       // live instance.

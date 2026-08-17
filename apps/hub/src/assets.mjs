@@ -419,7 +419,12 @@ async function handleAssetPut({
   }
   // Mirror to the bucket now, not at the next boot — fire-and-forget, the
   // bytes are already durable in the checkout (the browser-upload precedent).
-  onWritten?.();
+  //
+  // ARG-CARRYING since Sync v2 (DDR-226 §2): the hook also drives the journal
+  // append, and an append needs to know WHICH path landed. The path is all it
+  // gets — the journal re-stats and re-hashes the disk itself, so this is a
+  // pointer, never a content claim.
+  onWritten?.({ path: `assets/${key}`, bytes: r.total });
   const body = JSON.stringify({ ok: true, key, bytes: r.total });
   response
     .writeHead(200, {
@@ -670,7 +675,10 @@ export async function handleCheckoutAssetRoute(ctx) {
   // gone, and a 404 on the `/assets/` proxy meanwhile (2026-08-15 RCA). The
   // sweep lists only `<designRoot>/assets/`, so a `system/**` write is a
   // cheap no-op pass, not a mis-mirror.
-  ctx.onWritten?.();
+  //
+  // Arg-carrying since Sync v2 (DDR-226 §2) — see handleAssetPut for why the
+  // path is the only thing this hook is allowed to assert.
+  ctx.onWritten?.({ path: rel, bytes: r.total });
   const body = JSON.stringify({ ok: true, path: rel, bytes: r.total });
   response
     .writeHead(200, {

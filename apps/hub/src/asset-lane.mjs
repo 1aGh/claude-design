@@ -248,7 +248,25 @@ export function assetNameFromKey(key, prefix = '') {
  *
  * @returns {Promise<{ restored: string[], present: number, failed: {key:string,reason:string}[], listed: number }>}
  */
-export async function hydrateAssets({ designRoot, s3, log = console, deps = {}, prefix }) {
+export async function hydrateAssets({
+  designRoot,
+  s3,
+  log = console,
+  deps = {},
+  prefix,
+  /**
+   * Sync v2 (DDR-226 §2) — fired with the designRoot-relative path of every
+   * file this restore lands.
+   *
+   * This lane WRITES CHECKOUT FILES, so it is a write door like any other and
+   * needs a journal row: a rehydrated cell that refilled 58 assets from the
+   * bucket has 58 files peers cannot see the arrival of, and — because "no
+   * row" is a meaningful statement in this protocol — 58 files the doručenka
+   * would report as never delivered. Found by the write-door tripwire, not by
+   * a reader; that is what the tripwire is for.
+   */
+  onWritten = null,
+}) {
   const scope = prefix ?? assetPrefixFromEnv();
   const list = deps.listObjects ?? listObjects;
   const get = deps.getObject ?? getObject;
@@ -328,6 +346,13 @@ export async function hydrateAssets({ designRoot, s3, log = console, deps = {}, 
       writeFileSync(tmp, body);
       renameSync(tmp, abs);
       result.restored.push(name);
+      // The path is all this says; the journal re-stats and re-hashes the disk.
+      // Never allowed to fail the restore that already landed.
+      try {
+        onWritten?.({ path: `assets/${name}` });
+      } catch (err) {
+        log.error?.(`[assets] hydrate journal hook failed for ${name}: ${err.message}`);
+      }
     } catch (err) {
       result.failed.push({ key: name, reason: err.message });
     }

@@ -129,7 +129,13 @@ test('runBackup writes every present database plus a manifest', async () => {
   assert.ok(existsSync(join(backupDir, `${result.prefix}/hub.db.gz`)));
   assert.ok(existsSync(join(backupDir, `${result.prefix}/manifest.json`)));
   // BACKUP_DATABASES is the contract — if a future db is added it must be here.
-  assert.deepEqual(BACKUP_DATABASES, ['hub.db', 'tokens.db', 'users.db']);
+  //
+  // `journal.db` joined it with Sync v2 (DDR-226): the file journal must ride
+  // the SAME generation as the documents and the checkout, because a restore
+  // that brings back documents beside an older journal hands every peer a
+  // rewound cursor. `tombstones.db` is deliberately still absent — its failure
+  // mode is a resurrected canvas and it expires in 30 days regardless.
+  assert.deepEqual(BACKUP_DATABASES, ['hub.db', 'tokens.db', 'users.db', 'journal.db']);
 });
 
 test('runBackup on an empty data dir fails loudly instead of writing an empty generation', async () => {
