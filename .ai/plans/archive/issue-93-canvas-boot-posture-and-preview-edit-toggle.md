@@ -106,16 +106,16 @@ invariant tests stay verbatim. The mode is a store-level layer, enforced by the
 mode⇄tool invariant (arming `move` implies `edit`, arming `browse` implies
 `preview`; annotation tools are mode-neutral).
 
-- [ ] **T1 — `use-tool-mode.tsx`: mode state.** `CanvasMode = 'preview' | 'edit'`;
+- [x] **T1 — `use-tool-mode.tsx`: mode state.** `CanvasMode = 'preview' | 'edit'`;
       `MODE_DEFAULT_TOOL` map; context gains `mode`, `setMode` (arms the resting
       tool, clears sticky), `resetTool` (arms the current mode's resting tool);
       `setTool` auto-syncs mode for `move`/`browse`. Boot default flips to
       `initial='move'` + `initialMode='edit'`; read-only boots `preview`/`browse`.
-- [ ] **T2 — `canvas-comment-mount.tsx`: pin the specimen posture.**
+- [x] **T2 — `canvas-comment-mount.tsx`: pin the specimen posture.**
       `MaybeToolProvider` forwards `initial`/`initialMode`; `buildCanvasTree`
       passes `initial='browse'` so bare DS specimens keep today's alive posture
       and native cursors. (Requires a `dist/comment-mount.js` rebuild.)
-- [ ] **T3 — reset-to-mode-default call sites.** `annotations-layer.tsx` T18
+- [x] **T3 — reset-to-mode-default call sites.** `annotations-layer.tsx` T18
       post-commit flip + text-tool flips (5× `setTool('move')`) and the
       `canvas-shell.tsx` Esc handler go through `resetTool()`. The Cmd+click
       escape hatch (`canvas-shell.tsx` ~3211) stays `setTool('move')` — the
@@ -128,14 +128,14 @@ mode⇄tool invariant (arming `move` implies `edit`, arming `browse` implies
       in from the palette's right end; draw group in both modes; `+ Element`
       insert edit-only; clicking the active Preview/Edit segment re-arms the
       resting tool. `data-testid="palette-mode-{preview,edit,present}"`.
-- [ ] **T5 — `client/app.jsx`: first-run hint** re-keyed to
+- [x] **T5 — `client/app.jsx`: first-run hint** re-keyed to
       `maude-mode-hint-seen`, copy teaches Edit-boot + the Preview toggle;
       read-only branch keeps the alive-mock wording.
-- [ ] **T6 — tests.** `use-tool-mode.test.tsx` boot assertions flip to
+- [x] **T6 — tests.** `use-tool-mode.test.tsx` boot assertions flip to
       edit/`move`; new tests: mode⇄tool invariant, `resetTool` per mode,
       read-only preview boot, active-segment re-arm. `browse-posture.test.tsx`
       + `input-router.test.ts` posture tables unchanged (assert they still pass).
-- [ ] **T7 — artifacts.** Rebuild `dist/client.bundle.js` + `dist/comment-mount.js`
+- [x] **T7 — artifacts.** Rebuild `dist/client.bundle.js` + `dist/comment-mount.js`
       release-minified (`MAUDE_SKIP_RUNTIME_BUILD=1 bun run build.ts --release`);
       `git status apps/studio/dist/` before/after `bun test` per the CLAUDE.md
       clobber rule. What's New entry (pending, version null). Roadmap regen.
@@ -145,8 +145,8 @@ mode⇄tool invariant (arming `move` implies `edit`, arming `browse` implies
 ## Acceptance Criteria
 
 - [x] Owner has read this plan and DDR-187 and chosen one of Option 1 / 2 / 3 — **Option 3 + boot=edit, 2026-08-14 (DDR-223)**.
-- [ ] A fresh (non-read-only) canvas boots in Edit with `move` armed; bare click selects the top-level object (Figma ladder unchanged).
-- [ ] The palette shows a Preview/Edit toggle; Preview restores the alive mock (bare clicks pass through) while annotation tools remain usable; drawing in Preview returns to `browse`, never to `move`.
-- [ ] V / Cmd+click-in-browse / Esc keep their DDR-187 semantics in Edit and additionally flip the visible mode coherently.
-- [ ] Read-only canvases and bare DS specimens boot byte-identical to the DDR-187 posture (preview/`browse`).
-- [ ] Browse pass-through invariant tests pass verbatim; suite green; committed bundles rebuilt release-minified.
+- [x] A fresh (non-read-only) canvas boots in Edit with `move` armed; bare click selects the top-level object (Figma ladder unchanged).
+- [x] The palette shows a Preview/Edit toggle; Preview restores the alive mock (bare clicks pass through) while annotation tools remain usable; drawing in Preview returns to `browse`, never to `move`.
+- [x] V / Cmd+click-in-browse / Esc keep their DDR-187 semantics in Edit and additionally flip the visible mode coherently.
+- [x] Read-only canvases and bare DS specimens boot byte-identical to the DDR-187 posture (preview/`browse`).
+- [x] Browse pass-through invariant tests pass verbatim; suite green; committed bundles rebuilt release-minified.
