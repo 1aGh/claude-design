@@ -251,6 +251,13 @@ async function seedRepo() {
   await run('git', ['config', 'user.email', 'cell@local'], { cwd: repoDir });
   await run('git', ['config', 'user.name', 'Local Cell'], { cwd: repoDir });
   seedProject();
+  // The same ignore block `maude init` writes. Without it the scratch repo
+  // counts `_state/`, `_history/`, `_server.json` and every other per-machine
+  // runtime path as project content (DDR-115), so `git status` is permanently
+  // dirty and "did the commit capture the work" becomes unanswerable — a
+  // question this cell exists to answer.
+  const { writeGitignoreBlock } = await import(join(REPO_ROOT, 'cli/lib/gitignore-block.mjs'));
+  writeGitignoreBlock(repoDir, { designRel: '.design' });
   await run('git', ['add', '-A'], { cwd: repoDir });
   await run('git', ['commit', '-q', '-m', 'seed: local cell smoke project'], { cwd: repoDir });
 }
@@ -353,6 +360,13 @@ async function main() {
     // On the fleet this is the `CELL_LIVE_PAIRING` pilot allowlist. A local
     // cell exists to exercise both planes, so it is on here.
     MAUDE_CELL_PAIRING: '1',
+    // The studio child's port is otherwise a hardcoded 4399, so a SECOND local
+    // cell silently fights the first one for it: the child loses the bind,
+    // walks to the next free port, and the hub goes on proxying to a child that
+    // belongs to the other cell — a different project, served under this one's
+    // URL. Deriving it keeps the default run byte-identical (4599 → 4399) and
+    // makes every other port self-consistent. An explicit env still wins.
+    MAUDE_STUDIO_PORT: process.env.MAUDE_STUDIO_PORT ?? String(port - 200),
     ...(has('no-watch') ? { MAUDE_NO_WATCH: '1' } : {}),
     ...(has('no-events') ? { MAUDE_FILE_EVENTS: '0' } : {}),
   };
