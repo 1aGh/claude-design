@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-16T06:12:46.872Z",
+  "generated": "2026-08-16T15:41:31.739Z",
   "currentPhase": null,
   "phases": [
     {
@@ -2078,6 +2078,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-production-grade-hardening.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-sync-journal-file-plane",
+      "title": "Feature: Sync v2 — journal file plane (7 lanes → 2, one reconciler, doručenka)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-sync-journal-file-plane.md",
       "archived": false,
       "phaseKey": null
     },
