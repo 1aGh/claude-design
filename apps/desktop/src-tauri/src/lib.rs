@@ -64,11 +64,20 @@ fn install_signal_handler(handle: tauri::AppHandle) {
             match signal(kind) {
                 Ok(mut sig) => {
                     sig.recv().await;
-                    eprintln!("[maude] termination signal received — killing sidecar");
+                    // NOT `eprintln!`: it panics on a broken pipe, which is
+                    // the normal state here — the launching terminal is
+                    // usually gone by the time a signal arrives. Panicking
+                    // inside the handler abandoned the sidecars this is about
+                    // to kill. See `sidecar::log_shutdown`.
+                    sidecar::log_shutdown("[maude] termination signal received — killing sidecar");
                     sidecar::kill_server(&handle);
                     std::process::exit(0);
                 }
-                Err(e) => eprintln!("[maude] could not install signal handler: {e}"),
+                Err(e) => {
+                    sidecar::log_shutdown(&format!(
+                        "[maude] could not install signal handler: {e}"
+                    ));
+                }
             }
         });
     }
