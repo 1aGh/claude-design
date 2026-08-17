@@ -395,6 +395,8 @@ export function createHub(config = {}) {
   // read by the proxy's post-upload hook. Null until then, and null forever on
   // a hub with no object storage, which is every self-hosted one.
   let assetSweeper = null;
+  /** One line, not one per request, when render tokens cannot be minted. */
+  let warnedNoCanvasToken = false;
 
   // ── The file journal (Sync v2 Increment 1, DDR-226 §2) ───────────────────
   //
@@ -479,17 +481,40 @@ export function createHub(config = {}) {
             console.error(`[assets] post-upload mirror failed: ${err.message}`);
           });
         },
-        mintCanvasToken: (session) =>
-          mintRenderToken({
-            secret,
-            project: process.env.MAUDE_TENANT_ID ?? 'local',
-            subject: session.email,
-            // The member's real role rides the capability so the canvas
-            // origin's collab socket opens at it (annotations need an editor).
-            // The HTTP canvas lane keeps the viewer floor regardless — see
-            // render-token.mjs for why this widens nothing over HTTP.
-            role: session.role,
-          }),
+        // NEVER LET THIS THROW INTO THE REQUEST LOOP.
+        //
+        // `mintRenderToken` refuses without a hub secret — correctly; a
+        // capability nobody can verify is not a capability. But this is called
+        // from the shell door on an ordinary signed-in page load, and an
+        // unhandled throw there does not produce a 500: it takes the whole hub
+        // process down. A hub started without HUB_SECRET therefore accepted a
+        // sign-in and then died on the very first page the person opened.
+        //
+        // The canvas token is OPTIONAL by construction — `?? null` at the call
+        // site, and the canvas origin simply stays unauthenticated without it.
+        // So a mint that cannot happen degrades to "no token", loudly, once.
+        mintCanvasToken: (session) => {
+          try {
+            return mintRenderToken({
+              secret,
+              project: process.env.MAUDE_TENANT_ID ?? 'local',
+              subject: session.email,
+              // The member's real role rides the capability so the canvas
+              // origin's collab socket opens at it (annotations need an editor).
+              // The HTTP canvas lane keeps the viewer floor regardless — see
+              // render-token.mjs for why this widens nothing over HTTP.
+              role: session.role,
+            });
+          } catch (err) {
+            if (!warnedNoCanvasToken) {
+              warnedNoCanvasToken = true;
+              console.error(
+                `[hub] cannot mint canvas render tokens (${err.message}). The studio will load, but canvas-origin surfaces that need a capability (live collab, annotations) stay unauthenticated. Set HUB_SECRET to enable them.`
+              );
+            }
+            return null;
+          }
+        },
       })
     : null;
   /** @type {ReturnType<typeof scheduleMirror>|null} */

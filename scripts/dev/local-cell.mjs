@@ -335,6 +335,12 @@ async function main() {
     // throwaway by construction.
     MAUDE_ADMIN_EMAIL: ADMIN_EMAIL,
     MAUDE_ADMIN_PASSWORD: ADMIN_PASSWORD,
+    // Canvas render tokens are HMAC'd with this. Without it the studio still
+    // loads, but every canvas-origin capability (live collab, annotations)
+    // stays unauthenticated — and a local cell exists precisely to exercise
+    // those. Fixed, not random: a rotating secret would invalidate the browser
+    // sessions of a cell you restart while working.
+    HUB_SECRET: 'local-cell-secret-not-for-production',
     ...(has('no-watch') ? { MAUDE_NO_WATCH: '1' } : {}),
     ...(has('no-events') ? { MAUDE_FILE_EVENTS: '0' } : {}),
   };
