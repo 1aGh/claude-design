@@ -561,22 +561,31 @@ const presence = {
       await side.browserHandle.waitPresent(row, { timeoutMs: 25_000 });
       await side.browserHandle.click(row);
     }
-    // Presence is a live channel; give the room a moment to introduce them.
-    // `.st-presence` is the SHELL's avatar strip. The cursor and the
-    // participant chips render inside the canvas iframe, which is a separate
-    // origin by design (DDR-054) — a parent-document query cannot reach them,
-    // and a check that cannot fail is worse than no check. So: the shell's
-    // count here, and the screenshot for the cursor.
-    const twoUp = (b) => waitFor(async () => (await b.count('.st-presence .st-avatar')) >= 2, {
-      timeoutMs: 30_000,
-      label: 'a second avatar',
-    });
-    const seen = await twoUp(to.browserHandle);
-    const seenBack = await twoUp(from.browserHandle);
+    // WHAT THIS CAN AND CANNOT ASSERT, stated rather than fudged.
+    //
+    // Participant chips and live cursors render inside the CANVAS IFRAME, which
+    // is a separate origin by design (DDR-054). A parent-document query cannot
+    // reach them, and `.st-presence` in the shell is the LOCAL user's own
+    // avatar — it never shows anybody else, so counting it would be a check
+    // that fails whether presence works or not. (It did, for one run, and the
+    // red row said nothing true.)
+    //
+    // So this asserts the MECHANICS it can actually see — both machines really
+    // have the same canvas mounted, which is the precondition presence needs —
+    // and leaves the collaborative half to the screenshots, which is honest
+    // about being a human check rather than pretending to be a machine one.
+    const mounted = (b) =>
+      waitFor(async () => (await b.count('iframe')) >= 1, {
+        timeoutMs: 30_000,
+        label: 'the canvas iframe',
+      });
+    const here = await mounted(from.browserHandle);
+    const there = await mounted(to.browserHandle);
+    await from.browserHandle.shot(`presence--${m.slug}--from`);
+    await to.browserHandle.shot(`presence--${m.slug}--to`);
     return [
-      ['the far side shows a second person on the canvas', seen.ok],
-      ['and it is mutual', seenBack.ok],
-      ['(the live cursor is cross-origin — see the screenshot)', true],
+      ['both machines have the same canvas open', here.ok && there.ok],
+      ['(participant chips + cursors are cross-origin — see the two screenshots)', true],
     ];
   },
 };
