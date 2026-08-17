@@ -797,6 +797,36 @@ export async function replayTailFromTarget({ journal, target, log = console }) {
   return { state: 'replayed', ...result };
 }
 
+/** Floor and ceiling for the walk-import belt. A belt faster than a second is
+ *  a busy-loop; one slower than an hour is not a backstop, it is a shrug. */
+const WALK_MIN_MS = 1_000;
+const WALK_MAX_MS = 60 * 60_000;
+/**
+ * How often the reconciler re-walks the checkout, in ms.
+ *
+ * This is the backstop for writes NO hook covers: an agent editing a
+ * design-system file from inside the cell, a `git pull`, a CLI import verb, a
+ * class flip. The hooked paths (a peer's PUT, the studio child's nudge) reach
+ * the journal in about a second and never wait for this.
+ *
+ * It used to be fifteen minutes, chosen when the walk was assumed expensive. It
+ * isn't, after the first pass: `shaOf` caches by (path, size, mtime), so a
+ * repeat walk is one `stat` per file and re-hashes only what actually moved. A
+ * minute costs a few milliseconds on a design project and turns "up to a
+ * quarter of an hour" into "up to a minute" for everything unhooked — which
+ * matters because the difference between the two sync directions is what reads
+ * to a person as "cloud → desktop is broken".
+ *
+ * The first walk after a REHYDRATE is still the expensive one (a restore resets
+ * every mtime, so the cache misses across the board), and it still runs
+ * post-bind exactly once. This interval does not touch that.
+ */
+export function walkIntervalFromEnv(env = process.env) {
+  const raw = Number(env.MAUDE_JOURNAL_WALK_MS);
+  if (!Number.isFinite(raw) || raw <= 0) return 60_000;
+  return Math.min(WALK_MAX_MS, Math.max(WALK_MIN_MS, Math.trunc(raw)));
+}
+
 /**
  * The permanent walk-import reconciler (DDR-226 §2).
  *

@@ -99,6 +99,7 @@ import { clearLocatorSlug, readLocator, writeLocator } from './locator.ts';
 import { STICKERS_DIR } from './paths.ts';
 import { getPaperPreset, MAX_PRINT_MM } from './print/units.ts';
 import { sessionDir } from './session-scope.ts';
+import { isWorkspaceMode } from './workspace-mode.ts';
 
 // Directories that never hold user-facing canvases. Exported so the
 // external-canvas watcher (`canvas-list-watch.ts`) shares one source instead of
@@ -1925,6 +1926,13 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     const clean = sanitizeAnnotationSvg(svg);
     await Bun.write(annotationsPath(file), clean);
     onAnnotationsChanged?.(file, clean);
+    // Annotations reach OTHER VIEWERS over the collab room, which is why this
+    // never needed an `fs:any`. But the file is also a versioned, file-plane
+    // sidecar (DDR-115), and the file plane learns about a cell's own writes
+    // through exactly this event — so without it, a sticky note drawn in the
+    // cloud crossed to open browsers instantly and to a peer's DISK a quarter
+    // of an hour later.
+    announceWritten(`${fileSlug(file)}.annotations.svg`);
     return true;
   }
 
@@ -1961,6 +1969,30 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
    * ever parsed — only magic bytes are read. `saveAsset(bytes)` wraps this so
    * both the route and any programmatic caller share ONE tested path.
    */
+  /**
+   * Say that a file this process wrote has landed.
+   *
+   * Most write paths get this for free: they arm `activity:suppress` before
+   * writing, and `createContainerWriteBridge` turns that into the `fs:any` a
+   * cell's `fs.watch` never fires. The asset writer does not — it streams to a
+   * temp file and content-addresses the name, so there is no `rel` to suppress
+   * until after the rename, by which point suppression means nothing.
+   *
+   * That gap was invisible while `fs:any` only drove hot-reload (the uploader
+   * already knew, and other viewers reloaded eventually). It stopped being
+   * invisible when the same event became how a cell tells its hub to journal a
+   * write: an image dropped in the cloud got no row until the 15-minute
+   * walk-import belt found it, so it reached a peer's laptop up to fifteen
+   * minutes later while every other kind of edit crossed in seconds.
+   *
+   * WORKSPACE-MODE ONLY, on the same reasoning as the bridge: locally
+   * `fs.watch` fires for this rename and a second source would double-load.
+   */
+  function announceWritten(rel: string): void {
+    if (!isWorkspaceMode()) return;
+    ctx.bus.emit('fs:any', rel);
+  }
+
   async function saveAssetFromStream(stream: ReadableStream<Uint8Array>): Promise<SaveAssetResult> {
     const assetsDir = path.join(paths.designRoot, 'assets');
     const tmpName = `.tmp-${crypto.randomBytes(8).toString('hex')}`;
@@ -2081,6 +2113,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       await rename(tmpAbs, fileAbs);
       assetBytesWritten += total;
       const rel = `assets/${name}`;
+      announceWritten(rel);
       // S3/R2 lane (Cloud Phase 3) — mirror the bytes so a second machine can
       // resolve them without the file riding git. Deliberately awaited but
       // never able to fail the save: the asset is already on disk, the mirror

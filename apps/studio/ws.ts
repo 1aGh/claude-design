@@ -277,11 +277,20 @@ export function createWs(
   // arm. Workspace-mode only — locally fs.watch fires and this would double-load.
   if (isWorkspaceMode()) {
     createContainerWriteBridge(ctx);
-    // Sync v2 Increment 2 (DDR-226 §4) — the OTHER half of the same gap. The
-    // bridge above covers writes THIS process makes; a desktop asset PUT or a
-    // bucket→checkout refill happens in the HUB process, and nothing crossed
-    // that boundary. Now the hub pokes over the reserved `maude.files` channel
-    // and this turns the poke into the `fs:any` the watcher owed us.
+    // Sync v2 Increment 2/3 (DDR-226 §4) — the OTHER half of the same gap, and
+    // now both ways across it. The bridge above covers writes THIS process
+    // makes; a desktop asset PUT or a bucket→checkout refill happens in the HUB
+    // process, and nothing crossed that boundary.
+    //
+    //   hub → child   the hub pokes over the reserved `maude.files` channel and
+    //                 this turns the poke into the `fs:any` the watcher owed us
+    //   child → hub   the same `fs:any` (from the bridge above) is named to the
+    //                 hub, which journals it at once instead of finding it on
+    //                 the 15-minute walk-import belt
+    //
+    // Without the second direction the two sync directions have wildly
+    // different latency — seconds one way, up to a quarter of an hour the other
+    // — which is indistinguishable from "cloud → desktop is broken".
     //
     // Deliberately NOT gated on cell pairing — that is a one-tenant pilot and
     // the gap is fleet-wide. See sync/ctl-provider.ts.

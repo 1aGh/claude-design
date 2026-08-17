@@ -101,6 +101,7 @@ import {
   JOURNAL_REPORT_PATH,
   openJournal,
   walkImport,
+  walkIntervalFromEnv,
 } from './journal.mjs';
 import { LOOPBACK_HOSTS, sanitizeForLog } from './log-safety.mjs';
 import { createRateStore } from './rate-store.mjs';
@@ -208,6 +209,7 @@ function authError(reason) {
   err.reason = reason;
   return err;
 }
+
 
 /**
  * Build (but don't yet start) a Hocuspocus instance against the given config.
@@ -1481,7 +1483,7 @@ export function createHub(config = {}) {
      *   1. the R2 tail write-behind, subscribed to every append;
      *   2. the walk-import reconciler — once now, then on a slow belt.
      */
-    async startJournalReconciler({ target, intervalMs = 15 * 60_000 } = {}) {
+    async startJournalReconciler({ target, intervalMs = walkIntervalFromEnv() } = {}) {
       if (!journal || !journalDesignRoot) return { state: 'off', reason: 'no checkout' };
       journalTail = createJournalTail({ journal, target });
       // ONE append, two subscribers — durability and delivery. Neither may
@@ -1510,7 +1512,7 @@ export function createHub(config = {}) {
       walkImportTimer.unref?.();
       console.log(
         `[journal] armed — head ${journal.head()}, epoch ${journal.epoch().slice(0, 8)}, ` +
-          `walk-import every ${Math.round(intervalMs / 60000)} min${target ? ' + R2 tail' : ' (no object storage — no tail)'}`
+          `walk-import every ${intervalMs < 60_000 ? `${Math.round(intervalMs / 1000)} s` : `${Math.round(intervalMs / 60_000)} min`}${target ? ' + R2 tail' : ' (no object storage — no tail)'}`
       );
       return { state: 'on', head: journal.head(), imported: first.appended };
     },

@@ -22,6 +22,7 @@ import {
   openJournal,
   replayTailFromTarget,
   walkImport,
+  walkIntervalFromEnv,
 } from '../src/journal.mjs';
 
 let dataDir;
@@ -411,5 +412,26 @@ describe('walk-import — the permanent reconciler', () => {
       log: { log() {}, error() {} },
     });
     assert.equal(out.appended, 0);
+  });
+});
+
+describe('the walk-import belt is a backstop, and a backstop has to be prompt', () => {
+  it('one minute by default — not the fifteen it was tuned to when the walk was assumed expensive', () => {
+    assert.equal(walkIntervalFromEnv({}), 60_000);
+  });
+
+  it('an operator can retune it', () => {
+    assert.equal(walkIntervalFromEnv({ MAUDE_JOURNAL_WALK_MS: '5000' }), 5_000);
+  });
+
+  it('clamped at both ends — a sub-second belt is a busy loop, an hourly one is a shrug', () => {
+    assert.equal(walkIntervalFromEnv({ MAUDE_JOURNAL_WALK_MS: '1' }), 1_000);
+    assert.equal(walkIntervalFromEnv({ MAUDE_JOURNAL_WALK_MS: '99999999' }), 60 * 60_000);
+  });
+
+  it('garbage falls back to the default rather than to zero', () => {
+    for (const v of ['', 'soon', '-1', '0', 'NaN']) {
+      assert.equal(walkIntervalFromEnv({ MAUDE_JOURNAL_WALK_MS: v }), 60_000);
+    }
   });
 });
