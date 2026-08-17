@@ -455,3 +455,74 @@ describe('a contended lock must not lose the queue or the process (Phase 27 D2)'
     }
   }, 30_000);
 });
+
+describe('a vanished path must not wedge the agent forever', () => {
+  // THE BUG: `git add -- <path that is gone and was never tracked>` exits 128
+  // with "did not match any files". The batch failed, re-queued ITSELF
+  // INCLUDING that path, and failed again identically — so the first canvas
+  // anybody deleted stopped the cell committing ANYTHING for the life of the
+  // process, while /health went on answering 200.
+  //
+  // Observed on a local cell: five commits, then twenty-plus identical
+  // `git add failed` lines and thirty canvases sitting untracked.
+  //
+  // Paths are noted from a read taken up to debounceMs earlier, for files whose
+  // lifetime this process does not own. A path disappearing mid-window is
+  // ROUTINE, so it has to be a case rather than an error.
+
+  const GONE = '.design/ui/Deleted.tsx';
+
+  test('a never-tracked path that vanished is dropped, and the rest still commits', async () => {
+    const auto = createAutoCommit({ repoRoot: repo, run: git, debounceMs: 5, log: silent() });
+    write(REL, 'export default () => "edited";\n');
+    auto.note(REL, ALICE);
+    // A sibling that was created and deleted inside the quiescence window.
+    auto.note(GONE, ALICE);
+    await auto.flush();
+
+    expect(await log('%s')).toEqual(['design: update Screen', 'seed']);
+    auto.stop();
+  });
+
+  test('and the agent is NOT wedged — the next edit commits normally', async () => {
+    const auto = createAutoCommit({ repoRoot: repo, run: git, debounceMs: 5, log: silent() });
+    write(REL, 'v1\n');
+    auto.note(REL, ALICE);
+    auto.note(GONE, ALICE);
+    await auto.flush();
+
+    write(REL, 'v2\n');
+    auto.note(REL, BOB);
+    await auto.flush();
+
+    // Two commits after the seed. Before the fix the first flush poisoned
+    // `touched` and every later flush failed on the same missing pathspec.
+    expect((await log('%s')).length).toBe(3);
+    auto.stop();
+  });
+
+  test('a TRACKED path that vanished is committed as a deletion, not dropped', async () => {
+    // The other kind of gone. Dropping this one would let the checkout and its
+    // history diverge permanently: the file is gone from disk and git would go
+    // on believing it exists.
+    const auto = createAutoCommit({ repoRoot: repo, run: git, debounceMs: 5, log: silent() });
+    rmSync(path.join(repo, REL));
+    auto.note(REL, ALICE);
+    await auto.flush();
+
+    const tracked = (await git(['ls-files'], { cwd: repo })).stdout;
+    expect(tracked).not.toContain('Screen.tsx');
+    expect((await log('%s')).length).toBe(2);
+    auto.stop();
+  });
+
+  test('a batch of nothing but vanished untracked paths is a no-op, not a failure', async () => {
+    const auto = createAutoCommit({ repoRoot: repo, run: git, debounceMs: 5, log: silent() });
+    auto.note(GONE, ALICE);
+    auto.note('.design/ui/AlsoGone.tsx', ALICE);
+    await auto.flush();
+
+    expect(await log('%s')).toEqual(['seed']);
+    auto.stop();
+  });
+});

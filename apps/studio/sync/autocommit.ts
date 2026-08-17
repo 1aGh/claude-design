@@ -25,6 +25,7 @@
 // commit a precondition of the save would turn a transient git error into
 // data loss, which is precisely backwards.
 
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 import { withRepoLock } from '../git/repo-lock.ts';
@@ -272,22 +273,75 @@ export function createAutoCommit(opts: AutoCommitOptions): AutoCommit {
     return inFlight;
   }
 
+  /**
+   * Split a batch into what git can stage and what it cannot.
+   *
+   * `stage` — on disk, or gone but TRACKED (a real deletion to record).
+   * `drop`  — gone and never tracked: git has nothing to say about it, and
+   *           retrying it forever is what wedged the whole agent.
+   *
+   * One `ls-files` call for the whole batch, not one per path: this runs inside
+   * the repo lock and a per-file probe would put a fork on the critical section
+   * for every canvas in a busy window.
+   */
+  async function partitionForStaging(
+    files: string[]
+  ): Promise<{ stage: string[]; drop: string[] }> {
+    const missing = files.filter((f) => !existsSync(path.join(repoRoot, f)));
+    if (missing.length === 0) return { stage: files, drop: [] };
+
+    const known = await run(['ls-files', '--', ...missing], { cwd: repoRoot });
+    // If the probe itself fails, keep every path: guessing "untracked" here
+    // would DROP a real deletion, and a missed deletion is worse than a retry.
+    const tracked =
+      known.code === 0 ? new Set(known.stdout.split('\n').map((l) => l.trim()).filter(Boolean)) : new Set(missing);
+    const drop = missing.filter((f) => !tracked.has(f));
+    if (drop.length === 0) return { stage: files, drop: [] };
+    const dropSet = new Set(drop);
+    return { stage: files.filter((f) => !dropSet.has(f)), drop };
+  }
+
   /** The critical section: stage exactly these files, commit them, report. */
   async function commitCycle(files: string[], who: EditAttribution): Promise<CommitOutcome> {
     // Stage ONLY what changed. `git add -A` in a workspace would sweep in
     // whatever else is in the tree — including files a future feature drops
     // there — and the cell must never commit something it wasn't told about.
-    const add = await run(['add', '--', ...files], { cwd: repoRoot });
+    // A PATH THAT VANISHED AND WAS NEVER TRACKED IS NOT AN ERROR TO RETRY.
+    //
+    // `git add -- <path that never existed in the index and is gone from disk>`
+    // exits 128 with "did not match any files". The batch then failed, re-queued
+    // ITSELF INCLUDING THAT PATH, and failed again the same way forever — so the
+    // first canvas anybody deleted stopped the cell committing ANYTHING, for the
+    // life of the process. Observed on a local cell: five commits, then
+    // twenty-plus identical `git add failed` lines and thirty canvases sitting
+    // untracked while `/health` answered 200 throughout.
+    //
+    // Paths are noted on the strength of a read taken up to `debounceMs`
+    // earlier, for files whose lifetime this process does not own, so a path
+    // disappearing mid-window is ROUTINE. The question is which kind of gone it
+    // is, and git already knows: a path in the index must be staged as a
+    // deletion (or the checkout and its history diverge permanently); a path
+    // git never heard of has nothing to record and is simply dropped.
+    const staging = await partitionForStaging(files);
+    if (staging.drop.length > 0) {
+      log.warn?.(
+        `[autocommit] ${staging.drop.length} path(s) vanished before staging and were never tracked; nothing to record: ${staging.drop.slice(0, 3).join(', ')}${staging.drop.length > 3 ? '…' : ''}`
+      );
+    }
+    if (staging.stage.length === 0) return { ok: false, reason: 'nothing-to-commit', files };
+    files = staging.stage;
+
+    // `-A` so a tracked path that is gone stages as a DELETION rather than
+    // erroring. It does not widen the scope: the pathspec is still this exact
+    // file list, so the "never commit something it wasn't told about" rule the
+    // comment above states is intact.
+    const add = await run(['add', '-A', '--', ...files], { cwd: repoRoot });
     if (add.code !== 0) {
       log.warn?.(`[autocommit] git add failed: ${add.stderr.trim()}`);
       // RE-QUEUE, exactly as the `commit` branch below does. `touched` was
       // cleared by `flush()` before we got here, so returning without this
       // drops the whole coalesced batch — including other people's edits in
       // the same window — from history, permanently and silently.
-      // One bad pathspec is enough: `git add -- <path that vanished>` exits
-      // 128, and paths are now noted on the strength of a read taken up to
-      // `debounceMs` earlier, for files whose lifetime this process does not
-      // own (a canvas deleted inside the quiescence window).
       for (const f of files) touched.add(f);
       return { ok: false, reason: 'git-failed', detail: add.stderr.trim(), files };
     }

@@ -364,6 +364,45 @@ real tree (alligators + alligators-mirror), verified against built artifacts.**
 > HELD — neither resurrected nor propagated — until the tombstone door and the
 > mass-delete breakers ship.
 
+### ✅ Task 4.9: two-sided E2E — what the increments could not prove, and the three defects it found — DONE 2026-08-17
+
+`journal-e2e` proved the TRANSPORT: the journal appends, the poke fires, the
+tail survives a restore. It could not prove the PRODUCT — that a person makes a
+change on one machine and sees it on the other. `scripts/dev/sync-e2e.mjs`
+closes that: a cell and a peer, two agent-browser sessions, and **every
+scenario written once and run BOTH WAYS**.
+
+That last constraint is the finding. **Two of the three defects below were
+invisible in the direction their author happened to try first**, and one of
+them had already shipped through a release with every unit test green.
+
+1. **The nudge had no caller** (`6bd04c57`). Increment 3 shipped
+   `POST /api/journal/report` and nothing that calls it, so a write by the
+   cell's own studio child waited for the 15-minute walk-import belt: seconds
+   one way, up to a quarter of an hour the other. Two write paths also never
+   announced at all — the asset writer (content-addressed after the rename, so
+   there is no `rel` to arm `activity:suppress` with) and annotations (they
+   reach other VIEWERS over the collab room, so nobody noticed they never
+   reached the file plane promptly). Belt retuned to 1 min
+   (`MAUDE_JOURNAL_WALK_MS`); measured 1.48s end to end after.
+2. **A canvas created on a peer arrived with no title** (`b121b120`).
+   Cold-start meta was doc→file only; the cloud won a race the desktop lost, so
+   the gap was invisible from the winning end. Fixing it exposed the worse one:
+   the meta lane is a whole value in a `Y.Text` written delete-all +
+   insert-all, and two peers publishing the same value into an empty lane leave
+   two identical copies — neither empty nor parseable, so every consumer reads
+   "this canvas has no meta". Found nine poisoned documents live. The lane
+   heals now.
+3. **The cloud's git history covers canvases, not the project** (finding, not
+   fixed). The hub commits on `onDocumentStored`; file-plane arrivals — assets,
+   design-system css/md/ts — are journalled and never committed. Asserted as
+   `expected-pending` rows so the day a commit path lands they turn green.
+   Recorded as `maude/cloud-git-history-covers-canvases-not-the-project`.
+
+**Deletion propagation** shows up here as `expected-pending` too, matching
+Increment 6's deferral — a move currently leaves the old path behind on the far
+side, and the suite says so rather than hiding it.
+
 ### Task 4 (original text): Increment 3 — ledger + three-way engine, behind the existing flag (L)
 
 - **Do**: CREATE `file-ledger.ts` (ancestor store + stat cache + outbox; write-ordering invariant per synthesis §3, enforced in one module) and `decide-file.ts` (synthesis §4 table VERBATIM, incl. deletion + epoch-degraded rows; deletion EMISSION still off). One apply site absorbs `file-pull.ts`'s fetch/verify/quarantine loop. Journal-cursor pulls with fail-closed reanchor. Push half: `fs:any` → classifier → hash → ledger → `PUT` with `ifHead` CAS (409 ⇒ refetch ⇒ re-decide). Size-classed outbox + per-path park-and-skip (no global head-of-line); mass drains above threshold in the existing spawned-child pattern (DDR-222's wall respected). Conflict copies named `.maude-conflict-<ts>-<label>` (NEVER `*.sync-conflict-*` — `~/git` runs real Syncthing; classifier additionally REFUSES foreign `*.sync-conflict-*` from membership). Crossing-write self-detection (remote row hash == in-flight outbox ⇒ self, adopt). Referenced-asset prioritization (front-queue assets cited by just-arrived doc-lane changes — keeps the DDR-223 strokes→bytes latency coupling). Reanchor/poke cooldown (hostile-hub spam). Doručenka per-file rows (refusal outranks cursor; token-bound peer labels; `referenced-but-unoffered` state) in `_sync.json` + Sync panel. `linkedHub.syncFiles:true` now selects THIS engine (opt-in this release). **Old lanes untouched and still running for flag-off projects.**
