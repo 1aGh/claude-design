@@ -19,8 +19,8 @@
 
 import { existsSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
+import { hostname } from 'node:os';
 import path from 'node:path';
-
 import type { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { renewHubCredential } from '../cloud/renew.ts';
@@ -40,10 +40,13 @@ import {
   createConnectionMonitor,
   type ProviderStatus,
 } from './connection-state.ts';
+
 import { createCtlProvider } from './ctl-provider.ts';
 import { createRescanScheduler, diffCanvasSet, type RescanScheduler } from './discovery.ts';
 import { createDocNameResolver } from './doc-name.ts';
 import { createEchoGuard } from './echo-guard.ts';
+import { createFileLedger } from './file-ledger.ts';
+import { createFilePlane } from './file-plane.ts';
 import { type FilePullResult, pullFiles } from './file-pull.ts';
 import { createFsReader, type FsReader } from './fs-mirror.ts';
 import { getHubRecord } from './hubs-config.ts';
@@ -151,6 +154,15 @@ export const DISCOVERY_DEBOUNCE_MS = 400;
  * and it is the ONLY discovery lane a hub of any version can serve.
  */
 export const REMOTE_POLL_MS = 20_000;
+
+/**
+ * Settle window before a local write triggers a file-plane pass.
+ *
+ * Long enough that saving a file (which many editors do as several writes)
+ * costs one pass, short enough that "I dropped a picture in" still feels
+ * immediate.
+ */
+export const FILE_PASS_DEBOUNCE_MS = 400;
 
 /**
  * Settling delay for an OFF-SCHEDULE poll (reconnect).
@@ -787,6 +799,20 @@ export function createSyncRuntime(
    */
   let fileEventsProbe: AbortController | null = null;
   /**
+   * The Sync v2 file plane — ONE lane, both directions, one decision table.
+   *
+   * Null on a journal-less hub (the compat matrix keeps the v1 manifest pull
+   * for those), and null when `linkedHub.syncFiles` is off. Built once the
+   * capability probe answers, so a hub that cannot support it never sees a
+   * request it does not understand.
+   */
+  let filePlane: import('./file-plane.ts').FilePlane | null = null;
+  let fileLedger: import('./file-ledger.ts').FileLedger | null = null;
+  /** Cumulative files sent up this boot — the doručenka's push half. */
+  let filePushed = 0;
+  /** Debounce for a plane pass triggered by a local write. */
+  let filePassTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
    * The HONESTY COUNTER. Pokes received this run, beside the polls that found
    * work anyway. Relaxing the 20 s poll to 60 s is gated on this proving the
    * channel is not silently missing events in dogfood (DDR-226 §10) — a
@@ -795,6 +821,31 @@ export function createSyncRuntime(
   let pokesSeen = 0;
   /** Assigned by `start()`; the seam `pullRemoteNow()` and tests reach. */
   let remotePull: (() => Promise<void>) | null = null;
+  /**
+   * Run a file-plane pass shortly, coalesced.
+   *
+   * THE PUSH HALF'S TRIGGER. A local write does not upload anything by itself
+   * any more: it invalidates the stat cache for that path and asks for a pass,
+   * and the pass decides — push, pull, conflict or nothing — through the same
+   * table every other trigger uses. That is the difference from the fast lane
+   * it replaces, which had its own idea of what a change meant and needed a
+   * probe-guard to keep from re-uploading what the pull had just written.
+   */
+  function schedulePlanePass(): void {
+    if (stopped || filePassTimer !== null) return;
+    filePassTimer = setTimeout(() => {
+      filePassTimer = null;
+      if (stopped || !filePlane) return;
+      void filePlane
+        .reconcile()
+        .then((r) => planeResultSink?.(r))
+        .catch((err) => console.error('[sync/files] pass failed:', err));
+    }, FILE_PASS_DEBOUNCE_MS);
+    filePassTimer.unref?.();
+  }
+  /** Assigned by `start()` so a pass reports into the same status the poll does. */
+  let planeResultSink: ((r: import('./file-plane.ts').FilePlaneResult) => void) | null = null;
+
   /**
    * Ask for an off-schedule remote poll, coalesced.
    *
@@ -1299,6 +1350,14 @@ export function createSyncRuntime(
       // Run the missing-only asset pull now instead of at the next 20 s tick,
       // so the other side's freshly dropped image renders in seconds.
       if (REFERENCE_FILE_RE.test(rel)) requestFastPull?.();
+      // Sync v2 — the file plane's own trigger. Invalidating the stat cache
+      // first is the exact, cheap version of the mtime-granularity guard: the
+      // watcher KNOWS this path moved, so the next scan must read it rather
+      // than trust a timestamp that a same-length edit could have left alone.
+      if (fileLedger) {
+        fileLedger.noteChanged(rel.split('\\').join('/'));
+        schedulePlanePass();
+      }
     });
 
     /**
@@ -2392,6 +2451,30 @@ export function createSyncRuntime(
       statusStore?.updateFiles?.({ ...fileTotals });
     };
     /**
+     * The v2 pass's counts, PLUS the doručenka.
+     *
+     * The counts alone are what the old lane reported, and they are exactly
+     * what could not answer "where is file X" — the question three days of
+     * dogfood kept asking. The per-path states ride beside them so the panel
+     * can point at one file instead of a total, and the raw counters stay so a
+     * lying panel is cross-checkable against them (DDR-214).
+     */
+    const noteFilePlane = (result: import('./file-plane.ts').FilePlaneResult): void => {
+      fileTotals.synced = result.synced + result.pulled.length;
+      fileTotals.pulled += result.pulled.length;
+      fileTotals.conflicts += result.conflicts.length;
+      filePushed += result.pushed.length;
+      statusStore?.updateFiles?.({
+        ...fileTotals,
+        pushed: filePushed,
+        ...(filePlane ? { delivery: filePlane.doruceka() } : {}),
+      });
+      for (const f of result.failed) {
+        console.warn(`[sync/files] ${f.rel}: ${f.reason}`);
+      }
+    };
+    planeResultSink = noteFilePlane;
+    /**
      * Plane B's downward pass — after the doc poll and the asset pull, so a
      * canvas that arrived this tick has its design system resolved in the
      * same tick. Flag-gated; a no-op when off.
@@ -2403,6 +2486,16 @@ export function createSyncRuntime(
      */
     const pullFilesOnce = async (): Promise<void> => {
       if (stopped || !syncFilesOn) return;
+      // Sync v2 (DDR-226) — when the hub carries a journal, the file plane is
+      // the ONE lane: a cursor read, one decision per path, and both
+      // directions from the same pass. The v1 manifest pull stays for
+      // journal-less hubs, which the compat matrix keeps working through the
+      // burn-down window.
+      if (filePlane) {
+        const result = await filePlane.reconcile();
+        noteFilePlane(result);
+        return;
+      }
       const result = await pullFiles({
         designRoot: ctx.paths.designRoot,
         hubUrl: linkedHub.url,
@@ -2446,6 +2539,34 @@ export function createSyncRuntime(
       void hubCapabilities({ hubUrl: linkedHub.url, signal: fileEventsProbe.signal })
         .then((caps) => {
           if (stopped || !hasLedger(caps)) return;
+          // The hub carries a journal, so the file plane becomes the ONE lane
+          // for this project. Built here rather than at start(): a client must
+          // never send a journal request to a hub that would not understand
+          // it (compat matrix §10 — BINDING).
+          if (syncFilesOn && !filePlane) {
+            fileLedger = createFileLedger({
+              designRoot: ctx.paths.designRoot,
+              hubUrl: linkedHub.url,
+            });
+            filePlane = createFilePlane({
+              designRoot: ctx.paths.designRoot,
+              hubUrl: linkedHub.url,
+              token: () => token,
+              ledger: fileLedger,
+              canvasGroups: ctx.cfg.canvasGroups,
+              allowCodeModules,
+              // Same exposure class as `syncMeta.by`, and the same reasoning:
+              // a conflict copy nobody can attribute is a conflict copy nobody
+              // resolves.
+              label: hostname().slice(0, 32),
+            });
+            console.log(
+              '[sync/files] journal file plane active — one lane, both directions, per-file delivery state in the Sync panel.'
+            );
+            // Anything the local disk already differs on goes now, rather than
+            // at the first 20 s tick.
+            schedulePlanePass();
+          }
           fileEventsCtl = createCtlProvider({
             url: linkedHub.url,
             token,
@@ -2489,6 +2610,14 @@ export function createSyncRuntime(
     requestFastPull = null;
     fileEventsProbe?.abort();
     fileEventsProbe = null;
+    if (filePassTimer !== null) clearTimeout(filePassTimer);
+    filePassTimer = null;
+    planeResultSink = null;
+    // Persist the ledger on the way out. Losing it is safe (a re-anchor, never
+    // a loss) but paying for one on every restart would be needless noise.
+    fileLedger?.stop();
+    fileLedger = null;
+    filePlane = null;
     // The control channel is a doorbell into this runtime; it goes with it.
     // Reported on the way out so the poke-miss question is answerable from a
     // session's log rather than from a hunch (DDR-226 §10).

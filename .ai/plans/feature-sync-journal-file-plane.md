@@ -318,7 +318,53 @@ real tree (alligators + alligators-mirror), verified against built artifacts.**
 - **Validate**: LIVE on the fleet: hub-door asset PUT on an UNPAIRED cell heals an open cloud tab without reload (verify via CF observability `containers` dataset); poke-loss test (kill WS mid-poke ⇒ 20 s poll catches up); old-desktop-vs-new-hub regression: no phantom doc from the dotted name.
 - **Rollback**: `linkedHub.fileEvents:false` (config key, not env) on either end ⇒ today's poll cadence exactly.
 
-### Task 4: Increment 3 — ledger + three-way engine, behind the existing flag (L)
+### ✅ Task 4: Increment 3 — ledger + three-way engine, behind the existing flag (L) — DONE 2026-08-17
+
+> **The architecture is now complete enough to run end to end locally.**
+> `scripts/dev/local-cell.mjs --no-watch` + `scripts/dev/journal-e2e.mjs` drive
+> the whole loop against a real hub, a real studio child and a real
+> object-storage target: **41 checks green**, including a fresh peer pulling the
+> project down, a local edit travelling up, a converged pass moving nothing, a
+> simultaneous edit parking rather than merging, and the doručenka naming the
+> file it happened to.
+>
+> Shipped: `sync/decide-file.ts` (the pure total table — 1024-point property
+> matrix, compile-time `never`), `sync/file-ledger.ts` (ancestor store + stat
+> cache + outbox under `_state/`, with `adoptAfter` making the write ordering
+> structural and a real SIGKILL test pinning it), `sync/file-plane.ts` (ONE
+> lane both directions: cursor read → local scan → decide → apply, with
+> conflict-aside, referenced-asset priority and the F6 budget),
+> `apps/hub/src/file-door.mjs` (`PUT /api/file/<rel>` with `x-maude-expect-hash`
+> CAS + the NEW owner-role gate on code-module writes + a `{seq}` receipt),
+> `journal.latestFor()` for the CAS lookup, and the doručenka in `_sync.json`.
+> Wired into the runtime capability-gated: journal hub ⇒ v2 plane, journal-less
+> hub ⇒ the v1 manifest pull, exactly as the compat matrix requires.
+>
+> **Four real bugs the tests and the harness caught, all worth recording:**
+>
+> 1. **A delta read is not a manifest.** Feeding "absent from this page" to the
+>    table as `remote: null` reads as "the hub lost it" and re-uploads every
+>    converged file on every pass — absence-as-authority (DDR-076) rebuilt one
+>    layer above the table that forbids it. The ledger now carries the hub's
+>    side as a replica; only a full read may retract it.
+> 2. **The owner gate was bypassable on the second pass.** Admission ran only
+>    for paths the current page carried, so a code module refused once sailed
+>    through on the next tick from the remembered remote. Admission belongs to
+>    the OFFER, not the notification. Regression-tested.
+> 3. **The degraded-epoch rows could never fire.** `isDegraded` was asked AFTER
+>    re-anchoring adopted the hub's epoch, so the answer was always "fine".
+>    Computed before now.
+> 4. **`(size, mtime)` is a poor identity for a file edited moments ago.**
+>    `v1`→`v2` is a same-length write; inside the timestamp's resolution the
+>    cache hides a real edit. A recently-touched file is now always re-read
+>    (rsync's own guard), and the watcher additionally invalidates by path.
+>
+> **Deferred to Increment 6 by design:** deletion EMISSION. The rows exist in
+> the table and are tested; `propagateDeletes` stays off, so a local absence is
+> HELD — neither resurrected nor propagated — until the tombstone door and the
+> mass-delete breakers ship.
+
+### Task 4 (original text): Increment 3 — ledger + three-way engine, behind the existing flag (L)
 
 - **Do**: CREATE `file-ledger.ts` (ancestor store + stat cache + outbox; write-ordering invariant per synthesis §3, enforced in one module) and `decide-file.ts` (synthesis §4 table VERBATIM, incl. deletion + epoch-degraded rows; deletion EMISSION still off). One apply site absorbs `file-pull.ts`'s fetch/verify/quarantine loop. Journal-cursor pulls with fail-closed reanchor. Push half: `fs:any` → classifier → hash → ledger → `PUT` with `ifHead` CAS (409 ⇒ refetch ⇒ re-decide). Size-classed outbox + per-path park-and-skip (no global head-of-line); mass drains above threshold in the existing spawned-child pattern (DDR-222's wall respected). Conflict copies named `.maude-conflict-<ts>-<label>` (NEVER `*.sync-conflict-*` — `~/git` runs real Syncthing; classifier additionally REFUSES foreign `*.sync-conflict-*` from membership). Crossing-write self-detection (remote row hash == in-flight outbox ⇒ self, adopt). Referenced-asset prioritization (front-queue assets cited by just-arrived doc-lane changes — keeps the DDR-223 strokes→bytes latency coupling). Reanchor/poke cooldown (hostile-hub spam). Doručenka per-file rows (refusal outranks cursor; token-bound peer labels; `referenced-but-unoffered` state) in `_sync.json` + Sync panel. `linkedHub.syncFiles:true` now selects THIS engine (opt-in this release). **Old lanes untouched and still running for flag-off projects.**
 - **Pattern**: `cold-start.ts` for the pure table + test matrix; `atomic-write.ts` for materialization; existing `_sync.json` writer in `status.ts`.

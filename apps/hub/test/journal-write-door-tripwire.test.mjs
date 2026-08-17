@@ -88,10 +88,19 @@ describe('every checkout write door is journal-hooked', () => {
     }
   });
 
-  it('the server binds both asset doors to the one write notifier', () => {
+  it('EVERY write door the server wires goes through the one notifier', () => {
+    // The assertion is the INTENT, not a count. Counting broke the moment the
+    // Sync v2 file door landed and made it three — and a test that has to be
+    // edited every time a door is added teaches people to edit it without
+    // reading it. What must hold is that no door gets its own bespoke handler:
+    // the journal append and the bucket mirror live in `noteCheckoutWrite`, and
+    // a door that bypasses it is a door whose writes peers never learn about.
     const server = readFileSync(join(SRC, 'server.mjs'), 'utf8');
     const bindings = server.match(/onWritten:\s*([A-Za-z_.]+)/g) ?? [];
-    assert.equal(bindings.length, 2, 'expected exactly two onWritten bindings');
+    assert.ok(
+      bindings.length >= 3,
+      `expected every write door to bind onWritten, saw ${bindings.length}`
+    );
     for (const b of bindings) {
       assert.match(b, /noteCheckoutWrite/, `a write door bypasses the notifier: ${b}`);
     }

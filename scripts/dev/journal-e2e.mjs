@@ -14,7 +14,8 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -121,6 +122,137 @@ async function attachCtl() {
 function null_with(why) {
   results.push(`  ⚠ control channel skipped — ${why}`);
   return null;
+}
+
+/**
+ * Drive the real desktop engine against the running hub.
+ *
+ * A scratch design root stands in for a second machine: it starts empty, pulls
+ * the project down, makes a local edit, pushes it back, and then proves the
+ * two properties that matter most — a converged pass is free, and a
+ * simultaneous edit on both sides parks rather than overwrites.
+ */
+async function fullLoop() {
+  let createFileLedger;
+  let createFilePlane;
+  try {
+    const { createRequire } = await import('node:module');
+    const req = createRequire(join(REPO_ROOT, 'apps/studio/package.json'));
+    void req;
+    ({ createFileLedger } = await import(join(REPO_ROOT, 'apps/studio/sync/file-ledger.ts')));
+    ({ createFilePlane } = await import(join(REPO_ROOT, 'apps/studio/sync/file-plane.ts')));
+  } catch (err) {
+    results.push(
+      `  ⚠ full loop skipped — engine not importable under this runtime (${err.message})`
+    );
+    return;
+  }
+
+  const peer = mkdtempSync(join(tmpdir(), 'maude-peer-'));
+  try {
+    writeFileSync(
+      join(peer, 'config.json'),
+      JSON.stringify({ canvasGroups: [{ path: 'ui' }, { path: 'system' }] })
+    );
+    const ledger = createFileLedger({ designRoot: peer, hubUrl: HUB, flushMs: 0 });
+    const mk = () =>
+      createFilePlane({
+        designRoot: peer,
+        hubUrl: HUB,
+        token: () => TOKEN,
+        ledger,
+        canvasGroups: [{ path: 'ui' }, { path: 'system' }],
+        allowCodeModules: false,
+        label: 'e2e-peer',
+        log: { log() {}, warn() {} },
+      });
+
+    // ── down ────────────────────────────────────────────────────────────
+    const first = await mk().reconcile();
+    check(
+      first.pulled.includes('system/smoke/brand.css'),
+      'a fresh peer pulls the project down through the journal',
+      `pulled ${JSON.stringify(first.pulled)}`
+    );
+    check(existsSync(join(peer, 'system/smoke/brand.css')), 'and the bytes are really on its disk');
+    check(
+      !existsSync(join(peer, 'ui/home.tsx')),
+      'while the CANVAS stays on the doc plane',
+      'a canvas arriving over the file lane means both transports own it — the duplicate jurisdiction the redesign exists to end'
+    );
+
+    // ── converged ───────────────────────────────────────────────────────
+    const second = await mk().reconcile();
+    check(
+      second.pulled.length === 0 && second.pushed.length === 0,
+      'a converged pass moves nothing',
+      `pulled ${second.pulled.length}, pushed ${second.pushed.length}`
+    );
+    check(second.synced > 0, 'and says so positively rather than by silence');
+
+    // ── up ──────────────────────────────────────────────────────────────
+    const edited = `:root{--edited-by-e2e:${Date.now()}}\n`;
+    writeFileSync(join(peer, 'system/smoke/brand.css'), edited);
+    ledger.noteChanged('system/smoke/brand.css');
+    const third = await mk().reconcile();
+    check(
+      third.pushed.includes('system/smoke/brand.css'),
+      'a local edit travels UP through the same lane',
+      `pushed ${JSON.stringify(third.pushed)}`
+    );
+    const onHub = await (
+      await fetch(`${HUB}/_project-file/system/smoke/brand.css`, { headers: auth })
+    ).text();
+    check(onHub === edited, 'and the hub really holds the new bytes');
+
+    // ── both sides at once ──────────────────────────────────────────────
+    const theirs = ':root{--changed-on-the-hub:1}\n';
+    await fetch(`${HUB}/api/file/system/smoke/brand.css`, {
+      method: 'PUT',
+      headers: { ...auth, 'content-type': 'text/css' },
+      body: theirs,
+    });
+    const mine = ':root{--changed-here-too:1}\n';
+    writeFileSync(join(peer, 'system/smoke/brand.css'), mine);
+    ledger.noteChanged('system/smoke/brand.css');
+
+    const clash = await mk().reconcile();
+    check(
+      clash.conflicts.length === 1,
+      'a simultaneous edit resolves as ONE conflict, not a merge'
+    );
+    const parked = readdirSync(join(peer, 'system/smoke')).find((n) =>
+      n.includes('maude-conflict')
+    );
+    check(
+      parked !== undefined,
+      'the local version is parked where a person can find it',
+      `dir held ${readdirSync(join(peer, 'system/smoke')).join(', ')}`
+    );
+    check(
+      readFileSync(join(peer, 'system/smoke', parked ?? 'x'), 'utf8') === mine,
+      'the parked copy is the LOCAL bytes, unmodified'
+    );
+    check(
+      readFileSync(join(peer, 'system/smoke/brand.css'), 'utf8') === theirs,
+      'and the canonical path now holds the hub version'
+    );
+    check(
+      !readdirSync(join(peer, 'system/smoke')).some((n) => n.includes('sync-conflict')),
+      'the copy is never named like Syncthing’s',
+      '`~/git` runs real Syncthing; an identical pattern makes a conflict unattributable'
+    );
+
+    // ── the doručenka ───────────────────────────────────────────────────
+    const states = mk().doruceka();
+    check(
+      states['system/smoke/brand.css'] === 'conflict',
+      'and the doručenka says exactly that about exactly that file',
+      `state was ${states['system/smoke/brand.css']}`
+    );
+  } finally {
+    rmSync(peer, { recursive: true, force: true });
+  }
 }
 
 async function main() {
@@ -357,6 +489,13 @@ async function main() {
   } else {
     ok('the nudge route refused an off-loopback caller (404) — belt covers this case');
   }
+
+  /* 10 ── the FULL LOOP: a real ledger, a real engine, both directions ---- */
+  //
+  // Everything above tests the hub. This drives the DESKTOP engine — the same
+  // `createFilePlane` a linked project runs — against this live hub, so the
+  // thing being proven is the loop rather than either half of it.
+  await fullLoop();
 
   process.stdout.write(`${results.join('\n')}\n\n`);
   ctl?.close();

@@ -342,6 +342,19 @@ function makeHandle({ db, getMeta, setMeta, now }) {
       return stmts.compaction.all().map(toWire);
     },
 
+    /**
+     * The latest row for ONE path, or null.
+     *
+     * The compare-and-swap at the write door asks this per request, so it is
+     * an indexed lookup rather than a scan of the whole compaction — the
+     * difference between a constant and a full-project walk on every push of a
+     * fresh link.
+     */
+    latestFor(rel) {
+      const row = stmts.latestForPath.get(rel);
+      return row ? toWire(row) : null;
+    },
+
     markMirrored(seq, atMs = now()) {
       stmts.markMirrored.run(atMs, seq);
     },

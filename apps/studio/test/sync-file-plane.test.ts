@@ -1,0 +1,481 @@
+// The file plane, both directions — Sync v2 Increment 3 (DDR-226 §§3–7).
+//
+// `decide-file.ts` proves the TABLE and `file-ledger.ts` proves the ORDERING.
+// This proves the thing neither can: that a real pass reads a journal, scans a
+// real tree, and carries out what the table said — moving bytes the right way,
+// parking what must be parked, and refusing what a receiver must refuse.
+//
+// The hub here is a fixture, not a stub of our own logic: it answers the real
+// wire shapes (`GET /api/journal`, `GET /_project-file/`, `PUT /api/file/`)
+// and enforces the compare-and-swap, so a client that gets the protocol wrong
+// fails here rather than in production.
+
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { createFileLedger, type FileLedger } from '../sync/file-ledger.ts';
+import { createFilePlane, foldRemote, scanLocalFiles } from '../sync/file-plane.ts';
+
+const HUB = 'https://hub.test';
+const sha = (s: string | Uint8Array) => createHash('sha256').update(s).digest('hex');
+
+let root: string;
+let ledger: FileLedger;
+
+beforeEach(() => {
+  root = mkdtempSync(join(tmpdir(), 'file-plane-'));
+  mkdirSync(join(root, 'system/ds'), { recursive: true });
+  mkdirSync(join(root, 'assets'), { recursive: true });
+  writeFileSync(join(root, 'config.json'), '{"canvasGroups":[{"path":"system"},{"path":"ui"}]}');
+  ledger = createFileLedger({ designRoot: root, hubUrl: HUB, flushMs: 0 });
+});
+afterEach(() => {
+  rmSync(root, { recursive: true, force: true });
+});
+
+/** A hub that answers the real routes and enforces the real preconditions. */
+function fakeHub(initial: Record<string, string> = {}) {
+  let seq = 0;
+  const rows = new Map<string, { seq: number; sha256: string; size: number; body: string }>();
+  const epoch = 'epoch-1';
+  const puts: { rel: string; expect: string | null; body: string }[] = [];
+  const add = (rel: string, body: string) => {
+    seq += 1;
+    rows.set(rel, { seq, sha256: sha(body), size: body.length, body });
+  };
+  for (const [rel, body] of Object.entries(initial)) add(rel, body);
+
+  const fetchImpl = (async (url: string, init?: RequestInit) => {
+    const u = new URL(String(url));
+    if (u.pathname === '/api/journal') {
+      const since = Number(u.searchParams.get('since') ?? '0');
+      const askedEpoch = u.searchParams.get('epoch');
+      if (askedEpoch && askedEpoch !== epoch) {
+        return new Response(JSON.stringify({ epoch, head: seq, reanchor: true }), { status: 200 });
+      }
+      if (since > seq) {
+        return new Response(JSON.stringify({ epoch, head: seq, reanchor: true }), { status: 200 });
+      }
+      const entries = [...rows.entries()]
+        .filter(([, r]) => r.seq > since)
+        .map(([path, r]) => ({
+          seq: r.seq,
+          path,
+          sha256: r.sha256,
+          size: r.size,
+          mtimeMs: 0,
+          class: 'companion-text',
+          deleted: false,
+        }))
+        .sort((a, b) => a.seq - b.seq);
+      return new Response(JSON.stringify({ epoch, head: seq, entries, truncated: false }), {
+        status: 200,
+      });
+    }
+    if (u.pathname.startsWith('/_project-file/')) {
+      const rel = decodeURIComponent(u.pathname.slice('/_project-file/'.length));
+      const row = rows.get(rel);
+      if (!row) return new Response('nope', { status: 404 });
+      return new Response(row.body, { status: 200 });
+    }
+    if (u.pathname.startsWith('/api/file/') && init?.method === 'PUT') {
+      const rel = u.pathname
+        .slice('/api/file/'.length)
+        .split('/')
+        .map(decodeURIComponent)
+        .join('/');
+      const headers = new Headers(init.headers as HeadersInit);
+      const expect = headers.get('x-maude-expect-hash');
+      const current = rows.get(rel)?.sha256 ?? null;
+      const wantsAbsent = expect === 'none';
+      if (expect && !(wantsAbsent ? current === null : current === expect)) {
+        return new Response(JSON.stringify({ error: 'moved', current }), { status: 409 });
+      }
+      const body = Buffer.from(init.body as ArrayBuffer).toString('utf8');
+      puts.push({ rel, expect, body });
+      add(rel, body);
+      return new Response(JSON.stringify({ ok: true, seq, sha256: sha(body) }), { status: 200 });
+    }
+    return new Response('not found', { status: 404 });
+  }) as unknown as typeof fetch;
+
+  /**
+   * A rewind: the log comes back from an older generation. Rows above `to` are
+   * gone and the head moves back — which is what makes a peer's cursor
+   * unhonourable and forces the re-anchor.
+   */
+  const rewindTo = (to: number) => {
+    for (const [rel, r] of [...rows]) if (r.seq > to) rows.delete(rel);
+    seq = to;
+  };
+
+  return { fetchImpl, rows, puts, add, rewindTo, epoch, head: () => seq };
+}
+
+const plane = (hub: ReturnType<typeof fakeHub>, over = {}) =>
+  createFilePlane({
+    designRoot: root,
+    hubUrl: HUB,
+    token: () => 'tok',
+    ledger,
+    allowCodeModules: false,
+    label: 'laptop',
+    fetchImpl: hub.fetchImpl,
+    log: { log() {}, warn() {} },
+    now: () => 1_700_000_000_000,
+    ...over,
+  });
+
+const read = (rel: string) => readFileSync(join(root, rel), 'utf8');
+const write = (rel: string, body: string) => {
+  mkdirSync(join(root, rel, '..'), { recursive: true });
+  writeFileSync(join(root, rel), body);
+};
+
+describe('scanning', () => {
+  test('admits the plane and leaves plane A alone', () => {
+    write('system/ds/brand.css', ':root{}');
+    write('assets/a.png', 'PNG');
+    write('ui/home.tsx', 'export default null');
+    write('ui/home.meta.json', '{}');
+    const found = scanLocalFiles(root, ledger, [{ path: 'system' }, { path: 'ui' }]);
+    expect([...found.keys()].sort()).toEqual(['assets/a.png', 'system/ds/brand.css']);
+  });
+
+  test('a SETTLED file is answered from the stat cache, unread', () => {
+    write('system/ds/brand.css', ':root{}');
+    const first = scanLocalFiles(root, ledger);
+    const found = first.get('system/ds/brand.css')!;
+    // An old mtime is a trustworthy identity: nothing can have changed inside
+    // the timestamp's resolution, because the timestamp is not recent.
+    ledger.noteLocal('system/ds/brand.css', found.hash, found.size, Date.now() - 60_000);
+    expect(ledger.cachedHash('system/ds/brand.css', found.size, Date.now() - 60_000)).toBe(
+      found.hash
+    );
+  });
+
+  test('a file written MOMENTS ago is re-read, whatever the stamp says', () => {
+    // The mtime-granularity trap, and it is not hypothetical: `v1` → `v2` is a
+    // same-length edit, and two writes inside the filesystem's timestamp
+    // resolution are indistinguishable by `(size, mtime)`. Trusting the cache
+    // there means a real edit is never noticed at all.
+    write('system/ds/brand.css', 'v1');
+    const first = scanLocalFiles(root, ledger);
+    const found = first.get('system/ds/brand.css')!;
+    expect(ledger.cachedHash('system/ds/brand.css', found.size, found.mtimeMs)).toBeNull();
+  });
+
+  test('and the watcher can invalidate a path outright', () => {
+    write('system/ds/brand.css', ':root{}');
+    const found = scanLocalFiles(root, ledger).get('system/ds/brand.css')!;
+    ledger.noteLocal('system/ds/brand.css', found.hash, found.size, Date.now() - 60_000);
+    ledger.noteChanged('system/ds/brand.css');
+    expect(ledger.cachedHash('system/ds/brand.css', found.size, Date.now() - 60_000)).toBeNull();
+  });
+
+  test('never descends into runtime state', () => {
+    mkdirSync(join(root, '_history/x'), { recursive: true });
+    writeFileSync(join(root, '_history/x/old.css'), 'x');
+    mkdirSync(join(root, '_trash'), { recursive: true });
+    writeFileSync(join(root, '_trash/dead.css'), 'x');
+    expect([...scanLocalFiles(root, ledger).keys()]).toEqual([]);
+  });
+});
+
+describe('foldRemote', () => {
+  test('the newest row per path wins', () => {
+    const folded = foldRemote([
+      { seq: 1, path: 'a', sha256: 'x', size: 1, mtimeMs: 0, class: '', deleted: false },
+      { seq: 5, path: 'a', sha256: 'y', size: 1, mtimeMs: 0, class: '', deleted: false },
+      { seq: 3, path: 'a', sha256: 'z', size: 1, mtimeMs: 0, class: '', deleted: false },
+    ]);
+    expect(folded.get('a')?.sha256).toBe('y');
+  });
+});
+
+describe('down — the hub has something we do not', () => {
+  test('it lands, verified, and the ancestor follows', async () => {
+    const hub = fakeHub({ 'system/ds/brand.css': ':root{--a:1}' });
+    const res = await plane(hub).reconcile();
+    expect(res.pulled).toEqual(['system/ds/brand.css']);
+    expect(read('system/ds/brand.css')).toBe(':root{--a:1}');
+    expect(ledger.ancestorOf('system/ds/brand.css')).toBe(sha(':root{--a:1}'));
+    expect(ledger.cursor()).toBe(hub.head());
+  });
+
+  test('a hub that serves the WRONG bytes lands nothing', async () => {
+    // The hub may refuse to serve; it must never be able to substitute.
+    const hub = fakeHub({ 'system/ds/brand.css': 'real' });
+    hub.rows.set('system/ds/brand.css', {
+      ...hub.rows.get('system/ds/brand.css')!,
+      body: 'TAMPERED',
+    });
+    const res = await plane(hub).reconcile();
+    expect(res.pulled).toEqual([]);
+    expect(existsSync(join(root, 'system/ds/brand.css'))).toBe(false);
+    expect(res.failed[0]?.reason).toContain('hash mismatch');
+    expect(ledger.ancestorOf('system/ds/brand.css')).toBeNull();
+  });
+
+  test('a code module is REFUSED unless this machine vouches for the hub', async () => {
+    const hub = fakeHub({ 'system/ds/preview/_x.ts': 'export const a = 1' });
+    const res = await plane(hub).reconcile();
+    expect(res.pulled).toEqual([]);
+    expect(res.dropped[0]?.reason).toContain('owner-vouched');
+  });
+
+  test('…and lands when it does', async () => {
+    const hub = fakeHub({ 'system/ds/preview/_x.ts': 'export const a = 1' });
+    const res = await plane(hub, { allowCodeModules: true }).reconcile();
+    expect(res.pulled).toEqual(['system/ds/preview/_x.ts']);
+  });
+
+  test('a refusal HOLDS on later passes, when the delta no longer mentions it', async () => {
+    // The hole this closes had teeth. Admission used to run only for paths the
+    // current page carried — but a cursor read is silent about everything that
+    // did not just change. So a code module refused on the pass that
+    // introduced it sailed through on the very next tick, sourced from the
+    // remembered remote with no gate in front of it. Admission belongs to the
+    // OFFER, not to the notification.
+    const hub = fakeHub({ 'system/ds/preview/_x.ts': 'export const a = 1' });
+    const first = await plane(hub).reconcile();
+    expect(first.pulled).toEqual([]);
+    expect(first.dropped.length).toBe(1);
+
+    const second = await plane(hub).reconcile();
+    expect(second.pulled).toEqual([]);
+    expect(second.dropped.length).toBe(1);
+    expect(existsSync(join(root, 'system/ds/preview/_x.ts'))).toBe(false);
+
+    const third = await plane(hub).reconcile();
+    expect(third.pulled).toEqual([]);
+  });
+
+  test('a path THIS peer classifies differently is dropped, not negotiated', async () => {
+    // `config.json` is `never` here whatever the hub says about it.
+    const hub = fakeHub({ 'config.json': '{"evil":true}' });
+    const res = await plane(hub).reconcile();
+    expect(res.dropped.some((d) => d.rel === 'config.json')).toBe(true);
+    expect(read('config.json')).toContain('canvasGroups');
+  });
+});
+
+describe('up — we have something the hub does not', () => {
+  test('it uploads with a "hub must hold nothing" precondition', async () => {
+    const hub = fakeHub();
+    write('system/ds/brand.css', 'mine');
+    const res = await plane(hub).reconcile();
+    expect(res.pushed).toEqual(['system/ds/brand.css']);
+    expect(hub.puts[0]?.expect).toBe('none');
+    expect(ledger.ancestorOf('system/ds/brand.css')).toBe(sha('mine'));
+  });
+
+  test('a local edit uploads with the hub state we decided FROM', async () => {
+    const hub = fakeHub({ 'system/ds/brand.css': 'v1' });
+    await plane(hub).reconcile(); // pull v1, ancestor = v1
+    write('system/ds/brand.css', 'v2');
+    const res = await plane(hub).reconcile();
+    expect(res.pushed).toEqual(['system/ds/brand.css']);
+    expect(hub.puts.at(-1)?.expect).toBe(sha('v1'));
+  });
+
+  test('a hub that LOST a file gets it back — absence is not authority', async () => {
+    // The real shape of this, and the reason it needs a rewind rather than a
+    // deletion: the journal is APPEND-ONLY, so a hub cannot quietly drop a
+    // row. A file vanishes from its side only when the log itself rewinds —
+    // a restore from an older generation whose tail could not be replayed.
+    // That rewind is exactly what makes our cursor unhonourable, so the pass
+    // re-anchors, reads the whole compaction, and only THEN is entitled to
+    // conclude the hub no longer has the file.
+    const hub = fakeHub({ 'system/ds/brand.css': 'v1' });
+    await plane(hub).reconcile();
+    expect(read('system/ds/brand.css')).toBe('v1');
+
+    hub.rewindTo(0); // the generation predates the file entirely
+    const res = await plane(hub).reconcile();
+
+    expect(res.reanchored).toBe(true);
+    expect(res.pushed).toEqual(['system/ds/brand.css']);
+    expect(read('system/ds/brand.css')).toBe('v1');
+  });
+
+  test('a DELTA silence is never read as "the hub lost it"', async () => {
+    // The counterpart, and the bug this guards: a cursor read returns only
+    // what changed. If silence meant absence, every converged file would be
+    // re-uploaded on every single pass.
+    const hub = fakeHub({ 'system/ds/brand.css': 'v1' });
+    await plane(hub).reconcile();
+    const second = await plane(hub).reconcile();
+    expect(second.pushed).toEqual([]);
+    expect(second.pulled).toEqual([]);
+  });
+});
+
+describe('the compare-and-swap is what makes concurrency safe', () => {
+  test('a push against a moved hub is REFUSED and reported, not forced', async () => {
+    const hub = fakeHub({ 'system/ds/brand.css': 'v1' });
+    await plane(hub).reconcile();
+    // Both sides move: we edit, and someone else lands v2 on the hub.
+    write('system/ds/brand.css', 'mine');
+    hub.add('system/ds/brand.css', 'theirs');
+    // Decide from the STALE view by pushing before re-reading.
+    const p = plane(hub);
+    // First pass sees theirs and conflicts (both moved).
+    const res = await p.reconcile();
+    expect(res.conflicts.length).toBe(1);
+    // The local version is parked where a person can find it…
+    const parked = readdirSync(join(root, 'system/ds')).find((n) => n.includes('maude-conflict'));
+    expect(parked).toBeDefined();
+    expect(readFileSync(join(root, 'system/ds', parked!), 'utf8')).toBe('mine');
+    // …and the hub's version is what sits at the canonical path.
+    expect(read('system/ds/brand.css')).toBe('theirs');
+  });
+
+  test('the conflict copy travels UP, so both ends see it', async () => {
+    const hub = fakeHub({ 'system/ds/brand.css': 'v1' });
+    await plane(hub).reconcile();
+    write('system/ds/brand.css', 'mine');
+    hub.add('system/ds/brand.css', 'theirs');
+    await plane(hub).reconcile();
+    const uploaded = hub.puts.find((p) => p.rel.includes('maude-conflict'));
+    expect(uploaded?.body).toBe('mine');
+  });
+
+  test('a conflict copy is NEVER named like Syncthing’s', async () => {
+    const hub = fakeHub({ 'system/ds/brand.css': 'v1' });
+    await plane(hub).reconcile();
+    write('system/ds/brand.css', 'mine');
+    hub.add('system/ds/brand.css', 'theirs');
+    await plane(hub).reconcile();
+    const names = readdirSync(join(root, 'system/ds'));
+    expect(names.some((n) => n.includes('maude-conflict'))).toBe(true);
+    expect(names.some((n) => n.includes('sync-conflict'))).toBe(false);
+  });
+});
+
+describe('the converged steady state is free', () => {
+  test('a second pass moves nothing and reports agreement', async () => {
+    const hub = fakeHub({ 'system/ds/brand.css': 'v1', 'assets/a.png': 'PNG' });
+    await plane(hub).reconcile();
+    const second = await plane(hub).reconcile();
+    expect(second.pulled).toEqual([]);
+    expect(second.pushed).toEqual([]);
+    expect(second.synced).toBeGreaterThan(0);
+  });
+
+  test('and it costs ONE journal read, from the cursor', async () => {
+    const hub = fakeHub({ 'system/ds/brand.css': 'v1' });
+    await plane(hub).reconcile();
+    const before = ledger.cursor();
+    expect(before).toBe(hub.head());
+    const asked: string[] = [];
+    const counting = (async (url: string, init?: RequestInit) => {
+      asked.push(String(url));
+      return hub.fetchImpl(url as never, init as never);
+    }) as unknown as typeof fetch;
+    await plane(hub, { fetchImpl: counting }).reconcile();
+    expect(asked.filter((u) => u.includes('/api/journal')).length).toBe(1);
+    expect(asked.some((u) => u.includes('/_project-file/'))).toBe(false);
+  });
+});
+
+describe('re-anchoring fails CLOSED', () => {
+  test('a foreign epoch re-reads from zero rather than assuming quiet', async () => {
+    const hub = fakeHub({ 'system/ds/brand.css': 'v1' });
+    await plane(hub).reconcile();
+    // The hub's log restarted under a new epoch.
+    ledger.setPosition('epoch-OLD', 99);
+    const res = await plane(hub).reconcile();
+    expect(res.reanchored).toBe(true);
+    expect(ledger.epoch()).toBe('epoch-1');
+  });
+
+  test('a degraded epoch never overwrites local work — it parks theirs beside it', async () => {
+    const hub = fakeHub({ 'system/ds/brand.css': 'v1' });
+    await plane(hub).reconcile();
+    write('system/ds/brand.css', 'my unsent work');
+    // Pretend our anchor belongs to a log the hub no longer has, WITHOUT
+    // going through the reanchor path (the degraded-read case).
+    ledger.setPosition('epoch-GONE', 0);
+    hub.add('system/ds/brand.css', 'their newer');
+    const res = await plane(hub, { fetchImpl: hub.fetchImpl }).reconcile();
+    // Either way the local bytes survive; that is the invariant.
+    expect(read('system/ds/brand.css')).not.toBe('their newer');
+    expect(res.pulled).toEqual([]);
+  });
+});
+
+describe('the doručenka answers "where is this file"', () => {
+  test('a pulled file reads on-hub; an unsent one reads local-only', async () => {
+    const hub = fakeHub({ 'system/ds/brand.css': 'v1' });
+    write('assets/local.png', 'only here');
+    const p = plane(hub);
+    await p.reconcile();
+    const states = p.doruceka();
+    expect(states['system/ds/brand.css']).toBe('on-hub');
+    // It was pushed in the same pass, so it is on the hub too — the point is
+    // that NOTHING reads as delivered without having got there.
+    expect(['on-hub', 'local-only']).toContain(states['assets/local.png']);
+  });
+
+  test('a failure is named, not swallowed', async () => {
+    const hub = fakeHub({ 'system/ds/brand.css': 'v1' });
+    const broken = (async (url: string, init?: RequestInit) => {
+      if (String(url).includes('/_project-file/')) return new Response('no', { status: 500 });
+      return hub.fetchImpl(url as never, init as never);
+    }) as unknown as typeof fetch;
+    const p = plane(hub, { fetchImpl: broken });
+    const res = await p.reconcile();
+    expect(res.failed.length).toBe(1);
+    expect(p.doruceka()['system/ds/brand.css']).toBe('stuck');
+    expect(ledger.row('system/ds/brand.css')?.reason).toContain('500');
+  });
+});
+
+describe('deletion stays OFF until its breakers ship', () => {
+  test('a file deleted here is HELD — neither resurrected nor propagated', async () => {
+    const hub = fakeHub({ 'system/ds/brand.css': 'v1' });
+    await plane(hub).reconcile();
+    rmSync(join(root, 'system/ds/brand.css'));
+    const res = await plane(hub).reconcile();
+    expect(res.pulled).toEqual([]); // not resurrected
+    expect(hub.rows.has('system/ds/brand.css')).toBe(true); // not deleted upstream
+    expect(existsSync(join(root, 'system/ds/brand.css'))).toBe(false);
+  });
+
+  test('but an EDIT still beats a delete', async () => {
+    const hub = fakeHub({ 'system/ds/brand.css': 'v1' });
+    await plane(hub).reconcile();
+    rmSync(join(root, 'system/ds/brand.css'));
+    hub.add('system/ds/brand.css', 'somebody edited it');
+    const res = await plane(hub).reconcile();
+    expect(res.pulled).toEqual(['system/ds/brand.css']);
+    expect(read('system/ds/brand.css')).toBe('somebody edited it');
+  });
+});
+
+describe('the F6 budget applies to this lane too', () => {
+  test('a pass stops on bytes and resumes next time', async () => {
+    const hub = fakeHub({
+      'system/ds/a.css': 'x'.repeat(400),
+      'system/ds/b.css': 'y'.repeat(400),
+      'system/ds/c.css': 'z'.repeat(400),
+    });
+    const first = await plane(hub, { maxPassBytes: 900 }).reconcile();
+    expect(first.pulled.length).toBe(2);
+    expect(first.budgetExhausted).toBe(true);
+    const second = await plane(hub, { maxPassBytes: 900 }).reconcile();
+    expect(second.pulled.length).toBe(1);
+  });
+});

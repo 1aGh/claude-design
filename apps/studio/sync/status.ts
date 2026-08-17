@@ -69,6 +69,23 @@ export interface FilePlaneStatus {
   pulled: number;
   /** Cumulative conflicts this boot (either winner); losers are in _trash/. */
   conflicts: number;
+  /** Sync v2 — cumulative files sent UP this boot. The v1 lane had no push
+   *  half of its own, so this is absent on a journal-less hub. */
+  pushed?: number;
+  /**
+   * THE DORUČENKA (DDR-226 §7) — per-path delivery state.
+   *
+   * The counts above are what the old lane reported, and they are exactly
+   * what could not answer the question three days of dogfood kept asking:
+   * "where is THIS file". A total says how many are fine; it cannot point at
+   * the one that is not.
+   *
+   * The counts stay beside it deliberately. A panel derived from the same
+   * source it displays cannot be cross-checked, and DDR-214's whole lesson is
+   * that a status surface has to be falsifiable — so the raw counters remain
+   * as the thing to disagree with.
+   */
+  delivery?: Record<string, string>;
 }
 
 export interface SyncStatusStoreOptions {

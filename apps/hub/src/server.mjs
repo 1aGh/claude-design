@@ -79,6 +79,7 @@ import {
   handleDocumentItemRoute,
   handleDocumentsRoute,
 } from './documents.mjs';
+import { FILE_DOOR_PREFIX, handleFileDoor } from './file-door.mjs';
 import {
   FILES_PATH,
   handleFilesRoute,
@@ -935,6 +936,34 @@ export function createHub(config = {}) {
               ? join(repoDir, process.env.MAUDE_DESIGN_ROOT ?? '.design')
               : null,
           respondJson: (status, payload) => respondAdminJson(response, status, payload),
+        });
+        if (handled) bailFromOnRequest();
+      }
+      // The SINGLE file write door (Sync v2, DDR-226 §5). Unlike the two older
+      // asset doors it carries a compare-and-swap precondition and an
+      // owner-role gate on code modules, and it answers with the journal seq —
+      // the receipt that moves a file to `on-hub` in the doručenka.
+      //
+      // Main origin only, like every other privileged route: the canvas origin
+      // is untrusted content and has no business writing project files
+      // (DDR-088 — a privileged route belongs to NEITHER allowlist).
+      if (authPath.startsWith(FILE_DOOR_PREFIX) && !(studioProxy && isCanvasHost(request))) {
+        const handled = await handleFileDoor({
+          request,
+          response,
+          pathname: authPath,
+          method,
+          dataDir,
+          secret,
+          designRoot: journalDesignRoot,
+          journal,
+          onWritten: noteCheckoutWrite,
+          checkRateLimit: rateLimit
+            ? (req) => checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
+            : undefined,
+          checkWriteRateLimit: rateLimit
+            ? (label) => checkConnRateLimit(assetWriteBuckets, label, assetWriteRateLimitMax)
+            : undefined,
         });
         if (handled) bailFromOnRequest();
       }
