@@ -341,6 +341,18 @@ async function main() {
     // those. Fixed, not random: a rotating secret would invalidate the browser
     // sessions of a cell you restart while working.
     HUB_SECRET: 'local-cell-secret-not-for-production',
+    // LIVE PAIRING ON.
+    //
+    // Without it the hub mints no loopback credential, so the studio child
+    // runs with no doc-lane sync at all: a canvas created in the cloud browser
+    // lives on the cell's disk and never becomes a Y.Doc, so no desktop can
+    // ever learn it exists. The FILE plane still works (that is a different
+    // lane) — which makes the half-working result especially confusing to look
+    // at, since the design system crosses and the canvases do not.
+    //
+    // On the fleet this is the `CELL_LIVE_PAIRING` pilot allowlist. A local
+    // cell exists to exercise both planes, so it is on here.
+    MAUDE_CELL_PAIRING: '1',
     ...(has('no-watch') ? { MAUDE_NO_WATCH: '1' } : {}),
     ...(has('no-events') ? { MAUDE_FILE_EVENTS: '0' } : {}),
   };
