@@ -590,7 +590,6 @@ export function handleJournalRoutes({
     }
     const paths = Array.isArray(body?.paths) ? body.paths : [];
     let noted = 0;
-    let appended = 0;
     for (const raw of paths.slice(0, MAX_NUDGE_PATHS)) {
       if (typeof raw !== 'string' || !NUDGE_PATH_RE.test(raw) || raw.split('/').includes('..')) {
         continue;
@@ -598,10 +597,16 @@ export function handleJournalRoutes({
       noted += 1;
       // The hub looks at ITS OWN disk. The report said where; it did not say
       // what, and there is no parameter through which it could.
-      const res = journal.recordWrite({ designRoot, path: raw, source: 'studio-report' });
-      if (res && !res.noop) appended += 1;
+      journal.recordWrite({ designRoot, path: raw, source: 'studio-report' });
     }
-    respondJson(200, { noted, appended, head: journal.head() });
+    // THE ANSWER LEAKS NOTHING. `noted` counts syntactically-valid paths — a
+    // pure function of the request, which the caller could compute itself. It
+    // deliberately does NOT report how many rows were appended: that number
+    // differs for a path that exists and a path that does not, which would make
+    // this an existence oracle over the checkout for anyone who reached the
+    // route. The loopback gate above is a belt; this is the braces, and it holds
+    // even if a deployment ever put a proxy hop where loopback used to be.
+    respondJson(200, { noted });
     return true;
   }
 

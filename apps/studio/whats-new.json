@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "cloud-canvases-heal-themselves",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "The cloud stops needing a reload",
+      "summary": "A file that arrives in the cloud now shows up in an open tab by itself. Before, the bytes landed but nothing told the page, so a picture stayed a broken frame until you reloaded by hand — it looked like sync had failed when it had already finished.",
+      "surface": "design-ui"
+    },
+    {
       "id": "instant-asset-sync",
       "version": "0.60.7",
       "date": "2026-08-16",

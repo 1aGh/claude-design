@@ -56,6 +56,19 @@ export interface LinkedHub {
    * canvas CRDT lanes and the DDR-217 asset lanes run regardless.
    */
   syncFiles?: boolean;
+  /**
+   * Sync v2 Increment 2 (DDR-226 §4) — the file-event control channel.
+   *
+   * Default ON where the hub advertises `ledger`; set to `false` to fall back
+   * to exactly today's 20 s poll cadence. A CONFIG KEY rather than an env var
+   * on purpose: this is the documented rollback for the poke, and the target
+   * user has no terminal to set an env var in (DDR-177).
+   *
+   * Absence means ON. A committed `false` can only ever make sync SLOWER, so
+   * unlike `syncTsx` it carries no trust weight and needs no restore-proof
+   * absence-means-on gymnastics.
+   */
+  fileEvents?: boolean;
 }
 
 export interface DevServerConfig {

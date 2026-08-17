@@ -85,6 +85,12 @@ import {
   handleProjectFileRoute,
   PROJECT_FILE_PREFIX,
 } from './file-manifest.mjs';
+import {
+  createFilesPoke,
+  FILES_CTL_DOC,
+  isFilesCtlDoc,
+  withoutCtlPersistence,
+} from './files-ctl.mjs';
 import { seedFirstUserOnBoot } from './first-user.mjs';
 import { createGitRunner } from './git-runner.mjs';
 import {
@@ -503,7 +509,11 @@ export function createHub(config = {}) {
     // NORMAL path for a cell. Shutdown is ours; see `shutdown()` in runAsMain.
     stopOnSignals: false,
 
-    extensions: [new SQLite({ database: sqlitePath })],
+    // The control document (`maude.files`) carries no Y content and must never
+    // reach the document store — an empty row there would show up in listings,
+    // in the restore drill's document count, and in the operator's canvas
+    // count. See files-ctl.mjs.
+    extensions: [withoutCtlPersistence(new SQLite({ database: sqlitePath }))],
 
     async onAuthenticate({ token, documentName, request, connectionConfig }) {
       // DDR-053 §5: defend against log forging + future XSS regression by
@@ -516,6 +526,33 @@ export function createHub(config = {}) {
       }
       const match = verifyToken(dataDir, token, secret);
       if (match) {
+        // Sync v2 (DDR-226 §4) — the file-plane CONTROL channel.
+        //
+        // SCOPE-MAPPED rather than scope-checked: `maude.files` is not a
+        // document any token is scoped to, so the ordinary check would refuse
+        // every narrow credential and the poke would reach only wildcard
+        // peers. Admitting it is safe precisely because of what it is — a
+        // channel with no Y content, carrying `{t:'files', head}` and nothing
+        // else. A peer learns that the journal moved; it learns WHAT moved
+        // only by asking `GET /api/journal`, which IS scope-filtered.
+        //
+        // ADMITTED READ-ONLY, unconditionally. Hocuspocus enforces that at the
+        // protocol level (SyncStep2 and Update messages are dropped), so no
+        // peer — patched, scripted or merely out of date — can put content
+        // into the control document even though the persistence layer would
+        // refuse to store it anyway. Two locks on a door that should not open.
+        if (isFilesCtlDoc(documentName)) {
+          if (connectionConfig) connectionConfig.readOnly = true;
+          return {
+            user: {
+              name: match.label,
+              source: match.source,
+              scope: match.scope ?? '*',
+              readOnly: true,
+              ctl: true,
+            },
+          };
+        }
         // DDR-053 §3: scope binding gates Chain B (token leak → full hub).
         if (!matchesScope(match.scope, documentName)) {
           throw authError('token not authorized for this documentName');
@@ -908,7 +945,15 @@ export function createHub(config = {}) {
       // In NEITHER canvas allowlist (DDR-088): the canvas origin is untrusted
       // content and has no business reading a project's write history, let
       // alone asking the hub to stat paths.
-      if (authPath === JOURNAL_PATH || authPath === JOURNAL_REPORT_PATH) {
+      if (
+        (authPath === JOURNAL_PATH || authPath === JOURNAL_REPORT_PATH) &&
+        // Never from the canvas origin, structurally — not merely because that
+        // origin holds a render capability rather than a peer token. DDR-088's
+        // rule is that a privileged route is reachable from NEITHER allowlist,
+        // and "it would 401 anyway" is the kind of reasoning that stops being
+        // true one refactor later.
+        !(studioProxy && isCanvasHost(request))
+      ) {
         let journalBody = null;
         if (authPath === JOURNAL_REPORT_PATH && method === 'POST') {
           try {
@@ -1189,6 +1234,11 @@ export function createHub(config = {}) {
     },
   });
 
+  // Sync v2 Increment 2 — the poke. Built here because it needs the running
+  // instance's document map; subscribed to the journal in
+  // `startJournalReconciler`, so a hub with no checkout never emits one.
+  const filesPoke = createFilesPoke({ instance: server });
+
   return {
     server,
     sqlitePath,
@@ -1374,7 +1424,16 @@ export function createHub(config = {}) {
     async startJournalReconciler({ target, intervalMs = 15 * 60_000 } = {}) {
       if (!journal || !journalDesignRoot) return { state: 'off', reason: 'no checkout' };
       journalTail = createJournalTail({ journal, target });
-      journal.onAppend(() => journalTail?.schedule());
+      // ONE append, two subscribers — durability and delivery. Neither may
+      // fail the other, and neither may fail the write that already landed.
+      journal.onAppend(() => {
+        journalTail?.schedule();
+        // Increment 2: tell every attached peer the journal moved. A cell's
+        // own studio child is one of those peers, which is what closes the
+        // container watcher gap — structurally, and for the WHOLE fleet rather
+        // than for the one pilot tenant.
+        filesPoke.schedule(journal.head());
+      });
 
       // The reconciler is the TRUTH and the hooks are the optimization: a
       // git-level restore, a write site nobody hooked, or a class flip all
@@ -1401,9 +1460,12 @@ export function createHub(config = {}) {
         clearInterval(walkImportTimer);
         walkImportTimer = null;
       }
+      filesPoke.stop();
       await journalTail?.stop();
       journalTail = null;
     },
+    /** The poke emitter — tests assert its coalescing; /health counts frames. */
+    filesPoke,
     /** Flush the pending commit and detach. The SIGTERM path depends on this. */
     async stopWorkspaceAgent() {
       if (!workspace) return;

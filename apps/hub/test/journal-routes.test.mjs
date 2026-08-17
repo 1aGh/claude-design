@@ -212,7 +212,6 @@ describe('POST /api/journal/report — a nudge, never data', () => {
     });
     handleJournalRoutes(ctx);
     assert.equal(out.status, 200);
-    assert.equal(out.payload.appended, 1);
     const row = journal.entriesSince(0).entries[0];
     assert.equal(row.path, 'assets/a.png');
     assert.equal(row.size, 1); // 'A' — read from disk, not from the report
@@ -229,8 +228,31 @@ describe('POST /api/journal/report — a nudge, never data', () => {
     });
     handleJournalRoutes(ctx);
     assert.equal(out.payload.noted, 1);
-    assert.equal(out.payload.appended, 0);
     assert.equal(journal.head(), 0);
+  });
+
+  it('the answer is NOT an existence oracle — present and absent read alike', () => {
+    // `noted` is a pure function of the request. If the response distinguished
+    // "this path exists in the checkout" from "it does not", anyone who reached
+    // this route would have a filesystem probe over a customer's project — and
+    // "the loopback gate protects it" is exactly the assumption a future proxy
+    // hop would quietly invalidate.
+    const journal = openJournal(dataDir);
+    const ask = (p) => {
+      const { ctx, out } = baseCtx({
+        path: JOURNAL_REPORT_PATH,
+        method: 'POST',
+        journal,
+        isLoopback: true,
+        body: { paths: [p] },
+      });
+      handleJournalRoutes(ctx);
+      return out;
+    };
+    const present = ask('assets/a.png');
+    const absent = ask('assets/definitely-not-here.png');
+    assert.deepEqual(present.payload, absent.payload);
+    assert.equal(present.status, absent.status);
   });
 
   it('refuses a traversal or a malformed path outright', () => {

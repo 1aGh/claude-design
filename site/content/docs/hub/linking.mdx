@@ -128,6 +128,16 @@ The sync agent tolerates the hub disappearing — your laptop on a plane, a Fly 
 - On reconnect, the agent runs Yjs sync v2, the banner flashes green *"Synced"* for 3s, then disappears. Queued edits land within ~2s.
 - If you stay offline for **> 24h**, the banner escalates to red: *"Long offline — your changes may conflict. Consider `git commit && git push` as backup."*
 
+## How fast a change crosses
+
+Text edits ride the live document lanes and arrive in milliseconds. Files — pictures, fonts, design-system stylesheets, docs — used to arrive on a schedule: the receiving side asked "anything new?" every 20 seconds, and inside the cloud there was a further gap where the bytes had already landed but nothing told the open page, so a picture stayed a broken frame until you reloaded.
+
+A hub that carries the file journal now **says so** the moment it accepts a write, over the same connection your canvases already use. Peers fetch straight away instead of waiting for the next tick, and an open cloud tab repairs itself in place — no reload.
+
+The frame is deliberately empty of content: it says "something moved", never *what*. Everything a peer then downloads goes through the same authenticated, re-validated route it always did. A lost notification therefore costs a few seconds, never correctness — the 20-second poll is still there underneath, and it stays there until the notification path has proven itself in real use.
+
+Older hubs simply don't advertise the feature and every peer keeps today's behaviour unchanged. To turn it off against a hub that does, set `linkedHub.fileEvents: false` in `.design/config.json`; that project falls back to the poll cadence and nothing else changes.
+
 ## Rate limits
 
 The hub authenticates each canvas document separately, so a big project produces a burst of valid auths at boot (one per canvas — even though all of them ride **one** multiplexed WebSocket per peer). The hub's limiter is sized for that: valid tokens get 600 auths/min per label (override with `HUB_CONN_RATE_LIMIT` on the hub), while *invalid* token attempts — the actual brute-force surface — are capped tightly at 100/min per IP. If a peer ever does hit the limit, the rejection says so explicitly (with a retry hint) instead of a generic `permission-denied`, and sync settles by itself as providers back off.

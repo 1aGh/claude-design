@@ -10,6 +10,7 @@ import type { Collab, RoomConn } from './collab/index.ts';
 import type { Context } from './context.ts';
 import { createContainerWriteBridge, createHmrBroadcaster } from './hmr-broadcast.ts';
 import type { InspectRegistry } from './inspect.ts';
+import { startCellFileEvents } from './sync/cell-file-events.ts';
 import { isWorkspaceMode } from './workspace-mode.ts';
 
 /**
@@ -274,7 +275,18 @@ export function createWs(
   // iframe stays stale until a manual reload (inspector-edits-live-render RCA).
   // Synthesise the fs:any the watcher owes us from each write's activity:suppress
   // arm. Workspace-mode only — locally fs.watch fires and this would double-load.
-  if (isWorkspaceMode()) createContainerWriteBridge(ctx);
+  if (isWorkspaceMode()) {
+    createContainerWriteBridge(ctx);
+    // Sync v2 Increment 2 (DDR-226 §4) — the OTHER half of the same gap. The
+    // bridge above covers writes THIS process makes; a desktop asset PUT or a
+    // bucket→checkout refill happens in the HUB process, and nothing crossed
+    // that boundary. Now the hub pokes over the reserved `maude.files` channel
+    // and this turns the poke into the `fs:any` the watcher owed us.
+    //
+    // Deliberately NOT gated on cell pairing — that is a one-tenant pilot and
+    // the gap is fleet-wide. See sync/ctl-provider.ts.
+    startCellFileEvents(ctx);
+  }
 
   // Phase 13 / DDR-029 — canvas activity overlay. activity.ts emits
   // `activity:change` per file as edits land + go idle. The overlay renders

@@ -40,6 +40,7 @@ import {
   createConnectionMonitor,
   type ProviderStatus,
 } from './connection-state.ts';
+import { createCtlProvider } from './ctl-provider.ts';
 import { createRescanScheduler, diffCanvasSet, type RescanScheduler } from './discovery.ts';
 import { createDocNameResolver } from './doc-name.ts';
 import { createEchoGuard } from './echo-guard.ts';
@@ -47,6 +48,7 @@ import { type FilePullResult, pullFiles } from './file-pull.ts';
 import { createFsReader, type FsReader } from './fs-mirror.ts';
 import { getHubRecord } from './hubs-config.ts';
 import { loadJournal, type SyncJournal } from './journal.ts';
+import { hasLedger, hubCapabilities } from './journal-client.ts';
 import { isLoopbackHost } from './loopback.ts';
 import { migrateFlatFallback } from './migrate-flat-fallback.ts';
 import { migrateSeed } from './migrate-seed.ts';
@@ -771,6 +773,26 @@ export function createSyncRuntime(
   let createdUnsub: (() => void) | null = null;
   /** Periodic remote-document poll — the hub-side half of discovery. */
   let remotePollTimer: ReturnType<typeof setInterval> | null = null;
+  /**
+   * The file-event control channel (Sync v2 Increment 2), when the hub
+   * advertises one. Null on a journal-less hub, in a cell (the child holds it
+   * there), and whenever `linkedHub.fileEvents` is false.
+   */
+  let fileEventsCtl: import('./ctl-provider.ts').CtlProvider | null = null;
+  /**
+   * Cancels the boot-time capability probe. A `stop()` that leaves a `/health`
+   * fetch in flight is a timer keeping a dying process alive and a promise
+   * landing in torn-down state — the class of thing that shows up as a flaky
+   * suite long before it shows up as a bug.
+   */
+  let fileEventsProbe: AbortController | null = null;
+  /**
+   * The HONESTY COUNTER. Pokes received this run, beside the polls that found
+   * work anyway. Relaxing the 20 s poll to 60 s is gated on this proving the
+   * channel is not silently missing events in dogfood (DDR-226 §10) — a
+   * number, not a feeling, and deliberately reported rather than assumed.
+   */
+  let pokesSeen = 0;
   /** Assigned by `start()`; the seam `pullRemoteNow()` and tests reach. */
   let remotePull: (() => Promise<void>) | null = null;
   /**
@@ -2406,6 +2428,51 @@ export function createSyncRuntime(
     // dev server to refuse to exit.
     remotePollTimer.unref?.();
 
+    // ── Sync v2 Increment 2 — the poke, desktop side (DDR-226 §4) ──────────
+    //
+    // CAPABILITY-GATED, and the gate is the compat matrix (§10, BINDING): a
+    // journal-less self-hosted hub must see exactly today's client. So we ask
+    // `/health` first and attach nothing unless it says `ledger`.
+    //
+    // THE POLL STAYS AT 20 s. The poke is additive this release — it makes the
+    // common case fast, and the honesty counter below is what earns the right
+    // to relax the poll later. Relaxing it now would trade a measured cadence
+    // for an unmeasured one.
+    //
+    // Not started in a cell: there the CHILD holds this channel (ws.ts), and
+    // its job is healing the UI rather than triggering pulls.
+    if (!cellPairing && ctx.cfg.linkedHub?.fileEvents !== false) {
+      fileEventsProbe = new AbortController();
+      void hubCapabilities({ hubUrl: linkedHub.url, signal: fileEventsProbe.signal })
+        .then((caps) => {
+          if (stopped || !hasLedger(caps)) return;
+          fileEventsCtl = createCtlProvider({
+            url: linkedHub.url,
+            token,
+            onPoke: () => {
+              // Reuses `pollRemoteSoon` rather than calling the file lanes
+              // directly, for two reasons: it already coalesces a burst into
+              // one pass (a fresh link appends hundreds of rows), and it is
+              // the exact path a reconnect takes — one behaviour to reason
+              // about instead of two that can drift.
+              //
+              // The PULL itself is unchanged: missing-only, idempotent, and
+              // re-validating everything it accepts. So a poke can at worst
+              // cost one early pass, and the scheduled poll remains the
+              // reconciler underneath it.
+              pokesSeen += 1;
+              pollRemoteSoon();
+            },
+          });
+          console.log(
+            '[sync/ctl] file-event channel attached — cloud changes now arrive in seconds instead of on the 20 s tick.'
+          );
+        })
+        .catch(() => {
+          /* no capability probe ⇒ no channel ⇒ exactly today's behaviour */
+        });
+    }
+
     // Arm the pre-expiry renewal from the credential that just booted. Placed
     // last — the timer needs nothing from boot, and boot needs nothing from it
     // (a credential that dies mid-boot lands in the invalid-token path, which
@@ -2420,6 +2487,18 @@ export function createSyncRuntime(
     for (const t of fastPushTimers.values()) clearTimeout(t);
     fastPushTimers.clear();
     requestFastPull = null;
+    fileEventsProbe?.abort();
+    fileEventsProbe = null;
+    // The control channel is a doorbell into this runtime; it goes with it.
+    // Reported on the way out so the poke-miss question is answerable from a
+    // session's log rather than from a hunch (DDR-226 §10).
+    if (fileEventsCtl) {
+      console.log(
+        `[sync/ctl] file-event channel closing — ${pokesSeen} poke(s) received, ${fileEventsCtl.malformed()} refused.`
+      );
+      fileEventsCtl.stop();
+      fileEventsCtl = null;
+    }
     // Nothing may be adopted into a runtime that is going away.
     attachOne = null;
     discoveryUnsub?.();

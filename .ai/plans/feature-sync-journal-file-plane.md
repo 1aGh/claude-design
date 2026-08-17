@@ -258,7 +258,37 @@ real tree (alligators + alligators-mirror), verified against built artifacts.**
 - **Validate**: restore drill — backup → wipe → rehydrate → tail replay → head monotonic, epoch preserved; kill-mid-append test; walk-import catches a hand-planted checkout mutation. Run against the real container image (DDR-198 lesson).
 - **Rollback**: routes dark, table inert — zero clients depend on it.
 
-### Task 3: Increment 2 — the poke; the live watcher-gap bug dies fleet-wide (M)
+### ✅ Task 3: Increment 2 — the poke; the live watcher-gap bug dies fleet-wide (M) — CODE DONE 2026-08-17 (live fleet drill pending a release)
+
+> Shipped: hub `files-ctl.mjs` (dotted `maude.files` reserved doc, 250 ms
+> coalescing `broadcastStateless`, `withoutCtlPersistence` so the control doc
+> never reaches the document store), scope-MAPPED + forced-read-only admission
+> in `onAuthenticate`, poke fired from the journal's append listener. Studio:
+> `sync/ctl-provider.ts` (`resolveCellCtl` — workspace mode + loopback + token,
+> and deliberately NOT the pairing gate), `sync/poke.ts` (the wire twin, pinned
+> against the hub's parser over an adversarial corpus per DDR-198's twin rule),
+> `sync/journal-client.ts` (`fetchJournal` + `hubCapabilities`/`hasLedger` — the
+> compat-matrix gate), `sync/ctl-heal.ts` (poke ⇒ journal read ⇒ `fs:any` ⇒ the
+> existing `asset`/`css` heal), `sync/cell-file-events.ts` wired in `ws.ts`
+> beside `createContainerWriteBridge`. Desktop attaches capability-gated with a
+> poke counter; the 20 s poll is untouched. Rollback: `linkedHub.fileEvents:false`
+> (config, no terminal) or `MAUDE_FILE_EVENTS=0` cell-side.
+>
+> **Security change found while wiring it.** `POST /api/journal/report` used to
+> answer `{noted, appended}`. `appended` differs for a path that exists and one
+> that does not, so the response was an existence oracle over the customer's
+> checkout for anyone who reached the route — and "the loopback gate protects
+> it" is precisely the assumption a future proxy hop would invalidate. The
+> response is now `{noted}` only (a pure function of the request), pinned by a
+> test that asserts present and absent paths read identically. Both journal
+> routes additionally refuse a canvas-origin request structurally (DDR-088).
+>
+> **Still owed, and it needs a deployed cell:** the LIVE drill — a hub-door
+> asset PUT on an UNPAIRED fleet cell healing an open cloud tab without a
+> reload, verified through the CF `containers` dataset. Unit + parity coverage
+> is green (21 studio cases, 15 hub cases); the fleet half is a post-release
+> verification step, not something a local suite can stand in for.
+
 
 - **Do**: ADD reserved dotted control doc **`maude.files`** (dotted name fails every old-client slug regex — verified `[A-Za-z0-9_-]`; branch-independent; scope-mapped in `onAuthenticate`; admitted read-only; never stored as Y content). Hub: `broadcastStateless({t:'files', head})` coalesced 250 ms. Cell studio child: attach **ctl-only loopback provider OUTSIDE the `CELL_LIVE_PAIRING` gate** (pairing preconditions govern shared-doc content, not a read-only stateless channel — this is what makes the fix fleet-wide, not pilot-only) → poke → synthesize `fs:any` → existing `asset`/`css` HMR heal. Desktop: attach capability-gated; poke triggers existing `pullAssetsOnce`/`pullFilesOnce`. Poll STAYS 20 s + add a poke-miss honesty counter.
 - **Pattern**: stateless messages — see existing Hocuspocus usage in `documents.mjs`; peers with zero canvas docs must still hold the ctl connection (files-only projects keep event latency).
