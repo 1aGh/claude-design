@@ -186,13 +186,36 @@ ship together (one image tag); the only skew axis is desktop↔hub, governed by 
 compat matrix (synthesis §10). Acceptance bar throughout: **file-for-file parity on a
 real tree (alligators + alligators-mirror), verified against built artifacts.**
 
-### Task 0: RECORD the architecture decision (DDR) + the GitSync rejection (DDR)
+### ✅ Task 0: RECORD the architecture decision (DDR) + the GitSync rejection (DDR) — DONE 2026-08-17
+
+> Shipped as **DDR-226** (sync v2 architecture), **DDR-227** (git-as-transport
+> developed and rejected) and **DDR-228** (two-mode design ownership), all three
+> ingested into the graph (`kg search "sync journal file plane"` returns DDR-226
+> as the head; `area:sync` `last_ddr` = `maude/DDR-228`).
+
 
 - **Do**: `/flow:record-ddr` × 2: (a) "Sync v2: hub-ordered journal file plane, one store of serving truth, doručenka" — the synthesis end-state + the 16 grafts; supersedes/extends DDR-217/222/224/225 posture, fires DDR-214's revisit trigger. (b) "git-as-transport for .design sync: developed and rejected" — Bill of Lading Part I grounds (unsplittable receive-pack vs body caps; unbounded binary history vs 8 GB/600 s cell physics; checkout unusable under DDR-054; no event channel). Git STAYS history-of-record/seed/backup/rehydrate. (c) "Two-mode design ownership: repo-owned vs hub-owned, no hybrid" — the Product mode model section above; supersedes the linked+committed posture AND the old repo-to-repo-P2P-on-git-push multiplayer variant; linked ⇒ `.design/` gitignored locally; `design-sync.mjs` reclassified sync→export.
 - **Why now**: so the direction is never re-litigated and increments can cite one decision.
 - **Validate**: `maude kg context --about "sync journal"` returns the new head decision.
 
-### Task 1: Increment 0 — groundwork, zero wire change (S)
+### ✅ Task 1: Increment 0 — groundwork, zero wire change (S) — DONE 2026-08-17
+
+> **Correction to this task as written.** `apps/studio/sync/autocommit.ts` is NOT
+> deletable: `apps/hub/src/workspace-agent.mjs` imports `createAutoCommit` from
+> it and `apps/hub/Dockerfile` copies the file into the image — that IS DDR-198's
+> "one commit engine, never two copies of the rules". What was verified dead is
+> the desktop **wiring** (`createAutoCommit` call, `editorOf`, the writer wrap,
+> the stop-flush), unreachable because the `workspaceMode && !cellPairing` gate
+> at `sync/index.ts:403` already returns null for exactly that condition. The
+> wiring is gone (~75 lines) and the module stays, with a comment at the old
+> construction site recording why it is not coming back on either side.
+>
+> Shipped: `sync/cold-start-apply.ts` (one exhaustive applier, compile-time
+> `never` default) consumed by BOTH `agent.ts` and `migrate-seed.ts` — which
+> fixes the LIVE `recover-seed-dup` fallthrough; `sync/pull-budget.ts` (F6
+> aggregate per-pass byte ceiling, 2 GiB) wired into `asset-pull.ts` and
+> `file-pull.ts`; `test/cold-start-apply.test.ts` (tripwire + totality +
+> regression) and `test/sync-pull-budget.test.ts`.
 
 - **Do**: DELETE desktop `autocommit.ts` + its editorOf/writer-wrap/stop-flush wiring (~450 lines — verified dead by two independent breakers; git history is served by the hub side per DDR-198). CREATE `cold-start-apply.ts` — single application body for the DDR-102/223 tables (exhaustive switch, compile-time `never` default), imported by BOTH `agent.ts` and `migrate-seed.ts`; this **fixes the LIVE `recover-seed-dup` fallthrough in migrate-seed** found by the desktop reader. ADD tripwire test: both callers import the one module. ADD F6 aggregate byte budget to existing pulls.
 - **Gotcha**: `autocommit.ts` deletion must also drop its `whats-new`/status mentions; grep for `autocommit` across `sync/index.ts`, `status.ts`, docs.

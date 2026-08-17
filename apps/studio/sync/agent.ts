@@ -66,6 +66,7 @@ import {
   isExactRepeat,
   unionCommentsById,
 } from './cold-start.ts';
+import { applyColdStart } from './cold-start-apply.ts';
 import { type EchoGuard, hashBytes } from './echo-guard.ts';
 import type { SyncJournal } from './journal.ts';
 
@@ -472,9 +473,6 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
       docBodyEditAtMs: bodyEditAtFromDoc(doc),
     });
 
-    // Which side owns the visually-coupled lanes (annotations/css) below.
-    let bodyWinner: 'local' | 'hub' = 'hub';
-
     const writeBodyFromDoc = (): void => {
       const hash = hashBytes(docHtml);
       echoGuard.record(paths.html, hash);
@@ -497,84 +495,27 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
       opts.journal?.record(slug, { bodyHash: hashBytes(body) });
     };
 
-    switch (decision.action) {
-      case 'noop':
-        lastHtml = docHtml;
-        // Identical non-empty sides: checkpoint so the next boot fast-forwards.
-        if (localHtml !== null && localHtml === docHtml && docHtml !== '') {
-          opts.journal?.record(slug, { bodyHash: hashBytes(docHtml) });
-        }
-        break;
-      case 'materialize-hub':
-      case 'fast-forward-hub':
-        writeBodyFromDoc();
-        break;
-      case 'seed-local-up':
-        // The DDR-064 empty-hub guard as a named decision row: an empty hub doc
-        // means the hub holds no body for this slug yet — NOT an authoritative
-        // "this canvas is blank". Seed the doc FROM local so the body survives
-        // AND the hub gets our content.
-        seedBodyUp(localHtml as string);
-        bodyWinner = 'local';
-        break;
-      case 'recover-seed-dup':
-        // F1 — booting against a hub whose body is our local body repeated (a
-        // concurrent cold-seed that already duplicated). Re-apply local so the
-        // diff deletes the extra copy/copies; the content equals local, so the
-        // visually-coupled lanes follow local too. Idempotent across peers.
-        seedBodyUp(localHtml as string);
-        bodyWinner = 'local';
-        break;
-      case 'conflict': {
-        // Divergence: snapshot BOTH versions to `_history/<slug>/` BEFORE any
-        // write, then apply the newest-wins winner. Even a wrong pick costs
-        // one /design:rollback (the incident's class of loss is closed).
-        const snapshots: { local?: string; hub?: string } = {};
-        let snapshotAttempted = false;
-        if (opts.snapshot) {
-          snapshotAttempted = true;
-          try {
-            const localTs = await opts.snapshot(localHtml as string, 'pre-sync-local');
-            if (localTs) snapshots.local = localTs;
-            const hubTs = await opts.snapshot(docHtml, 'pre-sync-hub');
-            if (hubTs) snapshots.hub = hubTs;
-          } catch {
-            /* swallowed below — the missing snapshot ref drives the fail-closed guard */
-          }
-        }
-        // DDR-102 fail-closed (security F1): the whole guarantee is "the loser is
-        // recoverable from _history". A hub-wins resolution OVERWRITES local — so
-        // if we asked for a snapshot but the local one did NOT land (full disk,
-        // read-only `_history/`, a Bun.write error), refuse the destructive
-        // overwrite. Keep local on disk and seed it UP instead, so nothing is
-        // lost on either side (local survives; the hub still gets our content).
-        // `snapshotAttempted` gates this to production wiring — a test/standalone
-        // agent with no snapshot fn keeps the plain newest-wins behavior.
-        const localSnapshotMissing = snapshotAttempted && !snapshots.local;
-        let winner = decision.winner;
-        if (winner === 'hub' && localSnapshotMissing) {
-          winner = 'local';
-          console.error(
-            `[sync/${slug}] cold-start divergence: hub won newest-wins but the local snapshot FAILED — REFUSING to overwrite local (DDR-102 fail-closed). Keeping local + pushing it up; resolve the _history/ write failure (disk full / read-only?) to restore newest-wins.`
-          );
-        }
-        if (winner === 'local') {
-          seedBodyUp(localHtml as string);
-          bodyWinner = 'local';
-        } else {
-          writeBodyFromDoc();
-        }
-        console.warn(`[sync/${slug}] cold-start divergence — ${decision.reason}`);
-        opts.onConflict?.({
-          slug,
-          kind: 'cold-start-diverged',
-          winner,
-          ...(snapshots.local || snapshots.hub ? { snapshots } : {}),
-          ...(localSnapshotMissing ? { snapshotFailed: true } : {}),
-        });
-        break;
-      }
-    }
+    // ONE application body, shared with migrate-seed.ts (DDR-226 Increment 0):
+    // exhaustive over every action with a compile-time `never` default, so the
+    // fail-closed snapshot guard, the conflict report and the row set can never
+    // drift between the two architectures again. Only the three EFFECTS differ
+    // and they are injected here.
+    const applied = await applyColdStart({
+      slug,
+      decision,
+      localBody: localHtml,
+      docBody: docHtml,
+      takeHub: writeBodyFromDoc,
+      takeLocal: seedBodyUp,
+      checkpointIdentity: (body) => opts.journal?.record(slug, { bodyHash: hashBytes(body) }),
+      ...(opts.snapshot ? { snapshot: opts.snapshot } : {}),
+      ...(opts.onConflict ? { onConflict: opts.onConflict } : {}),
+    });
+    // `noop` leaves disk and doc alone; the local mirror still tracks the doc.
+    if (applied.action === 'noop') lastHtml = docHtml;
+
+    // Which side owns the visually-coupled lanes (annotations fallback / css).
+    const bodyWinner = applied.bodyWinner;
 
     // ---- comments: id-union merge (DDR-102 — union loses nothing) ----------
     const localParsedComments = localComments !== null ? tryParseJsonArray(localComments) : null;

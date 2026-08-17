@@ -33,7 +33,6 @@ import { pullAssets } from './asset-pull.ts';
 import { isPushableAssetRel, pushOneAsset } from './asset-push.ts';
 import { type AssetSweepHandle, runAssetSweep } from './asset-sweep.ts';
 import { atomicWrite } from './atomic-write.ts';
-import { createAutoCommit } from './autocommit.ts';
 import { type CellPairing, resolveCellPairing, sanitizeForLog } from './cell-pairing.ts';
 import { canvasPathFromDoc, stampCanvasPath } from './codec.ts';
 import {
@@ -469,33 +468,27 @@ export function createSyncRuntime(
     return null;
   }
 
-  // Cloud Phase 3 Task 1 — in a workspace cell, a disk write is only half the
-  // save: nobody is at a keyboard to commit, so the cell does it. Off entirely
-  // outside workspace mode, where the developer's own git IS the history and
-  // committing under them would be an intrusion (DDR-119).
+  // NO autocommit lives in this runtime (Sync v2 Increment 0, DDR-226).
   //
-  // AND OFF UNDER CELL PAIRING, which is the guard DDR-209's core fear asks for.
-  // The hub's `afterStoreDocument` already commits every stored document; a
-  // second committer inside the studio child would race it over one working
-  // tree and one `.git/index`. This is structural rather than conditional on
-  // purpose — under pairing the object is never CONSTRUCTED, so there is no
-  // later branch that could accidentally reach a commit. `cell-pairing.ts`
-  // refuses to pair at all unless MAUDE_SYNC_NO_AUTOCOMMIT says so out loud, so
-  // the two halves of this invariant can never disagree.
-  const autoCommit =
-    workspaceMode && !cellPairing
-      ? createAutoCommit({
-          repoRoot: ctx.paths.repoRoot,
-          run: async (args, { cwd }) => {
-            const proc = Bun.spawn(['git', ...args], { cwd, stdout: 'pipe', stderr: 'pipe' });
-            const [stdout, stderr] = await Promise.all([
-              new Response(proc.stdout).text(),
-              new Response(proc.stderr).text(),
-            ]);
-            return { code: await proc.exited, stdout, stderr };
-          },
-        })
-      : null;
+  // Cloud Phase 3 Task 1 built one here for workspace cells, gated
+  // `workspaceMode && !cellPairing` — but that condition is UNREACHABLE: the
+  // gate at the top of this function already returns null for exactly
+  // `workspaceMode && !cellPairing`, so the object was always null and the
+  // writer-wrap / editorOf / stop-flush that depended on it never ran. Two
+  // independent readers confirmed it before the wiring was removed.
+  //
+  // It is not coming back on either side of the split:
+  //   - In a CELL the hub is the sole committer (`afterStoreDocument` →
+  //     workspace-agent), and `cell-pairing.ts` refuses to pair at all without
+  //     MAUDE_SYNC_NO_AUTOCOMMIT=1 — DDR-198/209/213.
+  //   - On a DESKTOP the developer's own git IS the history and committing
+  //     under them would be an intrusion — DDR-119.
+  //
+  // The ENGINE itself (`./autocommit.ts`) is very much alive: the hub imports
+  // it (`apps/hub/src/workspace-agent.mjs`, copied into the image by
+  // `apps/hub/Dockerfile`) so there is exactly ONE copy of the append-only
+  // commit rules — DDR-198's single-engine rule. Do not delete that module
+  // when removing wiring from this file.
 
   // Under pairing the credential is the hub's own derived cell token, handed to
   // this process in its environment. `~/.config/maude/hubs.json` is a PERSON's
@@ -1673,35 +1666,6 @@ export function createSyncRuntime(
      * agent/projection wiring — doc-scoped — survives the provider swap).
      */
     /**
-     * Who is editing this canvas right now, from hub awareness.
-     *
-     * Presence carries a display name and no address, so the address is
-     * synthesized and clearly marked as derived — inventing a plausible-looking
-     * real address would put an unverified identity into permanent git history.
-     * Absent a remote peer the answer is null, which `autocommit` turns into
-     * "Unknown editor" rather than attributing the work to the server.
-     */
-    const editorOf = (slug: string): { name: string; email: string } | null => {
-      const awareness = providers.get(slug)?.awareness;
-      if (!awareness) return null;
-      for (const [clientId, state] of awareness.getStates() as Map<
-        number,
-        { name?: string } | undefined
-      >) {
-        if (clientId === awareness.clientID) continue; // that's us, the cell
-        const name = state?.name?.trim();
-        if (name) {
-          const slugified = name
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/^-|-$/g, '');
-          return { name, email: `${slugified || 'peer'}@peers.maude.local` };
-        }
-      }
-      return null;
-    };
-
-    /**
      * Re-decide where a PULLED canvas goes, now that its document has synced.
      *
      * The listing (`GET /api/documents`) carries names and byte counts only —
@@ -1965,20 +1929,6 @@ export function createSyncRuntime(
                 echoGuard,
                 adopt: adoptOnce,
                 journal: journal ?? undefined,
-                // Wrap the writer rather than adding a new hook: every path the
-                // agent materializes to disk goes through it, so a future write
-                // surface is committed automatically instead of being forgotten.
-                ...(autoCommit
-                  ? {
-                      writer: (file: string, bytes: string | Uint8Array) => {
-                        atomicWrite(file, bytes);
-                        autoCommit.note(
-                          path.relative(ctx.paths.repoRoot, file),
-                          editorOf(canvas.slug)
-                        );
-                      },
-                    }
-                  : {}),
                 snapshot: async (content, reason) => {
                   try {
                     const snap = await history.writeSnapshot(relBody, content, reason);
@@ -2493,18 +2443,9 @@ export function createSyncRuntime(
     assetSweepAgain = false;
     assetSweep?.cancel();
     assetSweep = null;
-    // Commit whatever is still inside the quiescence window BEFORE tearing
-    // anything down. Shutting down mid-window would leave the last edits on
-    // disk but out of history — the one state this whole mechanism exists to
-    // make impossible.
-    if (autoCommit) {
-      try {
-        await autoCommit.flush();
-      } catch (err) {
-        console.error('[sync] final autocommit failed:', err);
-      }
-      autoCommit.stop();
-    }
+    // (No autocommit flush here — this runtime constructs no committer; the
+    // hub's own `afterStoreDocument` engine owns the SIGTERM-ordered flush.
+    // See the note at the top of createSyncRuntime. DDR-226 Increment 0.)
     for (const slug of [...awarenessDetaches.keys()]) runDetaches(awarenessDetaches, slug);
     awarenessDetaches.clear();
     // Phase 9.2 (DDR-064) — release shared-doc pins so the rooms can be dropped

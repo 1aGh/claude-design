@@ -39,6 +39,8 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 
+import { createPullBudget } from './pull-budget.ts';
+
 /** How long to wait for one asset. Generous — these are photographs and clips. */
 const GET_TIMEOUT_MS = 120_000;
 
@@ -81,6 +83,9 @@ export interface AssetPullResult {
   failed: { name: string; reason: string }[];
   /** Referenced and already on disk — the steady state. */
   present: number;
+  /** F6 — the pass stopped on the aggregate byte budget, not on the count cap.
+   *  The remainder is the next pass's work; surfaced so status can say so. */
+  budgetExhausted?: true;
 }
 
 /**
@@ -139,6 +144,8 @@ export async function pullAssets(opts: {
   token: () => string;
   fetchImpl?: typeof fetch;
   log?: Pick<Console, 'log' | 'warn'>;
+  /** F6 — override the aggregate per-pass byte ceiling (tests). */
+  maxPassBytes?: number;
 }): Promise<AssetPullResult> {
   const { designRoot, hubUrl } = opts;
   const fetchImpl = opts.fetchImpl ?? fetch;
@@ -172,7 +179,16 @@ export async function pullAssets(opts: {
     );
   }
 
+  // F6 (DDR-226 §9) — the per-file cap and the count cap multiply, and the hub
+  // picks both factors. One aggregate ceiling per pass closes that.
+  const budget = createPullBudget({
+    label: 'sync/assets',
+    log,
+    ...(opts.maxPassBytes !== undefined ? { maxBytes: opts.maxPassBytes } : {}),
+  });
+
   for (const name of batch) {
+    if (budget.exhausted()) break;
     try {
       const res = await fetchImpl(`${base}/assets/${encodeURIComponent(name)}`, {
         headers: { authorization: `Bearer ${opts.token()}` },
@@ -189,6 +205,13 @@ export async function pullAssets(opts: {
         out.failed.push({ name, reason: `implausible size (${body.byteLength} B)` });
         continue;
       }
+      // This lane learns a size only by receiving it (no manifest), so the
+      // charge lands here — before the bytes touch the disk, which is what the
+      // budget actually protects.
+      if (!budget.take(body.byteLength)) {
+        out.budgetExhausted = true;
+        break;
+      }
       // Write beside the target and rename, so a reader (the dev server serving
       // this very path) never sees a half-written image.
       const finalAbs = path.join(assetsDir, name);
@@ -203,7 +226,9 @@ export async function pullAssets(opts: {
 
   if (out.pulled.length > 0) {
     log.log(
-      `[sync/assets] pulled ${out.pulled.length} asset(s) down from the project (${out.failed.length} still missing).`
+      `[sync/assets] pulled ${out.pulled.length} asset(s) down from the project (${out.failed.length} still missing${
+        out.budgetExhausted ? ', pass byte budget reached — resuming next pass' : ''
+      }).`
     );
   }
   return out;
