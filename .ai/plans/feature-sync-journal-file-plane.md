@@ -393,15 +393,31 @@ them had already shipped through a release with every unit test green.
    two identical copies — neither empty nor parseable, so every consumer reads
    "this canvas has no meta". Found nine poisoned documents live. The lane
    heals now.
-3. **The cloud's git history covers canvases, not the project** (finding, not
-   fixed). The hub commits on `onDocumentStored`; file-plane arrivals — assets,
-   design-system css/md/ts — are journalled and never committed. Asserted as
-   `expected-pending` rows so the day a commit path lands they turn green.
-   Recorded as `maude/cloud-git-history-covers-canvases-not-the-project`.
+3. **One deleted canvas wedged the cloud's autocommit permanently**
+   (`7c899d04`). `git add -- <path gone and never tracked>` exits 128; the
+   batch failed, re-queued ITSELF INCLUDING that path, and failed identically
+   forever. Five commits, then twenty-plus identical error lines and thirty
+   canvases untracked — while `/health` answered 200 and every file was
+   present. Sync looked perfect; only the history was gone. Git is now asked
+   which kind of gone it is: tracked ⇒ stage the deletion, untracked ⇒ drop it.
 
-**Deletion propagation** shows up here as `expected-pending` too, matching
-Increment 6's deferral — a move currently leaves the old path behind on the far
-side, and the suite says so rather than hiding it.
+**Two findings recorded, not fixed:**
+
+- **The cloud's git history covers canvases, not the project.** The hub commits
+  on `onDocumentStored`; file-plane arrivals — assets, design-system
+  css/md/ts — are journalled and never committed
+  (`maude/cloud-git-history-covers-canvases-not-the-project`).
+- **A canvas moved into a folder ON A PEER never reaches a brand-new machine.**
+  It gets a new folder-prefixed slug and a new document while the pre-move one
+  lingers, so a fresh machine links fewer canvases than the hub lists. Entangled
+  with Increment 6 by construction — with deletion emission off, two documents
+  describe one file (`maude/peer-moved-canvas-missing-on-a-fresh-machine`).
+
+Both are `expected-pending` rows with named reasons, so a regression that drops
+anything ELSE still fails loudly, and the day those land they turn green on
+their own. **Deletion propagation** appears the same way, matching Increment 6's
+deferral — a move currently leaves the old path behind on the far side, and the
+suite says so rather than hiding it.
 
 ### Task 4 (original text): Increment 3 — ledger + three-way engine, behind the existing flag (L)
 

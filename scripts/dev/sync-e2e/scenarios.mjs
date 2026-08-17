@@ -558,8 +558,17 @@ const presence = {
     for (const side of [from, to]) {
       await side.browserHandle.open(side.uiUrl);
       await sleep(1_500);
-      await side.browserHandle.waitPresent(row, { timeoutMs: 25_000 });
-      await side.browserHandle.click(row);
+      let found = await side.browserHandle.waitPresent(row, { timeoutMs: 25_000 });
+      // No rows can mean "not synced" or "the session lapsed and this is the
+      // sign-in form". They are different problems and only one of them is
+      // about sync, so rule the auth one out before reporting anything.
+      if (!found.ok && typeof side.reSignIn === 'function') {
+        await side.reSignIn();
+        await side.browserHandle.open(side.uiUrl);
+        await sleep(1_500);
+        found = await side.browserHandle.waitPresent(row, { timeoutMs: 25_000 });
+      }
+      if (found.ok) await side.browserHandle.click(row);
     }
     // WHAT THIS CAN AND CANNOT ASSERT, stated rather than fudged.
     //

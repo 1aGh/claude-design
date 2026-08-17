@@ -379,15 +379,20 @@ async function main() {
     desktop.browserHandle = new Browser({ session: 'maude-e2e-desktop', shotDir });
     // The cloud browser has to sign in the way a person does, or every page is
     // the sign-in form and every DOM check is trivially false.
-    await cloud.browserHandle.open(`${cloudBase}/studio/signin`);
-    await cloud.browserHandle.run(['fill', 'input[type=email], input[name=email]', ADMIN_EMAIL]);
-    await cloud.browserHandle.run([
-      'fill',
-      'input[type=password], input[name=password]',
-      ADMIN_PASSWORD,
-    ]);
-    await cloud.browserHandle.run(['click', 'button[type=submit], input[type=submit]']);
-    await sleep(2_500);
+    //
+    // Exposed as `reSignIn` because a session can lapse mid-run: a scenario
+    // that then opens the studio lands on the form, finds no canvas rows, and
+    // reports a sync failure for an auth reason. One retry beats a red row
+    // that means nothing.
+    cloud.reSignIn = async () => {
+      const b = cloud.browserHandle;
+      await b.open(`${cloudBase}/studio/signin`);
+      await b.run(['fill', 'input[type=email], input[name=email]', ADMIN_EMAIL]);
+      await b.run(['fill', 'input[type=password], input[name=password]', ADMIN_PASSWORD]);
+      await b.run(['click', 'button[type=submit], input[type=submit]']);
+      await sleep(2_500);
+    };
+    await cloud.reSignIn();
     await desktop.browserHandle.open(peerBase);
     await sleep(1_500);
   }
@@ -497,6 +502,15 @@ async function coldStart(ctx, cellRoot) {
   const fresh = new Side({ name: 'fresh', base: `http://127.0.0.1:${freshPort}`, designRoot: freshDesign });
   fresh.uiUrl = fresh.base;
 
+  // KNOWN GAP, so the row says what it is instead of just going red.
+  //
+  // A canvas MOVED into a folder on a peer gets a new folder-prefixed slug and
+  // a new document, while the pre-move document lingers (deletion propagation
+  // is Increment 6). A brand-new machine links fewer canvases than the hub
+  // lists — the cell's own moved canvases pull correctly, a peer's do not.
+  // Recorded as a finding; not fixed here.
+  const movedOnPeer = (rel) => rel.split('/').length > 2 && rel.includes('-to-cloud');
+
   const want = ctx.cloud
     .tracked()
     .filter((r) => r !== 'config.json' && !r.split('/').some((s) => s.startsWith('.')));
@@ -517,15 +531,6 @@ async function coldStart(ctx, cellRoot) {
     ms: arrived.ms,
     detail: knownGapOnly ? null : short.slice(0, 12),
   });
-
-  // KNOWN GAP, so the row says what it is instead of just going red.
-  //
-  // A canvas MOVED into a folder on a peer gets a new folder-prefixed slug and
-  // a new document, while the pre-move document lingers (deletion propagation
-  // is Increment 6). A brand-new machine links fewer canvases than the hub
-  // lists — the cell's own moved canvases pull correctly, a peer's do not.
-  // Recorded as a finding; not fixed here.
-  const movedOnPeer = (rel) => rel.split('/').length > 2 && rel.includes('-to-cloud');
 
   const canvases = want.filter((r) => r.endsWith('.tsx'));
   const assets = want.filter((r) => r.startsWith('assets/'));
