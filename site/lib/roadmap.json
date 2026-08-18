@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-18T14:54:19.736Z",
+  "generated": "2026-08-18T16:03:53.098Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1180,6 +1180,17 @@
       "phaseKey": null
     },
     {
+      "id": "feature-sync-journal-file-plane",
+      "title": "Feature: Sync v2 — journal file plane (7 lanes → 2, one reconciler, doručenka)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-sync-journal-file-plane.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
       "id": "feature-sync-progress-modal",
       "title": "Feature: Sync progress modal — per-file sync state you can watch",
       "status": "done",
@@ -2122,17 +2133,6 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-sync-burn-down-and-shared-doc.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-sync-journal-file-plane",
-      "title": "Feature: Sync v2 — journal file plane (7 lanes → 2, one reconciler, doručenka)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-sync-journal-file-plane.md",
       "archived": false,
       "phaseKey": null
     },

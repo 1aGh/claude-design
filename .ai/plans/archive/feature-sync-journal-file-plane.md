@@ -607,3 +607,38 @@ web-desktop only.
   CLI-only; the new-machine clone→link→pull parity is unit-covered rather than run on a
   second machine; and no live fleet drill has happened, because the fleet only picks
   this up on a release tag.
+
+
+---
+
+## Retro addendum 2 — the close's own review (2026-08-18)
+
+- **The justification was the thing that was wrong, not just the code.** This
+  release shipped `propagateDeletes` ON because the breakers were said to carry
+  the weight the soak window would have carried. The review showed the delete
+  breaker was a per-pass rate limit — two deletions per pass were under every
+  arm of it, at every project size, forever — and that the recovery story under
+  it was one file class wide. When you trade a safety window for a control,
+  the control deserves the scrutiny the window would have received, and it did
+  not get it because it was mine and it was new.
+- **A control nobody can see is not a control.** `deleteHeld`,
+  `firstAnchorHeld`, `reanchorHeld` and `resolveFirstAnchor` were declared,
+  assigned, and read by NOTHING. Three breakers whose entire output was a
+  `console.warn`, on a product whose stated premise is that the user never
+  opens a terminal. Worth a grep before claiming a feature exists: *who reads
+  this field?*
+- **I shipped user-facing copy that was not true.** The changeset and the
+  What's New entry both said sync "stops and asks". It stopped; it did not ask,
+  because the asking half had no consumer. Product copy asserts behaviour, and
+  it should be checked against the code with the same suspicion as a comment.
+- **Twice in this arc, a security fix introduced a correctness bug the fixtures
+  could not see.** Round one: a test that passed against the unfixed code
+  because the fixture never reached the guard. Round two, worse: the F-3
+  containment fix resolved the deepest EXISTING ancestor and appended the
+  basename, so on a fresh link every nested file flattened to the top level —
+  invisible because every fixture pre-created its directories. When a fix
+  changes how a path is COMPUTED, the test that matters is the one where
+  nothing exists yet.
+- **Two reviews, and the second found more than the first.** Not because the
+  first was weak, but because the flip changed what "reachable" meant. Review
+  after the flag flips, not only before it.

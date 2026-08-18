@@ -56,6 +56,44 @@ Delete on evidence, in two waves, each after its replacement has shipped and soa
 
 ---
 
+## Inherited security findings (from the 2026-08-18 close)
+
+The second two-seat review of Increments 4/4.5/6 left these open. They are
+recorded here rather than in the closed plan because several of them only
+become reachable, or only become worth the change, once the burn-down lands.
+
+Reports: `.ai/logs/security-reviews/sync-v2-inc456-{defender,attacker}.md`.
+
+- **F-1** a tombstone bypasses the receiver's per-class admission gate — a hub
+  that may not WRITE code modules can still DELETE them.
+- **F-3** no delete breaker at the hub door, where one token fans out to every peer.
+- **F-4** the READ half of the file lane judges scope on the lexical path while
+  judging class on the real one — the same split the write half was fixed for.
+- **F-6** `_trash/` has no retention on either end and is invisible to everything
+  that measures the tree. Increment 5 owns the write-behind that would give it
+  a durable counterpart.
+- **F-7 / F-8 / F-14** `handleDelete` reports success without confirming the
+  tombstone appended, may echo a WRITE row's seq, treats "no row" as "already
+  deleted", and `x-maude-expect-hash: none` means different things on PUT and DELETE.
+- **F-11 / F-12** the re-anchor storm limit has no recovery path (and its comment
+  claims one); the poke cooldown covers the poke channel but not the reconnect.
+- **F-13 / B12** `designRel` reaches git as a pathspec, unvalidated. Latent today.
+- **B6** a tombstone is honoured under a degraded epoch, using the ancestors the
+  degrade just disqualified.
+- **B8** the untrusted markers miss the one hub-authored file most likely to be
+  read as spec.
+- **B11** `settleOwnership` mutates `.gitignore` and the index on a branch that
+  matches ordinary repos, without asking in the non-TTY case.
+- **B13** `parkedRemote` never expires and is never re-validated against the copy
+  it names.
+- **B14 / B15** DELETE's precondition is optional and every real session token is
+  wildcard-scoped; scope prefix matching does not fit file paths.
+
+**The object-storage widening (B2) is Task 1's, explicitly.** The whole plane
+needs the write-behind, not just `assets/` — today `companion-text` and
+`code-module` are durable only through the hub's git history, which works but
+puts every class in one basket.
+
 ## Tasks
 
 ### Task 1: Increment 5 — burn-down (M)
