@@ -354,7 +354,7 @@ export function writeCompileEntry(target: PlatformTarget): string {
 import bindingPath from ${JSON.stringify(bindingSpec)} with { type: 'file' };
 process.env.NAPI_RS_NATIVE_LIBRARY_PATH = bindingPath;
 // DDR-177 — a compiled binary must be self-contained: every runtime-spawned
-// child (canvas-build worker, asset-sweep worker) resolves its JS runtime via
+// child (the canvas-build worker) resolves its JS runtime via
 // resolveBunPath() = MAUDE_BUN_PATH || 'bun'. The desktop app launches this
 // binary with a GUI PATH that has no 'bun', and NOTHING set MAUDE_BUN_PATH —
 // so the asset sweep died with "Executable not found in $PATH" on machines

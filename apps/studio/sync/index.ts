@@ -37,8 +37,7 @@ import type { Context, LinkedHub } from '../context.ts';
 import { createHistory } from '../history.ts';
 import { SYNTHETIC_FS_DELAY_MS } from '../hmr-broadcast.ts';
 import { type CanvasSyncAgent, createCanvasSyncAgent } from './agent.ts';
-import { isPushableAssetRel, pushOneAsset } from './asset-push.ts';
-import { type AssetSweepHandle, runAssetSweep } from './asset-sweep.ts';
+import { isPushableAssetRel, pushAssets } from './asset-push.ts';
 import { atomicWrite } from './atomic-write.ts';
 import { type CellPairing, resolveCellPairing, sanitizeForLog } from './cell-pairing.ts';
 import { canvasPathFromDoc, movedToFromDoc, stampCanvasPath, stampMovedTo } from './codec.ts';
@@ -364,8 +363,6 @@ export interface CreateSyncRuntimeOptions {
   connectionMonitor?: ConnectionMonitor;
   /** Override the status store (Task 8 test injection). */
   statusStore?: SyncStatusStore;
-  /** Override the asset-sweep runner (test injection — no child process). */
-  assetSweepRunner?: typeof runAssetSweep;
   /**
    * DDR-102 — auth-failure + boot-settle knobs (test injection, mirrors the
    * connection-state injectable-timer pattern).
@@ -637,118 +634,113 @@ export function createSyncRuntime(
   let busUnsub: (() => void) | null = null;
   let started = false;
   let stopped = false;
-  /** The live asset sweep, so `stop()` can end it and the panel can cancel it. */
-  let assetSweep: AssetSweepHandle | null = null;
-  /** Debounce for the on-change sweep — see `scheduleAssetSweep`. */
-  let assetSweepTimer: ReturnType<typeof setTimeout> | null = null;
-  /** A change that arrived while a sweep was running: sweep once more after. */
-  let assetSweepAgain = false;
-
+  // ---- THE LEGACY PUSH CLIENT (journal-less hubs only) --------------------
+  //
+  // Sync v2 Increment 5 deleted the transfer engines: the out-of-process asset
+  // sweep, its worker child, the per-file fast push and the reference-derived
+  // pull. Their replacement is the journal file plane — one lane, both
+  // directions, one decision function (`file-plane.ts`). What remains HERE is
+  // the compat client for hubs that carry NO journal (self-hosted, not yet
+  // upgraded): the same bounded, sequential `pushAssets` pass the pre-v2
+  // desktop ran, retained at least two releases after the burn-down (Open
+  // decision 4) and gated on the SAME capability probe that builds the plane —
+  // a journal hub never sees it, so the two lanes cannot overlap.
+  //
+  // IN-PROCESS is safe now. The 2026-08-11 crash the out-of-process boundary
+  // was built for was an HTTP/1.1 keep-alive desync after a refused PUT, fixed
+  // at the transport (UPLOAD_CONNECTION_HEADERS in `asset-push.ts`), and the
+  // pass is sequential with a per-request time budget — the same class of work
+  // every poll already does in-process.
+  let legacyPushTimer: ReturnType<typeof setTimeout> | null = null;
+  let legacyPushRunning = false;
+  let legacyPushAgain = false;
+  /** Set by the panel's cancel (a multi-hundred-MB upload must be killable). */
+  let legacyPushCancel = false;
   /**
-   * Run the asset sweep now, unless one is already running.
-   *
-   * OUT OF PROCESS since feature-sync-resync-and-out-of-process-sweep: the
-   * sweep segfaults Bun when it runs alongside the dev server (proven by
-   * isolation — the identical sweep against the same hub completes standalone).
-   * A dead child is a reported failed sweep, not a dead editor.
+   * The push-lane verdict, decided ONCE per boot (compat matrix §10):
+   * `null` = the capability probe is still in flight (pushes wait);
+   * `false` = the hub carries a journal and the plane owns pushes;
+   * `true` = journal-less hub ⇒ this legacy client carries the upward lane.
    */
-  function startAssetSweep(hubUrl: string): void {
-    if (stopped || assetSweep) return;
-    const handle = (opts.assetSweepRunner ?? runAssetSweep)({
+  let legacyLane: boolean | null = null;
+  /** A pass was owed before the lane was decided — run it on the verdict. */
+  let legacyBootPush: string | null = null;
+
+  /** Run the legacy push now — single-flight with a trailing re-run. */
+  function runLegacyPush(hubUrl: string): void {
+    if (stopped || cellPairing || legacyLane !== true) return; // the cell never pushes
+    if (legacyPushRunning) {
+      legacyPushAgain = true;
+      return;
+    }
+    legacyPushRunning = true;
+    legacyPushCancel = false;
+    pushAssets({
       designRoot: ctx.paths.designRoot,
       hubUrl,
-      // Read at call time — a silent renewal mid-sweep must reach the child
-      // (the parent re-writes its credential file when this changes).
+      // Read at call time — silent renewal swaps the credential in place.
       token: () => token,
-      // feature-sync-progress-modal — ride the same `sync:status` payload the
-      // doc counts use, so the Sync panel has one source. `statusStore`, not
-      // start()'s local `store` alias: this helper is runtime-scoped so it can
-      // also be called from the fs watcher, and the alias does not exist here.
-      // Guarded on `stopped`: a late emit must not write `_sync.json`
-      // post-teardown.
+      canvasGroups: ctx.cfg.canvasGroups,
+      cancelled: () => legacyPushCancel || stopped,
+      // feature-sync-progress-modal — same `sync:status` payload as ever, so
+      // the Sync panel needs no idea which lane fed it. Guarded on `stopped`:
+      // a late emit must not write `_sync.json` post-teardown.
       onProgress: (p) => {
         if (!stopped) statusStore?.updateAssets?.(p);
       },
-    });
-    assetSweep = handle;
-    handle.done.finally(() => {
-      if (assetSweep === handle) assetSweep = null;
-      // A file that changed WHILE this sweep ran was not in its list — the
-      // trailing re-run is what keeps "I pasted two images quickly" from
-      // uploading only the first. Same single-flight-with-trailing-run shape
-      // the hub's own sweeper uses.
-      if (assetSweepAgain && !stopped) {
-        assetSweepAgain = false;
-        scheduleAssetSweep(hubUrl);
-      }
-    });
+    })
+      .catch(() => {
+        /* pushAssets never throws; this is a belt for the promise chain */
+      })
+      .finally(() => {
+        legacyPushRunning = false;
+        // A file that changed WHILE this pass ran was not in its list — the
+        // trailing re-run keeps "I pasted two images quickly" from uploading
+        // only the first.
+        if (legacyPushAgain && !stopped) {
+          legacyPushAgain = false;
+          scheduleLegacyPush(hubUrl);
+        }
+      });
   }
 
   /**
-   * Coalesce a burst of asset writes into one sweep.
+   * Coalesce a burst of asset writes into one pass.
    *
    * Dragging six images onto a canvas is six `fs:any` events inside a second,
-   * and each sweep costs one presence probe over the wire. The debounce makes
-   * that one probe; `assetSweepAgain` makes a change during a sweep a second
+   * and each pass costs one presence probe over the wire. The debounce makes
+   * that one probe; the trailing re-run makes a change during a pass a second
    * pass rather than a lost upload.
    */
-  function scheduleAssetSweep(hubUrl: string): void {
+  function scheduleLegacyPush(hubUrl: string): void {
     if (stopped || cellPairing) return;
-    if (assetSweep) {
-      assetSweepAgain = true;
+    if (legacyLane === null) {
+      // Undecided — remember that a pass is owed; the verdict honours it.
+      legacyBootPush = hubUrl;
       return;
     }
-    if (assetSweepTimer !== null) clearTimeout(assetSweepTimer);
-    assetSweepTimer = setTimeout(() => {
-      assetSweepTimer = null;
-      startAssetSweep(hubUrl);
+    if (legacyLane === false) return; // the plane owns pushes on this hub
+    if (legacyPushRunning) {
+      legacyPushAgain = true;
+      return;
+    }
+    if (legacyPushTimer !== null) clearTimeout(legacyPushTimer);
+    legacyPushTimer = setTimeout(() => {
+      legacyPushTimer = null;
+      runLegacyPush(hubUrl);
     }, ASSET_SWEEP_DEBOUNCE_MS);
-    assetSweepTimer.unref?.();
+    legacyPushTimer.unref?.();
   }
 
-  // ---- FAST LANES (2026-08-16 latency fix) --------------------------------
-  // The sweep reconciles; these make the COMMON case instant. A sticker
-  // dropped on a canvas syncs its stroke over the doc lane in milliseconds,
-  // while its bytes waited for a debounced, spawned, walk-everything sweep
-  // (minutes) — and the other direction waited for the next 20 s poll. The
-  // fast push sends the ONE just-written file now; the fast pull runs the
-  // (missing-only, idempotent) asset pull the moment a reference-bearing
-  // file lands, instead of at the next tick.
-  const fastPushTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  /** Serialize fast pushes — assets run to videos; two at once starve sync. */
-  let fastPushChain: Promise<void> = Promise.resolve();
-  /** Let the write settle (atomic tmp+rename bursts) before reading it. */
-  const FAST_PUSH_DEBOUNCE_MS = 400;
-  function queueFastPush(rel: string, hubUrl: string): void {
-    if (stopped || cellPairing) return; // the cell never pushes (same as the sweep)
-    const prev = fastPushTimers.get(rel);
-    if (prev) clearTimeout(prev);
-    const timer = setTimeout(() => {
-      fastPushTimers.delete(rel);
-      if (stopped) return;
-      fastPushChain = fastPushChain.then(async () => {
-        if (stopped) return;
-        try {
-          const r = await pushOneAsset({
-            designRoot: ctx.paths.designRoot,
-            rel,
-            hubUrl,
-            token: () => token,
-            canvasGroups: ctx.cfg.canvasGroups,
-          });
-          if (r.ok && !r.skipped) {
-            console.log(`[sync/assets] fast-pushed ${rel}`);
-          } else if (!r.ok) {
-            // Not an error surface — the sweep is the reconciler and retries.
-            console.warn(`[sync/assets] fast push ${rel}: ${r.reason} — the sweep will retry.`);
-          }
-        } catch {
-          /* the sweep reconciles */
-        }
-      });
-    }, FAST_PUSH_DEBOUNCE_MS);
-    timer.unref?.();
-    fastPushTimers.set(rel, timer);
+  /** The capability probe settled (or could not run): decide the push lane. */
+  function decidePushLane(legacy: boolean): void {
+    if (legacyLane !== null) return; // first verdict wins — one lane per boot
+    legacyLane = legacy;
+    if (legacy && legacyBootPush !== null && !stopped) {
+      const url = legacyBootPush;
+      legacyBootPush = null;
+      runLegacyPush(url);
+    }
   }
 
   // Task 8 — offline-mode status surface, initialized in start() once the
@@ -1549,18 +1541,18 @@ export function createSyncRuntime(
       reader.notify(rel);
       // AN ASSET THAT APPEARS AFTER BOOT HAS TO GO UP NOW, NOT NEXT LAUNCH.
       //
-      // The sweep used to fire from exactly one place — `start()` — so a picture
+      // The push used to fire from exactly one place — `start()` — so a picture
       // pasted into an annotation reached the cloud only on the next boot or
       // Resync. Meanwhile the annotation itself syncs through the doc in
       // milliseconds, so the other side rendered an `<image>` pointing at bytes
       // nobody had sent: a permanent empty frame that looked like a broken path.
       // Reported three times in one day on alligators, each time with a
       // different asset, which is what finally named it.
+      //
+      // On a Sync v2 hub the plane's own trigger below carries this moment;
+      // the legacy schedule is a no-op there (`legacyLane === false`).
       if (isPushableAssetRel(rel, ctx.cfg.canvasGroups)) {
-        // Fast lane first (this ONE file, now — seconds, not minutes), sweep
-        // second (the reconciler that catches anything the fast lane missed).
-        queueFastPush(rel.split('\\').join('/'), linkedHub.url);
-        scheduleAssetSweep(linkedHub.url);
+        scheduleLegacyPush(linkedHub.url);
       }
       // Sync v2 — the file plane's own trigger. Invalidating the stat cache
       // first is the exact, cheap version of the mtime-granularity guard: the
@@ -2386,9 +2378,10 @@ export function createSyncRuntime(
       // DDR-217 (fix 6) — mirror local assets up AFTER the handshakes settle
       // (they carry the canvases; assets ride behind, never in front). Not
       // under pairing: a cell's assets are already on the cell. Fire-and-forget
-      // — a miss is retried on the next boot for free.
+      // — a miss is retried on the next boot for free. Journal-less hubs only:
+      // on a Sync v2 hub the plane's first pass carries the same moment.
       if (!cellPairing && !stopped) {
-        startAssetSweep(linkedHub.url);
+        scheduleLegacyPush(linkedHub.url);
       }
     });
 
@@ -2763,7 +2756,13 @@ export function createSyncRuntime(
       fileEventsProbe = new AbortController();
       void hubCapabilities({ hubUrl: linkedHub.url, signal: fileEventsProbe.signal })
         .then((caps) => {
-          if (stopped || !hasLedger(caps)) return;
+          if (stopped) return;
+          if (!hasLedger(caps)) {
+            // No journal on this hub ⇒ the legacy client carries the upward
+            // lane, exactly as the pre-v2 desktop did (Open decision 4).
+            decidePushLane(true);
+            return;
+          }
           // The hub carries a journal, so the file plane becomes the ONE lane
           // for this project. Built here rather than at start(): a client must
           // never send a journal request to a hub that would not understand
@@ -2804,6 +2803,9 @@ export function createSyncRuntime(
             // at the first 20 s tick.
             schedulePlanePass();
           }
+          // A ledger hub with the plane ON owns pushes; with the file-plane
+          // flag OFF the legacy client still carries the DDR-217 assets lane.
+          decidePushLane(filePlane === null);
           fileEventsCtl = createCtlProvider({
             url: linkedHub.url,
             token,
@@ -2827,8 +2829,14 @@ export function createSyncRuntime(
           );
         })
         .catch(() => {
-          /* no capability probe ⇒ no channel ⇒ exactly today's behaviour */
+          // No capability probe ⇒ no channel ⇒ exactly today's behaviour —
+          // which, for pushes, is the legacy client.
+          decidePushLane(true);
         });
+    } else if (!cellPairing) {
+      // The probe is opted out (`linkedHub.fileEvents: false`), so no verdict
+      // will ever arrive — the legacy client is the lane, as it always was.
+      decidePushLane(true);
     }
 
     // Arm the pre-expiry renewal from the credential that just booted. Placed
@@ -2841,9 +2849,6 @@ export function createSyncRuntime(
   async function stop(): Promise<void> {
     if (stopped) return;
     stopped = true;
-    // Fast lanes down first — no push/pull may fire into a dying runtime.
-    for (const t of fastPushTimers.values()) clearTimeout(t);
-    fastPushTimers.clear();
     fileEventsProbe?.abort();
     fileEventsProbe = null;
     if (filePassTimer !== null) clearTimeout(filePassTimer);
@@ -2879,14 +2884,14 @@ export function createSyncRuntime(
     if (remotePollSoonTimer !== null) clearTimeout(remotePollSoonTimer);
     remotePollSoonTimer = null;
     remotePull = null;
-    // A sweep that outlives its runtime keeps uploading a project the person
-    // just closed — and `restart()` (the Resync button) calls stop() on every
-    // press, so without this each press would leave another sweep running.
-    if (assetSweepTimer !== null) clearTimeout(assetSweepTimer);
-    assetSweepTimer = null;
-    assetSweepAgain = false;
-    assetSweep?.cancel();
-    assetSweep = null;
+    // A push pass that outlives its runtime keeps uploading a project the
+    // person just closed — and `restart()` (the Resync button) calls stop() on
+    // every press, so without this each press would leave another one running.
+    if (legacyPushTimer !== null) clearTimeout(legacyPushTimer);
+    legacyPushTimer = null;
+    legacyPushAgain = false;
+    legacyPushCancel = true;
+    legacyBootPush = null;
     // (No autocommit flush here — this runtime constructs no committer; the
     // hub's own `afterStoreDocument` engine owns the SIGTERM-ordered flush.
     // See the note at the top of createSyncRuntime. DDR-226 Increment 0.)
@@ -3006,8 +3011,8 @@ export function createSyncRuntime(
     agentFor: (slug) => agents.get(slug),
     status: () => statusStore?.get() ?? null,
     cancelAssetSweep: () => {
-      if (!assetSweep) return false;
-      assetSweep.cancel();
+      if (!legacyPushRunning) return false;
+      legacyPushCancel = true;
       return true;
     },
     retireForMove: (fromSlug, toRel) => serializeMembership(() => retireForMove(fromSlug, toRel)),
