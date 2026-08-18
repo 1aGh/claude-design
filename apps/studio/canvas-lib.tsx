@@ -226,7 +226,7 @@ const ZOOM_MIN = 0.02;
 const ZOOM_MAX = 4.0;
 const ZOOM_STEP_IN = 1.2;
 const ZOOM_STEP_OUT = 1 / 1.2;
-const WHEEL_ZOOM_K = 0.0015; // larger = more sensitive wheel
+const WHEEL_ZOOM_K = 0.0035; // larger = more sensitive wheel — tuned to match Figma/FigJam's zoom-per-notch feel
 const SETTLE_MS = 500;
 const PUBLISH_MS = 50;
 
