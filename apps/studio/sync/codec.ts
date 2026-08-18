@@ -194,8 +194,8 @@ export function annotationsFromDoc(doc: Y.Doc): string | null {
  * This distinction is load-bearing for cold start (the 2026-08-14 annotations
  * eraser): the wrapper is a non-empty STRING, so every `!== ''` emptiness
  * guard let a stale hub wrapper overwrite a peer's real strokes — and with the
- * strokes went the `assets/<sha8>` references `asset-pull` scans, so freshly
- * dropped images never crossed machines. Live delete-all still materializes
+ * strokes went the `assets/<sha8>` references the asset lane pulled by, so
+ * freshly dropped images never crossed machines. Live delete-all still materializes
  * the wrapper through `writeAnnotationsIfChanged` (deletes must propagate);
  * only COLD-START decisions treat it as emptiness.
  */

@@ -37,7 +37,6 @@ import type { Context, LinkedHub } from '../context.ts';
 import { createHistory } from '../history.ts';
 import { SYNTHETIC_FS_DELAY_MS } from '../hmr-broadcast.ts';
 import { type CanvasSyncAgent, createCanvasSyncAgent } from './agent.ts';
-import { pullAssets } from './asset-pull.ts';
 import { isPushableAssetRel, pushOneAsset } from './asset-push.ts';
 import { type AssetSweepHandle, runAssetSweep } from './asset-sweep.ts';
 import { atomicWrite } from './atomic-write.ts';
@@ -720,12 +719,6 @@ export function createSyncRuntime(
   let fastPushChain: Promise<void> = Promise.resolve();
   /** Let the write settle (atomic tmp+rename bursts) before reading it. */
   const FAST_PUSH_DEBOUNCE_MS = 400;
-  /** Debounced trigger for an off-schedule pullAssetsOnce — set in start(). */
-  let requestFastPull: (() => void) | null = null;
-  /** Files whose annotations/tsx/css/meta content can reference assets —
-   *  mirrors asset-pull's SCANNED_EXT. */
-  const REFERENCE_FILE_RE = /\.(?:annotations\.svg|tsx|jsx|css|meta\.json)$/i;
-
   function queueFastPush(rel: string, hubUrl: string): void {
     if (stopped || cellPairing) return; // the cell never pushes (same as the sweep)
     const prev = fastPushTimers.get(rel);
@@ -1569,11 +1562,6 @@ export function createSyncRuntime(
         queueFastPush(rel.split('\\').join('/'), linkedHub.url);
         scheduleAssetSweep(linkedHub.url);
       }
-      // The DOWNWARD fast lane: a reference-bearing file just landed (a peer's
-      // annotation/body materialized through the doc lane, or a local edit).
-      // Run the missing-only asset pull now instead of at the next 20 s tick,
-      // so the other side's freshly dropped image renders in seconds.
-      if (REFERENCE_FILE_RE.test(rel)) requestFastPull?.();
       // Sync v2 — the file plane's own trigger. Invalidating the stat cache
       // first is the exact, cheap version of the mtime-granularity guard: the
       // watcher KNOWS this path moved, so the next scan must read it rather
@@ -2641,59 +2629,6 @@ export function createSyncRuntime(
       notePulledAll();
       markUntrusted();
     };
-    /**
-     * Fetch the referenced assets this machine is missing.
-     *
-     * RUNS ON EVERY PEER, cell included — unlike the PUSH sweep, which is a
-     * desktop job because the desktop is the side that has the bytes. Wanting an
-     * asset you can see referenced and do not hold is symmetric, and so is the
-     * fix; making this desktop-only would rebuild the same one-way street facing
-     * the other way.
-     *
-     * After the document poll, deliberately: a canvas that arrives in this tick
-     * brings its references with it, and this is the pass that resolves them.
-     */
-    const pullAssetsOnce = async (): Promise<void> => {
-      if (stopped) return;
-      await pullAssets({
-        designRoot: ctx.paths.designRoot,
-        hubUrl: linkedHub.url,
-        token: () => token,
-      });
-    };
-    // The downward fast lane's trigger (2026-08-16 latency fix): debounced,
-    // single-flight, and a no-op in the steady state (the pull is missing-only
-    // — every referenced asset present costs one directory scan and zero
-    // requests). Fired from the fs:any listener when a reference-bearing file
-    // lands; the 20 s poll stays as the schedule-driven reconciler.
-    {
-      let fastPullTimer: ReturnType<typeof setTimeout> | null = null;
-      let fastPullRunning = false;
-      let fastPullAgain = false;
-      const runFastPull = (): void => {
-        if (stopped) return;
-        if (fastPullRunning) {
-          fastPullAgain = true;
-          return;
-        }
-        fastPullRunning = true;
-        void pullAssetsOnce().finally(() => {
-          fastPullRunning = false;
-          if (fastPullAgain && !stopped) {
-            fastPullAgain = false;
-            runFastPull();
-          }
-        });
-      };
-      requestFastPull = () => {
-        if (stopped || fastPullTimer !== null) return;
-        fastPullTimer = setTimeout(() => {
-          fastPullTimer = null;
-          runFastPull();
-        }, 750);
-        fastPullTimer.unref?.();
-      };
-    }
     // Cumulative per boot — the Sync panel's one line. `synced` is the last
     // pass's converged count; `pulled`/`conflicts` accumulate.
     const fileTotals = { synced: 0, pulled: 0, conflicts: 0 };
@@ -2799,13 +2734,11 @@ export function createSyncRuntime(
     };
     const pollRemote = (): void => {
       void pullRemoteOnce()
-        .then(() => pullAssetsOnce())
         .then(() => pullFilesOnce())
         .catch((err) => console.error('[sync] remote poll failed:', err));
     };
     remotePull = async () => {
       await pullRemoteOnce();
-      await pullAssetsOnce();
       await pullFilesOnce();
     };
     remotePollTimer = setInterval(pollRemote, REMOTE_POLL_MS);
@@ -2911,7 +2844,6 @@ export function createSyncRuntime(
     // Fast lanes down first — no push/pull may fire into a dying runtime.
     for (const t of fastPushTimers.values()) clearTimeout(t);
     fastPushTimers.clear();
-    requestFastPull = null;
     fileEventsProbe?.abort();
     fileEventsProbe = null;
     if (filePassTimer !== null) clearTimeout(filePassTimer);

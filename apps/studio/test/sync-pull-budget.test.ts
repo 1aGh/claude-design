@@ -12,7 +12,6 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { pullAssets } from '../sync/asset-pull.ts';
 import { pullFiles } from '../sync/file-pull.ts';
 import { createPullBudget, MAX_PULL_BYTES_PER_PASS } from '../sync/pull-budget.ts';
 
@@ -64,66 +63,6 @@ describe('createPullBudget', () => {
     expect(MAX_PULL_BYTES_PER_PASS).toBe(2 * 1024 * 1024 * 1024);
     const b = createPullBudget({ label: 't', log: silent });
     expect(b.remaining()).toBe(MAX_PULL_BYTES_PER_PASS);
-  });
-});
-
-describe('asset-pull honours the pass budget', () => {
-  test('stops on bytes, keeps what already landed, resumes next pass', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'pull-budget-assets-'));
-    try {
-      // Three referenced assets, none present locally.
-      writeFileSync(join(dir, 'screen.tsx'), 'assets/a.png assets/b.png assets/c.png');
-      const bytes = new Uint8Array(400);
-      const fetchImpl = (async () =>
-        new Response(bytes, { status: 200 })) as unknown as typeof fetch;
-
-      const first = await pullAssets({
-        designRoot: dir,
-        hubUrl: 'https://hub.example',
-        token: () => 't',
-        fetchImpl,
-        log: silent,
-        maxPassBytes: 900, // room for two, not three
-      });
-
-      expect(first.pulled).toHaveLength(2);
-      expect(first.budgetExhausted).toBe(true);
-      expect(readdirSync(join(dir, 'assets')).sort()).toEqual(['a.png', 'b.png']);
-
-      // The remainder is simply the next pass's work — no permanent refusal.
-      const second = await pullAssets({
-        designRoot: dir,
-        hubUrl: 'https://hub.example',
-        token: () => 't',
-        fetchImpl,
-        log: silent,
-        maxPassBytes: 900,
-      });
-      expect(second.pulled).toEqual(['c.png']);
-      expect(second.budgetExhausted).toBeUndefined();
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test('a budget that fits the whole pass changes nothing', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'pull-budget-assets-ok-'));
-    try {
-      writeFileSync(join(dir, 'screen.tsx'), 'assets/a.png assets/b.png');
-      const fetchImpl = (async () =>
-        new Response(new Uint8Array(10), { status: 200 })) as unknown as typeof fetch;
-      const out = await pullAssets({
-        designRoot: dir,
-        hubUrl: 'https://hub.example',
-        token: () => 't',
-        fetchImpl,
-        log: silent,
-      });
-      expect(out.pulled.sort()).toEqual(['a.png', 'b.png']);
-      expect(out.budgetExhausted).toBeUndefined();
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
   });
 });
 

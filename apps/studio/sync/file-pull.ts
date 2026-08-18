@@ -2,9 +2,10 @@
 // project file the canvas lanes do not own (feature-sync-file-plane, binding
 // decision maude/sync-two-plane-manifest-architecture).
 //
-// WHAT THIS REPLACES, AND WHY THE HEADER OF `asset-pull.ts` STILL MATTERS.
-// The asset pull derives its wants LOCALLY (it fetches only names its own
-// files reference), so a hostile hub can never place a file nobody asked for.
+// WHAT THIS REPLACES, AND WHY THE DELETED `asset-pull.ts`'s INVARIANT STILL
+// MATTERS. The reference-derived asset pull (deleted in Sync v2 Increment 5)
+// derived its wants LOCALLY (it fetched only names its own files reference),
+// so a hostile hub could never place a file nobody asked for.
 // That invariant is exactly what made the 103-file gap unfixable: a fresh
 // link REFERENCES nothing, so it can want nothing, so the design system that
 // makes the canvases render never arrives (RCA
