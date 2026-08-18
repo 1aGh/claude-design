@@ -50,6 +50,7 @@ function fakeHub(initial: Record<string, string> = {}) {
   const rows = new Map<string, { seq: number; sha256: string; size: number; body: string }>();
   const epoch = 'epoch-1';
   const puts: { rel: string; expect: string | null; body: string }[] = [];
+  let lieAboutSize = false;
   const add = (rel: string, body: string) => {
     seq += 1;
     rows.set(rel, { seq, sha256: sha(body), size: body.length, body });
@@ -73,7 +74,7 @@ function fakeHub(initial: Record<string, string> = {}) {
           seq: r.seq,
           path,
           sha256: r.sha256,
-          size: r.size,
+          size: lieAboutSize ? 0 : r.size,
           mtimeMs: 0,
           class: 'companion-text',
           deleted: false,
@@ -120,7 +121,19 @@ function fakeHub(initial: Record<string, string> = {}) {
     seq = to;
   };
 
-  return { fetchImpl, rows, puts, add, rewindTo, epoch, head: () => seq };
+  return {
+    fetchImpl,
+    rows,
+    puts,
+    add,
+    rewindTo,
+    epoch,
+    head: () => seq,
+    /** Declare every row as costing nothing — the A1 primitive. */
+    understateSizes: () => {
+      lieAboutSize = true;
+    },
+  };
 }
 
 const plane = (hub: ReturnType<typeof fakeHub>, over = {}) =>
@@ -498,5 +511,29 @@ describe('the F6 budget applies to this lane too', () => {
     expect(first.budgetExhausted).toBe(true);
     const second = await plane(hub, { maxPassBytes: 900 }).reconcile();
     expect(second.pulled.length).toBe(1);
+  });
+
+  // The budget caps a TRANSFER, not a claim. `size` is the hub's number, and
+  // the hub is untrusted (DDR-054) — a row declaring 0 for a 512 MB body is
+  // one field away from landing 100 GB in a pass against a budget that never
+  // moved. So the wire is charged, not the row.
+  test('an understated size does not buy a bigger transfer', async () => {
+    const hub = fakeHub({
+      'system/ds/a.css': 'x'.repeat(400),
+      'system/ds/b.css': 'y'.repeat(400),
+      'system/ds/c.css': 'z'.repeat(400),
+    });
+    hub.understateSizes();
+    const pass = await plane(hub, { maxPassBytes: 900 }).reconcile();
+    expect(pass.budgetExhausted).toBe(true);
+    expect(pass.pulled.length).toBeLessThan(3);
+  });
+
+  test('a body larger than the whole budget is refused before it is buffered', async () => {
+    const hub = fakeHub({ 'system/ds/a.css': 'x'.repeat(4000) });
+    hub.understateSizes();
+    const pass = await plane(hub, { maxPassBytes: 100 }).reconcile();
+    expect(pass.pulled.length).toBe(0);
+    expect(pass.failed.length + (pass.budgetExhausted ? 1 : 0)).toBeGreaterThan(0);
   });
 });

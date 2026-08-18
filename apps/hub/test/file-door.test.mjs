@@ -17,7 +17,15 @@
 
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Writable } from 'node:stream';
@@ -269,5 +277,102 @@ describe('a hub with no checkout', () => {
       journal: null,
     });
     assert.equal(res.status, 405);
+  });
+});
+
+describe('the gates are asked about where the bytes LAND, not what the peer typed', () => {
+  // DDR-054's stated model: a peer can COMMIT a symlink into the shared repo.
+  // Admission already classifies the symlink-resolved path — so every later
+  // gate has to ask about the same one, or the two disagree exactly where the
+  // threat lives.
+  it('a directory symlink cannot walk a code module past the owner gate', async () => {
+    // A `.tsx` INSIDE a canvas group is canvas-owned (Plane A's business); the
+    // same name OUTSIDE one is a code module. So a symlink out of the group is
+    // all it takes to make the lexical class and the real class disagree —
+    // admission judges the real one and admits, and the owner gate, asked
+    // about the lexical one, sees nothing to gate.
+    writeFileSync(join(designRoot, 'config.json'), '{"canvasGroups":[{"path":"ui"}]}');
+    mkdirSync(join(designRoot, 'ui'), { recursive: true });
+    mkdirSync(join(designRoot, 'lib'), { recursive: true });
+    symlinkSync(join(designRoot, 'lib'), join(designRoot, 'ui/shared'), 'dir');
+
+    const res = await call(exchange({ rel: 'ui/shared/payload.tsx', body: 'export default 1' }));
+    assert.equal(res.status, 403, 'a non-owner may not land a module outside the canvas groups');
+    assert.equal(existsSync(join(designRoot, 'lib/payload.tsx')), false);
+  });
+
+  it('an owner may — the gate is about the role, not the symlink', async () => {
+    writeFileSync(join(designRoot, 'config.json'), '{"canvasGroups":[{"path":"ui"}]}');
+    mkdirSync(join(designRoot, 'ui'), { recursive: true });
+    mkdirSync(join(designRoot, 'lib'), { recursive: true });
+    symlinkSync(join(designRoot, 'lib'), join(designRoot, 'ui/shared'), 'dir');
+
+    const res = await call(
+      exchange({ rel: 'ui/shared/payload.tsx', body: 'export default 1', bearer: ownerToken })
+    );
+    assert.equal(res.status, 200);
+    assert.equal(res.json.path, 'lib/payload.tsx', 'the receipt names where the bytes went');
+  });
+
+  it('and the receipt names the real landing path, so one file cannot alias two CAS states', async () => {
+    mkdirSync(join(designRoot, 'media'), { recursive: true });
+    symlinkSync(join(designRoot, 'assets'), join(designRoot, 'media/shared'), 'dir');
+
+    const res = await call(exchange({ rel: 'media/shared/x.png', body: 'PNG' }));
+    assert.equal(res.status, 200);
+    assert.equal(res.json.path, 'assets/x.png');
+  });
+});
+
+describe('scope confines the WRITE half too, not only the read half', () => {
+  it('a token scoped to one canvas may not write the whole project', async () => {
+    const scoped = addToken(dataDir, { label: 'alice', scope: 'ui/alice' }).value;
+    const res = await call(
+      exchange({ rel: 'system/ds/brand.css', body: ':root{}', bearer: scoped })
+    );
+    assert.equal(res.status, 403);
+    assert.equal(existsSync(join(designRoot, 'system/ds/brand.css')), false);
+  });
+
+  it('inside its own scope it writes normally', async () => {
+    writeFileSync(
+      join(designRoot, 'config.json'),
+      '{"canvasGroups":[{"path":"ui"},{"path":"system"}]}'
+    );
+    mkdirSync(join(designRoot, 'ui/alice'), { recursive: true });
+    const scoped = addToken(dataDir, { label: 'alice', scope: 'ui/alice' }).value;
+    const res = await call(exchange({ rel: 'ui/alice/note.md', body: '# hi', bearer: scoped }));
+    assert.equal(res.status, 200);
+  });
+});
+
+describe('compare-and-swap survives the body upload, not just the check', () => {
+  it('a crossing write is refused instead of silently overwriting', async () => {
+    // Both peers decided from the same state: the file is absent.
+    const first = call(exchange({ rel: 'system/ds/a.css', body: 'FIRST' }), {
+      headers: {},
+    });
+    // Start the second before the first has published. Both passed the
+    // pre-check; only one may publish.
+    const a = exchange({ rel: 'system/ds/a.css', body: 'FIRST' });
+    a.request.headers['x-maude-expect-hash'] = 'none';
+    const b = exchange({ rel: 'system/ds/a.css', body: 'SECOND' });
+    b.request.headers['x-maude-expect-hash'] = 'none';
+    await first;
+
+    const [ra, rb] = await Promise.all([call(a), call(b)]);
+    const codes = [ra.status, rb.status].sort();
+    assert.deepEqual(codes, [409, 409], 'the file already exists — both are stale');
+  });
+
+  it('two simultaneous first-writes leave exactly one winner', async () => {
+    const a = exchange({ rel: 'system/ds/b.css', body: 'A' });
+    a.request.headers['x-maude-expect-hash'] = 'none';
+    const b = exchange({ rel: 'system/ds/b.css', body: 'B' });
+    b.request.headers['x-maude-expect-hash'] = 'none';
+
+    const [ra, rb] = await Promise.all([call(a), call(b)]);
+    const codes = [ra.status, rb.status].sort();
+    assert.deepEqual(codes, [200, 409], 'one publishes, the other is told it collided');
   });
 });

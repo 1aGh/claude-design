@@ -254,6 +254,54 @@ export function createWorkspaceAgent(opts) {
   }
 
   /**
+   * Is `rel` the body of a canvas this agent has indexed — some canvas OTHER
+   * than the one being retired?
+   *
+   * `pathIndex` is the agent's own record of where each slug's body lives, so
+   * this asks "did a canvas land here", not "does a file exist here". A move
+   * whose destination has not stored yet simply HOLDs and is re-asked on the
+   * next store, which is the same shape as the in-flight case above.
+   */
+  function isIndexedCanvasPath(rel, retiringSlug) {
+    for (const [slug, entry] of pathIndex) {
+      if (slug !== retiringSlug && entry?.rel === rel) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Mass-delete breaker for the move-retirement path (DDR-226 §8, extended).
+   *
+   * `movedTo` is peer-written CRDT content, and acting on it quarantines four
+   * lanes and stages a git deletion. One at a time that is the move protocol
+   * working; a burst of them is a project being emptied by a peer asserting
+   * moves that never happened — and `_trash/` is runtime state (DDR-115),
+   * gitignored and, on a cell, on an ephemeral disk. So the burst stops.
+   */
+  const RETIREMENT_BURST_MAX = 10;
+  const RETIREMENT_BURST_WINDOW_MS = 60_000;
+  let retirementWindowStart = 0;
+  let retirementsThisWindow = 0;
+  let breakerAnnounced = false;
+
+  function retirementBreakerTripped() {
+    const t = Date.now();
+    if (t - retirementWindowStart > RETIREMENT_BURST_WINDOW_MS) {
+      retirementWindowStart = t;
+      retirementsThisWindow = 0;
+      breakerAnnounced = false;
+    }
+    if (retirementsThisWindow < RETIREMENT_BURST_MAX) return false;
+    if (!breakerAnnounced) {
+      breakerAnnounced = true;
+      log.warn?.(
+        `[hub] move-retirement breaker: ${retirementsThisWindow} canvases retired within ${RETIREMENT_BURST_WINDOW_MS / 1000}s — refusing to quarantine more this window. The rest stay pending; if this is a real bulk move it resumes on its own, and if it is not, nothing was removed.`
+      );
+    }
+    return true;
+  }
+
+  /**
    * Quarantine a retired document's checkout ghost — but ONLY when the ghost
    * is provably a ghost. The naive version quarantined the moment the stamp
    * arrived, which on a CELL races the mover's own rename over the SAME disk:
@@ -274,9 +322,24 @@ export function createWorkspaceAgent(opts) {
    * that resolves outside the design root reads as "never arrives", which
    * HOLDs forever and quarantines nothing. Fail-open to the ghost, never to
    * a deletion.
+   *
+   * Two things the probe alone does not give, both added after the Increment-3
+   * attacker pass:
+   *
+   *   • **The target must be a canvas this agent knows**, not merely a path
+   *     where something exists. "Does a file live here" answers yes for
+   *     `config.json`, so a peer could stamp `movedTo: "config.json"` on every
+   *     slug in the project and have each one quarantined for a move that
+   *     never happened. A move ends at a canvas; anything else HOLDs.
+   *   • **A mass-delete breaker.** Even with a real canvas target, this path
+   *     is a deletion path by any honest description — and DDR-226 §8's
+   *     breakers guard the tombstone lane, not this one. Past the cap in one
+   *     window the sweep stops and says so, rather than draining a project one
+   *     store at a time.
    */
   function sweepRetirements() {
     for (const [slug, pending] of retirementsPending) {
+      if (retirementBreakerTripped()) return;
       const indexed = pathIndex.get(slug);
       if (!indexed) {
         retirementsPending.delete(slug);
@@ -304,6 +367,11 @@ export function createWorkspaceAgent(opts) {
       const newAbs = resolve(join(designRoot, pending.movedTo));
       const contained = newAbs === designRoot || newAbs.startsWith(designRoot + sep);
       if (!contained || !existsSync(newAbs)) continue; // HOLD — move still in flight
+      // …and it has to be a CANVAS, not just something that exists. A peer
+      // naming `config.json` here is asserting a move that cannot have
+      // happened; HOLD is the answer, the same as for a move still in flight.
+      if (!isIndexedCanvasPath(pending.movedTo, slug)) continue;
+      retirementsThisWindow += 1;
       const sib = siblingPaths(indexed.rel);
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
       const trashDir = join(designRoot, '_trash', `${stamp}__moved-${slug}`);

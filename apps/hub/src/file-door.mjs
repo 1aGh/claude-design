@@ -11,6 +11,12 @@
 //      silent last-writer-wins AT THE DOOR — no conflict copy materializes
 //      anywhere, and the design's "both ends SEE it" guarantee is false in
 //      exactly the live-concurrent case it exists for.
+//
+//      The precondition is re-asked under a per-path publish lock that also
+//      holds the rename and the journal append. Checking it only up front
+//      would leave the whole body upload as the window, which is seconds to
+//      minutes for a real asset — a narrower version of the same loss, not a
+//      fix for it.
 //   2. **A RECEIPT.** The response carries `{ seq, sha256 }`, which is what
 //      moves a file from `local-only` to `on-hub` in the doručenka. A push you
 //      cannot name is a push you cannot report.
@@ -38,7 +44,7 @@ import { createWriteStream, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 import { checkoutFileClass, resolveCheckoutFileWrite } from './file-manifest.mjs';
-import { verifyToken } from './tokens.mjs';
+import { matchesScope, verifyToken } from './tokens.mjs';
 
 /** `PUT /api/file/<rel>` — the single door. */
 export const FILE_DOOR_PREFIX = '/api/file/';
@@ -205,13 +211,30 @@ export async function handleFileDoor(ctx) {
     return true;
   }
 
+  // Every decision from here on is asked about `landing`, never the lexical
+  // `rel`. Admission already judged the class on the symlink-resolved path;
+  // asking the role, the CAS and the journal about a DIFFERENT path is how a
+  // committed directory symlink (DDR-054 — a peer can commit one) walks a
+  // write past a gate that admission had already classified correctly.
+  const landing = target.realRel;
+
+  // Scope confinement, the same gate the READ half of this lane applies
+  // (`handleProjectFileRoute`, `handleJournalRoutes`). Without it a token
+  // scoped to one canvas can WRITE the whole project's file plane while being
+  // unable to read most of it back — and a leaked low-value token becomes a
+  // project-wide write primitive (DDR-053 §3).
+  if (!matchesScope(match.scope, landing)) {
+    respond(response, 403, 'this token is not scoped to that path');
+    return true;
+  }
+
   // NEW — the owner gate on code modules, at the DOOR.
   //
   // The receiver has gated this since the file plane shipped; the door never
   // did. A gate on one side of a two-sided lane is half a gate: any peer token
   // could land executable modules in a project's `system/**`, and the only
   // thing stopping them was that the OTHER peers would refuse to pull them.
-  const cls = checkoutFileClass(rel, ctx.designRoot);
+  const cls = checkoutFileClass(landing, ctx.designRoot);
   if (cls === 'code-module' && match.role !== 'owner') {
     // 403 rather than 400: the path is fine, the credential is not, and
     // saying so is what lets a peer report something a person can act on.
@@ -226,21 +249,27 @@ export async function handleFileDoor(ctx) {
   // absent                          — no precondition (a first push, or an
   //                                    older client; the compat matrix keeps
   //                                    those working).
+  //
+  // Asked TWICE: here, so a doomed push is refused before its body crosses the
+  // wire, and again under the publish lock below, which is the one that binds.
   const expect = String(request.headers?.['x-maude-expect-hash'] ?? '').trim();
-  if (expect) {
-    const current = ctx.journal ? currentHashFor(ctx.journal, rel) : null;
-    const wantsAbsent = expect === 'none';
-    const matches = wantsAbsent ? current === null : current === expect;
-    if (!matches) {
-      // 409 with the CURRENT state, so the peer can re-decide immediately
-      // instead of polling to discover what it collided with.
-      respondJson(response, 409, {
-        error: 'the hub moved since you decided',
-        path: rel,
-        current,
-      });
-      return true;
-    }
+  const casHolds = () => {
+    if (!expect) return { ok: true };
+    const current = ctx.journal ? currentHashFor(ctx.journal, landing) : null;
+    const matches = expect === 'none' ? current === null : current === expect;
+    return matches ? { ok: true } : { ok: false, current };
+  };
+
+  const pre = casHolds();
+  if (!pre.ok) {
+    // 409 with the CURRENT state, so the peer can re-decide immediately
+    // instead of polling to discover what it collided with.
+    respondJson(response, 409, {
+      error: 'the hub moved since you decided',
+      path: landing,
+      current: pre.current,
+    });
+    return true;
   }
 
   const r = await streamAndHash(request, target.abs, {
@@ -248,7 +277,7 @@ export async function handleFileDoor(ctx) {
     budget: ctx.budget ?? defaultBudget,
   });
   if (!r.ok) {
-    if (r.detail) console.error(`[hub] file door ${rel} failed: ${r.detail}`);
+    if (r.detail) console.error(`[hub] file door ${landing} failed: ${r.detail}`);
     respond(response, r.status, r.message);
     return true;
   }
@@ -262,23 +291,78 @@ export async function handleFileDoor(ctx) {
     return true;
   }
 
-  try {
-    renameSync(r.tmp, target.abs);
-  } catch (err) {
-    rmSync(r.tmp, { force: true });
-    console.error(`[hub] file door ${rel} rename failed: ${err.message}`);
-    respond(response, 500, 'write failed');
+  // Re-check, rename and journal as ONE step per path. A crossing write that
+  // passed the pre-check while this body was uploading is refused here, with a
+  // conflict the peer can act on — instead of overwriting these bytes with no
+  // copy of them anywhere.
+  return await withPathLock(landing, async () => {
+    const post = casHolds();
+    if (!post.ok) {
+      rmSync(r.tmp, { force: true });
+      respondJson(response, 409, {
+        error: 'the hub moved while your body was in flight',
+        path: landing,
+        current: post.current,
+      });
+      return true;
+    }
+
+    try {
+      renameSync(r.tmp, target.abs);
+    } catch (err) {
+      rmSync(r.tmp, { force: true });
+      console.error(`[hub] file door ${landing} rename failed: ${err.message}`);
+      respond(response, 500, 'write failed');
+      return true;
+    }
+    (ctx.budget ?? defaultBudget).used += r.total;
+
+    // The journal append + the bucket mirror, through the one notifier. The row
+    // it produces is the receipt below — and it names where the bytes ACTUALLY
+    // landed, so a symlinked path cannot alias one file under two CAS states.
+    ctx.onWritten?.({ path: landing, bytes: r.total });
+
+    const seq = ctx.journal ? seqFor(ctx.journal, landing) : null;
+    respondJson(response, 200, {
+      ok: true,
+      path: landing,
+      bytes: r.total,
+      sha256: r.sha256,
+      seq,
+    });
     return true;
+  });
+}
+
+/**
+ * One in-flight publish per path, process-wide.
+ *
+ * The up-front CAS is a fail-fast, not the guarantee: between reading the
+ * current hash and renaming the temp file sits the whole body upload, which is
+ * seconds to minutes for a real asset. Two peers that both decided from hash
+ * `H` therefore both passed the check, both renamed, and the second silently
+ * won — the exact last-writer-wins the CAS exists to eliminate, narrowed to an
+ * upload duration but not closed.
+ *
+ * So the precondition is re-asked under this lock, with the rename and the
+ * journal append inside it. The journal is already the serialization point;
+ * this just makes the door respect it.
+ */
+const publishing = new Map();
+
+async function withPathLock(rel, fn) {
+  const prior = publishing.get(rel) ?? Promise.resolve();
+  let release;
+  const mine = prior.then(() => new Promise((r) => (release = r)));
+  publishing.set(rel, mine);
+  await prior;
+  try {
+    return await fn();
+  } finally {
+    release();
+    // Only the last waiter clears the entry, so a queue behind us survives.
+    if (publishing.get(rel) === mine) publishing.delete(rel);
   }
-  (ctx.budget ?? defaultBudget).used += r.total;
-
-  // The journal append + the bucket mirror, through the one notifier. The row
-  // it produces is the receipt below.
-  ctx.onWritten?.({ path: rel, bytes: r.total });
-
-  const seq = ctx.journal ? seqFor(ctx.journal, rel) : null;
-  respondJson(response, 200, { ok: true, path: rel, bytes: r.total, sha256: r.sha256, seq });
-  return true;
 }
 
 /** The hash the hub currently holds for `rel`, or null (absent or tombstoned). */

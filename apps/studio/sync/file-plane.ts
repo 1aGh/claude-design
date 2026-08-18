@@ -223,8 +223,9 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
   /** Fetch one file's bytes and verify them against the hash we were promised. */
   async function fetchVerified(
     rel: string,
-    expectHash: string
-  ): Promise<{ ok: true; bytes: Uint8Array } | { ok: false; reason: string }> {
+    expectHash: string,
+    ceiling: number
+  ): Promise<{ ok: true; bytes: Uint8Array } | { ok: false; reason: string; overCap?: true }> {
     let res: Response;
     try {
       res = await fetchImpl(
@@ -235,16 +236,121 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
       return { ok: false, reason: (err as Error).message };
     }
     if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    if (bytes.byteLength > MAX_FILE_BYTES) {
-      return { ok: false, reason: `implausible size (${bytes.byteLength} B)` };
+
+    // The cap is consulted BEFORE the body exists, and again as it arrives.
+    // Buffering first and measuring after is not a cap at all: a hub answering
+    // with a body that never ends fills this process's heap for the whole
+    // timeout window and the check never gets to run. The hub's own
+    // `streamAndHash` has always had this shape; the asymmetry was the bug.
+    const cap = Math.max(0, Math.min(MAX_FILE_BYTES, ceiling));
+    const declared = Number(res.headers?.get?.('content-length') ?? Number.NaN);
+    if (Number.isFinite(declared) && declared > cap) {
+      return {
+        ok: false,
+        reason: `over the cap before a byte was read (${declared} B > ${cap} B)`,
+        overCap: true,
+      };
     }
+
+    const bytes = await readCapped(res, cap);
+    if (!bytes.ok) return bytes;
     // The hub may REFUSE to serve; it must never be able to SUBSTITUTE.
-    const got = sha256(bytes);
+    const got = sha256(bytes.bytes);
     if (got !== expectHash) {
       return { ok: false, reason: 'content hash mismatch (racing a write?)' };
     }
+    return { ok: true, bytes: bytes.bytes };
+  }
+
+  /**
+   * Read a response body, abandoning it the moment it exceeds `cap`.
+   *
+   * Falls back to `arrayBuffer()` only when the response has no readable
+   * stream (a test double, or a runtime without one) — there the length check
+   * is still after the fact, but a double is not the threat.
+   */
+  async function readCapped(
+    res: Response,
+    cap: number
+  ): Promise<{ ok: true; bytes: Uint8Array } | { ok: false; reason: string; overCap?: true }> {
+    const body = res.body;
+    if (!body?.getReader) {
+      const all = new Uint8Array(await res.arrayBuffer());
+      if (all.byteLength > cap) {
+        return {
+          ok: false,
+          reason: `implausible size (${all.byteLength} B > ${cap} B)`,
+          overCap: true,
+        };
+      }
+      return { ok: true, bytes: all };
+    }
+    const reader = body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+        total += value.byteLength;
+        if (total > cap) {
+          await reader.cancel().catch(() => {});
+          return {
+            ok: false,
+            reason: `over the cap mid-stream (${total} B > ${cap} B)`,
+            overCap: true,
+          };
+        }
+        chunks.push(value);
+      }
+    } catch (err) {
+      return { ok: false, reason: (err as Error).message };
+    }
+    const bytes = new Uint8Array(total);
+    let at = 0;
+    for (const c of chunks) {
+      bytes.set(c, at);
+      at += c.byteLength;
+    }
     return { ok: true, bytes };
+  }
+
+  /**
+   * What the hub CLAIMS a row costs — a hint, never the fact.
+   *
+   * A missing or absurd `size` charges nothing, which is exactly the hole
+   * `chargeOverrun` closes: a hub declaring `size: 0` for two hundred 512 MB
+   * rows would otherwise land ~100 GB per pass against a budget that never
+   * moved — literally the arithmetic `pull-budget.ts` exists to prevent.
+   */
+  function claimedSize(row?: { size?: number | null }): number {
+    const n = row?.size;
+    return typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : 0;
+  }
+
+  /**
+   * Charge what actually arrived, over and above what was claimed.
+   *
+   * `file-pull.ts` — the lane this replaces — has always done this, with a
+   * comment saying an understated size must not buy a bigger transfer. The
+   * rule survives the rewrite.
+   */
+  function chargeOverrun(
+    budget: ReturnType<typeof createPullBudget>,
+    rel: string,
+    actual: number,
+    claimed: number,
+    out: FilePlaneResult
+  ): boolean {
+    if (actual <= claimed) return true;
+    if (budget.take(actual - claimed)) return true;
+    out.failed.push({
+      rel,
+      reason: `pass byte budget reached (declared ${claimed} B, sent ${actual} B)`,
+    });
+    out.budgetExhausted = true;
+    return false;
   }
 
   /** Land bytes at `rel`, atomically. Throws on failure — `adoptAfter` catches. */
@@ -578,16 +684,24 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
         // about it; sourcing the fetch from the page alone would mean a
         // transient 500 permanently stranded the file.
         if (!remoteHash) return false;
-        if (!budget.take(row?.size ?? 0)) {
+        const claim = claimedSize(row);
+        if (!budget.take(claim)) {
           out.budgetExhausted = true;
           return false;
         }
-        const got = await fetchVerified(rel, remoteHash);
+        const got = await fetchVerified(rel, remoteHash, budget.remaining() + claim);
         if (!got.ok) {
           out.failed.push({ rel, reason: got.reason });
           ledger.setState(rel, 'stuck', { reason: got.reason });
+          // Refused because it would not fit in what is LEFT, not because it is
+          // implausible on its own: that is the budget speaking, so the pass
+          // says so and the next one picks the file up with a full budget.
+          if (got.overCap && budget.remaining() + claim < MAX_FILE_BYTES) {
+            out.budgetExhausted = true;
+          }
           return false;
         }
+        if (!chargeOverrun(budget, rel, got.bytes.byteLength, claim, out)) return false;
         const landed = await ledger.adoptAfter(rel, remoteHash, () => materialize(rel, got.bytes), {
           ...(row ? { remoteSeq: row.seq } : {}),
           state: 'on-hub',
@@ -636,7 +750,8 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
 
       case 'conflict-aside': {
         if (!remoteHash || !here) return false;
-        if (!budget.take(row?.size ?? 0)) {
+        const claim = claimedSize(row);
+        if (!budget.take(claim)) {
           out.budgetExhausted = true;
           return false;
         }
@@ -651,11 +766,15 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
           });
           return false;
         }
-        const got = await fetchVerified(rel, remoteHash);
+        const got = await fetchVerified(rel, remoteHash, budget.remaining() + claim);
         if (!got.ok) {
           out.failed.push({ rel, reason: got.reason });
+          if (got.overCap && budget.remaining() + claim < MAX_FILE_BYTES) {
+            out.budgetExhausted = true;
+          }
           return false;
         }
+        if (!chargeOverrun(budget, rel, got.bytes.byteLength, claim, out)) return false;
         const landed = await ledger.adoptAfter(rel, remoteHash, () => materialize(rel, got.bytes), {
           ...(row ? { remoteSeq: row.seq } : {}),
           state: 'conflict',

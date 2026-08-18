@@ -11,8 +11,8 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -943,9 +943,18 @@ describe('a retired document (the move protocol, studio codec stampMovedTo)', ()
       'HOLD while the new path is absent — the move is still in flight'
     );
 
-    // The canvas lands at its new home (the new document materialises it).
-    mkdirSync(join(repo, '.design/ui/folder'), { recursive: true });
-    writeFileSync(join(repo, '.design/ui/folder/home.tsx'), 'moved body');
+    // The canvas lands at its new home — and it lands as a DOCUMENT, which is
+    // what a move actually is. A file appearing at the named path is not
+    // enough: `movedTo` is peer-written, and "something exists there" answers
+    // yes for `config.json` too.
+    const moved = new Y.Doc();
+    moved.getText('html').insert(0, 'moved body');
+    moved.getMap('syncMeta').set('path', 'ui/folder/home.tsx');
+    await agent.onDocumentStored({
+      documentName: 'ws/acme/main/ui-folder-home',
+      document: moved,
+      user: null,
+    });
     // Any later store sweeps pending retirements — here, the new doc's own.
     const other = new Y.Doc();
     other.getText('html').insert(0, 'x');
@@ -1019,6 +1028,103 @@ describe('a retired document (the move protocol, studio codec stampMovedTo)', ()
       'git agrees the canvas is gone from the old path'
     );
     await agent.stop();
+  });
+
+  it('refuses a move that names a file rather than a canvas', async () => {
+    // `movedTo` is peer-written CRDT content, and acting on it quarantines the
+    // canvas and stages a git deletion. An existence probe answers yes for
+    // `config.json`, so a peer could retire every slug in a project by naming
+    // a path that certainly exists. A move ends at a CANVAS; anything else
+    // HOLDs, which costs a ghost and never a deletion.
+    const repo = tmp();
+    const agent = createWorkspaceAgent({
+      repoDir: repo,
+      designRel: '.design',
+      debounceMs: 5,
+      log: silent(),
+    });
+    await agent.start();
+
+    const doc = new Y.Doc();
+    doc.getText('html').insert(0, 'export default function Home() { return <main/>; }\n');
+    await agent.onDocumentStored({ documentName: 'ws/acme/main/home', document: doc, user: null });
+    await agent.flush();
+    assert.ok(existsSync(join(repo, '.design/home.tsx')));
+
+    writeFileSync(join(repo, '.design/config.json'), '{}');
+    doc.getMap('syncMeta').set('movedTo', 'config.json');
+    await agent.onDocumentStored({ documentName: 'ws/acme/main/home', document: doc, user: null });
+
+    const other = new Y.Doc();
+    other.getText('html').insert(0, 'x');
+    await agent.onDocumentStored({
+      documentName: 'ws/acme/main/other',
+      document: other,
+      user: null,
+    });
+
+    assert.ok(existsSync(join(repo, '.design/home.tsx')), 'the canvas is still there');
+    assert.ok(!existsSync(join(repo, '.design/_trash')), 'nothing was quarantined');
+  });
+
+  it('stops quarantining once a burst looks like a project being emptied', async () => {
+    const repo = tmp();
+    const warned = [];
+    const agent = createWorkspaceAgent({
+      repoDir: repo,
+      designRel: '.design',
+      debounceMs: 5,
+      log: { log() {}, error() {}, warn: (m) => warned.push(String(m)) },
+    });
+    await agent.start();
+
+    // One canvas that stays put, and 20 that all claim to have moved into it.
+    // Every retirement is individually well-formed and the target never goes
+    // away, so nothing HOLDs for an ordinary reason — only the breaker can
+    // stop the drain.
+    const home = new Y.Doc();
+    home.getText('html').insert(0, 'export default () => <main/>;\n');
+    home.getMap('syncMeta').set('path', 'ui/home.tsx');
+    await agent.onDocumentStored({
+      documentName: 'ws/acme/main/ui-home',
+      document: home,
+      user: null,
+    });
+
+    const N = 20;
+    const docs = [];
+    for (let i = 0; i < N; i++) {
+      const d = new Y.Doc();
+      d.getText('html').insert(0, `export default () => <i>${i}</i>;\n`);
+      d.getMap('syncMeta').set('path', `ui/c${i}.tsx`);
+      await agent.onDocumentStored({
+        documentName: `ws/acme/main/ui-c${i}`,
+        document: d,
+        user: null,
+      });
+      docs.push(d);
+    }
+    await agent.flush();
+
+    for (let i = 0; i < N; i++) {
+      docs[i].getMap('syncMeta').set('movedTo', 'ui/home.tsx');
+      await agent.onDocumentStored({
+        documentName: `ws/acme/main/ui-c${i}`,
+        document: docs[i],
+        user: null,
+      });
+    }
+
+    const gone = Array.from({ length: N }, (_, i) =>
+      existsSync(join(repo, `.design/ui/c${i}.tsx`))
+    ).filter((present) => !present).length;
+    assert.ok(gone > 0, 'the ordinary move protocol still works');
+    assert.ok(gone <= 10, `the breaker capped the burst — ${gone} of ${N} were quarantined`);
+    assert.ok(
+      warned.some((m) => m.includes('move-retirement breaker')),
+      `the pause is announced, not silent: ${warned.join(' | ')}`
+    );
+    assert.ok(existsSync(join(repo, '.design/ui/home.tsx')), 'the target is untouched');
   });
 
   it('a retired doc the checkout never materialised is simply ignored', async () => {
