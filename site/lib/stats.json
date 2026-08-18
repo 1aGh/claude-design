@@ -6,7 +6,7 @@
   "plugins": {
     "design": {
       "commands": 24,
-      "skills": 8,
+      "skills": 9,
       "agents": 22
     },
     "flow": {
@@ -32,7 +32,7 @@
     "commands-design/generate.mdx": "2026-08-18",
     "commands-design/handoff.mdx": "2026-07-03",
     "commands-design/help.mdx": "2026-06-11",
-    "commands-design/hub-workspace.mdx": "2026-07-28",
+    "commands-design/hub-workspace.mdx": "2026-08-18",
     "commands-design/import.mdx": "2026-08-12",
     "commands-design/init.mdx": "2026-06-11",
     "commands-design/new.mdx": "2026-07-03",
@@ -88,10 +88,15 @@
     "desktop/index.mdx": "2026-07-08",
     "flow.mdx": "2026-08-16",
     "getting-started.mdx": "2026-07-03",
-    "hub/deploy.mdx": "2026-08-16",
+    "hub/aws.mdx": "2026-08-18",
+    "hub/deploy.mdx": "2026-08-18",
+    "hub/durability.mdx": "2026-08-18",
+    "hub/identity.mdx": "2026-08-18",
     "hub/index.mdx": "2026-08-16",
     "hub/linking.mdx": "2026-08-18",
+    "hub/people.mdx": "2026-08-18",
     "hub/pricing.mdx": "2026-05-28",
+    "hub/self-host.mdx": "2026-08-18",
     "hub/workspace.mdx": "2026-07-29",
     "index.mdx": "2026-07-06",
     "legal/dpa.mdx": "2026-08-04",
