@@ -376,7 +376,22 @@ async function main() {
     // runs the real canvas door (token → cookie → role), and proxies to the
     // child's canvas port — the same topology as canvas.<zone> on the fleet,
     // which also makes the local rig honest about origin isolation.
-    MAUDE_PUBLIC_CANVAS_ORIGIN: `http://canvas.localhost:${port}`,
+    // …and the two hostnames MUST be SAME-SITE, mirroring the fleet
+    // (`canvas.<zone>` next to the project's own `<zone>` hostname). The
+    // capability cookie is `SameSite=Strict` on purpose, and "site" is the
+    // registrable domain: `canvas.localhost` embedded in a page served from
+    // `127.0.0.1` is CROSS-site, so the browser never attaches the cookie to
+    // the iframe's own fetches — the canvas RENDERS (module/CSS URLs carry
+    // `?t=`) while every ambient read (annotations, tenant-referenced assets)
+    // quietly 401s, which looks exactly like "cloud shows different content".
+    // Under `cell.localhost`, `studio.` and `canvas.` share eTLD+1 and the
+    // cookie flows, same as production. Chromium resolves any `*.localhost`
+    // to loopback, so nothing needs /etc/hosts.
+    MAUDE_PUBLIC_CANVAS_ORIGIN: `http://canvas.cell.localhost:${port}`,
+    // Both shell spellings may embed the canvas: the same-site name (where the
+    // capability cookie flows) and loopback (tooling, e2e, old bookmarks —
+    // which render but cannot carry the ambient cookie; see the banner).
+    MAUDE_EXTRA_SHELL_ORIGINS: `http://studio.cell.localhost:${port}`,
     // The studio child's port is otherwise a hardcoded 4399, so a SECOND local
     // cell silently fights the first one for it: the child loses the bind,
     // walks to the next free port, and the hub goes on proxying to a child that
@@ -400,7 +415,11 @@ async function main() {
     line();
     line('  THE CLOUD SIDE — open this in a browser:');
     line();
-    line(`      ${base}`);
+    line(`      http://studio.cell.localhost:${port}`);
+    line();
+    line('      (NOT 127.0.0.1 — the canvas capability cookie is same-site');
+    line('       scoped like production, and 127.0.0.1 is a different site,');
+    line('       so annotations and tenant assets would silently not render.)');
     line(`      sign in as   ${ADMIN_EMAIL}  /  ${ADMIN_PASSWORD}`);
     line();
     if (withPeer) {

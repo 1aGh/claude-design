@@ -199,6 +199,10 @@ export function childEnv(env = process.env, { port }) {
     ...(env.MAUDE_PUBLIC_CANVAS_ORIGIN
       ? { MAUDE_PUBLIC_CANVAS_ORIGIN: env.MAUDE_PUBLIC_CANVAS_ORIGIN }
       : {}),
+    // Extra legit shell embedders (frame-ancestors) — see studio server.ts.
+    ...(env.MAUDE_EXTRA_SHELL_ORIGINS
+      ? { MAUDE_EXTRA_SHELL_ORIGINS: env.MAUDE_EXTRA_SHELL_ORIGINS }
+      : {}),
     ...(env.HUB_PUBLIC_URL ? { HUB_PUBLIC_URL: env.HUB_PUBLIC_URL } : {}),
     // C4 — a browser tab has no window title, so the client has to be told
     // which project it is showing and where "back" is.

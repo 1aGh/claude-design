@@ -593,7 +593,26 @@ const publicShellOrigin = (() => {
     return '';
   }
 })();
-ctx.mainOrigin = `http://localhost:${server.port} http://127.0.0.1:${server.port}${publicShellOrigin}`;
+// Additional legit embedders, space-separated (validated per-origin). A cell
+// can genuinely have MORE than one shell name — the local rig serves its shell
+// on `http://studio.cell.localhost:<port>` (same-site with the canvas origin,
+// so the SameSite=Strict capability cookie flows exactly as it does in
+// production) while `127.0.0.1:<port>` stays alive for tooling — and listing
+// only one of them turns the other into a silent sad-page iframe refusal.
+const extraShellOrigins = (process.env.MAUDE_EXTRA_SHELL_ORIGINS ?? '')
+  .split(/[\s,]+/)
+  .filter(Boolean)
+  .map((u) => {
+    try {
+      return new URL(u).origin;
+    } catch {
+      return '';
+    }
+  })
+  .filter(Boolean)
+  .map((o) => ` ${o}`)
+  .join('');
+ctx.mainOrigin = `http://localhost:${server.port} http://127.0.0.1:${server.port}${publicShellOrigin}${extraShellOrigins}`;
 
 // T2 (9.1-A) — segregated canvas-content origin. ON BY DEFAULT (opt-OUT) since
 // phase-9.1: a second listener binds an OS-assigned free port, advertised as
