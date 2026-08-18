@@ -71,20 +71,24 @@ log "tenant ${MAUDE_TENANT_ID} — R2 prefix ${PREFIX}"
 
 # -------------------------------------------------------------- 2. rehydrate
 if [ -n "${MAUDE_S3_BUCKET:-}" ]; then
-  if [ -f /data/hub.db ]; then
-    log "working set already present — warm start, skipping rehydrate"
-  else
-    log "cold start — rehydrating from ${MAUDE_S3_BUCKET}/${PREFIX}"
-    if ! node /app/dist/rehydrate.mjs --data /data --repo "$REPO_DIR"; then
-      # A cell that starts empty after a failed rehydrate looks EXACTLY like a
-      # brand-new project to the person opening it, and the autosave agent would
-      # then happily commit that emptiness over their work. Refusing is the only
-      # safe answer.
-      die "rehydrate failed. Refusing to start with an empty working set —
-      an empty project is indistinguishable from a deleted one, and autosave
-      would commit the emptiness over real work."
-    fi
-    log "rehydrate complete"
+  # THE WARM/COLD TEST USED TO LIVE HERE, and it was `[ -f /data/hub.db ]`.
+  # That holds for a cell, which has one volume. A workspace has TWO, and
+  # `/data` intact with `/repo` lost satisfies it — so rehydrate was skipped,
+  # boot continued, and `seedRepo` cloned over a checkout that had merely gone
+  # missing. Green boot, silent history loss (Phase 0 F4).
+  #
+  # The decision now lives in `rehydrate.mjs`, which both this entrypoint and
+  # the self-hosted Docker one call unconditionally. One table, two callers,
+  # and no second spelling of "is this a cold start" to drift against.
+  log "resolving boot state against ${MAUDE_S3_BUCKET}/${PREFIX}"
+  if ! node /app/dist/rehydrate.mjs --data /data --repo "$REPO_DIR"; then
+    # A cell that starts empty after a failed rehydrate looks EXACTLY like a
+    # brand-new project to the person opening it, and the autosave agent would
+    # then happily commit that emptiness over their work. Refusing is the only
+    # safe answer.
+    die "rehydrate failed. Refusing to start with an empty working set —
+    an empty project is indistinguishable from a deleted one, and autosave
+    would commit the emptiness over real work."
   fi
 else
   log "no object storage configured — local-only cell (development)"

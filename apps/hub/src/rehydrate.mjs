@@ -25,14 +25,92 @@
 //   node src/rehydrate.mjs --data /data --repo /repo
 
 import { existsSync, readdirSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 
 import { listBackups, restoreLatest, targetFromEnv } from './backup.mjs';
 import { createGitRunner } from './git-runner.mjs';
 import { closeJournal, openJournal, replayTailFromTarget } from './journal.mjs';
+import { adoptWorkspaceId, readWorkspaceId } from './workspace-identity.mjs';
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);
   return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
+}
+
+/**
+ * The boot decision — Phase 0 F4 + Track A' A1.
+ *
+ * IT LIVES HERE, and that is the point. The cell entrypoint used to decide
+ * this in shell with `[ -f /data/hub.db ]`, and the Docker path never decided
+ * it at all (`CMD ["node","dist/hub.bundle.mjs"]`, no entrypoint). Two boot
+ * paths, one of which recovers. This module already imports `listBackups`,
+ * `restoreLatest` and `targetFromEnv`, already exits non-zero on doubt, and is
+ * already built as its own dist entry — so putting the table here means both
+ * callers share ONE decision and the shell test is deleted rather than
+ * duplicated. Fewer decision points than before, not more.
+ *
+ * THE BUG THE OLD SHELL TEST CARRIED (live in production cells): `hub.db`
+ * present was taken to mean "warm start". With two volumes, `/data` intact and
+ * `/repo` lost is exactly that shape — so rehydrate was skipped, boot
+ * continued, and `seedRepo` cloned MAUDE_SEED_REPO over a checkout that had
+ * simply gone missing. Green boot, silent history loss.
+ *
+ * `/repo` only participates in workspace mode. A plain relay hub has no
+ * checkout, so an empty `/repo` there is the normal state and must not refuse.
+ *
+ * Identity (whose generation is this?) is NOT decided here — `restoreLatest`
+ * asks `decideRestoreOwnership` once the manifest is in hand. This function
+ * answers only the shape question: restore, seed, start fresh, or stop.
+ *
+ * @returns {{action:'proceed'|'restore'|'seed'|'fresh'|'refuse', reason:string}}
+ */
+export function decideBoot({
+  dataPopulated,
+  repoPopulated,
+  generationCount,
+  workspaceMode = false,
+  seedConfigured = false,
+  allowEmptyStart = false,
+  listFailed = false,
+}) {
+  // An unreachable bucket is not evidence that anything was lost. Refusing on
+  // it would strand every operator whose credentials rotated, and it converts a
+  // storage blip into an outage — the trade this whole track exists to avoid.
+  if (listFailed) {
+    return { action: 'proceed', reason: 'the backup target could not be listed' };
+  }
+  if (allowEmptyStart) {
+    return { action: 'proceed', reason: 'MAUDE_ALLOW_EMPTY_START=1 was set deliberately' };
+  }
+
+  const checkoutMissing = workspaceMode && !repoPopulated;
+
+  if (dataPopulated && !checkoutMissing) {
+    return { action: 'proceed', reason: 'the working set is present' };
+  }
+
+  // `/data` intact, `/repo` gone. Restoring only the checkout would pair a
+  // fresh bundle with older documents, which repo-checkpoint.mjs names as the
+  // corruption that "looks like a bug in the app for weeks"; restoring both
+  // halves would overwrite documents that are NEWER than the generation. There
+  // is no safe automatic answer, so this is the one row that stops.
+  if (dataPopulated && checkoutMissing) {
+    return {
+      action: 'refuse',
+      reason:
+        'the documents are present but the checkout is gone. Restoring the checkout alone would ' +
+        'pair it with newer documents, and restoring the whole generation would discard them. ' +
+        'Restore deliberately, or set MAUDE_ALLOW_EMPTY_START=1 to start without the history.',
+    };
+  }
+
+  if (generationCount > 0) {
+    return { action: 'restore', reason: `${generationCount} generation(s) available` };
+  }
+  if (seedConfigured) {
+    return { action: 'seed', reason: 'no generations and a seed repository is configured' };
+  }
+  return { action: 'fresh', reason: 'no generations and nothing to seed from' };
 }
 
 function isEmptyish(dir) {
@@ -97,34 +175,41 @@ async function main() {
     process.exit(1);
   }
 
-  let generations;
+  let generations = [];
+  let listFailed = false;
   try {
     generations = await listBackups(target);
   } catch (err) {
+    // NOT fatal. An unreachable bucket is not evidence that anything was lost,
+    // and refusing here converts a credential rotation or a storage blip into
+    // an outage. Loud, then carry on — the boot table owns this row.
     console.error(`[rehydrate] cannot reach ${target.describe}: ${err.message}`);
-    process.exit(1);
+    listFailed = true;
   }
 
-  if (generations.length === 0) {
-    // FIRST BOOT. There has never been a backup because this tenant has never
-    // run — which is a completely normal state and must NOT be an error, or no
-    // cell could ever start for the first time. Distinguished from "the backup
-    // is gone" by the working set also being empty: if there is local data but
-    // no generation, something is wrong enough to stop for.
-    if (isEmptyish(dataDir)) {
-      console.log('[rehydrate] no backup generations and an empty working set — first boot');
-      // A tenant can have written journal rows before its first backup fired;
-      // those seqs are already in peers' cursors, so the tail is replayed even
-      // on the path that restores nothing else.
-      await settleJournal(dataDir, target);
-      process.exit(0);
-    }
-    console.error(
-      '[rehydrate] the working set has data but object storage has NO complete backup ' +
-        'generation. Refusing to continue: either the bucket is wrong or backups have ' +
-        'never succeeded, and both are worth stopping for.'
-    );
+  const verdict = decideBoot({
+    dataPopulated: !isEmptyish(dataDir),
+    repoPopulated: !isEmptyish(repoDir),
+    generationCount: generations.length,
+    workspaceMode:
+      process.env.HUB_WORKSPACE_MODE === '1' || process.env.MAUDE_WORKSPACE_MODE === '1',
+    seedConfigured: Boolean(process.env.MAUDE_SEED_REPO),
+    allowEmptyStart: process.env.MAUDE_ALLOW_EMPTY_START === '1',
+    listFailed,
+  });
+
+  if (verdict.action === 'refuse') {
+    console.error(`[rehydrate] refusing to start — ${verdict.reason}`);
     process.exit(1);
+  }
+  if (verdict.action !== 'restore') {
+    // proceed / seed / fresh all mean "nothing to restore here". A tenant can
+    // have written journal rows before its first backup fired, and those seqs
+    // are already in peers' cursors, so the tail is replayed even on the paths
+    // that restore nothing else.
+    console.log(`[rehydrate] ${verdict.action} — ${verdict.reason}`);
+    await settleJournal(dataDir, target);
+    process.exit(0);
   }
 
   // WALK BACK THROUGH GENERATIONS. The newest is tried first, but a generation
@@ -148,11 +233,18 @@ async function main() {
           destDir: dataDir,
           repoDir,
           run: createGitRunner(),
-          // The working set is empty on a cold start — that is the
-          // precondition the entrypoint checks before calling us. Not forcing
-          // means a restore over live data fails loudly instead of
-          // overwriting it.
+          // The working set is empty on a cold start — the boot table above
+          // established that. Not forcing means a restore over live data fails
+          // loudly instead of overwriting it.
           force: false,
+          // Phase 0 F2 — whose generation is this? A hub that lost `/data` has
+          // no local identity, so ownership falls to the keyspace: a dedicated
+          // prefix means these generations are ours by construction, while the
+          // bare bucket root is shared by definition and cannot answer.
+          ownership: {
+            localId: readWorkspaceId(dataDir),
+            prefixSet: Boolean(process.env.MAUDE_BACKUP_PREFIX),
+          },
         });
         break;
       } catch (err) {
@@ -184,9 +276,23 @@ async function main() {
           `restored:\n  ${attempted.join('\n  ')}`
       );
     }
+    // Keep writing as the workspace we just restored. Without this the next
+    // backup tick would mint a fresh identity, look like a second hub arriving
+    // in its own keyspace, and the write-side refusal would fire against the
+    // very hub it protects.
+    if (result.adopt) adoptWorkspaceId(dataDir, result.adopt);
+
+    // ANNOUNCE IT. A hub that quietly came back from a five-day-old generation
+    // and resumed committing is a worse incident than one that refused,
+    // because no investigation ever starts. The age is reported, never used as
+    // a kill switch — dying here would fire in the case where booting is
+    // obviously right.
+    const createdAt = result.manifest?.createdAt;
+    const ageHours = createdAt ? Math.round((Date.now() - Date.parse(createdAt)) / 36e5) : null;
     console.log(
-      `[rehydrate] restored ${result.generation} — ` +
-        `${result.restored.join(', ')}${result.repo?.state === 'restored' ? ' + checkout' : ''}`
+      `[rehydrate] RESTORED ${result.generation}` +
+        (ageHours === null ? '' : ` (${ageHours}h old)`) +
+        ` — ${result.restored.join(', ')}${result.repo?.state === 'restored' ? ' + checkout' : ''}`
     );
     if (result.manifest.repo && result.repo?.state !== 'restored') {
       // The generation carried a checkout and we did not end up with one. The
@@ -208,4 +314,9 @@ async function main() {
   }
 }
 
-await main();
+// Run only when invoked as a program. The boot table above is exported so it
+// can be tested directly, and an unguarded `await main()` would exit the test
+// runner's process the moment the module was imported.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  await main();
+}
