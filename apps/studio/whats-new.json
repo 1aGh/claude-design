@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "durable-backups-for-every-file",
+      "version": null,
+      "date": null,
+      "kind": "improvement",
+      "surface": "design-ui",
+      "title": "Every file in a cloud project is backed up now",
+      "summary": "Cloud-hosted projects now keep a durable copy of every file — design-system stylesheets, shared modules, fonts, and images anywhere in the folder, not just top-level assets. A project that restarts in the cloud comes back whole instead of missing its styling."
+    },
+    {
       "id": "the-whole-design-folder-syncs",
       "version": null,
       "date": null,

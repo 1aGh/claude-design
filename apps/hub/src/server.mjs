@@ -933,9 +933,28 @@ export function createHub(config = {}) {
       // `x-maude-expect-hash`, which the door reads as "no precondition" —
       // exactly the semantics the old routes had. A path neither parser
       // accepts falls through to the legacy handlers' own refusals.
+      //
+      // CONTAINMENT AUTHORITY, post-consolidation. The pre-door `/assets/`
+      // writer carried its OWN `isContainedReal(assetsRoot, …)` gate confining
+      // a write to the `assets/` subtree. That is deliberately gone: `/assets/`
+      // is now a thin alias for the one door, and the door's classifier +
+      // symlink-resolved `resolveCheckoutFileWrite` is the sole containment
+      // authority for every write URL. A committed `assets/link -> ../system`
+      // therefore lands `system/x.css` as `companion-text` — but that is a
+      // first-class file-plane class already reachable via `/_asset-file/`, so
+      // there is NO net-new reach here, and the code-module owner gate is
+      // unchanged. Re-adding an `assets/`-only guard would reintroduce exactly
+      // the per-URL divergence this consolidation removed (attacker review
+      // finding 3, 2026-08-18 — accepted as documented, not a fix).
       if (
         method === 'PUT' &&
-        (authPath.startsWith('/assets/') || authPath.startsWith('/_asset-file/'))
+        (authPath.startsWith('/assets/') || authPath.startsWith('/_asset-file/')) &&
+        // Same canvas-origin exclusion the canonical file-door route carries
+        // (DDR-088 — a privileged write belongs to NEITHER canvas allowlist).
+        // The peer token already gates this, but the alias must mirror the
+        // door's guard so a canvas realm can never reach the write door under
+        // any URL (defender parity finding L-1, 2026-08-18).
+        !(studioProxy && isCanvasHost(request))
       ) {
         const key = authPath.startsWith('/assets/') ? parseAssetPath(authPath) : null;
         const rel = key !== null ? `assets/${key}` : parseCheckoutAssetPath(authPath);

@@ -134,7 +134,19 @@ export function createWriteBehind({ designRoot, s3, journal, prefix, log = conso
           continue;
         }
         try {
-          const body = readFileSync(join(designRoot, rel));
+          const abs = join(designRoot, rel);
+          // Realpath containment at the READ site, not only at the write door.
+          // Every journal producer excludes symlinks today, so this is
+          // defense-in-depth — but the write-behind reads bytes and ships them
+          // to durable, potentially peer-readable storage, so a committed
+          // symlink that ever slipped a producer must not become an exfil of a
+          // file outside the design root (defender finding L-2, 2026-08-18).
+          if (!containedReal(abs, designRoot)) {
+            log.warn?.(`[assets] ${rel} resolves outside the design root — NOT mirrored.`);
+            for (const seq of seqs) journal.markMirrored(seq); // deliberate refusal, not a retry
+            continue;
+          }
+          const body = readFileSync(abs);
           if (body.length > MAX_ASSET_BYTES) {
             log.warn?.(`[assets] ${rel} is over ${MAX_ASSET_BYTES} bytes — NOT mirrored.`);
             for (const seq of seqs) journal.markMirrored(seq); // deliberate refusal, not a retry

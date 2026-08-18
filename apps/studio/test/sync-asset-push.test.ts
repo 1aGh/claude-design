@@ -865,8 +865,12 @@ describe('the runtime schedules the legacy push on change, not only at boot', ()
     // lane per boot. A journal hub gets the plane; only a journal-less hub
     // (or an unreachable/opted-out probe) gets the legacy client.
     expect(SYNC).toContain('decidePushLane(filePlane === null);');
-    expect(SYNC).toMatch(/if \(stopped \|\| cellPairing \|\| legacyLane !== true\) return; \/\/ the cell never pushes/);
-    expect(SYNC).toContain('if (legacyLane === false) return; // the plane owns pushes on this hub');
+    expect(SYNC).toMatch(
+      /if \(stopped \|\| cellPairing \|\| legacyLane !== true\) return; \/\/ the cell never pushes/
+    );
+    expect(SYNC).toContain(
+      'if (legacyLane === false) return; // the plane owns pushes on this hub'
+    );
   });
 
   test('stop() clears the pending pass and cancels a running one', () => {
