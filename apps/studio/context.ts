@@ -48,12 +48,18 @@ export interface LinkedHub {
    */
   workspaceId?: string;
   /**
-   * feature-sync-file-plane — opt-in for the manifest-driven file plane
-   * (Plane B): the downward project-file pull AND the widened upward sweep
-   * (stylesheets, docs, code modules — classifier membership, see
-   * sync/file-membership.ts). Default OFF this release; `MAUDE_SYNC_FILES=1`
-   * forces it on for a session. The flag gates ONLY the new plane — the
-   * canvas CRDT lanes and the DDR-217 asset lanes run regardless.
+   * Sync v2 — the journal-driven file plane (Plane B): the downward
+   * project-file pull AND the widened upward sweep (stylesheets, docs, code
+   * modules — classifier membership, see sync/file-membership.ts).
+   *
+   * **Default ON from Increment 4**, once its security gate closed. Set to
+   * `false` per project to fall back to the pre-Sync-v2 reach (binary media
+   * under `assets/` only) — a config key rather than a terminal command,
+   * because the target user has no terminal (DDR-177). `MAUDE_SYNC_FILES=0`
+   * forces it off for one session.
+   *
+   * The flag gates ONLY this plane — the canvas CRDT lanes and the DDR-217
+   * asset lanes run regardless.
    */
   syncFiles?: boolean;
   /**

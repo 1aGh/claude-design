@@ -562,7 +562,17 @@ export function createSyncRuntime(
   // feature-sync-file-plane — Plane B, behind its flag. The flag gates ONLY
   // the new plane (the downward file pull here + the widened sweep inside
   // `listPushableAssets`); with it off, behavior is today's, byte-for-byte.
-  const syncFilesOn = linkedHub.syncFiles === true || process.env.MAUDE_SYNC_FILES === '1';
+  // DEFAULT ON (Increment 4). The plane ships enabled once its security gate
+  // closed: the whole set of findings from the two-seat review is fixed, the
+  // door gates scope + role on the real landing path, the receiver defends its
+  // own root, budgets charge real bytes, and the storms — poke, re-anchor,
+  // first-anchor, mass-delete — all have breakers that hold rather than act.
+  //
+  // `linkedHub.syncFiles: false` is the per-project opt-out and stays the
+  // documented rollback: a config key, not a terminal command (DDR-177).
+  const syncFilesOn =
+    linkedHub.syncFiles !== false &&
+    (process.env.MAUDE_SYNC_FILES !== '0' || linkedHub.syncFiles === true);
   // The gate for `code-module` entries — genuinely local state, at last.
   //
   // This used to read `storedRecord?.role === 'owner'`, described in the

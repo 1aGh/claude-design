@@ -138,6 +138,22 @@ The frame is deliberately empty of content: it says "something moved", never *wh
 
 Older hubs simply don't advertise the feature and every peer keeps today's behaviour unchanged. To turn it off against a hub that does, set `linkedHub.fileEvents: false` in `.design/config.json`; that project falls back to the poll cadence and nothing else changes.
 
+## What crosses, and what stays home
+
+A linked project mirrors the **whole** `.design/` folder both ways, not just the canvases: design-system stylesheets, READMEs, fonts, images, shared modules. Which files those are is decided by one classifier on each side, and each side asks its own copy — the hub's answer is a hint, never permission.
+
+Three things never travel, in either direction:
+
+- **`.design/config.json`** — it names the hub and the canvas groups. A synced config would be a hub rewriting its own trust anchors.
+- **Per-machine runtime state** — your camera position, local history, trash, drafts. Yours, not the project's.
+- **Another program's conflict copies** (`*.sync-conflict-*`, Syncthing's) — carrying those would make it impossible to tell which program parked a file.
+
+**Executable modules** (`.ts`, `.mjs` outside a canvas body) are the one class with a gate on both ends. The hub refuses them from anyone but an owner, and your machine only accepts them from a hub you have explicitly said may deliver them — a local answer, recorded when you link, that no sign-in response can change.
+
+When two people change the same file between syncs, neither copy is merged and neither is thrown away: the loser is renamed to `<name>.maude-conflict-<when>-<who>.<ext>` beside the winner and travels too, so both people see it. If a whole batch of files differs at once — the usual case the first time an existing project is linked — sync stops and asks you once, rather than filling the folder with conflict copies you did not ask for.
+
+To turn the file mirror off for a project, set `linkedHub.syncFiles: false` in `.design/config.json`. Canvases keep syncing; only the surrounding files stop.
+
 ## Rate limits
 
 The hub authenticates each canvas document separately, so a big project produces a burst of valid auths at boot (one per canvas — even though all of them ride **one** multiplexed WebSocket per peer). The hub's limiter is sized for that: valid tokens get 600 auths/min per label (override with `HUB_CONN_RATE_LIMIT` on the hub), while *invalid* token attempts — the actual brute-force surface — are capped tightly at 100/min per IP. If a peer ever does hit the limit, the rejection says so explicitly (with a retry hint) instead of a generic `permission-denied`, and sync settles by itself as providers back off.

@@ -1,7 +1,16 @@
 {
-  "generated": "2026-08-18T12:10:03.333Z",
+  "generated": "2026-08-18T14:26:50.570Z",
   "version": "0.60.7",
   "entries": [
+    {
+      "id": "history-follows-the-cloud",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "History shows what the cloud is saving",
+      "summary": "When a folder is connected to Maude Cloud, the History tab now lists the cloud's saved versions instead of your machine's — headed by the cloud project's name, and you can open a canvas at any of them, including versions that only ever existed in the cloud. If the cloud can't be reached it says so, with a Retry, rather than looking empty. While the cloud is saving, the app also stops keeping a separate account of the folder: no unsaved marks in the tree, no draft switcher. Disconnect and it all returns live. Your own git is untouched.",
+      "surface": "design-ui"
+    },
     {
       "id": "canvas-zoom-and-selection-feel",
       "version": null,

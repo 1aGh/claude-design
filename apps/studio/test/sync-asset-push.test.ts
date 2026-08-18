@@ -43,12 +43,22 @@ describe('listPushableAssets — classifier membership over the whole design roo
     mkdirSync(join(designRoot, '_history/assets'), { recursive: true });
     writeFileSync(join(designRoot, '_history/assets/old.png'), 'x');
 
-    expect(listPushableAssets(designRoot)).toEqual([
+    // `syncFiles: false` is now stated rather than assumed: the flag defaults
+    // ON from Increment 4, so a test that meant "the narrow media sweep" has
+    // to say so. What it pins is unchanged.
+    expect(listPushableAssets(designRoot, { syncFiles: false })).toEqual([
       'assets/a1b2c3d4.png',
       'system/alligators/assets/fonts/Gators-Bold.woff2',
       'system/alligators/assets/logos/horizontal-green.svg',
       'system/alligators/assets/photos/P1020428.JPG',
     ]);
+
+    // With the plane on, the photo sidecar travels too — it is the
+    // non-destructive edit state for that image, and an image whose edits stay
+    // behind arrives looking wrong rather than arriving late.
+    expect(listPushableAssets(designRoot, { syncFiles: true })).toContain(
+      'assets/a1b2c3d4.photo.json'
+    );
   });
 
   test('non-asset extensions and dotfiles are filtered; missing root is []', () => {
@@ -89,9 +99,10 @@ describe('listPushableAssets — classifier membership over the whole design roo
       'system/ds/preview/_brand-css.ts',
       'system/ds/preview/_layout.css',
     ]);
-    // Flag OFF ⇒ today's reach, byte-for-byte: none of these are binary
-    // media under an assets/ dir, so none of them move.
-    expect(listPushableAssets(designRoot)).toEqual([]);
+    // Explicitly OFF ⇒ the pre-Sync-v2 reach, byte-for-byte: none of these are
+    // binary media under an assets/ dir, so none of them move. This is the
+    // documented per-project rollback, so it keeps its own test.
+    expect(listPushableAssets(designRoot, { syncFiles: false })).toEqual([]);
   });
 
   test('declared canvasGroups decide what a canvas body IS', () => {
@@ -966,3 +977,24 @@ describe('pushOneAsset — the fast lane (2026-08-16 latency fix)', () => {
 });
 
 const SYNC2 = readFileSync(join(import.meta.dir, '..', 'sync', 'index.ts'), 'utf8');
+
+describe('the syncFiles default — Increment 4 flipped it ON', () => {
+  // The flip is one boolean in two places (`sync/index.ts` and here), and a
+  // drift between them means the sweep and the plane disagree about which
+  // files exist — the jurisdiction overlap Sync v2 exists to end. So the
+  // default is asserted, not assumed.
+  const designRoot = () => {
+    const root = scratchDesignRoot();
+    mkdirSync(join(root, 'system/ds'), { recursive: true });
+    writeFileSync(join(root, 'system/ds/brand.css'), 'x');
+    return root;
+  };
+
+  test('absent config ⇒ the plane is on', () => {
+    expect(listPushableAssets(designRoot())).toEqual(['system/ds/brand.css']);
+  });
+
+  test('`linkedHub.syncFiles: false` is the per-project rollback and still works', () => {
+    expect(listPushableAssets(designRoot(), { syncFiles: false })).toEqual([]);
+  });
+});

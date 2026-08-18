@@ -694,3 +694,49 @@ describe('a hub that re-anchors forever is not obeyed forever', () => {
     expect(second.conflicts.some((c) => c.copy?.includes('-hub.css'))).toBe(false);
   });
 });
+
+describe('F2/F3 — plane disjointness survives a fresh link', () => {
+  // The synthesis line for this gate reads "empty-tree in-group `.css`
+  // classifies canvas-owned by default". The shipped classifier does the
+  // OPPOSITE on purpose, and the reason is an RCA: defaulting group css to
+  // canvas-owned is what lost five real stylesheets (`brand.css`,
+  // `_layout.css` — files with no sibling body at all, which would then travel
+  // on no lane whatsoever). Defaulting to the flowing side is recoverable; the
+  // other direction silently drops content.
+  //
+  // What has to be true for that choice to be safe is not the default but the
+  // CONVERGENCE: the moment the body exists, the css must leave the file plane,
+  // so the two lanes never both own it for longer than one pass.
+  test('a sibling-less css flows, and the file plane releases it once the body lands', async () => {
+    const hub = fakeHub({ 'ui/home.css': '.a{}' });
+    const p = plane(hub);
+
+    const first = await p.reconcile();
+    expect(first.pulled).toEqual(['ui/home.css']);
+
+    // Plane A delivers the body — the canvas doc lane, which this plane never
+    // touches. From here the css is that canvas's Yjs lane, not a file.
+    write('ui/home.tsx', 'export default null');
+
+    const second = await p.reconcile();
+    expect(second.pulled).toEqual([]);
+    const scanned = scanLocalFiles(root, ledger, [{ path: 'system' }, { path: 'ui' }]);
+    expect(scanned.has('ui/home.css')).toBe(false);
+  });
+
+  test('a design-system stylesheet with no body anywhere keeps flowing — the RCA case', async () => {
+    const hub = fakeHub({ 'system/ds/brand.css': ':root{}', 'system/ds/preview/_layout.css': 'x' });
+    const res = await plane(hub).reconcile();
+    expect(res.pulled.sort()).toEqual(['system/ds/brand.css', 'system/ds/preview/_layout.css']);
+  });
+
+  test('config.json is never a plane member in either direction', async () => {
+    // The seed-before-first-pull half: a synced config is a hub rewriting the
+    // hub URL and the canvas groups — its own trust anchors.
+    write('config.json', '{"canvasGroups":[{"path":"system"},{"path":"ui"}],"mine":true}');
+    const hub = fakeHub({ 'config.json': '{"evil":true}' });
+    const res = await plane(hub).reconcile();
+    expect(res.pushed).toEqual([]);
+    expect(read('config.json')).toContain('"mine"');
+  });
+});

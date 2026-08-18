@@ -176,7 +176,12 @@ function readProjectConfig(designRoot: string): {
     canvasGroups: Array.isArray(parsed?.canvasGroups)
       ? (parsed.canvasGroups as CanvasGroupLike[])
       : undefined,
-    syncFiles: process.env.MAUDE_SYNC_FILES === '1' || parsed?.linkedHub?.syncFiles === true,
+    // Default ON — mirrors `sync/index.ts`. Both read the same key and a drift
+    // between them would mean the sweep and the plane disagree about which
+    // files exist, which is the jurisdiction overlap Sync v2 exists to end.
+    syncFiles:
+      parsed?.linkedHub?.syncFiles !== false &&
+      (process.env.MAUDE_SYNC_FILES !== '0' || parsed?.linkedHub?.syncFiles === true),
   };
 }
 
