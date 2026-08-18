@@ -277,7 +277,19 @@ export function createWorkspaceAgent(opts) {
       }
       const oldAbs = join(designRoot, indexed.rel);
       if (!existsSync(oldAbs)) {
-        // The mover's own rename (or a peer's cleanup) already handled it.
+        // Somebody else already removed it — the mover's own rename, or (on a
+        // cell, sharing this disk) the studio child's retirement watcher,
+        // which usually wins. GONE FROM DISK IS NOT GONE FROM HISTORY: the
+        // path is still tracked, and if nobody notes it the checkout and its
+        // git history diverge permanently — the canvas moved months ago and
+        // `git show HEAD` still lists it at the old path.
+        //
+        // Note it and let autocommit judge: it stages a tracked-but-missing
+        // path as a deletion and silently drops one git never knew.
+        const sib = siblingPaths(indexed.rel);
+        for (const rel of [indexed.rel, sib.meta, sib.css, sib.annotations]) {
+          auto.note(relative(repoDir, join(designRoot, rel)).split(sep).join('/'), pending.who);
+        }
         pathIndex.delete(slug);
         retirementsPending.delete(slug);
         continue;

@@ -969,6 +969,46 @@ describe('a retired document (the move protocol, studio codec stampMovedTo)', ()
     await agent.stop();
   });
 
+  it('records the deletion even when somebody else removed the file first', {
+    skip: gitAvailable() ? false : 'git not available',
+  }, async () => {
+    // On a CELL the studio child shares this disk and its own retirement
+    // watcher usually parks the ghost before the hub's sweep looks. Finding
+    // the path already gone must still reach git: the file is tracked, and a
+    // silent skip leaves the checkout and its history divergent forever — the
+    // canvas moved and `git show HEAD` still lists it at the old path.
+    const repo = tmp();
+    const agent = createWorkspaceAgent({
+      repoDir: repo,
+      designRel: '.design',
+      debounceMs: 5,
+      log: silent(),
+    });
+    await agent.start();
+
+    const doc = new Y.Doc();
+    doc.getText('html').insert(0, 'export default () => null;\n');
+    await agent.onDocumentStored({ documentName: 'ws/acme/main/home', document: doc, user: null });
+    await agent.flush();
+    assert.ok(
+      execFileSync('git', ['ls-files'], { cwd: repo, encoding: 'utf8' }).includes('home.tsx'),
+      'tracked before the move'
+    );
+
+    // Somebody else (the studio child) parks it, THEN the stamp is seen.
+    rmSync(join(repo, '.design/home.tsx'));
+    doc.getMap('syncMeta').set('movedTo', 'ui/folder/home.tsx');
+    await agent.onDocumentStored({ documentName: 'ws/acme/main/home', document: doc, user: null });
+
+    const commit = await agent.flush();
+    assert.equal(commit.ok, true, `the deletion commits: ${JSON.stringify(commit)}`);
+    assert.ok(
+      !execFileSync('git', ['ls-files'], { cwd: repo, encoding: 'utf8' }).includes('home.tsx'),
+      'git agrees the canvas is gone from the old path'
+    );
+    await agent.stop();
+  });
+
   it('a retired doc the checkout never materialised is simply ignored', async () => {
     const repo = tmp();
     const agent = createWorkspaceAgent({
