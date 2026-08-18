@@ -1,4 +1,17 @@
-// Design-sync, cell side — Cloud Phase 25 D1.
+// Design EXPORT to a repository — Cloud Phase 25 D1, reclassified by DDR-228.
+//
+// The name says "sync" and it is not one. This opens a PULL REQUEST against a
+// repository the hub does not own: a one-shot handoff a person reviews and
+// merges, with no cursor, no ancestor, no conflict resolution and no return
+// path. Nothing here converges, and nothing here is undone by the other side
+// changing something.
+//
+// That distinction became load-bearing with the two-mode model. A hub-owned
+// project's `.design/` is gitignored precisely so git and the hub are not both
+// owners of the same bytes; this route is how those bytes reach a repo anyway,
+// ONCE, as a reviewed change — the escape hatch that makes "no hybrid"
+// liveable rather than a restriction. Wiring it as a continuous lane would
+// rebuild the hybrid under a different name.
 //
 // The backup mode pushes the cell's own repository and is done. This one has to
 // touch a repository we do NOT own, so it is deliberately shaped to make that
