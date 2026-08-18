@@ -17,7 +17,7 @@
 // the provider lib didn't install for some reason) prints a useful error
 // instead of crashing the dev-server boot.
 
-import { existsSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import path from 'node:path';
@@ -34,7 +34,7 @@ import { isPushableAssetRel, pushOneAsset } from './asset-push.ts';
 import { type AssetSweepHandle, runAssetSweep } from './asset-sweep.ts';
 import { atomicWrite } from './atomic-write.ts';
 import { type CellPairing, resolveCellPairing, sanitizeForLog } from './cell-pairing.ts';
-import { canvasPathFromDoc, stampCanvasPath } from './codec.ts';
+import { canvasPathFromDoc, movedToFromDoc, stampCanvasPath, stampMovedTo } from './codec.ts';
 import {
   type ConnectionMonitor,
   createConnectionMonitor,
@@ -307,6 +307,17 @@ export interface SyncRuntime {
    * meaningful gesture, killing a multi-hundred-megabyte upload is.
    */
   cancelAssetSweep(): boolean;
+  /**
+   * The MOVE protocol's first half (codec `stampMovedTo`): stamp this slug's
+   * document retired-by-move to `toRel`, push the stamp to the hub, then
+   * release the canvas. Called by `moveCanvas` BEFORE it renames the file —
+   * which is also why this must not quarantine anything: the file at the old
+   * path is about to be renamed by the caller, not thrown away.
+   *
+   * Returns false when this runtime does not carry the slug (not synced, or
+   * flag-off) — the caller then proceeds with the plain local move.
+   */
+  retireForMove(fromSlug: string, toRel: string): Promise<boolean>;
 }
 
 export interface CreateSyncRuntimeOptions {
@@ -944,6 +955,89 @@ export function createSyncRuntime(
    * The shared WebSocket is deliberately untouched: it belongs to the runtime,
    * not to a canvas, and the next adopt will need it. Only `stop()` disposes it.
    */
+  /**
+   * Slugs THIS process is retiring via `retireForMove` right now. The
+   * retirement watcher below fires on every doc update — including our own
+   * stamp — and its job on a PASSIVE peer (quarantine the stale local file)
+   * would destroy the very file `moveCanvas` is about to rename here.
+   */
+  const movingLocally = new Set<string>();
+  /** Retirements already being handled, so the per-update watcher fires once. */
+  const retiring = new Set<string>();
+
+  /**
+   * A retired document arrived (another machine moved this canvas): release
+   * the canvas and QUARANTINE the stale local copy into `_trash/` — never
+   * unlink, the DDR-102 recoverability spine. Safe against a plain deletion
+   * ambiguity because `movedTo` is an explicit statement that the content
+   * lives on at the new path (see codec stampMovedTo).
+   */
+  async function onRetirementSeen(slug: string): Promise<void> {
+    const desc = descriptors.get(slug);
+    const provider = providers.get(slug);
+    const movedTo = provider ? movedToFromDoc(provider.document) : null;
+    await releaseOne(slug);
+    if (!desc) return;
+    // HOLD until the canvas provably lives at its new path — parking the old
+    // copy while the new document is still materialising would leave a window
+    // with NO visible copy at all, and on a cell (where this process shares
+    // the checkout with the hub) it can even race the mover's own rename.
+    // The doc guards already made the old file write-inert, so waiting costs
+    // nothing but tidiness. If the new path never shows up, the stale file
+    // stays — a recoverable ghost beats a lost canvas.
+    if (movedTo) {
+      const norm = movedTo.replace(/\\/g, '/');
+      const newAbs = path.resolve(ctx.paths.designRoot, norm);
+      const contained =
+        newAbs === ctx.paths.designRoot || newAbs.startsWith(ctx.paths.designRoot + path.sep);
+      if (!contained) return; // hostile path — never act on it
+      const deadline = Date.now() + 60_000;
+      while (!existsSync(newAbs) && Date.now() < deadline && !stopped) {
+        await new Promise((r) => setTimeout(r, 1_000));
+      }
+      if (!existsSync(newAbs)) {
+        console.warn(
+          `[sync/${slug}] retired document's new path never appeared (${norm}) — keeping the old copy in place.`
+        );
+        return;
+      }
+    }
+    try {
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const trashDir = path.join(ctx.paths.designRoot, '_trash', `${stamp}__moved-${slug}`);
+      let any = false;
+      for (const abs of [desc.html, desc.meta, desc.css, desc.annotations]) {
+        if (!abs || !existsSync(abs)) continue;
+        if (!any) mkdirSync(trashDir, { recursive: true });
+        any = true;
+        renameSync(abs, path.join(trashDir, path.basename(abs)));
+      }
+      if (any) {
+        console.log(
+          `[sync/${slug}] canvas was moved on another machine — stale local copy parked in _trash/ (recoverable).`
+        );
+        ctx.bus.emit('canvas-list-update');
+      }
+    } catch (err) {
+      // Quarantine is best-effort: the doc guards already made the file
+      // write-inert, so a failed park costs tidiness, not correctness.
+      console.warn(`[sync/${slug}] could not park the pre-move copy:`, err);
+    }
+  }
+
+  /** Watch one provider's doc for a retirement stamp arriving off the wire. */
+  function watchForRetirement(slug: string, doc: Y.Doc): void {
+    const onUpdate = () => {
+      if (retiring.has(slug) || movingLocally.has(slug)) return;
+      if (movedToFromDoc(doc) === null) return;
+      retiring.add(slug);
+      doc.off('update', onUpdate);
+      void onRetirementSeen(slug).finally(() => retiring.delete(slug));
+    };
+    doc.on('update', onUpdate);
+    noteDetach(statusDetaches, slug, () => doc.off('update', onUpdate));
+  }
+
   async function releaseOne(slug: string): Promise<boolean> {
     const known = agents.has(slug) || projections.has(slug) || providers.has(slug);
     if (!known) return false;
@@ -992,6 +1086,42 @@ export function createSyncRuntime(
     rejectedPermanent.delete(slug);
     rejectedReasons.delete(slug);
     return true;
+  }
+
+  /**
+   * The move protocol's sending half — see the SyncRuntime interface doc.
+   *
+   * Ordering is the whole design: stamp FIRST (through the live provider, so
+   * the hub and every peer receive the statement), give the socket a moment to
+   * actually send it, THEN release. Releasing first would destroy the provider
+   * with the stamp still in its outbox, and the old document would live on as
+   * if the move never happened — which is exactly the resurrection bug.
+   */
+  async function retireForMove(fromSlug: string, toRel: string): Promise<boolean> {
+    const provider = providers.get(fromSlug);
+    if (!provider) return false;
+    movingLocally.add(fromSlug);
+    try {
+      stampMovedTo(provider.document, toRel, ORIGINS.DISK_PROJECTION);
+      // Best-effort delivery wait. Hocuspocus exposes no per-update ack; an
+      // unsynced-changes probe where available, a short grace where not. A
+      // stamp that misses this window still lands via the hub's own store of
+      // the doc IF any other peer holds it — and if none does, the old doc
+      // has no audience to resurrect for.
+      const p = provider as unknown as { hasUnsyncedChanges?: boolean };
+      const deadline = Date.now() + 1_500;
+      while (p.hasUnsyncedChanges === true && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      if (typeof p.hasUnsyncedChanges !== 'boolean') {
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      await releaseOne(fromSlug);
+      console.log(`[sync/${fromSlug}] retired for move → ${toRel}`);
+      return true;
+    } finally {
+      movingLocally.delete(fromSlug);
+    }
   }
 
   async function start(): Promise<void> {
@@ -1626,6 +1756,17 @@ export function createSyncRuntime(
       provider: SyncProvider
     ): Promise<void> => {
       if (stopped) return;
+      // A RETIRED document (codec stampMovedTo) has nothing to reconcile —
+      // its canvas moved to a new path in a new document. Seen here mostly by
+      // a machine that pulled the project down after the move: connect, learn
+      // the fact, let go. The watcher handles a stale local copy.
+      if (movedToFromDoc(provider.document) !== null) {
+        console.log(
+          `[sync/${canvas.slug}] document is retired (canvas moved to ${movedToFromDoc(provider.document)}) — releasing.`
+        );
+        void onRetirementSeen(canvas.slug);
+        return;
+      }
       clearRejection(canvas.slug);
       // Not `connected` yet — the reconcile below is what makes that true. But
       // no longer refused, and the difference is the whole point: `pending` says
@@ -2023,6 +2164,12 @@ export function createSyncRuntime(
               agent.start();
               agents.set(canvas.slug, agent);
             }
+            // The move protocol's receiving half — a `movedTo` stamp arriving
+            // on this doc means another machine moved the canvas; park the
+            // stale local copy and let go. (The write-inert guards in
+            // agent/projection are the belt; this is the braces that also
+            // cleans up.)
+            watchForRetirement(canvas.slug, provider.document);
 
             // Count local edits (agent-origin doc updates) toward queuedOps while
             // the hub is unreachable — the banner's "N edits queued" figure. Under
@@ -2774,6 +2921,7 @@ export function createSyncRuntime(
       assetSweep.cancel();
       return true;
     },
+    retireForMove: (fromSlug, toRel) => serializeMembership(() => retireForMove(fromSlug, toRel)),
   };
 }
 

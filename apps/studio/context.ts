@@ -222,8 +222,12 @@ export interface Context {
     }>;
     /** A cycle is in flight — Resync refuses early rather than queueing. */
     busy?(): boolean;
-    /** The live runtime, for the sweep-scoped cancel. Null in solo mode. */
-    current?(): { cancelAssetSweep(): boolean } | null;
+    /** The live runtime, for the sweep-scoped cancel + the move protocol's
+     *  retire step. Null in solo mode. Structural on purpose — see above. */
+    current?(): {
+      cancelAssetSweep(): boolean;
+      retireForMove?(fromSlug: string, toRel: string): Promise<boolean>;
+    } | null;
   };
 }
 

@@ -97,6 +97,19 @@ const api = createApi(ctx, {
   // + `_active.json` retarget, bridged the same forward-declared way as the
   // comments/annotations hooks above.
   isRoomPinned: (slug) => collab?.registry.isPinned(slug) ?? false,
+  // The move protocol (codec stampMovedTo): the sync runtime stamps the old
+  // document retired + detaches, which unpins the room — after which the
+  // forceDrop below actually drops it and the rename is safe. Forward-declared
+  // like the other hooks; `ctx.syncControl` is set once the supervisor exists.
+  retireCanvasForMove: async (fromSlug, toRel) => {
+    try {
+      const runtime = ctx.syncControl?.current?.();
+      return (await runtime?.retireForMove?.(fromSlug, toRel)) ?? false;
+    } catch (err) {
+      console.warn(`[move] retire failed for ${fromSlug}:`, err);
+      return false;
+    }
+  },
   flushAndDropRoom: async (slug) => {
     if (collab) await collab.registry.forceDrop(slug);
   },

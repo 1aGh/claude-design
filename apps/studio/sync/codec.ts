@@ -534,6 +534,60 @@ export function canvasPathFromDoc(doc: Y.Doc): string | null {
   return typeof v === 'string' && v.length > 0 ? v : null;
 }
 
+/* ------------------------------------------------------------- retirement */
+
+/**
+ * Mark this document RETIRED BY A MOVE: its canvas now lives at `toRel`, in a
+ * DIFFERENT document (the slug is derived from the path, so a moved canvas is
+ * a new document by construction — nothing can rename a Hocuspocus doc).
+ *
+ * Before this stamp existed, the pre-move document simply lived on: the hub
+ * kept materialising it at the old path, every peer's cold start saw "doc has
+ * a body, disk has no file" and resurrected it, and a moved canvas came back
+ * as a duplicate on every machine that ever synced it. Observed live: moving
+ * `shoj` into a folder on the desktop left BOTH `ui/dbucket/shoj.tsx` and a
+ * re-materialised `ui/shoj.tsx` on both machines, plus two documents on the
+ * hub.
+ *
+ * The stamp is a STATEMENT, deliberately not an empty body: emptiness is
+ * ambiguous (a crash mid-write, an unseeded doc), and DDR-223 spent a whole
+ * arc making emptiness weak. `movedTo` is unambiguous, carries WHERE the
+ * content went, and — because the content provably lives at the new path in
+ * the new document — quarantining the old file against it is safe in a way
+ * that acting on a bare deletion never is (that one stays Increment 6).
+ *
+ * Consumers:
+ *   - every materialise path treats a retired doc as WRITE-INERT — it never
+ *     lands another byte on disk and never accepts another local edit;
+ *   - the sync runtime, on SEEING the stamp arrive, releases the canvas and
+ *     quarantines the stale local copy into `_trash/` (recoverable, DDR-102's
+ *     spine) — except on the machine performing the move, which renames the
+ *     file itself;
+ *   - the hub's workspace agent quarantines the checkout copy and commits the
+ *     deletion, so the cloud tree stops listing the ghost.
+ */
+export function stampMovedTo(doc: Y.Doc, toRel: string, origin?: unknown): boolean {
+  const next = String(toRel ?? '').replace(/\\/g, '/');
+  if (!next) return false;
+  const map = doc.getMap<unknown>(Y_SYNC_TYPES.syncMeta);
+  if (map.get('movedTo') === next) return false;
+  doc.transact(() => {
+    map.set('movedTo', next);
+    map.set('movedAt', Date.now());
+    map.set('movedBy', peerLabel());
+  }, origin);
+  return true;
+}
+
+/** Where a retired document says its canvas went, or null for a live one.
+ *  UNTRUSTED — a consumer that turns this into a path must validate it the
+ *  same way it validates `syncMeta.path`. Most consumers only need the
+ *  null/non-null fact. */
+export function movedToFromDoc(doc: Y.Doc): string | null {
+  const v = doc.getMap<unknown>(Y_SYNC_TYPES.syncMeta).get('movedTo');
+  return typeof v === 'string' && v.length > 0 ? v : null;
+}
+
 /* ---------------------------------------------------------------- css */
 
 /** The synced canvas CSS string held in the doc, or null when unset/empty. */

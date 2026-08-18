@@ -55,6 +55,7 @@ import {
   markSeeded,
   mergeSharedMetaIntoLocal,
   metaFromDoc,
+  movedToFromDoc,
   repairSharedMeta,
   seededByFromDoc,
   stampAnnotationsEdit,
@@ -260,6 +261,13 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
 
   async function flush(): Promise<void> {
     if (!dirty || stopped) return;
+    // A RETIRED document is write-inert. Its canvas moved to a new path in a
+    // new document; landing another byte from THIS one is how a moved canvas
+    // resurrected itself at its old path on every machine (see stampMovedTo).
+    if (movedToFromDoc(doc) !== null) {
+      dirty = false;
+      return;
+    }
     dirty = false;
     if (flushTimer) {
       clearTimeout(flushTimer);
@@ -347,6 +355,9 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
 
   function applyFromFs(evt: { path: string; bytes: Uint8Array; hash: string }): boolean {
     if (stopped) return false;
+    // Write-inert both ways — a local edit to a stale pre-move file must not
+    // revive the retired document either (see stampMovedTo).
+    if (movedToFromDoc(doc) !== null) return false;
     // Echo of our own atomicWrite — drop.
     if (echoGuard.consume(evt.path, evt.hash)) return false;
 
@@ -406,6 +417,10 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
 
   async function reconcile(): Promise<void> {
     if (stopped) return;
+    // A retired doc reconciles NOTHING — materialising it is the resurrection
+    // this stamp exists to end. The runtime's retirement watcher owns what
+    // happens to the stale local file (quarantine to _trash/).
+    if (movedToFromDoc(doc) !== null) return;
     const localHtml = readLocal(paths.html);
     const localComments = readLocal(paths.comments);
     const localAnnotations = readLocal(paths.annotations);

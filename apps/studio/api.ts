@@ -729,6 +729,16 @@ export interface ApiHooks {
    * move rather than rename a file out from under a live hub session.
    */
   isRoomPinned?: (slug: string) => boolean;
+  /**
+   * The MOVE protocol (codec `stampMovedTo`): stamp the slug's shared document
+   * retired-to-`toRel`, push the stamp, and detach the sync provider — so the
+   * move can proceed instead of being refused. On a cell EVERY canvas is
+   * pinned (the studio child's own runtime holds the doc), which made the
+   * pinned refusal a universal "cannot move anything in the cloud".
+   * Returns false when no runtime carries the slug — the caller keeps the
+   * refusal for that case (an unretired pinned room is still unsafe to move).
+   */
+  retireCanvasForMove?: (fromSlug: string, toRel: string) => Promise<boolean>;
   /** Flush + force-tear-down a canvas's collab room ahead of a move (best
    *  effort — a room may not be live for the slug at all). */
   flushAndDropRoom?: (slug: string) => Promise<void>;
@@ -3063,15 +3073,29 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       }
     }
 
-    // Collab guard — refuse a move while a shared-doc hub provider is pinned
-    // to this slug's room (DDR-064); otherwise flush + force-drop so the room
-    // isn't left keyed to a slug that no longer resolves to a file.
+    // Collab guard — a pinned room (shared-doc hub provider attached, DDR-064)
+    // must not have its file renamed out from under it. The old behaviour was
+    // to REFUSE, which on a cell meant moving was impossible outright: cell
+    // pairing pins every canvas, so a guard written for a rare local state
+    // fired on 100% of cloud moves. Now the move COORDINATES: the sync runtime
+    // stamps the document retired-to-the-new-path (the move protocol, codec
+    // stampMovedTo) and detaches — after which the rename is exactly as safe
+    // as on an unpinned desktop. The refusal remains only for the case where
+    // no runtime can do that, because then the pin really is unownable here.
     if (hooks.isRoomPinned?.(fromSlug)) {
-      return {
-        ok: false,
-        status: 409,
-        error: 'canvas has a live shared session — cannot move while pinned to the hub',
-      };
+      const retired = (await hooks.retireCanvasForMove?.(fromSlug, toRel)) ?? false;
+      if (!retired) {
+        return {
+          ok: false,
+          status: 409,
+          error: 'canvas has a live shared session — cannot move while pinned to the hub',
+        };
+      }
+    } else {
+      // An unpinned canvas may still have a live synced document (the desktop
+      // agent lane pins nothing) — retire it too, or the old document lives on
+      // and re-materialises the canvas at its old path on every machine.
+      await hooks.retireCanvasForMove?.(fromSlug, toRel);
     }
     await hooks.flushAndDropRoom?.(fromSlug);
 
@@ -3288,11 +3312,15 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       }
     }
 
-    // Collab guard for every canvas found, BEFORE any disk mutation — refuse
-    // the whole batch if even one room is pinned (a shared-doc hub provider
-    // attached, DDR-064).
+    // Collab guard for every canvas found, BEFORE any disk mutation. Same
+    // coordinated retire as moveCanvas — refuse only when a pinned room could
+    // not be retired, and retire even unpinned synced documents so none of
+    // them lives on to resurrect its canvas at the old path.
     for (const r of canvasRels) {
-      if (hooks.isRoomPinned?.(fileSlug(r))) {
+      const slug = fileSlug(r);
+      const toRel = toRelDir + r.slice(relDir.length);
+      const retired = (await hooks.retireCanvasForMove?.(slug, toRel)) ?? false;
+      if (!retired && hooks.isRoomPinned?.(slug)) {
         return {
           ok: false,
           status: 409,

@@ -18,7 +18,7 @@
 // one, and does not spawn anything that could. The canvas body is a string
 // from a Y.Text to a file on disk and nothing in between ever looks inside it.
 
-import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { createAutoCommit } from '../../studio/sync/autocommit.ts';
 import { resolveCanvasBodyRel } from '../../studio/sync/canvas-path.ts';
@@ -233,6 +233,86 @@ export function createWorkspaceAgent(opts) {
    * takes down the store for every OTHER document too. A projection failure
    * must cost this canvas its commit, not the tenant their sync.
    */
+  /**
+   * Retired documents (the move protocol, studio codec stampMovedTo) whose
+   * checkout ghost has not been provable-safe to remove yet. slug →
+   * { movedTo, who }.
+   */
+  const retirementsPending = new Map();
+
+  function noteRetirement(slug, movedTo, user) {
+    if (!retirementsPending.has(slug)) {
+      retirementsPending.set(slug, { movedTo: String(movedTo), who: attributionFor(user) });
+    }
+  }
+
+  /**
+   * Quarantine a retired document's checkout ghost — but ONLY when the ghost
+   * is provably a ghost. The naive version quarantined the moment the stamp
+   * arrived, which on a CELL races the mover's own rename over the SAME disk:
+   * the hub parked `ui/home.tsx` into `_trash/` microseconds before
+   * `moveCanvas`'s `rename()` reached it, and the move died with ENOENT while
+   * the canvas sat in two trash folders. The whole race is decided by one
+   * table instead:
+   *
+   *   old path │ new path │ verdict
+   *   ─────────┼──────────┼─────────────────────────────────────────────
+   *   absent   │ (any)    │ done — the mover (or a prior sweep) handled it
+   *   present  │ absent   │ HOLD — a move is in flight; touching the file
+   *            │          │ now is the race. Re-checked on every store.
+   *   present  │ present  │ the ghost: quarantine + stage the deletion
+   *
+   * `movedTo` is UNTRUSTED (a peer wrote it); it is used only as a
+   * containment-checked existence probe, never as a write target — a path
+   * that resolves outside the design root reads as "never arrives", which
+   * HOLDs forever and quarantines nothing. Fail-open to the ghost, never to
+   * a deletion.
+   */
+  function sweepRetirements() {
+    for (const [slug, pending] of retirementsPending) {
+      const indexed = pathIndex.get(slug);
+      if (!indexed) {
+        retirementsPending.delete(slug);
+        continue;
+      }
+      const oldAbs = join(designRoot, indexed.rel);
+      if (!existsSync(oldAbs)) {
+        // The mover's own rename (or a peer's cleanup) already handled it.
+        pathIndex.delete(slug);
+        retirementsPending.delete(slug);
+        continue;
+      }
+      const newAbs = resolve(join(designRoot, pending.movedTo));
+      const contained = newAbs === designRoot || newAbs.startsWith(designRoot + sep);
+      if (!contained || !existsSync(newAbs)) continue; // HOLD — move still in flight
+      const sib = siblingPaths(indexed.rel);
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const trashDir = join(designRoot, '_trash', `${stamp}__moved-${slug}`);
+      const vacated = [];
+      for (const rel of [indexed.rel, sib.meta, sib.css, sib.annotations]) {
+        try {
+          mkdirSync(trashDir, { recursive: true });
+          renameSync(join(designRoot, rel), join(trashDir, rel.split('/').pop()));
+          vacated.push(rel);
+        } catch {
+          /* that lane never materialised — nothing to park */
+        }
+      }
+      pathIndex.delete(slug);
+      retirementsPending.delete(slug);
+      if (vacated.length > 0) {
+        log.log?.(
+          `[workspace] ${slug} retired (moved to ${pending.movedTo.slice(0, 120)}) — parked ${vacated.length} ghost file(s) in _trash/.`
+        );
+        for (const rel of vacated) {
+          // Stage the deletion — autocommit's vanished-path handling stages a
+          // tracked-but-missing file as a delete and drops untracked ones.
+          auto.note(relative(repoDir, join(designRoot, rel)).split(sep).join('/'), pending.who);
+        }
+      }
+    }
+  }
+
   async function onDocumentStored({ documentName, document, user }) {
     if (!ready || !auto) return null;
     const slug = slugFromDocName(documentName);
@@ -245,6 +325,24 @@ export function createWorkspaceAgent(opts) {
 
     try {
       const content = readDocContent(document);
+      // THE MOVE PROTOCOL'S HUB HALF (studio codec stampMovedTo). A retired
+      // document materialises nothing, ever again — and if the checkout still
+      // holds its files, they are the GHOST the user sees in the cloud tree
+      // after moving a canvas elsewhere. Quarantine them to `_trash/` (never
+      // unlink — the recoverability spine) and stage the deletions, so the
+      // checkout and its history both agree the canvas lives at the new path
+      // now. Safe against plain-deletion ambiguity because `movedTo` is an
+      // explicit statement that the content lives on in another document;
+      // acting on bare absence stays forbidden (DDR-076 / Increment 6).
+      if (content.movedTo !== null) {
+        noteRetirement(slug, content.movedTo, user);
+        sweepRetirements();
+        return null;
+      }
+      // Every store also sweeps pending retirements — the NEW document's
+      // materialisation is usually the event that makes an old ghost provable
+      // (see sweepRetirements for the decision table).
+      sweepRetirements();
       // A fresh checkout has no config until the project's first sync brings
       // one down, so this cannot be a boot-time-only read.
       if (canvasGroups === null) canvasGroups = readCanvasGroups();

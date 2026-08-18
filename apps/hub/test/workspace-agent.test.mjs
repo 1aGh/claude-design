@@ -7,7 +7,7 @@
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
@@ -216,6 +216,8 @@ describe('workspace-files (pure)', () => {
       // The sync-internal path lane. Absent here — an older peer omits it, and
       // that is the normal case, not a degraded one.
       path: null,
+      // The move-retirement lane (studio codec stampMovedTo) — same posture.
+      movedTo: null,
     });
   });
 
@@ -880,5 +882,112 @@ describe('the seed never leaves a credential on disk', () => {
       { url: 'https://x-access-token:ghs_secret@github.com/acme/design.git', log: silent() }
     );
     assert.ok(calls.some((a) => a[0] === 'remote' && a[1] === 'remove'));
+  });
+});
+
+/* -------------------------------------------------- the move protocol */
+
+describe('a retired document (the move protocol, studio codec stampMovedTo)', () => {
+  const gitOk = gitAvailable();
+
+  it('quarantines the checkout copy and commits the deletion', {
+    skip: gitOk ? false : 'git not available',
+  }, async () => {
+    // The user-visible bug this pins: move a canvas into a folder on the
+    // desktop and the cloud tree kept BOTH paths — the new one from the new
+    // document, and the old one because nothing ever told the checkout the
+    // old document was done. The ghost file is exactly what their screenshot
+    // showed ("je tam navíc tralal-Threads").
+    const repo = tmp();
+    const agent = createWorkspaceAgent({
+      repoDir: repo,
+      designRel: '.design',
+      debounceMs: 5,
+      log: silent(),
+    });
+    await agent.start();
+
+    const doc = new Y.Doc();
+    doc.getText('html').insert(0, 'export default function Home() { return <main/>; }\n');
+    doc.getText('meta').insert(0, '{"title":"Home"}');
+    await agent.onDocumentStored({
+      documentName: 'ws/acme/main/home',
+      document: doc,
+      user: { name: 'Alice Novak', email: 'alice@example.com' },
+    });
+    await agent.flush();
+    assert.ok(existsSync(join(repo, '.design/home.tsx')), 'materialised before the move');
+
+    // The mover stamps the doc retired; the hub sees the next store. The NEW
+    // path does not exist yet — the mover's rename (or the new document's
+    // materialisation) is still in flight — so the hub must HOLD: quarantining
+    // now is the exact race that killed a live move with ENOENT (the hub and
+    // the cell's studio child share one disk).
+    doc.getMap('syncMeta').set('movedTo', 'ui/folder/home.tsx');
+    const out = await agent.onDocumentStored({
+      documentName: 'ws/acme/main/home',
+      document: doc,
+      user: { name: 'Alice Novak', email: 'alice@example.com' },
+    });
+    assert.equal(out, null, 'a retired doc materialises nothing');
+    assert.ok(
+      existsSync(join(repo, '.design/home.tsx')),
+      'HOLD while the new path is absent — the move is still in flight'
+    );
+
+    // The canvas lands at its new home (the new document materialises it).
+    mkdirSync(join(repo, '.design/ui/folder'), { recursive: true });
+    writeFileSync(join(repo, '.design/ui/folder/home.tsx'), 'moved body');
+    // Any later store sweeps pending retirements — here, the new doc's own.
+    const other = new Y.Doc();
+    other.getText('html').insert(0, 'x');
+    await agent.onDocumentStored({ documentName: 'ws/acme/main/other', document: other, user: null });
+
+    assert.ok(!existsSync(join(repo, '.design/home.tsx')), 'the ghost file is gone');
+    const trash = join(repo, '.design/_trash');
+    assert.ok(existsSync(trash), 'quarantined, not unlinked');
+    const parked = readdirSync(trash, { recursive: true }).map(String);
+    assert.ok(
+      parked.some((p) => p.endsWith('home.tsx')),
+      `the body is recoverable from _trash/: ${parked.join(', ')}`
+    );
+
+    const commit = await agent.flush();
+    assert.equal(commit.ok, true, `the deletion commits: ${JSON.stringify(commit)}`);
+    const tracked = execFileSync('git', ['ls-files'], { cwd: repo, encoding: 'utf8' });
+    assert.ok(!tracked.includes('.design/home.tsx'), 'git agrees the canvas moved on');
+
+    // And a LATER store of the same retired doc is a quiet no-op — the doc
+    // can arrive again forever (reconnects, replays) without churning.
+    const again = await agent.onDocumentStored({
+      documentName: 'ws/acme/main/home',
+      document: doc,
+      user: null,
+    });
+    assert.equal(again, null);
+
+    await agent.stop();
+  });
+
+  it('a retired doc the checkout never materialised is simply ignored', async () => {
+    const repo = tmp();
+    const agent = createWorkspaceAgent({
+      repoDir: repo,
+      designRel: '.design',
+      debounceMs: 5,
+      log: silent(),
+    });
+    await agent.start();
+    const doc = new Y.Doc();
+    doc.getText('html').insert(0, 'ghost body');
+    doc.getMap('syncMeta').set('movedTo', 'ui/elsewhere.tsx');
+    const out = await agent.onDocumentStored({
+      documentName: 'ws/acme/main/never-here',
+      document: doc,
+      user: null,
+    });
+    assert.equal(out, null);
+    assert.ok(!existsSync(join(repo, '.design/never-here.tsx')), 'nothing materialised');
+    await agent.stop();
   });
 });

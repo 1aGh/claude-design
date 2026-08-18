@@ -128,18 +128,20 @@ const canvasMove = {
     };
   },
   settle: ({ to }, m) => waitFor(() => to.has(m.toRel), { label: m.toRel }),
-  async verify({ to }, m) {
-    // A move is a create plus a delete, and deletion propagation is Increment
-    // 6. So the ARRIVAL is what this asserts today; the old path lingering on
-    // the far side is expected and reported rather than failed, so the day
-    // deletions ship, this row starts telling the truth on its own.
+  async verify({ from, to }, m) {
+    // The move protocol (codec stampMovedTo): the old document is retired,
+    // the hub quarantines its checkout copy, peers park theirs in _trash/.
+    // So the old path DISAPPEARING is a real assertion now — this row used to
+    // be expected-pending, and the lingering ghost it tolerated is exactly
+    // the duplicate the user screenshotted ("je tam navíc tralal-Threads").
+    const oldGone = await waitFor(() => !to.has(m.fromRel) && !from.has(m.fromRel), {
+      timeoutMs: 30_000,
+      label: `old path ${m.fromRel} retired`,
+    });
     return [
       ['the canvas is at its new path', to.has(m.toRel)],
-      [
-        'the old path is gone too (deletion propagation — Increment 6)',
-        !to.has(m.fromRel),
-        'expected-pending',
-      ],
+      ['the old path is gone on the mover', !from.has(m.fromRel)],
+      ['…and on the far side (the retired document cleaned up)', oldGone.ok],
     ];
   },
 };
