@@ -16,18 +16,13 @@
 //      an un-stamped doc behaves exactly as before.
 
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, existsSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as Y from 'yjs';
 
 import { createCanvasSyncAgent } from '../sync/agent.ts';
-import {
-  applyHtmlToDoc,
-  htmlFromDoc,
-  movedToFromDoc,
-  stampMovedTo,
-} from '../sync/codec.ts';
+import { applyHtmlToDoc, htmlFromDoc, movedToFromDoc, stampMovedTo } from '../sync/codec.ts';
 import { createEchoGuard, hashBytes } from '../sync/echo-guard.ts';
 import { createDocProjection } from '../sync/projection.ts';
 

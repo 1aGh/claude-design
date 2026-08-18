@@ -108,7 +108,7 @@ describe('file-membership — canvas-owned is Plane A, never Plane B', () => {
     expect(classifyProjectFile('notes/thing.annotations.svg')).toBe('inert-media');
   });
 
-  test('the FLAT annotations sidecar is Plane A\'s — the two-lane erase', () => {
+  test("the FLAT annotations sidecar is Plane A's — the two-lane erase", () => {
     // Annotations live flat at the design root, keyed by slug
     // (`ui-2.annotations.svg`) — the naming asymmetry the canvas artifacts
     // vocabulary documents. The in-group rule never fires for that shape, so

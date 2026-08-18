@@ -74,9 +74,7 @@ const shotDir = arg('shots', join(runRoot, 'shots'));
 const useBrowser = !has('no-browser');
 const keep = has('keep') || !!reuseDir;
 const only = (arg('only') ?? '').split(',').filter(Boolean);
-const directions = arg('direction')
-  ? [arg('direction')]
-  : ['cloud-to-desktop', 'desktop-to-cloud'];
+const directions = arg('direction') ? [arg('direction')] : ['cloud-to-desktop', 'desktop-to-cloud'];
 
 const ADMIN_EMAIL = 'you@local.test';
 const ADMIN_PASSWORD = 'local-cell-password';
@@ -499,7 +497,11 @@ async function coldStart(ctx, cellRoot) {
     return;
   }
 
-  const fresh = new Side({ name: 'fresh', base: `http://127.0.0.1:${freshPort}`, designRoot: freshDesign });
+  const fresh = new Side({
+    name: 'fresh',
+    base: `http://127.0.0.1:${freshPort}`,
+    designRoot: freshDesign,
+  });
   fresh.uiUrl = fresh.base;
 
   // TWO KNOWN SHAPES, so a red row here means something new rather than
@@ -573,7 +575,13 @@ async function coldStart(ctx, cellRoot) {
     });
   }
 
-  const corrupt = want.filter((r) => fresh.has(r) && !r.endsWith('.meta.json') && ctx.cloud.has(r) && !ctx.cloud.bytes(r).equals(fresh.bytes(r)));
+  const corrupt = want.filter(
+    (r) =>
+      fresh.has(r) &&
+      !r.endsWith('.meta.json') &&
+      ctx.cloud.has(r) &&
+      !ctx.cloud.bytes(r).equals(fresh.bytes(r))
+  );
   record({
     scenario: 'cold-start',
     dir: 'hub-to-fresh',

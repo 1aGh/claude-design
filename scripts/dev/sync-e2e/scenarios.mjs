@@ -501,8 +501,7 @@ const annotationSticker = {
   },
   settle: ({ to }, m) =>
     waitFor(
-      () =>
-        to.has(m.annRel) && to.text(m.annRel).includes(m.asset) && to.size(m.asset) === m.size,
+      () => to.has(m.annRel) && to.text(m.annRel).includes(m.asset) && to.size(m.asset) === m.size,
       { label: `${m.annRel} + ${m.asset}` }
     ),
   async verify({ from, to }, m) {
@@ -617,7 +616,10 @@ const presence = {
       await sleep(1_500);
       // A lapsed session shows the sign-in form, which is an auth problem
       // wearing a sync problem's clothes. Rule it out before reporting.
-      if (!(await b.present('[data-testid="canvas-search"]')) && typeof side.reSignIn === 'function') {
+      if (
+        !(await b.present('[data-testid="canvas-search"]')) &&
+        typeof side.reSignIn === 'function'
+      ) {
         await side.reSignIn();
         await b.open(side.uiUrl);
         await sleep(1_500);
@@ -700,11 +702,9 @@ const fullParity = {
   },
 };
 
-const shared = (side) =>
-  side.tracked().filter((r) => !NEVER_IDENTICAL.has(r) && !NOT_SYNCED(r));
+const shared = (side) => side.tracked().filter((r) => !NEVER_IDENTICAL.has(r) && !NOT_SYNCED(r));
 
 /* ------------------------------------------------------------- helpers --- */
-
 
 /**
  * Does the side actually SERVE the asset, not merely hold the bytes?

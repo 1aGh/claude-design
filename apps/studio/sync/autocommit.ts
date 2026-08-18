@@ -294,7 +294,14 @@ export function createAutoCommit(opts: AutoCommitOptions): AutoCommit {
     // If the probe itself fails, keep every path: guessing "untracked" here
     // would DROP a real deletion, and a missed deletion is worse than a retry.
     const tracked =
-      known.code === 0 ? new Set(known.stdout.split('\n').map((l) => l.trim()).filter(Boolean)) : new Set(missing);
+      known.code === 0
+        ? new Set(
+            known.stdout
+              .split('\n')
+              .map((l) => l.trim())
+              .filter(Boolean)
+          )
+        : new Set(missing);
     const drop = missing.filter((f) => !tracked.has(f));
     if (drop.length === 0) return { stage: files, drop: [] };
     const dropSet = new Set(drop);

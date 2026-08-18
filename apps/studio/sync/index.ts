@@ -17,7 +17,15 @@
 // the provider lib didn't install for some reason) prints a useful error
 // instead of crashing the dev-server boot.
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  writeFileSync,
+} from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import path from 'node:path';

@@ -49,6 +49,9 @@ function recorder(ok: (n: number) => boolean = () => true) {
   return { calls, fetchImpl };
 }
 
+/** The `paths` array a recorded call carried — the only field a nudge may state. */
+const pathsOf = (call: Call | undefined) => (call?.body.paths ?? []) as string[];
+
 function nudger(over: Record<string, unknown> = {}) {
   const { calls, fetchImpl } = (over.rec as ReturnType<typeof recorder>) ?? recorder();
   return {
@@ -102,7 +105,7 @@ describe('the wire — paths only, to the loopback hub, with the bearer', () => 
     await n.flush();
 
     expect(calls).toHaveLength(1);
-    expect((calls[0]?.body.paths as string[]).sort()).toEqual(['a.css', 'b.css']);
+    expect(pathsOf(calls[0]).sort()).toEqual(['a.css', 'b.css']);
   });
 
   test('more than the route ceiling splits into several requests', async () => {
@@ -111,8 +114,8 @@ describe('the wire — paths only, to the loopback hub, with the bearer', () => 
     await n.flush();
 
     expect(calls).toHaveLength(2);
-    expect((calls[0]?.body.paths as string[]).length).toBe(64);
-    expect((calls[1]?.body.paths as string[]).length).toBe(6);
+    expect(pathsOf(calls[0]).length).toBe(64);
+    expect(pathsOf(calls[1]).length).toBe(6);
     expect(n.named()).toBe(70);
   });
 
@@ -265,7 +268,10 @@ describe('failure is latency, never loss', () => {
   test('it says so once, not once per path', async () => {
     const warnings: string[] = [];
     const rec = recorder(() => false);
-    const { n } = nudger({ rec, log: { warn: (m: string) => warnings.push(m), error() {}, log() {} } });
+    const { n } = nudger({
+      rec,
+      log: { warn: (m: string) => warnings.push(m), error() {}, log() {} },
+    });
 
     n.note('a.css');
     await n.flush();
@@ -280,7 +286,10 @@ describe('failure is latency, never loss', () => {
     const warnings: string[] = [];
     let healthy = false;
     const rec = recorder(() => healthy);
-    const { n } = nudger({ rec, log: { warn: (m: string) => warnings.push(m), error() {}, log() {} } });
+    const { n } = nudger({
+      rec,
+      log: { warn: (m: string) => warnings.push(m), error() {}, log() {} },
+    });
 
     n.note('a.css');
     await n.flush();
@@ -317,9 +326,7 @@ describe('REACHABILITY — the bug this module was written to close', () => {
     // Grep, not import: the point is that the WIRING exists in the file that
     // boots the cell child, which no amount of testing this module in isolation
     // can establish.
-    const wiring = await Bun.file(
-      new URL('../sync/cell-file-events.ts', import.meta.url)
-    ).text();
+    const wiring = await Bun.file(new URL('../sync/cell-file-events.ts', import.meta.url)).text();
 
     expect(wiring).toContain('createCellWriteNudge');
     // Subscribed to the bus event both synthetic-write sources converge on.
@@ -329,12 +336,8 @@ describe('REACHABILITY — the bug this module was written to close', () => {
   });
 
   test('the sender names the exact route the hub receiver serves', async () => {
-    const hubJournal = await Bun.file(
-      new URL('../../hub/src/journal.mjs', import.meta.url)
-    ).text();
-    const sender = await Bun.file(
-      new URL('../sync/cell-write-nudge.ts', import.meta.url)
-    ).text();
+    const hubJournal = await Bun.file(new URL('../../hub/src/journal.mjs', import.meta.url)).text();
+    const sender = await Bun.file(new URL('../sync/cell-write-nudge.ts', import.meta.url)).text();
 
     // The hub's constant is the authority; this pins the twin.
     expect(hubJournal).toContain("JOURNAL_REPORT_PATH = '/api/journal/report'");

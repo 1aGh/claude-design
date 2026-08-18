@@ -13,11 +13,11 @@ import {
   applyCssToDoc,
   applyMetaToDoc,
   cssFromDoc,
-  mergeSharedMetaIntoLocal,
   META_LOCAL_KEYS,
+  mergeSharedMetaIntoLocal,
   metaFromDoc,
   normalizeSharedMeta,
-  repairSharedMeta
+  repairSharedMeta,
 } from '../sync/codec.ts';
 
 describe('Gap 2 — meta codec: shared layout syncs, per-user keys stay local', () => {

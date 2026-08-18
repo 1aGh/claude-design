@@ -210,7 +210,6 @@ function authError(reason) {
   return err;
 }
 
-
 /**
  * Build (but don't yet start) a Hocuspocus instance against the given config.
  * Callers run `await instance.listen()` and `await instance.destroy()`.
