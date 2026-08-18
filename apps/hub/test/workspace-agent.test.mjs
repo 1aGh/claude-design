@@ -7,7 +7,15 @@
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
@@ -941,7 +949,11 @@ describe('a retired document (the move protocol, studio codec stampMovedTo)', ()
     // Any later store sweeps pending retirements — here, the new doc's own.
     const other = new Y.Doc();
     other.getText('html').insert(0, 'x');
-    await agent.onDocumentStored({ documentName: 'ws/acme/main/other', document: other, user: null });
+    await agent.onDocumentStored({
+      documentName: 'ws/acme/main/other',
+      document: other,
+      user: null,
+    });
 
     assert.ok(!existsSync(join(repo, '.design/home.tsx')), 'the ghost file is gone');
     const trash = join(repo, '.design/_trash');
