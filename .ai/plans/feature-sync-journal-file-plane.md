@@ -431,6 +431,24 @@ suite says so rather than hiding it.
 
 ### Task 5: Increment 4 — F1–F6 hard gate, flag default ON (M)
 
+> **The gate now has a named worklist.** The two-seat review of Increments 0–3
+> ran at the close on 2026-08-18 (`.ai/logs/security-reviews/sync-journal-file-plane-{defender,attacker}.md`,
+> 9 + 16 findings, both seats NEEDS FIXES). Everything **live without the flag**
+> was fixed before that close — A3 (write-door token scope), A4/F-1 (owner gate
+> on the lexical rather than the real path), A10/F-5 (check-then-act CAS), A11
+> (`movedTo` as a peer-controlled deletion trigger) — plus A1/A2 (the budget
+> charged the hub's claimed size; the body was buffered before the cap ran).
+> **What this task inherits, by name:** F-3 receiver-side symlinked-parent
+> containment in `materialize`/`parkLocal`; F-4/A7 the poke + reanchor cooldown
+> DDR-226 §9 promised and nobody built (**A7's ctl half is NOT flag-gated**);
+> A5 `allowCodeModules` as a hub-asserted bit; A6 non-idempotent epoch-degraded
+> `parkRemote`; A8 unbounded pre-admission ledger rows; A9 the untrusted-content
+> markers the file plane widened without widening; A12 awareness on the ctl doc
+> is not read-only (**live**); A13 a missing R2 tail does not rotate the epoch
+> (**live**); A14 Syncthing conflict artifacts are plane members; A15 unvalidated
+> `head`/`epoch` persisted verbatim; F-6..F-9. The flip cannot precede these.
+
+
 - **Do**: Run `/flow:validate-security` as a HARD gate over the file plane: F1 = untrusted-DATA delimiting for all file-lane pulls into `system/**` (`_untrusted/INDEX.json` + `.claudeignore` extension — SCHEDULED work, not a citation); F2/F3 = empty-tree css default + config-seed-before-first-pull pinned by tests; F4 structural (wire mtime display-only — Inc 3); F5 regression-tested; F6 + cumulative per-hub accumulation quota. ADD hub-door **owner-role gate on code-module writes** (NEW — today `handleCheckoutAssetRoute` checks class only; receiver-side gate is currently the only one). CONSOLIDATE to single door `PUT /api/file/<rel>` (old doors become byte-identical thin shims). ADD first-anchor conflict-storm breaker (>N no-ancestor conflicts in one pass ⇒ hold + Sync-panel bulk keep-local/keep-cloud — on flip day the hub's `system/**` is stale by construction). Flag default flips ON only after the gate passes + one soak release.
 - **Gotcha**: closes pending task #4 (flag-flip cycle) — record the gate verdict via `maude kg record-log`.
 - **Validate**: recorded security verdict; flip-day dogfood on a project whose hub `system/**` is stale — the breaker must FIRE, not mass-revert.
@@ -503,3 +521,42 @@ web-desktop only.
 - [ ] Ground-truth §7 invariants verified point-by-point in `/flow:validate` output at every increment
 - [ ] Compat matrix (synthesis §10) upheld: old desktop ↔ new hub and new desktop ↔ journal-less hub both keep working through the window
 - [ ] `pnpm --filter @maude/site gen:roadmap` regenerated in the same commit as this plan and at each plan-status change
+
+---
+
+## Retro — Increments 0–3 (closed 2026-08-18; Tasks 5–9 stay open)
+
+- **Blind convergence was worth its cost, and the plan it produced held.** Three
+  architects who could not see each other's work landed on the same skeleton, and
+  four increments later nothing in §§3–7 needed renegotiating. The expensive part
+  of this feature was never the design; it was finding out what the design had not
+  been asked about.
+- **The increments proved the transport; only the two-sided E2E proved the
+  product.** Task 4.9 found three defects with every unit test green, and **two of
+  the three were invisible in the direction their author happened to try first** —
+  one had already shipped through a release. "Write each scenario once and run it
+  both ways" is the reusable rule here, and it belongs in `/flow:plan` for anything
+  with two ends, not just sync.
+- **A carefully argued invariant is not an enforced one.** Every flag-independent
+  security finding at this close had the same shape: a comment reasoning correctly
+  about the symlink-resolved path, the untrusted hub, or the crossing write — and
+  then a line of code asking the question of the lexical path, the claimed size, or
+  a state that could move before the rename. The gap was never the thinking. Worth
+  carrying into `/flow:execute`: when a module header explains *why* a value must be
+  used, grep for every other place that value is re-derived.
+- **The default-OFF flag bought less than it looked like.** Six findings were live
+  regardless of `syncFiles`, because the hub-side door, the ctl channel and the move
+  protocol are not behind it. A feature flag scopes the lane it gates, not the
+  surfaces the lane's supporting code opened — the close should ask "what did this
+  branch make reachable" separately from "what did this branch turn on."
+- **Test-the-test paid for itself twice.** Two regression tests written for real
+  findings passed against the unfixed code — one because the fixture modelled a
+  hand-written file rather than a stored document, one because canvases were held
+  back for an ordinary reason instead of by the breaker. Both were caught by
+  deliberately reverting the fix and re-running. A regression test that has not been
+  seen to fail is a comment.
+- **Process debt, named:** the `sync-doruceka-panel` scenario in Scenario Coverage
+  was never written, and the doručenka's per-file rows reach `_sync.json` but not
+  the Sync panel, which still shows aggregates. `maude kg record-log` could not
+  attach the two verdict files (it mishandles a `/` in the derived name), so the
+  review substance lives in the graph as a decision rather than as an attached log.
