@@ -444,6 +444,29 @@ export function createHub(config = {}) {
     });
   };
 
+  /**
+   * A peer deleted a file — Increment 6. The mirror image of the write hook.
+   *
+   * The tombstone is a journal ROW, so peers receive "deleted at seq N" in the
+   * same order they receive writes. Nothing is removed from object storage: a
+   * CAS blob is content-addressed, so a delete leaves it unreferenced rather
+   * than destroyed, and the generation backups keep their own copy regardless.
+   */
+  const noteCheckoutDelete = (info) => {
+    const rel = typeof info?.path === 'string' ? info.path : null;
+    if (!journal || !journalDesignRoot || !rel) return;
+    try {
+      journal.recordWrite({
+        designRoot: journalDesignRoot,
+        path: rel,
+        source: 'peer-put',
+        deleted: true,
+      });
+    } catch (err) {
+      console.error(`[journal] tombstone failed for ${sanitizeForLog(rel)}: ${err.message}`);
+    }
+  };
+
   const studioEnabled = workspaceMode && process.env.MAUDE_STUDIO_CHILD !== '0';
   // DESKTOP ↔ CLOUD LIVE PAIRING (variant C2) — mint the child's credential.
   //
@@ -999,6 +1022,7 @@ export function createHub(config = {}) {
           designRoot: journalDesignRoot,
           journal,
           onWritten: noteCheckoutWrite,
+          onDeleted: noteCheckoutDelete,
           checkRateLimit: rateLimit
             ? (req) => checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
             : undefined,

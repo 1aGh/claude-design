@@ -54,8 +54,12 @@ afterEach(() => {
 /** A hub that answers the real routes and enforces the real preconditions. */
 function fakeHub(initial: Record<string, string> = {}) {
   let seq = 0;
-  const rows = new Map<string, { seq: number; sha256: string; size: number; body: string }>();
+  const rows = new Map<
+    string,
+    { seq: number; sha256: string | null; size: number; body: string; deleted?: boolean }
+  >();
   const puts: { rel: string; expect: string | null; body: string }[] = [];
+  const deletes: string[] = [];
   let lieAboutSize = false;
   let forceReanchor = false;
   let reanchorBudget = 0;
@@ -101,7 +105,7 @@ function fakeHub(initial: Record<string, string> = {}) {
           size: lieAboutSize ? 0 : r.size,
           mtimeMs: 0,
           class: 'companion-text',
-          deleted: false,
+          deleted: r.deleted === true,
         }))
         .sort((a, b) => a.seq - b.seq);
       return new Response(
@@ -116,6 +120,25 @@ function fakeHub(initial: Record<string, string> = {}) {
       const row = rows.get(rel);
       if (!row) return new Response('nope', { status: 404 });
       return new Response(row.body, { status: 200 });
+    }
+    if (u.pathname.startsWith('/api/file/') && init?.method === 'DELETE') {
+      const rel = u.pathname
+        .slice('/api/file/'.length)
+        .split('/')
+        .map(decodeURIComponent)
+        .join('/');
+      const headers = new Headers(init.headers as HeadersInit);
+      const expect = headers.get('x-maude-expect-hash');
+      const current = rows.get(rel)?.sha256 ?? null;
+      if (expect && expect !== 'none' && current !== expect) {
+        return new Response(JSON.stringify({ error: 'moved', current }), { status: 409 });
+      }
+      deletes.push(rel);
+      seq += 1;
+      rows.set(rel, { seq, sha256: null, size: 0, body: '', deleted: true });
+      return new Response(JSON.stringify({ ok: true, path: rel, deleted: true, seq }), {
+        status: 200,
+      });
     }
     if (u.pathname.startsWith('/api/file/') && init?.method === 'PUT') {
       const rel = u.pathname
@@ -154,6 +177,12 @@ function fakeHub(initial: Record<string, string> = {}) {
     puts,
     add,
     rewindTo,
+    deletes,
+    /** Tombstone a path hub-side, as another peer's delete would. */
+    tombstone: (rel: string) => {
+      seq += 1;
+      rows.set(rel, { seq, sha256: null, size: 0, body: '', deleted: true });
+    },
     epoch: () => epochValue,
     head: () => seq,
     /** Declare every row as costing nothing — the A1 primitive. */
@@ -738,5 +767,120 @@ describe('F2/F3 — plane disjointness survives a fresh link', () => {
     const res = await plane(hub).reconcile();
     expect(res.pushed).toEqual([]);
     expect(read('config.json')).toContain('"mine"');
+  });
+});
+
+describe('deletion propagates — Increment 6', () => {
+  const propagating = (hub: ReturnType<typeof fakeHub>) => plane(hub, { propagateDeletes: true });
+
+  test('gone here, unchanged there ⇒ the hub is told, and the row is a tombstone', async () => {
+    const hub = fakeHub({ 'system/ds/brand.css': ':root{}' });
+    const p = propagating(hub);
+    await p.reconcile();
+    expect(existsSync(join(root, 'system/ds/brand.css'))).toBe(true);
+
+    rmSync(join(root, 'system/ds/brand.css'));
+    const res = await p.reconcile();
+
+    expect(res.deleted.map((d) => d.rel)).toEqual(['system/ds/brand.css']);
+    expect(hub.deletes).toEqual(['system/ds/brand.css']);
+  });
+
+  test('gone here, but CHANGED there ⇒ an edit beats a delete and the file comes back', async () => {
+    const hub = fakeHub({ 'system/ds/brand.css': 'v1' });
+    const p = propagating(hub);
+    await p.reconcile();
+
+    rmSync(join(root, 'system/ds/brand.css'));
+    hub.add('system/ds/brand.css', 'v2'); // somebody edited it meanwhile
+
+    const res = await p.reconcile();
+    expect(hub.deletes).toEqual([]);
+    expect(read('system/ds/brand.css')).toBe('v2');
+    expect(res.deleted).toEqual([]);
+  });
+
+  test('the hub deleted it and we never touched it ⇒ quarantined, never unlinked', async () => {
+    const hub = fakeHub({ 'system/ds/brand.css': ':root{}' });
+    const p = propagating(hub);
+    await p.reconcile();
+
+    hub.tombstone('system/ds/brand.css');
+    const res = await p.reconcile();
+
+    expect(existsSync(join(root, 'system/ds/brand.css'))).toBe(false);
+    const parked = res.deleted[0]?.parked;
+    expect(parked?.startsWith('_trash/')).toBe(true);
+    expect(read(parked as string)).toBe(':root{}');
+  });
+
+  test('the hub deleted it but WE changed it ⇒ kept and pushed back', async () => {
+    const hub = fakeHub({ 'system/ds/brand.css': 'v1' });
+    const p = propagating(hub);
+    await p.reconcile();
+
+    write('system/ds/brand.css', 'mine');
+    hub.tombstone('system/ds/brand.css');
+
+    const res = await p.reconcile();
+    expect(read('system/ds/brand.css')).toBe('mine');
+    expect(res.deleted).toEqual([]);
+    expect(hub.puts.some((x) => x.rel === 'system/ds/brand.css' && x.body === 'mine')).toBe(true);
+  });
+
+  test('off ⇒ an absence propagates nothing, which is the pre-Increment-6 posture', async () => {
+    const hub = fakeHub({ 'system/ds/brand.css': ':root{}' });
+    const p = plane(hub, { propagateDeletes: false });
+    await p.reconcile();
+    rmSync(join(root, 'system/ds/brand.css'));
+    const res = await p.reconcile();
+    expect(hub.deletes).toEqual([]);
+    expect(res.deleted).toEqual([]);
+  });
+});
+
+describe('the deletion breakers — the only protection now that this ships ON', () => {
+  test("a branch switch does not become everyone else's deletion", async () => {
+    const seeded: Record<string, string> = {};
+    for (let i = 0; i < 20; i++) seeded[`system/ds/f${i}.css`] = `.a${i}{}`;
+    const hub = fakeHub(seeded);
+    const p = plane(hub, { propagateDeletes: true });
+    await p.reconcile();
+
+    // `git checkout other-branch` — the design folder empties.
+    for (let i = 0; i < 20; i++) rmSync(join(root, `system/ds/f${i}.css`));
+
+    const res = await p.reconcile();
+    expect(hub.deletes).toEqual([]);
+    expect(res.deleteHeld?.direction).toBe('out');
+    expect(res.deleteHeld?.count).toBe(20);
+  });
+
+  test('a tombstone storm does not empty this disk either', async () => {
+    const seeded: Record<string, string> = {};
+    for (let i = 0; i < 20; i++) seeded[`system/ds/f${i}.css`] = `.a${i}{}`;
+    const hub = fakeHub(seeded);
+    const p = plane(hub, { propagateDeletes: true });
+    await p.reconcile();
+
+    for (let i = 0; i < 20; i++) hub.tombstone(`system/ds/f${i}.css`);
+
+    const res = await p.reconcile();
+    expect(res.deleteHeld?.direction).toBe('in');
+    expect(existsSync(join(root, 'system/ds/f0.css'))).toBe(true);
+    expect(res.deleted).toEqual([]);
+  });
+
+  test('an ordinary single delete is not a storm', async () => {
+    const seeded: Record<string, string> = {};
+    for (let i = 0; i < 20; i++) seeded[`system/ds/f${i}.css`] = `.a${i}{}`;
+    const hub = fakeHub(seeded);
+    const p = plane(hub, { propagateDeletes: true });
+    await p.reconcile();
+
+    rmSync(join(root, 'system/ds/f3.css'));
+    const res = await p.reconcile();
+    expect(res.deleteHeld).toBeUndefined();
+    expect(hub.deletes).toEqual(['system/ds/f3.css']);
   });
 });

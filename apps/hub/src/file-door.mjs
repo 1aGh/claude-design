@@ -40,8 +40,8 @@
 
 import { createHash, randomBytes } from 'node:crypto';
 import { once } from 'node:events';
-import { createWriteStream, mkdirSync, renameSync, rmSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { createWriteStream, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
 import { checkoutFileClass, resolveCheckoutFileWrite } from './file-manifest.mjs';
 import { matchesScope, verifyToken } from './tokens.mjs';
@@ -219,7 +219,7 @@ export async function handleFileDoor(ctx) {
   const rel = parseFileDoorPath(pathname);
   if (rel === null) return false;
 
-  if (method !== 'PUT') {
+  if (method !== 'PUT' && method !== 'DELETE') {
     respond(response, 405, 'method not allowed');
     return true;
   }
@@ -298,6 +298,10 @@ export async function handleFileDoor(ctx) {
   // Asked TWICE: here, so a doomed push is refused before its body crosses the
   // wire, and again under the publish lock below, which is the one that binds.
   const expect = String(request.headers?.['x-maude-expect-hash'] ?? '').trim();
+
+  if (method === 'DELETE') {
+    return await handleDelete({ ctx, response, landing, target, match, expect });
+  }
   const casHolds = () => {
     if (!expect) return { ok: true };
     const current = ctx.journal ? currentHashFor(ctx.journal, landing) : null;
@@ -380,6 +384,75 @@ export async function handleFileDoor(ctx) {
     });
     return true;
   });
+}
+
+/**
+ * `DELETE /api/file/<rel>` — Increment 6.
+ *
+ * A tombstone is a JOURNAL ROW, not an absence: the log is what peers read, so
+ * "this was deleted at seq N" has to be a statement they can receive in order,
+ * exactly like a write. An absence would be indistinguishable from a file the
+ * hub never had, and absence-as-authority is what DDR-076 forbids.
+ *
+ * The bytes are QUARANTINED, never unlinked. `_trash/` on the hub is the same
+ * recoverability spine the peers use, and the object-storage copy is untouched:
+ * a CAS blob is content-addressed, so nothing that ever reached durability is
+ * removed by a delete — only unreferenced.
+ *
+ * Same CAS as a write, same publish lock, same journal append. A delete that
+ * raced somebody's edit loses the race and says so, which is the whole point:
+ * an edit beats a delete, and the peer re-decides against the hash it is told.
+ */
+async function handleDelete({ ctx, response, landing, target, match, expect }) {
+  return await withPathLock(landing, async () => {
+    const current = ctx.journal ? currentHashFor(ctx.journal, landing) : null;
+    if (current === null) {
+      // Already absent, or already tombstoned. Idempotent by construction —
+      // a retry after a dropped response must not be an error.
+      respondJson(response, 200, { ok: true, path: landing, deleted: true, noop: true });
+      return true;
+    }
+    if (expect && expect !== 'none' && current !== expect) {
+      respondJson(response, 409, {
+        error: 'the hub moved since you decided',
+        path: landing,
+        current,
+      });
+      return true;
+    }
+
+    // QUARANTINE BEFORE THE ROW. If the copy cannot be parked the tombstone is
+    // refused, because a deletion nobody can undo is not one this lane makes.
+    let parked = null;
+    try {
+      parked = quarantineForDelete(ctx.designRoot, target.abs, landing);
+    } catch (err) {
+      console.error(`[hub] file door DELETE ${landing} could not quarantine: ${err.message}`);
+      respond(response, 500, 'could not quarantine the file — refusing to delete it');
+      return true;
+    }
+
+    ctx.onDeleted?.({ path: landing, parked });
+    const seq = ctx.journal ? seqFor(ctx.journal, landing) : null;
+    respondJson(response, 200, { ok: true, path: landing, deleted: true, parked, seq });
+    return true;
+  });
+}
+
+/**
+ * Move `abs` into `<designRoot>/_trash/<stamp>/<rel>` and return the trash rel.
+ *
+ * `_trash/` is DDR-115 runtime state: gitignored, per-machine, never synced.
+ * That is deliberate — a quarantine that replicated would turn one person's
+ * delete into everyone's copy of the deleted file.
+ */
+function quarantineForDelete(designRoot, abs, rel) {
+  if (!existsSync(abs)) return null;
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const dest = join(designRoot, '_trash', stamp, rel);
+  mkdirSync(dirname(dest), { recursive: true });
+  renameSync(abs, dest);
+  return `_trash/${stamp}/${rel}`;
 }
 
 /**

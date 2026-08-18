@@ -63,6 +63,21 @@ export interface LinkedHub {
    */
   syncFiles?: boolean;
   /**
+   * Sync v2 Increment 6 — does a deletion here become a deletion everywhere?
+   *
+   * **Default ON.** A hub-owned mirror that ignores deletes is not a mirror:
+   * you remove a file, it comes back on the next pass, and the model the
+   * product describes stops being true.
+   *
+   * What makes that safe is not caution but the breakers: past ten files, or a
+   * quarter of what this machine tracks, in one pass, nothing is removed in
+   * EITHER direction and the pass says what it was about to do — a branch
+   * switch and a deliberate purge look identical until somebody confirms which
+   * one it was. Losers are quarantined into `_trash/`, never unlinked, on both
+   * ends. Set `false` per project to hold every absence instead.
+   */
+  propagateDeletes?: boolean;
+  /**
    * Sync v2 Increment 2 (DDR-226 §4) — the file-event control channel.
    *
    * Default ON where the hub advertises `ledger`; set to `false` to fall back

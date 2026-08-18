@@ -2813,6 +2813,11 @@ export function createSyncRuntime(
               ledger: fileLedger,
               canvasGroups: ctx.cfg.canvasGroups,
               allowCodeModules,
+              // Increment 6, DEFAULT ON: a hub-owned mirror that ignores
+              // deletes contradicts the model it is selling — you delete a
+              // file and it comes back. `linkedHub.propagateDeletes: false`
+              // is the per-project opt-out; the breakers hold either way.
+              propagateDeletes: linkedHub.propagateDeletes !== false,
               // Same exposure class as `syncMeta.by`, and the same reasoning:
               // a conflict copy nobody can attribute is a conflict copy nobody
               // resolves.

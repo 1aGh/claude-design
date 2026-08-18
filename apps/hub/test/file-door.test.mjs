@@ -106,6 +106,8 @@ const call = async (ex, over = {}) => {
     designRoot,
     journal,
     onWritten: ({ path }) => journal.recordWrite({ designRoot, path, source: 'peer-put' }),
+    onDeleted: ({ path }) =>
+      journal.recordWrite({ designRoot, path, source: 'peer-put', deleted: true }),
     ...over,
   });
   return { handled, ...ex.result() };
@@ -418,5 +420,73 @@ describe('the write quota is per token and per window, not per process forever',
     const row = snap.find((r) => r.label === 'peer');
     assert.ok(row, `the writing token appears in the snapshot: ${JSON.stringify(snap)}`);
     assert.equal(row.used, 5);
+  });
+});
+
+describe('DELETE — a tombstone is a row, and the bytes are quarantined', () => {
+  it('removes the file, parks it, and appends a tombstone peers can read', async () => {
+    await call(exchange({ rel: 'system/ds/gone.css', body: ':root{}' }));
+    assert.equal(existsSync(join(designRoot, 'system/ds/gone.css')), true);
+
+    const res = await call(exchange({ rel: 'system/ds/gone.css', method: 'DELETE', body: null }));
+    assert.equal(res.status, 200);
+    assert.equal(res.json.deleted, true);
+    assert.equal(existsSync(join(designRoot, 'system/ds/gone.css')), false);
+
+    // Quarantined, never unlinked — the recoverability spine.
+    assert.ok(res.json.parked?.startsWith('_trash/'), `parked: ${res.json.parked}`);
+    assert.equal(existsSync(join(designRoot, res.json.parked)), true);
+
+    const journal = openJournal(dataDir);
+    const row = journal.latestFor('system/ds/gone.css');
+    assert.ok(row.deleted, 'the tombstone is a ROW, not an absence');
+    assert.equal(row.sha256, null);
+  });
+
+  it('is idempotent — a retry after a dropped response is not an error', async () => {
+    await call(exchange({ rel: 'system/ds/twice.css', body: 'x' }));
+    const first = await call(
+      exchange({ rel: 'system/ds/twice.css', method: 'DELETE', body: null })
+    );
+    const again = await call(
+      exchange({ rel: 'system/ds/twice.css', method: 'DELETE', body: null })
+    );
+    assert.equal(first.status, 200);
+    assert.equal(again.status, 200);
+    assert.equal(again.json.noop, true);
+  });
+
+  it('an edit that raced the delete WINS — the CAS refuses the stale precondition', async () => {
+    const put = await call(exchange({ rel: 'system/ds/race.css', body: 'v1' }));
+    const staleHash = put.json.sha256;
+    // Somebody else edits it after we decided to delete.
+    await call(exchange({ rel: 'system/ds/race.css', body: 'v2' }));
+
+    const del = exchange({ rel: 'system/ds/race.css', method: 'DELETE', body: null });
+    del.request.headers['x-maude-expect-hash'] = staleHash;
+    const res = await call(del);
+
+    assert.equal(res.status, 409, 'an edit beats a delete');
+    assert.equal(readFileSync(join(designRoot, 'system/ds/race.css'), 'utf8'), 'v2');
+  });
+
+  it('refuses a delete from a token that may not write there', async () => {
+    await call(exchange({ rel: 'system/ds/scoped.css', body: 'x' }));
+    const scoped = addToken(dataDir, { label: 'alice', scope: 'ui/alice' }).value;
+    const res = await call(
+      exchange({ rel: 'system/ds/scoped.css', method: 'DELETE', body: null, bearer: scoped })
+    );
+    assert.equal(res.status, 403);
+    assert.equal(existsSync(join(designRoot, 'system/ds/scoped.css')), true);
+  });
+
+  it('a read-only token cannot delete', async () => {
+    await call(exchange({ rel: 'system/ds/ro.css', body: 'x' }));
+    const viewer = addToken(dataDir, { label: 'viewer', scope: '*', readOnly: true }).value;
+    const res = await call(
+      exchange({ rel: 'system/ds/ro.css', method: 'DELETE', body: null, bearer: viewer })
+    );
+    assert.equal(res.status, 403);
+    assert.equal(existsSync(join(designRoot, 'system/ds/ro.css')), true);
   });
 });

@@ -26,12 +26,23 @@
 // cannot honour comes back as `reanchor`, and we then re-read from 0 rather
 // than assuming nothing changed. "No cursor" must never render as "no news".
 //
-// ── What this deliberately does NOT do yet ──────────────────────────────────
+// ── Deletion (Increment 6) ──────────────────────────────────────────────────
 //
-// EMIT deletions. `decideFile` has the rows and they are tested, but
-// `propagateDeletes` stays off until Increment 6 ships the tombstone door and
-// the mass-delete breakers. Until then a local absence is HELD: we neither
-// resurrect the file nor tell the hub to drop it.
+// A deletion is a JOURNAL ROW, never an absence. Absence is not authority
+// (DDR-076): a path missing from a page means "no news", and a file missing
+// from a tree means "gone from THIS disk" — neither is a statement about what
+// the project holds. So a delete travels as a tombstone with a CAS
+// precondition, exactly like a write, and an edit that raced it wins.
+//
+// Nothing is ever unlinked. Losers go to `_trash/` on both ends, which is
+// runtime state (DDR-115) and therefore never replicates — one person's delete
+// must not become everyone's copy of the deleted file. On the hub the
+// object-storage blob is content-addressed, so a delete leaves it
+// unreferenced rather than destroyed.
+//
+// And the breakers are the load-bearing part, because the dangerous shapes are
+// ordinary: a branch switch, a `git clean`, a half-finished restore. See
+// `DELETE_BREAKER_MAX`.
 
 import { createHash } from 'node:crypto';
 import {
@@ -97,6 +108,31 @@ export const REANCHOR_STORM_LIMIT = 5;
  */
 export const FIRST_ANCHOR_STORM_LIMIT = 10;
 
+/**
+ * Deletion breakers — DDR-226 §8, and the only protection now that
+ * `propagateDeletes` ships ON rather than after a soak release.
+ *
+ * The shapes these exist for are ordinary, not exotic. A branch switch removes
+ * half the design folder; a `git clean` removes all of it; a botched restore on
+ * one machine looks exactly like a deliberate purge to every other. In each
+ * case the mechanism is working perfectly and the outcome is a disaster, so
+ * the rule is a rate, not a permission: past `MAX` files or `MAX_FRACTION` of
+ * what this machine tracks, in one pass, nothing is removed and the pass says
+ * what it was about to do.
+ *
+ * Both directions, because both are lossy. Outbound turns a local accident
+ * into everyone's; inbound turns a hostile or broken hub into a local wipe.
+ */
+export const DELETE_BREAKER_MAX = 10;
+export const DELETE_BREAKER_MAX_FRACTION = 0.25;
+/**
+ * The fraction rule needs a floor or it is nonsense at small N: in a project
+ * tracking one file, deleting that file is 100% and every ordinary delete
+ * trips the breaker. Below this many files in one pass, only the absolute
+ * count decides.
+ */
+export const DELETE_BREAKER_MIN_FOR_FRACTION = 3;
+
 /** Walk depth ceiling — matches the classifier's own shape cap. */
 const MAX_WALK_DEPTH = 8;
 
@@ -116,6 +152,10 @@ export interface FilePlaneResult {
   reanchored: boolean;
   /** The pass stopped on the aggregate byte budget. */
   budgetExhausted?: true;
+  /** Files removed this pass — `parked` names the `_trash/` copy when there is one. */
+  deleted: { rel: string; parked: string | null }[];
+  /** A delete burst tripped a breaker; nothing was removed. */
+  deleteHeld?: { direction: 'out' | 'in'; count: number; paths: string[] };
   /** Consecutive `reanchor` answers tripped the storm limit; the pass held. */
   reanchorHeld?: true;
   /**
@@ -569,6 +609,54 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
     }
   }
 
+  /**
+   * Tell the hub a file is gone here — Increment 6.
+   *
+   * Carries the same `x-maude-expect-hash` precondition a write does, and for
+   * the same reason: a delete that raced somebody's edit must LOSE. The hub
+   * answers 409 with what it now holds, the next pass re-decides against that,
+   * and `local-deleted-but-remote-moved` brings their work back instead of
+   * removing it. An edit beats a delete, enforced at the door rather than hoped
+   * for by ordering.
+   */
+  async function pushDelete(
+    rel: string,
+    expect: string | null
+  ): Promise<{ ok: true } | { ok: false; conflict: true } | { ok: false; reason: string }> {
+    try {
+      const res = await fetchImpl(
+        `${base}/api/file/${rel.split('/').map(encodeURIComponent).join('/')}`,
+        {
+          method: 'DELETE',
+          headers: { ...auth(), 'x-maude-expect-hash': expect ?? 'none' },
+          signal: AbortSignal.timeout(PUT_TIMEOUT_MS),
+        }
+      );
+      if (res.status === 409) return { ok: false, conflict: true };
+      if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, reason: (err as Error).message };
+    }
+  }
+
+  /** Move a file into `_trash/<stamp>/<rel>`; returns the trash rel or null. */
+  function quarantineLocal(rel: string): string | null {
+    const abs = path.join(designRoot, rel);
+    if (!existsSync(abs)) return null;
+    const stamp = new Date(now()).toISOString().replace(/[:.]/g, '-');
+    const destRel = `_trash/${stamp}/${rel}`;
+    const dest = path.join(designRoot, destRel);
+    try {
+      mkdirSync(path.dirname(dest), { recursive: true });
+      renameSync(abs, dest);
+      return destRel;
+    } catch (err) {
+      log.warn?.(`[sync/files] could not quarantine ${rel}: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
   async function reconcile(): Promise<FilePlaneResult> {
     const out: FilePlaneResult = {
       pulled: [],
@@ -576,6 +664,7 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
       conflicts: [],
       dropped: [],
       failed: [],
+      deleted: [],
       synced: 0,
       reanchored: false,
     };
@@ -759,6 +848,38 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
         continue;
       }
       work.push({ rel, decision, local: here, row, remoteHash });
+    }
+
+    // DELETION BREAKERS. Counted before anything is applied, in both
+    // directions, because a delete you have already done is not one a prompt
+    // can take back.
+    const tracked = Object.keys(ledger.rows()).length;
+    const overBreaker = (n: number): boolean =>
+      n > DELETE_BREAKER_MAX ||
+      (n >= DELETE_BREAKER_MIN_FOR_FRACTION &&
+        tracked > 0 &&
+        n / tracked > DELETE_BREAKER_MAX_FRACTION);
+
+    for (const direction of ['out', 'in'] as const) {
+      const action = direction === 'out' ? 'propagate-delete' : 'quarantine';
+      const hits = work.filter((w) => w.decision.action === action);
+      if (hits.length === 0 || !overBreaker(hits.length)) continue;
+      const paths = hits.map((w) => w.rel).sort();
+      log.warn?.(
+        direction === 'out'
+          ? `[sync/files] ${paths.length} of ${tracked} tracked files are gone from this machine — NOT telling the project. If that was a branch switch or a bad restore, nothing is lost; if you meant it, confirm the deletion.`
+          : `[sync/files] the project wants to remove ${paths.length} of ${tracked} tracked files here — holding. Nothing was deleted.`
+      );
+      out.deleteHeld = { direction, count: paths.length, paths: paths.slice(0, 200) };
+      for (const w of hits) {
+        ledger.setState(w.rel, 'conflict', {
+          reason:
+            direction === 'out'
+              ? 'gone from this machine, as part of a batch too large to propagate unasked'
+              : 'the project wants this removed, as part of a batch too large to apply unasked',
+        });
+      }
+      work = work.filter((w) => !hits.includes(w));
     }
 
     // FLIP-DAY BREAKER. Counted before anything is applied, because the point
@@ -1023,18 +1144,37 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
       }
 
       case 'quarantine': {
-        // Deletion is Increment 6; the row exists so the shape is settled, and
-        // the applier refuses to act on it until the breakers ship.
-        ledger.setState(rel, 'conflict', {
-          reason: 'the hub deleted this file; deletion handling ships in a later release',
-        });
+        // The hub deleted a file this machine still holds UNCHANGED. Quarantine
+        // rather than unlink: `_trash/` is the recoverability spine, and it is
+        // runtime state (DDR-115), so one person's delete never replicates as
+        // everyone's copy of the deleted file.
+        const parked = quarantineLocal(rel);
+        ledger.forget(rel);
+        out.deleted.push({ rel, parked });
         return true;
       }
 
       case 'propagate-delete': {
-        // Same: the decision is reachable only with the flag on, and the door
-        // it needs does not exist yet.
-        return true;
+        // Gone here, and the hub still holds exactly what we last reconciled —
+        // the Syncthing rule. The CAS carries our ancestor, so an edit that
+        // landed in between wins and this comes back as a conflict instead.
+        const res = await pushDelete(rel, ledger.ancestorOf(rel));
+        if (res.ok) {
+          ledger.forget(rel);
+          out.deleted.push({ rel, parked: null });
+          return true;
+        }
+        if ('conflict' in res && res.conflict) {
+          // Somebody edited it after we last saw it. Say nothing further; the
+          // next pass reads their row and `local-deleted-but-remote-moved`
+          // brings the file back.
+          ledger.setState(rel, 'stuck', {
+            reason: 'deleted here, but somebody changed it on the hub — their edit wins',
+          });
+          return false;
+        }
+        out.failed.push({ rel, reason: 'reason' in res ? res.reason : 'delete refused' });
+        return false;
       }
 
       default: {
