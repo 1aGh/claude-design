@@ -27,13 +27,28 @@ const MAX_CAPTURE = 64 * 1024;
 /**
  * A GitRunner (the injected shape autocommit.ts expects).
  *
+ * `maxCapture` is a per-runner ceiling rather than a constant because one
+ * caller genuinely needs more: the history route reads a whole canvas body out
+ * of `git show`, and a SILENT truncation there would hand back a half-file that
+ * builds into a plausible-looking wrong canvas. It checks the object size with
+ * `cat-file -s` first, and this ceiling is the belt behind that braces.
+ *
+ * `o.env` merges per call, so hardening that must travel with a particular argv
+ * (GIT_LITERAL_PATHSPECS with a scoped `git log`) can be passed WITH that argv
+ * instead of being baked into every invocation the runner will ever make.
+ *
  * @param {object} [opts]
  * @param {NodeJS.ProcessEnv} [opts.env]
  * @param {number} [opts.timeoutMs]
- * @returns {(args: string[], o: { cwd: string }) => Promise<{ code: number, stdout: string, stderr: string }>}
+ * @param {number} [opts.maxCapture]
+ * @returns {(args: string[], o: { cwd: string, env?: Record<string,string> }) => Promise<{ code: number, stdout: string, stderr: string }>}
  */
-export function createGitRunner({ env = process.env, timeoutMs = GIT_TIMEOUT_MS } = {}) {
-  return (args, { cwd }) =>
+export function createGitRunner({
+  env = process.env,
+  timeoutMs = GIT_TIMEOUT_MS,
+  maxCapture = MAX_CAPTURE,
+} = {}) {
+  return (args, { cwd, env: callEnv } = {}) =>
     new Promise((resolve) => {
       let child;
       try {
@@ -44,6 +59,7 @@ export function createGitRunner({ env = process.env, timeoutMs = GIT_TIMEOUT_MS 
           shell: false,
           env: {
             ...env,
+            ...(callEnv ?? {}),
             // git must never stop to ask a human that does not exist. Without
             // this, a credential prompt inside a container hangs until the
             // timeout on every single push.
@@ -75,7 +91,7 @@ export function createGitRunner({ env = process.env, timeoutMs = GIT_TIMEOUT_MS 
       }, timeoutMs);
 
       child.stdout.on('data', (b) => {
-        if (stdout.length < MAX_CAPTURE) stdout += b.toString();
+        if (stdout.length < maxCapture) stdout += b.toString();
       });
       child.stderr.on('data', (b) => {
         if (stderr.length < MAX_CAPTURE) stderr += b.toString();

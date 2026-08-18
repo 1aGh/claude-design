@@ -31,6 +31,7 @@ import { isAbsolute, join, relative, sep } from 'node:path';
 import git from 'isomorphic-git';
 import http from 'isomorphic-git/http/node';
 
+import { gitLogArgs, gitLogEnv, parseGitLog } from './log-format.ts';
 import { withRepoLock } from './repo-lock.ts';
 
 // Read LIVE, not as a module-load const — the same reason `noSystemGit()` below
@@ -1712,29 +1713,14 @@ async function logIso(dir: string, limit: number, filepath?: string): Promise<Gi
 }
 
 async function logSystem(dir: string, limit: number, filepath?: string): Promise<GitLogEntry[]> {
-  // Unit-separator field delimiter, record-separator line delimiter — survives
-  // any message punctuation.
-  const fmt = '%H%x1f%s%x1f%an%x1f%ae%x1f%aI%x1e';
-  const args = ['log', `-n${limit}`, `--pretty=format:${fmt}`];
-  // `--` makes `filepath` strictly positional — git can't read it as an option
-  // (no argument injection even if it began with a dash, which containment
-  // validation already rejects upstream).
-  if (filepath) args.push('--', filepath);
-  // GIT_LITERAL_PATHSPECS — match `filepath` VERBATIM, never as pathspec magic
-  // (`:(top)`, `:(exclude)`, globs). The endpoint already restricts it to the
-  // design tree; this makes the system-git engine treat it as a plain path
-  // regardless, closing the pathspec-magic surface the `--` terminator alone
-  // doesn't (security re-review, phase-27.1).
-  const r = await runGit(dir, args, filepath ? { GIT_LITERAL_PATHSPECS: '1' } : undefined);
+  // The format, the argv (including the `--` terminator) and the parser all
+  // live in `log-format.ts` — the cloud cell's `/api/history` reads its own
+  // repo through the SAME three, so a cloud row and a local row cannot drift
+  // into different shapes behind one renderer. `gitLogEnv` carries the
+  // GIT_LITERAL_PATHSPECS hardening that must travel with a scoped argv.
+  const r = await runGit(dir, gitLogArgs(limit, filepath), gitLogEnv(filepath));
   if (r.code !== 0) return [];
-  return r.stdout
-    .split('\x1e')
-    .map((rec) => rec.replace(/^\n/, '').trim())
-    .filter(Boolean)
-    .map((rec) => {
-      const [sha, message, author, email, date] = rec.split('\x1f');
-      return { sha, message, author, email, date };
-    });
+  return parseGitLog(r.stdout);
 }
 
 // ── diff (visual before/after) ─────────────────────────────────────────────

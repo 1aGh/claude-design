@@ -94,6 +94,7 @@ import {
 } from './files-ctl.mjs';
 import { seedFirstUserOnBoot } from './first-user.mjs';
 import { createGitRunner } from './git-runner.mjs';
+import { HISTORY_FILE_PATH, HISTORY_PATH, handleHistoryRoutes } from './history.mjs';
 import {
   createJournalTail,
   handleJournalRoutes,
@@ -1039,6 +1040,43 @@ export function createHub(config = {}) {
             ? (label) => checkConnRateLimit(fileReadBuckets, label, assetWriteRateLimitMax)
             : undefined,
           respondJson: (status, payload) => respondAdminJson(response, status, payload),
+        });
+        if (handled) bailFromOnRequest();
+      }
+      // The cell's own git history, readable by the linked desktop
+      // (feature-cloud-managed-git-posture). In cloud-managed posture the cell
+      // is the sole committer, so this is the ONLY history that describes the
+      // project — the desktop's local repo has none, which is what made its
+      // History tab say "No saved versions yet" under a "Cloud is saving" note.
+      //
+      // In NEITHER canvas allowlist (DDR-088): the canvas origin is untrusted
+      // content and has no business reading a project's commit history, let
+      // alone asking the cell to hand back a file at an arbitrary object name.
+      if (
+        (authPath === HISTORY_PATH || authPath === HISTORY_FILE_PATH) &&
+        !(studioProxy && isCanvasHost(request))
+      ) {
+        const handled = await handleHistoryRoutes({
+          path: authPath,
+          method,
+          query: Object.fromEntries(new URL(url, 'http://x').searchParams),
+          bearer: (request.headers?.authorization ?? '').replace(/^Bearer\s+/i, '').trim() || null,
+          verify: (token) => verifyToken(dataDir, token, secret),
+          matchesScope,
+          repoDir: workspaceMode ? repoDir : null,
+          designRoot: journalDesignRoot,
+          // A capture ceiling above the blob cap, so a legitimate canvas body
+          // is never SILENTLY truncated into a plausible-looking wrong file.
+          // The route still checks `cat-file -s` before reading anything.
+          run: workspaceMode && repoDir ? createGitRunner({ maxCapture: 4 * 1024 * 1024 }) : null,
+          projectName: process.env.MAUDE_PROJECT_NAME ?? null,
+          // The same per-label bucket the file-plane READS use — a History poll
+          // is the same shape of traffic.
+          checkRateLimit: rateLimit
+            ? (label) => checkConnRateLimit(fileReadBuckets, label, assetWriteRateLimitMax)
+            : undefined,
+          respondJson: (status, payload) => respondAdminJson(response, status, payload),
+          response,
         });
         if (handled) bailFromOnRequest();
       }

@@ -123,7 +123,7 @@ Tokens/icons: unchanged (`Icon name="history"`, existing `gp-*` classes). No new
 
 Execute in order. Each task is atomic and testable.
 
-### Task 1: CREATE `apps/studio/git/log-format.ts` (shared log shape)
+### ✅ Task 1: CREATE `apps/studio/git/log-format.ts` (shared log shape)
 
 - **Do**: Extract from `git/service.ts:logSystem` — export `GIT_LOG_FORMAT` (`'%H%x1f%s%x1f%an%x1f%ae%x1f%aI%x1e'`), `gitLogArgs(limit, filepath?)` (including the `--` terminator), and `parseGitLog(stdout)` → `{sha, message, author, email, date}[]`. React-free, dependency-free, importable from both a Bun studio build and the hub's Node/Bun runtime.
 - **Do**: Rewrite `logSystem` to call them. `logIso` (isomorphic-git fallback) keeps producing the identical object shape — assert that in the test.
@@ -131,7 +131,7 @@ Execute in order. Each task is atomic and testable.
 - **Gotcha**: `GIT_LITERAL_PATHSPECS: '1'` is set by the *caller* when `filepath` is present — keep that hardening at both call sites, it is a recorded phase-27.1 security re-review outcome.
 - **Validate**: `cd apps/studio && bun test test/git-*.test.ts`
 
-### Task 2: ADD the two hub routes (`apps/hub/src/history.mjs`)
+### ✅ Task 2: ADD the two hub routes (`apps/hub/src/history.mjs`)
 
 - **Do**: `GET /api/history?path=&limit=` → `{ entries: [{sha, message, author, date}] }`. **Omit `email`** — the client never renders it and a member's address is not needed to draw a row. Clamp `limit` to 1–100.
 - **Do**: `GET /api/history/file?sha=&path=` → `200 text/plain` with the blob, or `404`. Cap at 2 MB.
@@ -142,20 +142,20 @@ Execute in order. Each task is atomic and testable.
 - **Gotcha**: use `createGitRunner()`; do not shell out directly. It restricts argv on purpose.
 - **Validate**: `cd apps/hub && bun test test/history.test.mjs`
 
-### Task 3: UPDATE `apps/hub/Dockerfile` — copy the shared module
+### ✅ Task 3: UPDATE `apps/hub/Dockerfile` — copy the shared module
 
 - **Do**: Add `COPY apps/studio/git/log-format.ts /build/apps/studio/git/log-format.ts` next to the existing `autocommit.ts` / `repo-lock.ts` / `canvas-path.ts` lines (43–70).
 - **Gotcha**: the file's own header (line ~158) states that a runtime-stage omission makes the cell refuse to boot with "MISSING" — verify the module lands in *both* the bundler stage and whatever stage the hub actually runs from.
 - **Validate**: `docker build -f apps/hub/Dockerfile -t maude-hub:history-check .` then boot it against a scratch workspace and `curl -H "Authorization: Bearer <t>" .../api/history`.
 
-### Task 4: ADD `/_api/cloud/history` + `/_api/cloud/history/file` to the studio server
+### ✅ Task 4: ADD `/_api/cloud/history` + `/_api/cloud/history/file` to the studio server
 
 - **Do**: In `cloud/endpoints.ts`, add `history(path?, limit?)` and `historyFile(sha, path)`: resolve `readLinkedHub()`; if not linked **or not credentialed** → `{ ok: false, reason: 'not-linked' }` (no network call). Otherwise `getHubToken(normalizeUrl(url))` and `fetch` the hub route with `Authorization: Bearer`. Timeout 8 s. **Never** return the token or the raw hub error body to the client.
 - **Do**: In `http.ts`, register both under the existing `/_api/cloud/*` block with `sameOriginRead` + `isTrustedRequestHost`, and add them to the same main-origin-only list the neighbours are on (line ~409). They must be in **neither** `CANVAS_SAFE_API` **nor** the `startCanvasServer` routes map.
 - **Gotcha**: `/_api/cloud/status` carries a comment that a `401` from the hub **deletes the stored credential** (confused-deputy F6). A history poll must **never** trigger that path — surface `401` as a plain read failure and leave the credential alone.
 - **Validate**: `cd apps/studio && bun test test/cloud-*.test.ts`
 
-### Task 5: UPDATE the client — History reads the cloud
+### ✅ Task 5: UPDATE the client — History reads the cloud
 
 - **Do**: In `app.jsx`, add `gitLoadCloudLog` (hits `/_api/cloud/history`) and feed the panel `loadLog={cloudManaged ? gitLoadCloudLog : gitLoadLog}` — decided **at the one place the posture is named**, not inside the panel.
 - **Do**: Pass a new `historySource` prop (`'local' | 'cloud'`) so `GitPanel` can pick the header label and the empty-state copy without re-deriving the posture.
@@ -163,7 +163,7 @@ Execute in order. Each task is atomic and testable.
 - **Do**: Error path — when the loader reports a failure, set the existing `banner` to a warning with a Retry action. Distinguish it from "genuinely empty": an empty successful load keeps the empty state, a failure shows the callout.
 - **Validate**: `cd apps/studio && bun test test/cloud-history-posture.test.ts`
 
-### Task 6: UPDATE the client — the desktop stops running local git
+### ✅ Task 6: UPDATE the client — the desktop stops running local git
 
 - **Do**: Gate on `!savingIsManaged`: the mount status fetch (9698), the `/_api/git/status` refresh (11287), the `?remote=1` remote probe (11299), and `dirtyByPath` (returns an empty Map in that posture — the tree's M/A/D badges are the same claim as the withdrawn count).
 - **Do**: Withdraw `RepoBranchSwitcher` (2981) when `savingIsManaged` — a local branch switch moves a HEAD the cell knows nothing about.
@@ -172,7 +172,7 @@ Execute in order. Each task is atomic and testable.
 - **Gotcha**: everything here must revert **live** on Disconnect (no reload) — the same requirement `git-cloud-posture.test.ts` already pins for the panel. Drive it off the existing `useEffect` reactions to `savingIsManaged`, not off mount-time state.
 - **Validate**: `cd apps/studio && bun test test/cloud-managed-save-surfaces.test.ts test/git-cloud-posture.test.ts`
 
-### Task 7: UPDATE `serveHistoricalCanvas` — resolve a cloud sha
+### ✅ Task 7: UPDATE `serveHistoricalCanvas` — resolve a cloud sha
 
 - **Do**: In `http.ts:757`+, replace the bare `gitShowFile(...)` call with a resolver: local `gitShowFile` first; if it returns `null` **and** the repo is cloud-managed, fetch via `cloud/endpoints.ts:historyFile(sha, repoRel)`. Keep the existing `(absPath, sha, RUNTIME_BOOT_ID, CHROME_EPOCH)` cache key — historical content is immutable, so a cloud-sourced build caches identically.
 - **Do**: Keep the existing build budget/LRU guards on the miss path — a distinct-sha spray must not turn into an unbounded fan-out of hub requests. Add a short negative cache for shas the hub also cannot resolve.
@@ -180,20 +180,20 @@ Execute in order. Each task is atomic and testable.
 - **Gotcha**: the existing comment notes a historical render is an approximation (canvas code at the sha, today's DS/lib). That is unchanged and stays true for cloud shas.
 - **Validate**: `cd apps/studio && bun test test/historical-canvas*.test.ts`
 
-### Task 8: ADD tests — the posture, end to end
+### ✅ Task 8: ADD tests — the posture, end to end
 
 - **Do**: `apps/studio/test/cloud-history-posture.test.ts` — source-level pins in the established house style: the loader is chosen once at the posture constant; every local-git poll is gated on `!savingIsManaged`; `dirtyByPath` is gated; `RepoBranchSwitcher` is gated; the watcher is **not** gated (a negative assertion, so a future "tidy-up" cannot silently disable it).
 - **Do**: `apps/hub/test/history.test.mjs` — 200 for an in-scope read; 404 for out-of-scope, for a traversal path, for a runtime-state path, for a ref expression (`HEAD~1`, `a..b`, `x:y`); 401 without a token; the rate limiter fires.
 - **Do**: A drift test asserting `parseGitLog`'s output shape equals `logIso`'s (Task 1's invariant).
 - **Validate**: `cd apps/studio && bun test` (alone — per the `maude-parallel-test-runs-contaminate` memory, never share the machine with the hub suite), then `cd apps/hub && bun test`.
 
-### Task 9: REBUILD the committed client bundle
+### ✅ Task 9: REBUILD the committed client bundle
 
 - **Do**: `cd apps/studio && MAUDE_SKIP_RUNTIME_BUILD=1 bun run build.ts --release`, commit `dist/client.bundle.js` (+ `dist/styles.css` if touched).
 - **Gotcha**: `git status apps/studio/dist/` **before and after** every `bun test` run in this tree — the test run has been observed clobbering `dist/` with unminified dev bundles. Whatever is committed is what ships.
 - **Validate**: `scripts/check-runtime-bundles.sh`
 
-### Task 10: RECORD the decision + surface it
+### ✅ Task 10: RECORD the decision + surface it
 
 - **Do**: `/flow:record-ddr` — DDR-229: "The cloud-managed posture owns git end to end: the desktop stops running local git and History reads the cloud." State the extends-not-reverses relationship to DDR-218 (the "presentation, not a control" rule is **kept** — `.git` untouched, routes unchanged, terminal git unaffected; what stops is *Maude's own* local git activity), and record the rejected alternative (refusing the local `/_api/git/*` write routes) with its reason.
 - **Do**: Changeset (`integrations.changelog.provider: changesets`) + a **pending** What's New entry via the `whats-new-entry` skill.
@@ -227,14 +227,14 @@ Execute in order. Each task is atomic and testable.
 
 ## Acceptance Criteria
 
-- [ ] All tasks completed
-- [ ] `/flow:utils-verify` passes after each task
-- [ ] Linked desktop History shows the cell's commits, headed by the cloud project name
-- [ ] Clicking a row previews the canvas at a sha that exists **only** on the cell
-- [ ] While linked, the desktop issues **zero** local-git status/remote calls (verify in the server log)
-- [ ] `.git` is provably untouched — no hook installed, no config written, terminal `git status`/`git commit` behave exactly as before
-- [ ] `git/watch.ts` still flushes a terminal `git checkout` into Yjs while linked
-- [ ] Disconnect restores the full local panel live, no reload
-- [ ] An unlinked folder is behaviourally unchanged
-- [ ] Both new hub routes: 401 without a token, 404 for out-of-scope / traversal / ref-expression / runtime-state, rate-limited
-- [ ] DDR-229 recorded and ingested; changeset + pending What's New entry written
+- [x] All tasks completed
+- [x] `/flow:utils-verify` passes after each task (quick close: static gates + affected tests — full `/flow:validate` deferred)
+- [~] Linked desktop History shows the cell's commits, headed by the cloud project name — *test-pinned; not yet observed against a live cell*
+- [~] Clicking a row previews the canvas at a sha that exists **only** on the cell — *test-pinned; not yet observed against a live cell*
+- [~] While linked, the desktop issues **zero** local-git status/remote calls — *pinned at source level; the server-log check is deferred to the full validate*
+- [x] `.git` is provably untouched — no hook installed, no config written, terminal `git status`/`git commit` behave exactly as before
+- [x] `git/watch.ts` still flushes a terminal `git checkout` into Yjs while linked
+- [~] Disconnect restores the full local panel live, no reload — *test-pinned (reactive `useEffect` deps); not yet observed live*
+- [x] An unlinked folder is behaviourally unchanged
+- [x] Both new hub routes: 401 without a token, 404 for out-of-scope / traversal / ref-expression / runtime-state, rate-limited
+- [x] DDR-229 recorded and ingested; changeset + pending What's New entry written

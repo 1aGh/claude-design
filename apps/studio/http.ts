@@ -742,6 +742,33 @@ const HIST_WINDOW_MS = 10_000;
 const HIST_MAX_BUILDS = 24;
 let histWindowStart = Date.now();
 let histBuilds = 0;
+
+// Shas neither git NOR the linked cell could resolve (feature-cloud-managed-git-
+// posture). Without it, every re-request of a bad sha costs a git lookup AND a
+// network round trip to the hub — and the sha is attacker-influenceable from the
+// untrusted canvas origin (DDR-054), so "it will fail again" must be cheap to
+// say. Bounded like the positive cache; a miss is only ever a wasted retry.
+const historicalMissCache = new Set<string>();
+const HIST_MISS_MAX = 256;
+
+/**
+ * The linked cell's blob reader, or null when this project is not
+ * cloud-managed.
+ *
+ * `createCloudEndpoints` is a pure closure factory (it touches disk only when a
+ * method is CALLED), and `historyFile` already answers null unless the folder
+ * is linked AND credentialed — which is exactly the cloud-managed condition.
+ * So the posture is not re-derived here; it is asked of the module that owns
+ * it. Memoized per repo root because a process serves one.
+ */
+let cloudHistoryFor: { root: string; api: ReturnType<typeof createCloudEndpoints> } | null = null;
+function cloudHistoryApi(ctx: Context): ReturnType<typeof createCloudEndpoints> {
+  if (cloudHistoryFor?.root !== ctx.paths.repoRoot) {
+    cloudHistoryFor = { root: ctx.paths.repoRoot, api: createCloudEndpoints(ctx) };
+  }
+  return cloudHistoryFor.api;
+}
+
 function historicalBuildAllowed(): boolean {
   const now = Date.now();
   if (now - histWindowStart >= HIST_WINDOW_MS) {
@@ -772,7 +799,36 @@ async function serveHistoricalCanvas(
         headers: { 'Retry-After': '10', 'Cache-Control': 'no-store' },
       });
     }
-    const source = await gitShowFile(ctx.paths.repoRoot, sha, repoRel);
+    // LOCAL FIRST, THEN THE CLOUD. In cloud-managed posture the History rows
+    // come from the cell, so the sha the user clicked may exist ONLY there —
+    // the local repo has no commits at all. Local still goes first: it is a
+    // disk read against a repo that may well have the object (a folder that was
+    // committed to before it was linked), and it costs nothing to try.
+    //
+    // Everything downstream is unchanged — same build, same CSP, same LRU, same
+    // DiffView. Historical content is immutable, so a cloud-sourced build
+    // caches under the identical `(path, sha)` key.
+    //
+    // The sha is validated on BOTH sides: `/^[0-9a-f]{7,40}$/` here (via
+    // `historyFile`) and again on the hub. It arrives from the untrusted canvas
+    // origin, and "the other end checks it" is how a guard ends up on neither.
+    // A sha that already failed BOTH lookups fails again — say so without
+    // spending the git process or the round trip.
+    if (historicalMissCache.has(key)) {
+      return new Response('No saved version of this canvas', { status: 404 });
+    }
+    let source = await gitShowFile(ctx.paths.repoRoot, sha, repoRel);
+    if (source == null) {
+      const fromCloud = await cloudHistoryApi(ctx).historyFile(sha, repoRel);
+      source = fromCloud?.source ?? null;
+      if (source == null) {
+        historicalMissCache.add(key);
+        if (historicalMissCache.size > HIST_MISS_MAX) {
+          const oldest = historicalMissCache.values().next().value;
+          if (oldest !== undefined) historicalMissCache.delete(oldest);
+        }
+      }
+    }
     if (source == null) return new Response('No saved version of this canvas', { status: 404 });
     try {
       const result = await buildCanvasModule(absPath, source, {
@@ -2454,6 +2510,25 @@ export function createHttp(
       if (!isTrustedRequestHost(req))
         return new Response('local request required', { status: 403 });
       return gitJson(cloudApi.signout());
+    },
+    // feature-cloud-managed-git-posture — the history the cell is actually
+    // writing. MAIN-ORIGIN ONLY (absent from CANVAS_SAFE_API + startCanvasServer
+    // routes, DDR-088): the request is proxied onward under the stored hub
+    // credential, which is exactly the shape the untrusted canvas origin must
+    // never reach. `sameOriginRead` is the CSRF guard, `isTrustedRequestHost`
+    // the DNS-rebind one — both mandatory on a token-bearing route.
+    //
+    // A hub 401 here is a plain read failure. It must NOT take the
+    // `/_api/cloud/status` path that deletes the stored credential (F6): a cell
+    // restarting mid-renewal would otherwise silently unlink a working project
+    // because History polled at the wrong second.
+    '/_api/cloud/history': async (req: Request) => {
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginRead(req)) return new Response('cross-origin rejected', { status: 403 });
+      if (!isTrustedRequestHost(req))
+        return new Response('local request required', { status: 403 });
+      const u = new URL(req.url).searchParams;
+      return gitJson(await cloudApi.history(u.get('path'), u.get('limit')));
     },
     '/_api/cloud/projects': async (req: Request) => {
       if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });

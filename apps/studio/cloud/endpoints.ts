@@ -25,7 +25,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, relative, sep } from 'node:path';
 
 import { deleteHubCredential, saveHubCredential } from '../sync/hub-link.ts';
 import { getHubToken, normalizeUrl } from '../sync/hubs-config.ts';
@@ -332,6 +332,65 @@ export function createCloudEndpoints(ctx: Ctx) {
     },
 
     /**
+     * THE HISTORY THAT IS ACTUALLY BEING WRITTEN — feature-cloud-managed-git-
+     * posture.
+     *
+     * In cloud-managed posture the cell is the sole committer (DDR-198/209/213)
+     * and the local repo has no commits at all, so the desktop's History tab
+     * read a repo nobody writes and reported "No saved versions yet" directly
+     * under "Cloud is saving". This asks the cell instead.
+     *
+     * SERVER-SIDE, ALWAYS. The hub credential resolved here never reaches the
+     * browser — the client talks only to the loopback `/_api/cloud/history`,
+     * exactly as it does for every other call in this module.
+     */
+    async history(pathRaw?: string | null, limitRaw?: string | null): Promise<CloudEndpointResult> {
+      const hub = credentialedHub();
+      if (!hub) return { status: 200, json: { ok: false, reason: 'not-linked' } };
+
+      const qs = new URLSearchParams();
+      const rel = designRelative(pathRaw);
+      if (rel) qs.set('path', rel);
+      const limit = Number(limitRaw);
+      if (Number.isFinite(limit) && limit > 0)
+        qs.set('limit', String(Math.min(100, Math.trunc(limit))));
+
+      const r = await hubFetch(hub, `/api/history?${qs.toString()}`);
+      if (!r.ok) return { status: 200, json: { ok: false, reason: 'unreachable' } };
+      const body = (r.body ?? {}) as { entries?: unknown; branch?: unknown; project?: unknown };
+      return {
+        status: 200,
+        json: {
+          ok: true,
+          entries: Array.isArray(body.entries) ? body.entries : [],
+          branch: typeof body.branch === 'string' ? body.branch : null,
+          project: typeof body.project === 'string' ? body.project : null,
+          hubHost: hubHost(hub.url),
+        },
+      };
+    },
+
+    /**
+     * One file's source at one cloud commit — what the version preview builds
+     * from when the sha exists only on the cell.
+     *
+     * `sha` is validated HERE as well as on the hub. It reaches the preview
+     * route from the UNTRUSTED canvas origin (DDR-054), and "the other side
+     * checks it" is how a guard ends up existing on neither side.
+     */
+    async historyFile(sha: string, pathRaw: string): Promise<{ source: string } | null> {
+      if (!/^[0-9a-f]{7,40}$/.test(String(sha ?? ''))) return null;
+      const rel = designRelative(pathRaw);
+      if (!rel) return null;
+      const hub = credentialedHub();
+      if (!hub) return null;
+
+      const qs = new URLSearchParams({ sha, path: rel });
+      const r = await hubFetch(hub, `/api/history/file?${qs.toString()}`, { text: true });
+      return r.ok && typeof r.text === 'string' ? { source: r.text } : null;
+    },
+
+    /**
      * Detach THIS project from its workspace — the in-app `maude design
      * unlink` (fix 7's Disconnect, sync RCA 2026-08-10). Drops the committed
      * `linkedHub` AND the stored hub credential for that address (the CLI
@@ -401,6 +460,97 @@ export function createCloudEndpoints(ctx: Ctx) {
       return { url, credentialed };
     } catch {
       return null; // absent/malformed → simply not linked
+    }
+  }
+
+  /**
+   * The linked hub AND its credential, or null.
+   *
+   * "Linked" alone is not enough to make a network call on: `config.json` is
+   * COMMITTED and travels with the repo, so a `linkedHub` in it is
+   * attacker-authorable (B2). A stored credential is the corroboration — and
+   * it is also the thing we would be sending, so resolving both together is
+   * what keeps a no-credential case from becoming an unauthenticated request
+   * to an address a repo named.
+   */
+  function credentialedHub(): { url: string; token: string } | null {
+    const linked = readLinkedHub();
+    if (!linked?.credentialed) return null;
+    try {
+      const url = normalizeUrl(linked.url);
+      const token = getHubToken(url);
+      return token ? { url, token } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * One authenticated GET against the linked cell.
+   *
+   * NEITHER THE TOKEN NOR THE HUB'S OWN ERROR BODY EVER LEAVES THIS FUNCTION.
+   * Callers get `{ ok }` plus the parsed payload on success, so a hub message
+   * cannot be relayed into the browser (or into a log) by accident.
+   *
+   * A 401 IS A PLAIN READ FAILURE HERE. `/_api/cloud/status`'s 401 path
+   * DELETES the stored credential (confused-deputy F6, and correct there: the
+   * control plane is the authority on whether this device is still trusted).
+   * A History poll is not that authority — a cell restarting mid-token-renewal
+   * would otherwise silently unlink a working project. Read fails; credential
+   * stands.
+   */
+  async function hubFetch(
+    hub: { url: string; token: string },
+    path: string,
+    { text = false, timeoutMs = 8_000 } = {}
+  ): Promise<{ ok: boolean; body?: unknown; text?: string }> {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${hub.url}${path}`, {
+        headers: { authorization: `Bearer ${hub.token}` },
+        signal: ctl.signal,
+      });
+      if (!res.ok) return { ok: false };
+      if (text) return { ok: true, text: await res.text() };
+      return { ok: true, body: await res.json().catch(() => ({})) };
+    } catch {
+      return { ok: false };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * repo-relative (`.design/ui/Card.tsx`) → design-root-relative (`ui/Card.tsx`).
+   *
+   * The hub speaks design-root-relative on every file surface it has, and the
+   * cell's design root need not share this machine's folder name — so the
+   * translation belongs on this side, where both roots are known. A path
+   * outside the design tree returns null rather than being passed through: the
+   * cell would refuse it anyway, and sending it would make this a probe.
+   */
+  function designRelative(raw?: string | null): string | null {
+    if (typeof raw !== 'string' || raw === '') return null;
+    const p = raw.replace(/\\/g, '/');
+    if (p.split('/').includes('..')) return null;
+    const designRel = relative(ctx.paths.repoRoot, ctx.paths.designRoot).split(sep).join('/');
+    if (!designRel || designRel.startsWith('..')) return null;
+    if (p === designRel) return null;
+    if (p.startsWith(`${designRel}/`)) return p.slice(designRel.length + 1) || null;
+    // Already design-root-relative (the History scope the panel holds for a
+    // canvas opened from the cell) — accept it as-is rather than refusing a
+    // caller for using the hub's own vocabulary.
+    return p.startsWith('/') ? null : p;
+  }
+
+  /** The cell's host, for a header that must name SOMETHING when the project
+   *  name is unknown. Address only — already-public, and never the token. */
+  function hubHost(url: string): string | null {
+    try {
+      return new URL(url).host;
+    } catch {
+      return null;
     }
   }
 
