@@ -104,7 +104,61 @@ Reports: `.ai/logs/security-reviews/sync-v2-inc456-{defender,attacker}.md`.
 **The object-storage widening (B2) is Task 1's, explicitly.** The whole plane
 needs the write-behind, not just `assets/` — today `companion-text` and
 `code-module` are durable only through the hub's git history, which works but
-puts every class in one basket.
+puts every class in one basket. **Closed by Task 1** (`48d6e801`): the
+journal-driven write-behind covers every plane class, `hydrateFiles` is its
+restore half.
+
+### From the burn-down's own two-seat review (2026-08-18)
+
+Defender **PASS** (0 crit/0 high — two passes:
+`.ai/logs/security-reviews/sync-burn-down-defender.md` +
+`sync-v2-inc5-7-defender.md`), attacker **3 findings reassessed as non-blocking
+for this diff** (returned inline; verdict in the graph). The two LOW parity
+items the defender raised were
+fixed at the close (canvas-origin guard mirrored onto the legacy PUT alias;
+realpath re-check at the write-behind read site). What remains, forwarded to the
+FILE-PLANE worklist rather than the deletion:
+
+- **B8 restated + promoted (companion-text as an injection lane).** The attacker's
+  Chain 1: a hostile hub (DDR-054 untrusted) journals a `.md`/`.css` the peer
+  never referenced; `file-pull` admits it as `companion-text` (only `code-module`
+  is owner-gated), it lands in the design root, and the coding agent / `maude
+  design *` helpers later read it as spec — the trifecta, structurally. This is a
+  **parent-arc** property (the manifest pull replaced reference-derivation in
+  Increment 3; the burn-down only deleted the already-dead `asset-pull.ts`), and
+  it is the same concern as inherited **B8**. Fix belongs with the file plane:
+  gate/quarantine hub-originated plane-B prose, or mark it untrusted at the agent
+  boundary. Not this deletion's to close.
+- **A7 consent is a `console.warn` a GUI user never sees (MEDIUM, at the floor —
+  the one live item from the close).** The DDR-064 A7 notice fires via
+  `noticeSharedDocOnce` → `console.warn`. That was accepted for CELLS (consent by
+  configuration — the operator turned pairing on). The default-ON flip makes
+  shared-doc the desktop default, and the DDR-177 desktop user is terminal-free,
+  so the notice is operationally invisible to exactly the user the cutover newly
+  reaches. **Not a data-exposure regression** — the flip changes the doc
+  MECHANISM (one Y.Doc vs two), not which hub receives data, and hub trust is
+  consented at LINK time (URL + token) under both paths. But the checklist item
+  is half-met on desktop. **Fix: a GUI consent surface** (toast/panel) for the
+  first shared-doc engagement against a hub — desktop UI work, DDR-064's to own.
+  Tracked as a **BINDING follow-up before Increment 8** (the relay deletion),
+  since after that there is no two-doc path to fall back to. Attacker report:
+  `.ai/logs/security-reviews/sync-v2-inc5-7-attacker.md`.
+- **F1 write-behind symlink read (MEDIUM) — CLOSED at the close** (`3fdcc233`):
+  `createWriteBehind` now `containedReal`-checks the realpath before reading
+  bytes, so a committed `assets/x.png -> /etc/passwd` that ever slipped a journal
+  producer is refused rather than mirrored to durable storage. Was the defender's
+  L-2 and the attacker's F1; the attacker reviewed the pre-fix HEAD.
+- **Default-ON on UPGRADE (attacker creativity finding).** `syncFiles` +
+  `propagateDeletes` + `sharedDoc` are all default-ON, so a self-hoster's first
+  upgrade enables the whole plane before they read the rollback note. Consider a
+  first-upgrade prompt rather than a silent enable — a product decision for the
+  file-plane arc, not the burn-down. Related to the A7 item above.
+- **Probe `holds()` omits `matchesScope`** (both seats, below floor). An existence
+  oracle across token scopes within one checkout — **pre-existing**, and the
+  burn-down strictly narrowed it (removed the bucket-read half). Filed, not
+  regressed.
+- **OIDC browser-auth door** (`handleOidc` + `oidc*.mjs`, landed in `48d6e801` by a
+  concurrent session) — out of scope for this audit; needs its own AppSec pass.
 
 ## Tasks
 
@@ -200,3 +254,37 @@ Per increment, same ladder as the parent arc:
 - [x] After Task 2: both doc paths coexist; nothing deleted (`MAUDE_SHARED_DOC=0` verified as the rollback flip in tests)
 - [ ] After Task 3: one cold-start applier, one code path, perf no worse than before — **next release, after the default-ON soak**
 - [x] `pnpm --filter @maude/site gen:roadmap` regenerated at each plan-status change
+
+---
+
+## Retro (2026-08-18, Tasks 1–2 closed under override)
+
+- **The strangler pattern paid off even when the soak gate was overridden.** The
+  parent arc had already made the old engines dead code — `file-pull.ts`
+  superseded reference-derivation, `syncFiles` defaulted ON — so Increment 5 was
+  a deletion of already-unreachable paths, not a risky cutover. That's why
+  shipping the plane and its deletion in one release stayed safe despite the
+  preconditions being waived: the risk the soak guarded against had already been
+  retired one arc earlier. The lesson for the next plan: a burn-down's real risk
+  lives in whether the replacement is *live and exclusive*, not in the calendar.
+- **"One door" is worth more than a per-URL guard.** Consolidating the legacy PUT
+  routes onto `handleFileDoor` meant the security review had ONE admission path
+  to reason about. The attacker's "you lost the `assets/`-subtree containment"
+  finding evaporated under that lens — the door's realpath containment covers it,
+  and re-adding the old guard would have reintroduced the divergence. When a
+  reviewer flags a "lost guard," check first whether consolidation absorbed it.
+- **The lane-decided-once-per-boot pattern (`decidePushLane`) is the cheap way to
+  prove mutual exclusion.** Both defenders independently confirmed the plane and
+  the legacy client can never both push — because one boolean, set once, gates
+  it. A per-call check would have needed a whole invariant argument; a boot-time
+  verdict made it a one-line proof. Reach for this shape whenever two lanes must
+  never coexist.
+- **What the override cost, honestly:** the "negative LOC vs v0.60.7" acceptance
+  criterion became unassessable (the bulk branch adds the whole plane v0.60.7
+  predates), and three validation items (real-tree byte parity, desktop
+  self-containment against a built `.app`, fleet verify) move to the release, not
+  the close. `--quick` compounded this — build + cross-platform + a11y were
+  skipped. A full `/flow:validate` before merge is mandatory, recorded in STATE.
+- **Process nit:** `maude kg record-log` failed with an ENOENT on its temp path
+  when recording the security verdicts. Worked around by folding the verdict into
+  the plan-close decision. Worth a bug-fix pass on record-log's temp-dir handling.

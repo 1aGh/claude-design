@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-18T18:13:46.864Z",
+  "generated": "2026-08-18T18:20:05.331Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1158,6 +1158,17 @@
       "phaseKey": null
     },
     {
+      "id": "feature-sync-burn-down-and-shared-doc",
+      "title": "Feature: Sync v2 burn-down + the shared-doc epilogue",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-sync-burn-down-and-shared-doc.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
       "id": "feature-sync-carries-the-path",
       "title": "Feature: sync carries the path, so a project arrives whole",
       "status": "done",
@@ -2122,17 +2133,6 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-production-grade-hardening.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-sync-burn-down-and-shared-doc",
-      "title": "Feature: Sync v2 burn-down + the shared-doc epilogue",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-sync-burn-down-and-shared-doc.md",
       "archived": false,
       "phaseKey": null
     },
