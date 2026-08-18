@@ -762,6 +762,22 @@ const HIST_MISS_MAX = 256;
  * it. Memoized per repo root because a process serves one.
  */
 let cloudHistoryFor: { root: string; api: ReturnType<typeof createCloudEndpoints> } | null = null;
+
+/**
+ * Forget every historical build and every remembered absence.
+ *
+ * Called when the project's LINK changes (Connect / Disconnect). Both caches
+ * are keyed by `(path, sha)` and neither mentions which repo answered, so a
+ * cloud-sourced entry — and, more importantly, an absence the CELL was
+ * authoritative about — would otherwise outlive the link and be served to a
+ * now-local project that may well have the object. (Security re-review of
+ * 8134ca8f, finding F5.)
+ */
+export function clearHistoricalCaches(): void {
+  historicalCanvasCache.clear();
+  historicalMissCache.clear();
+  cloudHistoryFor = null;
+}
 function cloudHistoryApi(ctx: Context): ReturnType<typeof createCloudEndpoints> {
   if (cloudHistoryFor?.root !== ctx.paths.repoRoot) {
     cloudHistoryFor = { root: ctx.paths.repoRoot, api: createCloudEndpoints(ctx) };
@@ -812,7 +828,7 @@ async function serveHistoricalCanvas(
     // The sha is validated on BOTH sides: `/^[0-9a-f]{7,40}$/` here (via
     // `historyFile`) and again on the hub. It arrives from the untrusted canvas
     // origin, and "the other end checks it" is how a guard ends up on neither.
-    // A sha that already failed BOTH lookups fails again — say so without
+    // A sha that already failed AUTHORITATIVELY fails again — say so without
     // spending the git process or the round trip.
     if (historicalMissCache.has(key)) {
       return new Response('No saved version of this canvas', { status: 404 });
@@ -820,8 +836,23 @@ async function serveHistoricalCanvas(
     let source = await gitShowFile(ctx.paths.repoRoot, sha, repoRel);
     if (source == null) {
       const fromCloud = await cloudHistoryApi(ctx).historyFile(sha, repoRel);
-      source = fromCloud?.source ?? null;
-      if (source == null) {
+      source = fromCloud.ok ? fromCloud.source : null;
+      // ONLY AN AUTHORITATIVE ABSENCE IS REMEMBERED (security re-review of
+      // 8134ca8f, finding F1). Two things must never be cached here:
+      //
+      //   1. A TRANSIENT failure. `unreachable` / `not-linked` mean the cell
+      //      could not answer, not that the version is absent — remembering
+      //      that outlives the outage and makes a real version permanently
+      //      unpreviewable, with no way to clear it but a restart.
+      //   2. A MUTABLE ref. The local engine's positional guard admits `HEAD`,
+      //      branch and tag names, and DiffView's own "compare with saved"
+      //      opens `?sha=HEAD`. Caching a miss for a moving name is a bug by
+      //      construction: diff an as-yet-uncommitted canvas, commit it, and
+      //      `HEAD` now resolves — but the cached miss short-circuits before
+      //      `gitShowFile` is ever asked again. That is exactly the "read
+      //      failure rendered as absence" this feature exists to delete.
+      const authoritative = !fromCloud.ok && fromCloud.reason === 'not-found';
+      if (source == null && authoritative && /^[0-9a-f]{7,40}$/.test(sha)) {
         historicalMissCache.add(key);
         if (historicalMissCache.size > HIST_MISS_MAX) {
           const oldest = historicalMissCache.values().next().value;
@@ -1178,7 +1209,11 @@ export function createHttp(
   // GitHub routes: MAIN-ORIGIN ONLY (absent from CANVAS_SAFE_API +
   // startCanvasServer) and loopback-Host gated — every route either bears or
   // stores the cloud credential.
-  const cloudApi = createCloudEndpoints(ctx);
+  const cloudApi = createCloudEndpoints({
+    ...ctx,
+    // Connect and Disconnect both change WHO can answer for a past version.
+    onLinkChanged: clearHistoricalCaches,
+  });
   // Figma import (DDR-216). Same dual-allowlist rule as the GitHub + cloud
   // routes: MAIN-ORIGIN ONLY, plus loopback-Host and same-origin gating on
   // every one of them — each either stores or spends the user's Figma PAT.

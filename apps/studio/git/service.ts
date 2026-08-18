@@ -27,6 +27,7 @@
 import { spawn } from 'node:child_process';
 import fs, { existsSync } from 'node:fs';
 import { isAbsolute, join, relative, sep } from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 
 import git from 'isomorphic-git';
 import http from 'isomorphic-git/http/node';
@@ -346,11 +347,20 @@ function runGit(
         child.kill('SIGKILL');
       }, timeoutMs);
     }
+    // StringDecoder, NOT `d.toString()` per chunk — a pipe splits at arbitrary
+    // BYTE boundaries, so a multi-byte sequence straddling two chunks decodes
+    // to U+FFFD on each side and `git show` of a canvas with non-ASCII copy
+    // comes back silently corrupted. The hub's runner carries the identical
+    // fix: this commit's whole premise is that a cloud row and a local row
+    // cannot differ in shape, and "one of the two mangles diacritics" is
+    // exactly that kind of difference.
+    const outDec = new StringDecoder('utf8');
+    const errDec = new StringDecoder('utf8');
     child.stdout.on('data', (d) => {
-      stdout += d.toString();
+      stdout += outDec.write(d);
     });
     child.stderr.on('data', (d) => {
-      stderr += d.toString();
+      stderr += errDec.write(d);
     });
     child.on('error', (e) => {
       if (timer) clearTimeout(timer);
@@ -358,6 +368,8 @@ function runGit(
     });
     child.on('close', (code) => {
       if (timer) clearTimeout(timer);
+      stdout += outDec.end();
+      stderr += errDec.end();
       resolveRun({ code: timedOut ? 124 : (code ?? 1), stdout, stderr, timedOut });
     });
   });

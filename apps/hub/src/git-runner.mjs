@@ -15,6 +15,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 
 /** Hard ceiling on a single git invocation. A hung git must not wedge the
  *  agent's queue forever — the change is already safely on disk, so timing out
@@ -23,6 +24,21 @@ const GIT_TIMEOUT_MS = 60_000;
 
 /** Cap captured output. A pathological git error must not become a memory leak. */
 const MAX_CAPTURE = 64 * 1024;
+
+/**
+ * The ONLY env keys a per-call `env` may set.
+ *
+ * Default-closed on purpose. git reads a long list of environment variables
+ * that redirect what it opens or executes — GIT_DIR / GIT_WORK_TREE /
+ * GIT_OBJECT_DIRECTORY / GIT_ALTERNATE_OBJECT_DIRECTORIES re-point the
+ * repository, and GIT_SSH_COMMAND / GIT_EXTERNAL_DIFF / GIT_PROXY_COMMAND /
+ * GIT_CONFIG_COUNT+KEY+VALUE (via core.fsmonitor, core.sshCommand,
+ * uploadpack.packObjectsHook) are all command-execution levers. No caller
+ * needs any of them, and the per-call seam exists precisely so FUTURE callers
+ * use it — which is when an un-allowlisted merge would become a hole nobody
+ * re-reviews. (Security re-review of 8134ca8f, finding A.)
+ */
+const ALLOWED_CALL_ENV = new Set(['GIT_LITERAL_PATHSPECS']);
 
 /**
  * A GitRunner (the injected shape autocommit.ts expects).
@@ -59,7 +75,7 @@ export function createGitRunner({
           shell: false,
           env: {
             ...env,
-            ...(callEnv ?? {}),
+            ...filterCallEnv(callEnv),
             // git must never stop to ask a human that does not exist. Without
             // this, a credential prompt inside a container hangs until the
             // timeout on every single push.
@@ -75,6 +91,17 @@ export function createGitRunner({
         return;
       }
 
+      // StringDecoder, NOT `buf.toString()` per chunk. A pipe splits at
+      // arbitrary BYTE boundaries (~64 KiB), so a multi-byte sequence
+      // straddling two chunks decodes to U+FFFD on each side and the output is
+      // silently corrupted — `č` becomes `č\uFFFD\uFFFDč`. Harmless while this
+      // runner only carried `add`/`commit`/`push` output (short, ASCII); the
+      // history route sends whole canvas bodies through it, and this repo's own
+      // canvases carry Czech copy. The route's `cat-file -s`-before-`show`
+      // design exists to stop a half-file building into a plausible-looking
+      // wrong canvas; this closed the same hole by a different mechanism.
+      const outDec = new StringDecoder('utf8');
+      const errDec = new StringDecoder('utf8');
       let stdout = '';
       let stderr = '';
       let settled = false;
@@ -82,6 +109,9 @@ export function createGitRunner({
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        // Flush whatever partial sequence the decoders still hold.
+        stdout += outDec.end();
+        stderr += errDec.end();
         resolve({ code, stdout, stderr: extra ? `${stderr}${extra}` : stderr });
       };
 
@@ -91,10 +121,10 @@ export function createGitRunner({
       }, timeoutMs);
 
       child.stdout.on('data', (b) => {
-        if (stdout.length < maxCapture) stdout += b.toString();
+        if (stdout.length < maxCapture) stdout += outDec.write(b);
       });
       child.stderr.on('data', (b) => {
-        if (stderr.length < MAX_CAPTURE) stderr += b.toString();
+        if (stderr.length < MAX_CAPTURE) stderr += errDec.write(b);
       });
       child.on('error', (err) => finish(127, `\n${err.message}`));
       child.on('close', (code) => finish(code ?? 1));
@@ -151,4 +181,14 @@ export async function ensureRepo(repoDir, run, { bot } = {}) {
 export async function gitAvailable(run) {
   const r = await run(['--version'], { cwd: process.cwd() });
   return r.code === 0;
+}
+
+/** Keep only the env keys a call is allowed to set (see ALLOWED_CALL_ENV). */
+function filterCallEnv(callEnv) {
+  if (!callEnv) return {};
+  const out = {};
+  for (const [k, v] of Object.entries(callEnv)) {
+    if (ALLOWED_CALL_ENV.has(k)) out[k] = v;
+  }
+  return out;
 }

@@ -164,7 +164,16 @@ describe('the new network surface', () => {
   });
 
   test('the token and the hub error body never leave the server', () => {
-    expect(ENDPOINTS).toContain('if (!res.ok) return { ok: false };');
+    // Assert the PROPERTY, not the line — the re-review's closing note was that
+    // these pins caught the letter and not the behaviour, and this one broke on
+    // the very fix it should have been indifferent to. A non-2xx must produce
+    // no body and no text; a bare status code is fine, the cell's message never is.
+    const fn = ENDPOINTS.slice(ENDPOINTS.indexOf('async function hubFetch('));
+    const body = fn.slice(0, fn.indexOf('\n  }\n'));
+    expect(body).toContain('if (!res.ok) return { ok: false');
+    expect(body).not.toMatch(/if \(!res\.ok\)[\s\S]{0,120}await res\.(text|json)/);
+    // The token reaches exactly one place: the Authorization header.
+    expect((ENDPOINTS.match(/hub\.token/g) ?? []).length).toBe(1);
     expect(APP).not.toContain('Bearer');
   });
 
@@ -177,8 +186,15 @@ describe('the new network surface', () => {
 
   test('the sha is validated on the desktop too, not only on the hub', () => {
     // It reaches the preview route from the UNTRUSTED canvas origin (DDR-054);
-    // "the other end checks it" is how a guard ends up on neither end.
-    expect(ENDPOINTS).toContain("if (!/^[0-9a-f]{7,40}$/.test(String(sha ?? ''))) return null;");
+    // "the other end checks it" is how a guard ends up on neither end. Pin the
+    // GUARD, not the whole statement — the failure branch changed shape once
+    // already (it now reports a reason so a caller can tell absence from an
+    // outage), and this assertion should survive that.
+    const fn = ENDPOINTS.slice(ENDPOINTS.indexOf('async historyFile('));
+    const body = fn.slice(0, fn.indexOf('\n    },'));
+    expect(body).toContain('[0-9a-f]{7,40}');
+    // The guard must come FIRST — before the path, the link, or any fetch.
+    expect(body.indexOf('[0-9a-f]{7,40}')).toBeLessThan(body.indexOf('hubFetch'));
   });
 });
 
