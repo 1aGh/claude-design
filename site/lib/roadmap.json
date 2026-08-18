@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-18T12:16:27.017Z",
+  "generated": "2026-08-18T13:16:06.523Z",
   "currentPhase": null,
   "phases": [
     {
@@ -2100,6 +2100,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-production-grade-hardening.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-self-hosted-workspace-readiness",
+      "title": "Feature: Self-hosted workspace readiness — durability, people, BYO identity, and a guided setup",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-self-hosted-workspace-readiness.md",
       "archived": false,
       "phaseKey": null
     },
