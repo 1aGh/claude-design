@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-18T14:50:36.610Z",
+  "generated": "2026-08-18T14:54:19.736Z",
   "currentPhase": null,
   "phases": [
     {
@@ -2111,6 +2111,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-self-hosted-workspace-readiness.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-sync-burn-down-and-shared-doc",
+      "title": "Feature: Sync v2 burn-down + the shared-doc epilogue",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-sync-burn-down-and-shared-doc.md",
       "archived": false,
       "phaseKey": null
     },

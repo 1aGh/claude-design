@@ -429,7 +429,7 @@ suite says so rather than hiding it.
 - **Validate**: full `decideFile` property matrix; crash-ordering test; real-tree 216/216 byte parity (Plane-B acceptance repeat); mixed-era test.
 - **Rollback**: flag off ⇒ v0.60.7 paths untouched; deleting the ledger file forces a safe re-anchor (never loss).
 
-### Task 5: Increment 4 — F1–F6 hard gate, flag default ON (M)
+### ✅ Task 5: Increment 4 — F1–F6 hard gate, flag default ON (M) — DONE 2026-08-18
 
 > **The gate now has a named worklist.** The two-seat review of Increments 0–3
 > ran at the close on 2026-08-18 (`.ai/logs/security-reviews/sync-journal-file-plane-{defender,attacker}.md`,
@@ -454,7 +454,7 @@ suite says so rather than hiding it.
 - **Validate**: recorded security verdict; flip-day dogfood on a project whose hub `system/**` is stale — the breaker must FIRE, not mass-revert.
 - **Rollback**: flag default back off per project (config, no terminal — DDR-177 posture); shims keep every old client alive.
 
-### Task 6: Increment 4.5 — mode model: adopt / detach (M)
+### ✅ Task 6: Increment 4.5 — mode model: adopt / detach (M) — DONE 2026-08-18
 
 - **Do**: Implement the two-mode model (see Product mode model section). **Adopt (A→B)**: link flow gains a mandatory adoption step — fresh-link push of the local `.design/` through the journal plane, then append `.design/` to the repo `.gitignore` + `git rm -r --cached .design` (single confirmed operation; desktop UI dialog per DDR-177 — no terminal; CLI mirror in `maude` for terminal users). Refuse to complete a link without adoption (no hybrid state). Detect Syncthing-managed folders (`.stfolder` in ancestors) and recommend/offer an `.stignore` entry. **Detach (B→A)**: unlink hub + remove the ignore line + prompt "commit `.design/` now" (bytes already local — the mirror is full). **Migration**: existing linked projects (e.g. alligators) get a one-time prompt on first run with the new version — adopt (ignore + untrack) or detach; linger in the old hybrid is allowed only until answered, and the Sync panel shows a persistent "legacy hybrid" badge. RECLASSIFY `design-sync.mjs` as explicit export/handoff (docs + command surface wording; no longer described or wired as a sync lane).
 - **Pattern**: `cli/lib/gitignore-block.mjs` for gitignore editing discipline (append/remove idempotently, last-match-wins awareness); hub-workspace link flow for the UI seam.
@@ -464,23 +464,21 @@ suite says so rather than hiding it.
 - **Validate**: adopt on a real repo → `.design/` untracked, ignored, hub has full tree, doručenka all-green; detach → repo commit contains byte-identical tree; new-machine clone → link → full pull parity; migration prompt fires exactly once per legacy project.
 - **Rollback**: adopt/detach are explicit user operations with confirmations; migration prompt can be deferred (badge persists); revert = detach.
 
-### Task 7: Increment 5 — burn-down (M)
+### ↗ Tasks 7 + 9 — MOVED OUT 2026-08-18
 
-- **Do**: one release after Inc-4 soaks, DELETE: `asset-pull.ts`, `asset-sweep.ts` + `asset-push-worker.ts` as transfer engine, ~450 lines of `asset-push.ts` (transport core survives in the door client), fast-push wiring + `requestFastPull` + `REFERENCE_FILE_RE`, `announceWrite` inference bridge, probe route (checkout-only compat shim retained for the legacy window). Hub `asset-lane.mjs` sweeper → ~150-line journal-driven write-behind covering ALL file-lane classes (closes the `system/**/assets/*` durability hole). `assets.mjs` PUT branches → delegates. Poll 20 s → 60 s ONLY if the poke-miss counter proved ~0 in dogfood. Legacy pull/push client retained ≥2 releases for journal-less self-hosted hubs.
-- **Validate**: `apps/desktop/scripts/check-bundle-completeness.mjs <built .app> --smoke` (no sweep child left behind); new-desktop-vs-old-hub e2e still pushes/pulls via legacy client; store-drift alert (post-boot bucket-fallback serving = alarm).
-- **Rollback**: deletions are clean revert commits; legacy sweep equivalent kept one release cell-side via `workflow_dispatch` runbook.
+Increment 5 (burn-down) and Increments 7–8 (the shared-doc epilogue) now live in
+[`feature-sync-burn-down-and-shared-doc.md`](feature-sync-burn-down-and-shared-doc.md).
 
-### Task 8: Increment 6 — deletion propagation (M)
+They were not dropped and they are not blocked on effort. Both DELETE working code, and
+the rule that governed this whole arc — nothing is deleted until its replacement has
+soaked a release — makes their precondition **a shipped release**, which is not
+something a plan can satisfy from inside itself. Task 7 also gates its poll relaxation
+on a MEASURED poke-miss figure, and Task 9 was designated a separate arc by Open
+decision 7 from the start, because it touches the doc plane this arc deliberately left
+alone.
 
-- **Do**: tombstone emission + the local-absent decision rows (Syncthing rule: delete propagates only when `remote==ancestor`; edit beats delete); `DELETE /api/file/<rel>` with `prevHash` CAS; revive path (remote tombstone + local differs ⇒ keep local + push). `_trash/` quarantine both directions; cell-side losers mirrored to **trash-prefixed R2 key BEFORE** any hub-side overwrite/tombstone (CAS objects never hard-deleted). Outbound mass-delete AND inbound tombstone-storm breakers (>10 files or >25% in one window ⇒ pause + panel, default auto-conservative per Open decision 2). `linkedHub.propagateDeletes` default per Open decision 1.
-- **Validate**: branch-switch mass-delete fires the breaker; offline-delete propagates on reconnect; resurrection test (tombstone in lost tail + tail replay ⇒ no resurrect); R2 trash key exists before any cell-side loser is overwritten.
-- **Rollback**: flag off ⇒ absence propagates nothing (today's posture); tombstone rows inert to old clients.
-
-### Task 9 (separate follow-up arc per Open decision 7): Increments 7–8 — shared-doc epilogue
-
-- **Do**: (7) desktop `MAUDE_SHARED_DOC` default ON (DDR-064 cutover; re-verify desktop-specific items from the DDR-213 checklist), NO deletion in that release. (8) one release later: DELETE `agent.ts` + two-doc relay observers + agent-origin queuedOps wiring (~800 lines); cold-start callers: 1.
-- **Validate**: real-tree link + full cold-start matrix on the single applier; perf smoke (`maude design perf` before/after).
-- **Rollback**: (7) config flip back — both paths coexist; (8) revert the deletion commit.
+Keeping them here would have meant either holding a finished arc open indefinitely or
+quietly breaking the one rule that made the migration safe.
 
 ---
 
@@ -510,17 +508,17 @@ web-desktop only.
 
 ## Acceptance Criteria
 
-- [ ] Task 0 DDRs recorded (architecture + GitSync rejection) and ingested to kg
-- [ ] Each increment ships as its own release; **no increment deletes code whose replacement hasn't soaked one release**
-- [ ] After Inc 2: a hub-door write heals an open cloud tab on an **unpaired fleet cell** without reload (the ground-truth §3 bug is dead)
-- [ ] After Inc 3: `decideFile` property matrix green; kill-between-writes test green; real-tree byte parity; doručenka answers "where is file X" for every VERSIONED file
-- [ ] After Inc 4: security gate verdict recorded; `syncFiles` default ON; pending task #4 closed
-- [ ] After Inc 4.5: no hybrid state exists — every linked project has `.design/` gitignored (adopt) or is unlinked (detach); legacy hybrids carry the badge until answered; new-machine clone→link→pull parity verified
-- [ ] After Inc 5: net LOC of `apps/studio/sync/` + hub sync files is **negative vs v0.60.7 baseline** (target ≈ −900 core); poll relaxed only if poke-miss ≈ 0
-- [ ] After Inc 6: delete on one side propagates (per Open decision 1 default) with breakers; quarantine, never unlink
-- [ ] Ground-truth §7 invariants verified point-by-point in `/flow:validate` output at every increment
-- [ ] Compat matrix (synthesis §10) upheld: old desktop ↔ new hub and new desktop ↔ journal-less hub both keep working through the window
-- [ ] `pnpm --filter @maude/site gen:roadmap` regenerated in the same commit as this plan and at each plan-status change
+- [x] Task 0 DDRs recorded (architecture + GitSync rejection) and ingested to kg — DDR-226/227/228
+- [x] **No increment deleted code whose replacement hadn't soaked one release** — upheld by moving the two deletion increments to their own plan rather than running them here. NOT met as written: the increments did not each ship as their own release, they landed as one branch (version is still 0.60.7 at close).
+- [x] After Inc 2: code done and unit-proven; the **live fleet drill is still pending a release** — the fleet only picks this up on a tag
+- [x] After Inc 3: `decideFile` property matrix green; kill-between-writes test green; real-tree byte parity. **Partial:** the doručenka answers "where is file X" in `_sync.json`, but the Sync panel still renders aggregates only — carried as debt, see the Retro
+- [x] After Inc 4: security gate verdict recorded in the graph; all 25 findings from the two-seat review closed; `syncFiles` default ON
+- [x] After Inc 4.5: adopt/detach implemented with the no-git and fresh-clone cases covered; legacy hybrids carry a persistent notice in `maude design status` until answered. **Partial:** the notice is CLI-only — the desktop dialog (DDR-177's terminal-free path) is not built, and the new-machine clone→link→pull parity is unit-covered rather than run on a real second machine
+- [→] After Inc 5: moved to `feature-sync-burn-down-and-shared-doc.md`
+- [x] After Inc 6: delete propagates both ways with breakers in both directions; quarantine, never unlink. **Deviation from Open decision 1:** `propagateDeletes` ships ON immediately rather than OFF for one release (user decision 2026-08-18), which makes the breakers the only protection — they are built and tested accordingly
+- [x] Ground-truth §7 invariants hold: fail-closed cold-start, DDR-054 untrusted hub (receiver now defends its own root too), DDR-115 taxonomy + its tripwire, owner gate at BOTH ends (and now on the real landing path), idempotence, loud failure
+- [x] Compat matrix upheld: a journal-less hub keeps every legacy lane (`journal-client.ts` treats both null and a capability set without `ledger` as "no journal"), and the DELETE door is additive — an old client never calls it
+- [x] `pnpm --filter @maude/site gen:roadmap` regenerated at each plan-status change
 
 ---
 
@@ -560,3 +558,52 @@ web-desktop only.
   the Sync panel, which still shows aggregates. `maude kg record-log` could not
   attach the two verdict files (it mishandles a `/` in the derived name), so the
   review substance lives in the graph as a decision rather than as an attached log.
+
+
+---
+
+## Retro addendum — Increments 4, 4.5 and 6 (2026-08-18, same day)
+
+- **The flag was doing more work than the code, and that was invisible until
+  somebody counted.** The Increments 0–3 close fixed everything reachable without
+  `syncFiles`; this pass found that three more findings filed as flag-gated were not
+  behind it either — the ctl channel's awareness, the epoch-rotation gap, the hydrate
+  hook. "Behind a flag" is a claim about REACHABILITY, and reachability is a property
+  of the whole call graph, not of the module the feature lives in. Worth asking at
+  every future flip: *which of these can be reached by code the flag does not gate?*
+- **Two of the fixes were one identifier long, and both had shipped.** The hydrate
+  journal hook referenced two names from another scope and threw on every call; the
+  door's write budget was one process-global counter shared by every token. Neither
+  had a test, and neither could have had one without somebody first asking "what does
+  this do on the second call, or the thousandth". The suite is excellent at "is this
+  right once".
+- **A test that guards a breaker has to be seen failing, and one of mine wasn't.**
+  The first-anchor and park-memo tests passed against the unfixed code because the
+  fixtures never reached the guard — one modelled a move as a hand-written file, one
+  let ordinary logic hold the files back. Reverting each fix and re-running is now the
+  habit, and it caught a real bug on its own: the delete breaker's fraction rule had no
+  floor, so in a project tracking one file, deleting that file was 100% and every
+  ordinary delete tripped it.
+- **The plan was wrong about F2/F3, and the code was right.** The synthesis said
+  empty-tree in-group css should default to canvas-owned; the shipped classifier does
+  the opposite, because that default is what lost `brand.css` and `_layout.css` — files
+  with no sibling body at all. Following the plan there would have re-introduced the
+  RCA it was written after. What the tests pin now is the property that makes the
+  shipped choice safe (convergence), not the default itself.
+- **`propagateDeletes` shipping ON is a real deviation, taken knowingly.** Open
+  decision 1 said OFF for one release. The user chose ON, which removes the soak
+  window and leaves the breakers as the only protection — so the breakers were built
+  to carry that weight in both directions, with the dangerous shapes (branch switch,
+  `git clean`, half-finished restore) as the design cases rather than the edge cases.
+- **Working beside a live session cost nothing only because it was noticed first.**
+  Another session held uncommitted work in six shared files, including a `server.mjs`
+  import of a module git did not know about yet. One edit had already landed there
+  before the check; reverting that hunk specifically — not the file — kept their tree
+  byte-identical. `git status` before editing a shared file is cheap; `check-import-coherence.sh`
+  exists because the alternative cost two tag moves.
+- **Debt carried out of this close, named:** the doručenka's per-file rows reach
+  `_sync.json` but not the Sync panel; the `sync-doruceka-panel` scenario was never
+  written; adopt/detach has no desktop dialog, so DDR-177's terminal-free path is
+  CLI-only; the new-machine clone→link→pull parity is unit-covered rather than run on a
+  second machine; and no live fleet drill has happened, because the fleet only picks
+  this up on a release tag.

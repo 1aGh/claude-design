@@ -2,6 +2,33 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "the-whole-design-folder-syncs",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "surface": "design-ui",
+      "title": "Your whole design folder syncs now",
+      "summary": "A linked project mirrors everything in .design/ both ways — design-system stylesheets, READMEs, fonts, images — not just the canvases. Before, a teammate opening the project got every canvas and none of the styling it depended on."
+    },
+    {
+      "id": "deleting-a-file-deletes-it-everywhere",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "surface": "design-ui",
+      "title": "Delete a file and it stays deleted",
+      "summary": "Removing a file now removes it for everyone, instead of it quietly coming back on the next sync. If a whole batch disappears at once — a branch switch, a bad restore — sync stops and asks first, and anything it does remove is recoverable rather than gone."
+    },
+    {
+      "id": "repo-owned-or-hub-owned",
+      "version": null,
+      "date": null,
+      "kind": "improvement",
+      "surface": "design-ui",
+      "title": "One owner for your design folder",
+      "summary": "A project is either committed to your repo or mirrored by your hub — never both, which used to let a git pull and a sync undo each other. Switching either way takes one command and never moves a file off your disk."
+    },
+    {
       "id": "history-follows-the-cloud",
       "version": null,
       "date": null,
