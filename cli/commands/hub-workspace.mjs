@@ -356,7 +356,7 @@ async function runVerification(step, { config, hubSecret, adminPassword, outDir,
     case 's3-no-expiry':
       return verifyNoLifecycle(config, pkgRoot);
     case 'restore-drill':
-      return verifyRestoreDrill(config);
+      return verifyRestoreDrill(config, { outDir, pkgRoot });
     default:
       return {
         ok: false,
@@ -561,19 +561,43 @@ async function verifyNoLifecycle(config, pkgRoot) {
   }
 }
 
-/** A backup nobody has restored is a hypothesis. Runs the real drill. */
-async function verifyRestoreDrill(config) {
+/**
+ * A backup nobody has restored is a hypothesis. Runs the real drill.
+ *
+ * This used to report `skipped` unconditionally, on the grounds that "the
+ * drill needs the hub's own data dir, which lives inside the container". That
+ * was never true of the drill: `runRestoreDrill` restores into a SCRATCH
+ * directory from a target resolved off flags and env — it never touches the
+ * hub's data dir. And the credentials it needs are the ones we just rendered
+ * into `.env` on this machine.
+ *
+ * What the old note WAS right about is the claim it makes. Running it at
+ * provisioning time proves the code path works against this bucket with these
+ * credentials; it does not prove the deployment is restorable next month. So
+ * it is labelled a PROVISIONING drill and the recurring duty stays uncrossed
+ * in `operatorDuties()`.
+ */
+async function verifyRestoreDrill(config, { pkgRoot }) {
   if (!config.s3) return { ok: false, skipped: true, note: 'no backup target configured' };
-  // The drill needs the hub's own data dir, which lives inside the container.
-  // Deliberately left to the operator's `maude hub restore-drill` rather than
-  // reaching into a volume from out here: a half-run drill that reports
-  // success is worse than an honest skip, and this is the one check whose
-  // whole point is that somebody actually did it.
-  return {
-    ok: false,
-    skipped: true,
-    note: 'run `maude hub restore-drill` against this deployment — it needs the hub data dir',
-  };
+
+  const drill = await sh(process.execPath, [
+    resolve(pkgRoot, 'cli/bin/maude.mjs'),
+    'hub',
+    'restore-drill',
+    '--json',
+  ]);
+  if (drill.code !== 0) {
+    const text = `${drill.stdout}${drill.stderr}`;
+    if (/no complete backup generation/i.test(text)) {
+      return {
+        ok: false,
+        skipped: true,
+        note: 'no generation exists yet (the first one lands within 6h) — run `maude hub restore-drill` then',
+      };
+    }
+    return { ok: false, note: `provisioning drill failed: ${text.trim().slice(0, 160)}` };
+  }
+  return { ok: true, note: 'provisioning drill passed — schedule it, this proves today only' };
 }
 
 /** Retry a flaky-at-startup operation. Rethrows the LAST error, so the

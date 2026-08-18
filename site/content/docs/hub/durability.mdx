@@ -1,0 +1,67 @@
+---
+title: Durability
+description: What survives a restart, a lost volume, and a second hub pointed at the same bucket — and how to prove it rather than hope.
+---
+
+A workspace holds the only copy of something that matters. This page is what happens to it.
+
+## What lives where
+
+| Volume | Holds | Lose it and |
+| --- | --- | --- |
+| `/data` | `hub.db` (the documents), `tokens.db`, `users.db`, `invites.db`, the journal, this hub's identity | accounts and live document state go |
+| `/repo` | the git checkout — **the project's history** | the history goes |
+
+Two volumes, deliberately separate: a checkout can be reconstructed from a mirror, documents cannot, and an operator resetting one should not destroy the other.
+
+## What survives what
+
+- **Restarting the container, rebooting the box, changing the image tag** — everything survives. The compose file mounts both volumes by name.
+- **`docker compose down -v`** — deletes them. That is what `-v` means.
+- **Losing `/repo` alone** — the hub **refuses to start** and says so. It will not restore the checkout beside newer documents (that pairing is corruption that reads as an app bug for weeks), and it will not roll the documents back to match. There is no safe automatic answer, so a human picks.
+- **Losing both** — the hub restores from the newest backup generation, announces which one and how old it was, and carries on. This is the normal path, not an emergency: it is the same code the cloud runs on every cold start, which is the only reason anyone knows it works.
+- **The backup target being unreachable** — the hub starts anyway. A bucket that did not answer is not evidence that anything was lost, and turning a credential rotation into an outage is the wrong trade.
+
+There is deliberately **no staleness kill-switch**. Eight-day-old data beats no service. The age is logged and surfaced in the console; it never stops a boot.
+
+## Backups
+
+Configuring object storage arms the schedule automatically — every 6 hours, keeping 14 generations. One generation contains:
+
+- `VACUUM INTO` snapshots of every database (a consistent copy of a *live* database; `cp` produces a torn one that restores as corruption)
+- `git bundle --all` of the checkout — verifiable with `git bundle verify`, restorable with a plain `git clone`
+- both **in the same generation**, because documents from 03:00 beside a checkout from 02:00 is exactly the corruption above
+
+Assets are not in there. They are content-addressed and already in the bucket.
+
+## One bucket, two hubs
+
+Each generation names the workspace that wrote it. A hub that finds someone else's generations in its keyspace **refuses to write** and reports it in the console as `backups DISABLED — identity conflict`.
+
+That refusal is protecting the other hub's history, and it means **this** hub has no backups until you fix it. It is a state in the console and in `/admin/api/status`, deliberately not in `/health` — flipping liveness would make a restart policy cycle a hub that is up and serving perfectly well.
+
+The fix is a keyspace per hub:
+
+```
+MAUDE_BACKUP_PREFIX=design-acme-com
+```
+
+New deployments get one automatically. An existing deployment is never given one behind your back: a prefix changes which keyspace the hub *looks in*, so adding one to a running deployment makes every existing generation invisible. If you add one deliberately, the hub notices on the next boot and tells you what to move where.
+
+To see the state of a bucket without changing anything:
+
+```sh
+maude hub backup-owners
+```
+
+## Prove the restore, not the backup
+
+```sh
+maude hub restore-drill
+```
+
+Schedule it. A backup nobody has restored is a hypothesis, and a database that restores readable-but-empty looks exactly like a working one until the day you need it.
+
+## After the first successful boot, remove `MAUDE_SEED_REPO`
+
+A seed is cloned on first boot only — while the checkout is empty. Once the workspace has real history, that variable is a loaded gun pointed at exactly one scenario, and removing it costs nothing.
