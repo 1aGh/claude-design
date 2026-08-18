@@ -27,7 +27,7 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
-import { listBackups, restoreLatest, targetFromEnv } from './backup.mjs';
+import { baseTargetFromEnv, listBackups, restoreLatest, targetFromEnv } from './backup.mjs';
 import { createGitRunner } from './git-runner.mjs';
 import { closeJournal, openJournal, replayTailFromTarget } from './journal.mjs';
 import { adoptWorkspaceId, readWorkspaceId } from './workspace-identity.mjs';
@@ -185,6 +185,39 @@ async function main() {
     // an outage. Loud, then carry on — the boot table owns this row.
     console.error(`[rehydrate] cannot reach ${target.describe}: ${err.message}`);
     listFailed = true;
+  }
+
+  // THE ORPHAN NET (Phase 0 F3). Only reachable for an operator who added a
+  // prefix to a deployment that had been running without one: the prefixed
+  // keyspace is disjoint from the bare root, so every existing generation went
+  // invisible in one config change. Left alone, the next lost volume reads
+  // "zero generations" and seeds over a deployment that had good backups
+  // yesterday. One extra list, against the BARE target — asking the prefixed
+  // one twice would answer zero both times.
+  if (!listFailed && generations.length === 0 && process.env.MAUDE_BACKUP_PREFIX) {
+    try {
+      const bare = baseTargetFromEnv();
+      const atRoot = bare ? await listBackups(bare) : [];
+      if (atRoot.length > 0) {
+        console.error(
+          `[rehydrate] refusing to start — this hub is configured with ` +
+            `MAUDE_BACKUP_PREFIX=${process.env.MAUDE_BACKUP_PREFIX}, which is EMPTY, while ` +
+            `${atRoot.length} generation(s) sit at the bucket root. Adding a prefix does not move ` +
+            `them, and starting now would treat this as a first boot.\n` +
+            `  Move them, then restart:\n` +
+            `    aws s3 cp --recursive s3://<bucket>/backups/ ` +
+            `s3://<bucket>/${process.env.MAUDE_BACKUP_PREFIX}/backups/\n` +
+            `  Or remove MAUDE_BACKUP_PREFIX to keep using the root.`
+        );
+        process.exit(1);
+      }
+    } catch (err) {
+      // The net is a courtesy, not a gate. If the root cannot be listed, that
+      // is the same unreachable-target condition the table already fails open
+      // on, and turning it into a refusal here would be the outage-for-
+      // integrity trade this track exists to avoid.
+      console.error(`[rehydrate] orphan check skipped: ${err.message}`);
+    }
   }
 
   const verdict = decideBoot({

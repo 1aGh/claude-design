@@ -22,6 +22,23 @@ const BUCKET_RE = /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
+ * Normalize a backup namespace into a key-safe segment — Phase 0 F3.
+ *
+ * Deliberately narrow: this becomes an object-key prefix, so anything that
+ * could re-enter the keyspace elsewhere (`/`, `..`, whitespace) has to be gone
+ * rather than escaped. Mirrors the charset the cell validates its tenant id
+ * with, for the same reason.
+ */
+export function sanitizeBackupPrefix(raw) {
+  return String(raw ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^[-.]+|[-.]+$/g, '')
+    .slice(0, 64);
+}
+
+/**
  * @typedef {object} WorkspaceConfig
  * @property {string} domain          public hostname, e.g. design.acme.com
  * @property {string} acmeEmail       Let's Encrypt contact
@@ -136,6 +153,40 @@ export function validateWorkspaceConfig(raw = {}) {
     };
   }
 
+  // The backup namespace — Phase 0 F3.
+  //
+  // Until now nothing here mentioned MAUDE_BACKUP_PREFIX at all: the CELL
+  // entrypoint sets it (derived from the tenant id) and a self-hosted
+  // workspace therefore backed up to the bucket ROOT by construction. Two hubs
+  // on one bucket then shared a keyspace, which is how their generations
+  // interleaved and pruned across each other.
+  //
+  // NEW RENDERS ONLY — and that restriction is the point. Adding a prefix to a
+  // deployment that already has generations at the root moves it to a DISJOINT
+  // keyspace (`prefixedTarget` rewrites `list('backups/')` to
+  // `list('<prefix>/backups/')`), so every existing generation goes invisible
+  // in one config change: orphaned, unprunable, and — after the next volume
+  // loss — a cold start that sees zero generations and seeds instead. The fix
+  // would re-open the exact destruction it exists to close.
+  //
+  // Safe to leave off, because the WRITE-side identity refusal already stops
+  // the destruction at the bare root without any prefix. Here the prefix is a
+  // remedy, not the safety mechanism.
+  //
+  // `backupPrefix: null` is the caller saying "existing deployment, leave it
+  // alone"; a string is an explicit choice; undefined derives one.
+  if (raw.backupPrefix === null) {
+    cfg.backupPrefix = null;
+  } else if (raw.backupPrefix !== undefined && String(raw.backupPrefix).trim() !== '') {
+    const explicit = sanitizeBackupPrefix(raw.backupPrefix);
+    if (!explicit) errors.push(`backupPrefix "${raw.backupPrefix}" has no usable characters`);
+    cfg.backupPrefix = explicit || null;
+  } else {
+    // Derived from the address, which is the one identifier the operator has
+    // already had to make unique — DNS enforced it.
+    cfg.backupPrefix = sanitizeBackupPrefix(cfg.domain) || null;
+  }
+
   if (raw.seedRepo !== undefined && raw.seedRepo !== null && String(raw.seedRepo).trim() !== '') {
     const seed = String(raw.seedRepo).trim();
     if (!/^(https?:\/\/|git@|ssh:\/\/)/.test(seed)) {
@@ -234,6 +285,13 @@ export function envEntries(cfg, { hubSecret, adminPassword }) {
       { key: 'MAUDE_S3_SECRET_ACCESS_KEY', value: cfg.s3.secretAccessKey },
       { key: 'MAUDE_S3_REGION', value: cfg.s3.region }
     );
+    if (cfg.backupPrefix) {
+      entries.push({
+        key: 'MAUDE_BACKUP_PREFIX',
+        value: cfg.backupPrefix,
+        comment: 'this hub owns this keyspace; never point a second hub at it',
+      });
+    }
   }
   if (cfg.seedRepo) {
     entries.push({ key: 'MAUDE_SEED_REPO', value: cfg.seedRepo, comment: 'cloned on first boot' });
@@ -288,6 +346,10 @@ export function renderCompose(cfg) {
           'MAUDE_S3_ACCESS_KEY_ID',
           'MAUDE_S3_SECRET_ACCESS_KEY',
           'MAUDE_S3_REGION',
+          // Written into .env AND forwarded here. This list is hand-maintained,
+          // and a var present in one but not the other never reaches the
+          // container — which already shipped once, with MAUDE_ADMIN_PASSWORD.
+          ...(cfg.backupPrefix ? ['MAUDE_BACKUP_PREFIX'] : []),
         ]
       : []),
     ...(cfg.seedRepo ? ['MAUDE_SEED_REPO'] : []),

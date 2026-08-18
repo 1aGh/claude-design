@@ -220,6 +220,50 @@ function renderStatus(s, peers) {
   $('s-data').textContent = s.dataDir;
   $('s-tokens').textContent = `${s.tokenCount} (${s.authMode})`;
   $('s-peers').textContent = peers.peers.length;
+  renderDurability(s.durability);
+}
+
+/**
+ * Durability, where an operator actually looks — Phase 0 F5.
+ *
+ * A hub whose backups are refused is protecting a peer's history and none of
+ * its own, and `scheduleBackups` deliberately logs-and-retries rather than
+ * stopping. Without this row the whole event is a line every six hours in a
+ * stream nobody reads, which is the same failure shape as the bug the refusal
+ * fixes. The prefix is shown because a shared keyspace is what causes it.
+ */
+function renderDurability(d) {
+  const alert = $('s-backup-alert');
+  if (!d) {
+    $('s-backups').textContent = '—';
+    $('s-backup-prefix').textContent = '—';
+    alert.hidden = true;
+    return;
+  }
+  $('s-backup-prefix').textContent = d.prefix ?? '(bucket root)';
+  const when = d.lastOkAt ? ` · last ${formatDuration(Date.now() - d.lastOkAt)} ago` : '';
+  const label = {
+    'not-configured': 'not configured',
+    pending: 'configured, no generation yet',
+    ok: `ok${when}`,
+    failed: 'FAILING',
+    'identity-conflict': 'DISABLED — identity conflict',
+  };
+  $('s-backups').textContent = label[d.state] ?? d.state;
+
+  if (d.state === 'identity-conflict') {
+    alert.textContent =
+      `Backups are DISABLED: this backup target already holds generations owned by another ` +
+      `workspace (${d.conflictWith ?? 'unknown'}). Nothing of theirs is being overwritten — and ` +
+      `nothing of yours is being saved. Give this hub its own MAUDE_BACKUP_PREFIX, or point it ` +
+      `at its own bucket.`;
+    alert.hidden = false;
+  } else if (d.state === 'failed') {
+    alert.textContent = `Backups are failing: ${d.message ?? 'unknown error'}`;
+    alert.hidden = false;
+  } else {
+    alert.hidden = true;
+  }
 }
 
 /**

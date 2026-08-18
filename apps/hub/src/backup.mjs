@@ -172,11 +172,64 @@ export function targetFromEnv(env = process.env) {
  * refreshed by `s3-creds.mjs`, so the scheduler resolves its target per tick
  * through this instead of pinning boot-time values.
  */
-export function targetFromConfig(env = process.env, s3 = null) {
+export function targetFromConfig(env = process.env, s3 = null, { prefixed = true } = {}) {
   const explicit = env.MAUDE_BACKUP_TARGET;
   const base = explicit?.startsWith('file://') ? fileTarget(explicit) : s3 ? s3Target(s3) : null;
   if (!base) return null;
+  // `prefixed: false` hands back the BARE target — the only way to ask "is
+  // there anything at the bucket root?" once a prefix is configured. Phase 0
+  // F3's orphan net needs exactly that, and asking the prefixed target twice
+  // would look in `<prefix>/backups/` both times and always answer zero: a
+  // check that passes review and does nothing.
+  if (!prefixed) return base;
   return env.MAUDE_BACKUP_PREFIX ? prefixedTarget(base, env.MAUDE_BACKUP_PREFIX) : base;
+}
+
+/** The bare target, ignoring any configured prefix. See `targetFromConfig`. */
+export function baseTargetFromEnv(env = process.env) {
+  return targetFromConfig(env, s3ConfigFromEnv(env), { prefixed: false });
+}
+
+/**
+ * Who owns the generations in this keyspace? — Phase 0 F6, ADVISORY ONLY.
+ *
+ * Identity (F1) is forward-only: it makes every NEW generation say whose it is
+ * and stops the destruction from here on. It says nothing about a bucket whose
+ * generations are already interleaved from before the upgrade — those are all
+ * version 1, indistinguishable, and still being pruned across. This reports
+ * that state so a human can act on it.
+ *
+ * It NEVER gates a boot or a restore. Owner counts and timestamp spacing are
+ * evidence, not a condition: a merged series that happens to look evenly spaced
+ * would pass, and a single-owner series whose hub was down for a day would
+ * fail. Conditions gate machines; heuristics inform humans.
+ */
+export async function inspectKeyspace(target, { workspace = null } = {}) {
+  const generations = await listBackups(target);
+  const owners = new Map();
+  for (const gen of generations) owners.set(gen, manifestOwner(await readManifest(target, gen)));
+
+  const distinct = new Set([...owners.values()].filter(Boolean));
+  const unidentified = [...owners.values()].filter((o) => !o).length;
+  const foreign = [...distinct].filter((o) => o !== workspace);
+
+  return {
+    describe: target.describe,
+    generations: generations.length,
+    unidentified,
+    owners: [...distinct],
+    foreign,
+    // `shared` is what a human should look at, and it is deliberately
+    // conservative about the unidentified ones: they are only suspicious when
+    // something foreign is also present.
+    shared: foreign.length > 0,
+    verdict:
+      foreign.length > 0
+        ? 'SHARED — generations from another workspace are present in this keyspace'
+        : unidentified > 0
+          ? 'unidentified generations present (written before workspace identity existed)'
+          : 'single owner',
+  };
 }
 
 // ------------------------------------------------------------------ snapshot
@@ -551,6 +604,23 @@ export function scheduleBackups({
    * wrong journal.
    */
   onGeneration = null,
+  /**
+   * Fired after EVERY tick with the durability state — Phase 0 F5.
+   *
+   * This exists because the refusal above trades one silent failure for
+   * another unless somebody sees it. `runBackup` refusing an identity conflict
+   * means this hub is not destroying a peer's history AND is not protecting
+   * its own; the catch below logs and the interval keeps running (correctly —
+   * see the docstring), so without a state hook the whole event is one line
+   * every six hours in a stream nobody tails. That is the shape of the bug
+   * this track exists to end, inverted.
+   *
+   * Deliberately NOT wired to `/health`: that endpoint is liveness, it is
+   * unauthenticated, and under compose restart policies or ECS health-based
+   * replacement a degraded-but-serving hub would be killed or cycled.
+   * Degradation is a report, not a liveness signal.
+   */
+  onStatus = null,
 }) {
   if (!target || !intervalMs || intervalMs <= 0) return () => {};
   const timer = setInterval(async () => {
@@ -570,13 +640,22 @@ export function scheduleBackups({
         log.log?.(
           `[hub] backup ${r.prefix} (${r.files.length} file(s)${r.repo ? ' + checkout' : ''})`
         );
+        onStatus?.({ state: 'ok', generation: r.prefix, at: Date.now() });
         try {
           await onGeneration?.(r);
         } catch (err) {
           log.error?.(`[hub] post-generation hook failed: ${err.message}`);
         }
       })
-      .catch((err) => log.error?.(`[hub] backup FAILED: ${err.message}`));
+      .catch((err) => {
+        log.error?.(`[hub] backup FAILED: ${err.message}`);
+        onStatus?.({
+          state: err.code === IDENTITY_CONFLICT ? 'identity-conflict' : 'failed',
+          conflictWith: err.conflictWith ?? null,
+          message: err.message,
+          at: Date.now(),
+        });
+      });
   }, intervalMs);
   timer.unref?.();
   return () => clearInterval(timer);

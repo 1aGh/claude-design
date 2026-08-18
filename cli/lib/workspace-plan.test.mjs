@@ -381,3 +381,48 @@ test('MAUDE_SEED_REPO crosses into the container when one is configured', () => 
   const without = renderCompose(ok(BASE));
   assert.ok(!/MAUDE_SEED_REPO/.test(without), 'no seed configured ⇒ no empty variable to misread');
 });
+
+// ------------------------------------------- the backup namespace (Phase 0 F3)
+
+test('a NEW render derives a backup namespace from the address', () => {
+  // Nothing here mentioned MAUDE_BACKUP_PREFIX before: only the CELL entrypoint
+  // set it, so a self-hosted workspace backed up to the bucket ROOT by
+  // construction, and two hubs on one bucket shared one keyspace.
+  const cfg = ok({ ...BASE, s3: S3 });
+  assert.equal(cfg.backupPrefix, 'design.acme.com');
+  const env = renderEnv(envEntries(cfg, { hubSecret: 'x', adminPassword: 'y'.repeat(12) }));
+  assert.match(env, /MAUDE_BACKUP_PREFIX=design\.acme\.com/);
+});
+
+test('an EXISTING deployment without a prefix is never given one', () => {
+  // The orphan hazard: a prefixed target lists a DISJOINT keyspace, so adding
+  // one on a re-render makes every existing generation invisible to
+  // listBackups — orphaned, unprunable, and the next lost volume sees zero
+  // generations and seeds over the loss. The fix would re-open the destruction
+  // it exists to close. `backupPrefix: null` is the caller saying "leave it".
+  const cfg = ok({ ...BASE, s3: S3, backupPrefix: null });
+  assert.equal(cfg.backupPrefix, null);
+  const env = renderEnv(envEntries(cfg, { hubSecret: 'x', adminPassword: 'y'.repeat(12) }));
+  assert.ok(!/MAUDE_BACKUP_PREFIX/.test(env), 'no prefix must be written');
+  assert.ok(!/MAUDE_BACKUP_PREFIX/.test(renderCompose(cfg)), 'and none forwarded');
+});
+
+test('the namespace is written into .env AND forwarded to the container', () => {
+  // Hand-maintained lists on both sides; a var in one but not the other never
+  // reaches the container. That already shipped once, with MAUDE_ADMIN_PASSWORD.
+  assert.match(renderCompose(ok({ ...BASE, s3: S3 })), /MAUDE_BACKUP_PREFIX/);
+});
+
+test('no object storage means no namespace to write', () => {
+  const env = renderEnv(envEntries(ok(BASE), { hubSecret: 'x', adminPassword: 'y'.repeat(12) }));
+  assert.ok(!/MAUDE_BACKUP_PREFIX/.test(env));
+});
+
+test('a namespace can never escape its own keyspace', () => {
+  // It becomes an object-key prefix, so `/` and `..` have to be GONE rather
+  // than escaped — otherwise a namespace could address another hub's keys.
+  const cfg = ok({ ...BASE, s3: S3, backupPrefix: '../../Other Hub/' });
+  assert.equal(cfg.backupPrefix, 'other-hub');
+  assert.ok(!cfg.backupPrefix.includes('/'));
+  assert.ok(!cfg.backupPrefix.includes('..'));
+});

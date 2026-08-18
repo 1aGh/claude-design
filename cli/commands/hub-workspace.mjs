@@ -105,7 +105,21 @@ export async function run({ args, pkgRoot }) {
       : {}),
   };
 
-  const { ok, errors, config } = validateWorkspaceConfig(merged);
+  // Read the existing .env BEFORE validating, because whether this deployment
+  // already exists decides the backup namespace (Phase 0 F3).
+  const envPath = resolve(outDir, '.env');
+  const envExists = existsSync(envPath);
+  const existing = readExistingEnv(envPath);
+
+  // NEVER force a namespace onto a deployment that has been running without
+  // one. A prefixed target lists a DISJOINT keyspace, so adding one makes every
+  // existing generation invisible to `listBackups` — orphaned, unprunable, and
+  // the next lost volume would see zero generations and seed over the loss. The
+  // write-side identity refusal already protects the bare root, so the prefix
+  // is a remedy here rather than the safety mechanism.
+  const backupPrefix = envExists ? existing.MAUDE_BACKUP_PREFIX || null : undefined;
+
+  const { ok, errors, config } = validateWorkspaceConfig({ ...merged, backupPrefix });
   if (!ok) {
     if (flags.json) {
       process.stdout.write(`${JSON.stringify({ ok: false, errors }, null, 2)}\n`);
@@ -119,8 +133,7 @@ export async function run({ args, pkgRoot }) {
 
   // Reuse existing secrets — re-minting on a re-run would lock out every peer
   // that already holds a token, and re-running is exactly what someone does
-  // after a failed attempt.
-  const existing = readExistingEnv(resolve(outDir, '.env'));
+  // after a failed attempt. (`existing` was read above, before validation.)
   const hubSecret = existing.HUB_SECRET || randomBytes(32).toString('hex');
   const adminPassword = config.adminPassword || existing.MAUDE_ADMIN_PASSWORD || generatePassword();
   const reusedSecret = Boolean(existing.HUB_SECRET);

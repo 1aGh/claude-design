@@ -20,6 +20,7 @@ import { after, test } from 'node:test';
 
 import {
   fileTarget,
+  inspectKeyspace,
   listBackups,
   pruneOldBackups,
   restoreLatest,
@@ -284,4 +285,50 @@ test('manifestOwner reads version 2 and tolerates version 1', () => {
   assert.equal(manifestOwner(gen(null)), null);
   assert.equal(manifestOwner(null), null);
   assert.equal(manifestOwner({ version: 2, workspace: '   ' }), null);
+});
+
+// ------------------------------------------- the advisory report (Phase 0 F6)
+
+test('inspectKeyspace reports a single owner, and never gates anything', async () => {
+  const target = fileTarget(`file://${freshDir()}`);
+  const mine = seedDataDir(freshDir());
+  await runBackup({ dataDir: mine, target, now: new Date('2026-08-18T01:00:00Z') });
+
+  const r = await inspectKeyspace(target, { workspace: ensureWorkspaceId(mine) });
+  assert.equal(r.shared, false);
+  assert.equal(r.generations, 1);
+  assert.deepEqual(r.owners, [ensureWorkspaceId(mine)]);
+});
+
+test('inspectKeyspace names a SHARED keyspace — the state identity cannot undo', async () => {
+  // Identity is forward-only: it stops new destruction and says nothing about
+  // generations already interleaved from before the upgrade. This is the only
+  // thing that tells an operator they are in that state.
+  const bucket = freshDir();
+  const target = fileTarget(`file://${bucket}`);
+  const mine = seedDataDir(freshDir());
+  await runBackup({ dataDir: mine, target, now: new Date('2026-08-18T01:00:00Z') });
+  await target.put(
+    'backups/20260818T000000Z/manifest.json',
+    Buffer.from(JSON.stringify({ version: 2, workspace: 'someone-else', files: [] }))
+  );
+
+  const r = await inspectKeyspace(target, { workspace: ensureWorkspaceId(mine) });
+  assert.equal(r.shared, true);
+  assert.deepEqual(r.foreign, ['someone-else']);
+  assert.match(r.verdict, /SHARED/);
+});
+
+test('legacy generations are reported, not called foreign', async () => {
+  // Version-1 generations name nobody. Treating "unidentified" as "someone
+  // else's" would report every upgrading deployment as a collision.
+  const target = fileTarget(`file://${freshDir()}`);
+  await target.put(
+    'backups/20260818T000000Z/manifest.json',
+    Buffer.from(JSON.stringify({ version: 1, files: [] }))
+  );
+  const r = await inspectKeyspace(target, { workspace: 'me' });
+  assert.equal(r.shared, false);
+  assert.equal(r.unidentified, 1);
+  assert.match(r.verdict, /unidentified/);
 });

@@ -329,10 +329,37 @@ export function createHub(config = {}) {
     ? async () => targetFromConfig(process.env, await s3Source.config())
     : null;
   const backupIntervalMs = Number(process.env.MAUDE_BACKUP_INTERVAL_MS ?? 6 * 3600_000);
+  // Phase 0 F5 — durability as STATE, not as a log line. A hub that refuses to
+  // write because another workspace owns the keyspace is protecting its peer
+  // and protecting nothing of its own; that has to be visible where an
+  // operator looks, or we have swapped a loud data-loss for a silent
+  // no-durability. Never `/health` (liveness, unauthenticated, and a restart
+  // policy would cycle a hub that is up and serving).
+  const durability = {
+    configured: Boolean(bootTarget),
+    target: bootTarget?.describe ?? null,
+    prefix: process.env.MAUDE_BACKUP_PREFIX || null,
+    state: bootTarget ? 'pending' : 'not-configured',
+    lastGeneration: null,
+    lastOkAt: null,
+    conflictWith: null,
+    message: null,
+    at: null,
+  };
   const stopBackups = scheduleBackups({
     dataDir,
     target: backupTarget,
     intervalMs: backupTarget ? backupIntervalMs : 0,
+    onStatus: (s) => {
+      durability.state = s.state;
+      durability.at = s.at;
+      durability.message = s.message ?? null;
+      durability.conflictWith = s.conflictWith ?? null;
+      if (s.state === 'ok') {
+        durability.lastGeneration = s.generation;
+        durability.lastOkAt = s.at;
+      }
+    },
     // Cloud Phase 15 — the checkout rides in the same generation as the
     // databases. A cell's disk is ephemeral, so a history that is not in the
     // backup is a history that lasts until the next migration.
@@ -1229,6 +1256,7 @@ export function createHub(config = {}) {
           activity,
           sqlitePath,
           insecureHttp,
+          durability,
         });
         bailFromOnRequest();
       }
@@ -1714,17 +1742,19 @@ async function handleAdminApi(ctx) {
   }
 
   if (method === 'GET' && path === '/status') {
-    respondAdminJson(
-      response,
-      200,
-      buildStatusPayload({
+    respondAdminJson(response, 200, {
+      ...buildStatusPayload({
         dataDir,
         secret,
         port: ctx.port,
         startedAt: ctx.startedAt,
         peersCount: peers.size,
-      })
-    );
+      }),
+      // Phase 0 F5. The console's Overview reads this: an identity conflict
+      // means backups are DISABLED for this hub, which is the one thing an
+      // operator must not learn from a log six hours later.
+      durability: ctx.durability ?? null,
+    });
     return;
   }
   if (method === 'GET' && path === '/tokens') {
