@@ -84,23 +84,21 @@ export function decideBoot({
   }
 
   // An unreachable bucket, checked AFTER the working-set test on purpose (F4).
-  // With `/data` present this is a warm start and a listing blip is harmless —
-  // proceed. But with `/data` EMPTY the bucket is the only thing that can tell
-  // "first boot" from "the backup is gone", so a blip must NOT read as first
-  // boot: minting a fresh identity and backing up an empty set is how the
-  // legacy generations get pruned away over the next few days. Refuse and let
-  // the operator retry, exactly as rehydrate's "exit non-zero on any doubt"
-  // contract intends.
+  // A genuine warm start (`/data` present AND the checkout present) already
+  // returned above, so reaching here with `listFailed` means the working set is
+  // incomplete: `/data` empty (first-boot vs lost-volume is indistinguishable
+  // without the bucket) OR `/repo` gone in workspace mode (the documents/
+  // checkout mismatch the stop below exists for). Either way a listing blip must
+  // NOT proceed — that is how a fresh identity gets minted over real history, or
+  // a stale checkout paired with newer documents. Refuse and let the operator
+  // retry, exactly as rehydrate's "exit non-zero on any doubt" contract intends.
   if (listFailed) {
-    if (dataPopulated) {
-      return { action: 'proceed', reason: 'the backup target could not be listed (warm start)' };
-    }
     return {
       action: 'refuse',
       reason:
-        'the working set is empty and the backup target could not be listed, so first-boot and ' +
-        'a lost volume are indistinguishable — refusing rather than starting empty. Retry when ' +
-        'storage is reachable, or set MAUDE_ALLOW_EMPTY_START=1 for a genuinely fresh deployment.',
+        'the working set is incomplete and the backup target could not be listed, so recovery ' +
+        'cannot be decided safely — refusing rather than starting wrong. Retry when storage is ' +
+        'reachable, or set MAUDE_ALLOW_EMPTY_START=1 for a genuinely fresh deployment.',
     };
   }
 

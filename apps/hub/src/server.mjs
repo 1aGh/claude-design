@@ -1803,7 +1803,14 @@ async function handleAdminApi(ctx) {
     path === '/users' ||
     path.startsWith('/users/') ||
     path === '/invites' ||
-    path.startsWith('/invites/')
+    path.startsWith('/invites/') ||
+    // OIDC linking (Track C) — the admin control-plane for the pending queue.
+    // Without this the /oidc/* routes 404, linking is unreachable, every
+    // OIDC user stays pending forever, countLinkedOidc stays 0, and strict can
+    // never boot. The whole feature authenticates people it can never admit.
+    path === '/oidc/pending' ||
+    path === '/oidc/link' ||
+    path === '/oidc/pending/dismiss'
   ) {
     const handled = await handleUserAdminRoutes({
       request,

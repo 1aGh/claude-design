@@ -56,3 +56,17 @@ test('auth-routes handles the pending admin routes behind the bearer gate', () =
   assert.match(auth, /'\/oidc\/link'/);
   assert.match(auth, /linkOidcSub/);
 });
+
+test('server.mjs actually DISPATCHES /oidc/* into the admin handler', () => {
+  // The connective tissue, not just the endpoints in isolation. The first cut
+  // of this test grepped the producer and the consumer independently and passed
+  // while /admin/api/oidc/* 404'd — an unwired feature shown as a green check.
+  // A "wiring" test that never asserts the producer→consumer link is worse than
+  // none, so assert the router condition itself.
+  const server = src('server.mjs');
+  const block = server.slice(server.indexOf('user administration'));
+  const cond = block.slice(0, block.indexOf('handleUserAdminRoutes'));
+  for (const route of ["'/oidc/pending'", "'/oidc/link'", "'/oidc/pending/dismiss'"]) {
+    assert.ok(cond.includes(route), `server.mjs does not route ${route} to the admin handler`);
+  }
+});

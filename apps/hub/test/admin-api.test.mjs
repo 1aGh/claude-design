@@ -444,3 +444,34 @@ test('/health remains reachable independent of admin auth', async () => {
   const res = await fetch(`http://127.0.0.1:${PORT}/health`);
   assert.equal(res.status, 200);
 });
+
+// ---------------------------------------------------- OIDC linking dispatch
+
+test('POST /admin/api/oidc/link REACHES the handler (not a 404)', async () => {
+  // The B1-b regression: /oidc/* must be dispatched into handleUserAdminRoutes.
+  // It 404'd once because server.mjs only routed /users and /invites there,
+  // which left linking unreachable and strict un-bootable. A 400 (no such user)
+  // proves the handler ran; a 404 is the bug.
+  const create = await api('/users', {
+    method: 'POST',
+    headers: auth({ 'content-type': 'application/json' }),
+    body: JSON.stringify({ email: 'alice@acme.com', password: 'correct horse battery' }),
+  });
+  assert.equal(create.status, 201);
+
+  const link = await api('/oidc/link', {
+    method: 'POST',
+    headers: auth({ 'content-type': 'application/json' }),
+    body: JSON.stringify({ email: 'alice@acme.com', sub: 'auth0|alice' }),
+  });
+  assert.notEqual(link.status, 404, 'the /oidc/link route is not dispatched');
+  assert.equal(link.status, 200);
+
+  const pending = await api('/oidc/pending', { headers: auth() });
+  assert.equal(pending.status, 200);
+});
+
+test('the OIDC admin routes still require the bearer', async () => {
+  const res = await api('/oidc/pending');
+  assert.equal(res.status, 401);
+});

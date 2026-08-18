@@ -75,6 +75,13 @@ test('an unreachable target on a COLD start REFUSES rather than starting empty',
   assert.match(v.reason, /could not be listed/);
 });
 
+test('a listing blip does NOT shadow the documents-present/checkout-gone stop', () => {
+  // B8 residual: /data present + /repo gone + listFailed must still refuse — a
+  // simultaneous blip must not turn the "checkout missing" stop into a proceed.
+  const v = boot({ dataPopulated: true, repoPopulated: false, listFailed: true });
+  assert.equal(v.action, 'refuse');
+});
+
 test('MAUDE_ALLOW_EMPTY_START overrides the refusal', () => {
   assert.equal(
     boot({ dataPopulated: true, repoPopulated: false, generationCount: 3, allowEmptyStart: true })

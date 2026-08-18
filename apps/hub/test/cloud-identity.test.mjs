@@ -213,3 +213,31 @@ describe('every rejection says WHY', () => {
     assert.equal(verifyAccessToken(`${body}.QQ`, SECRET, { now: NOW }).reason, 'bad-signature');
   });
 });
+
+describe('HUB_OIDC_MODE=strict refuses password sign-in (B1-a)', () => {
+  it('refuses local, and never calls the local authenticator', () => {
+    let asked = null;
+    const r = authenticateForMode(
+      { email: 'a@example.com', password: 'pw' },
+      {
+        env: { HUB_OIDC_MODE: 'strict' },
+        secret: SECRET,
+        local: (email, password) => {
+          asked = { email, password };
+          return { ok: true, user: { email } };
+        },
+      }
+    );
+    assert.equal(r.ok, false);
+    assert.equal(r.reason, 'password-refused-oidc-strict');
+    assert.equal(asked, null, 'the password store must not even be consulted');
+  });
+
+  it('hybrid mode still allows password sign-in', () => {
+    const r = authenticateForMode(
+      { email: 'a@example.com', password: 'pw' },
+      { env: { HUB_OIDC_MODE: 'hybrid' }, secret: SECRET, local: () => ({ ok: true, user: {} }) }
+    );
+    assert.equal(r.ok, true);
+  });
+});
