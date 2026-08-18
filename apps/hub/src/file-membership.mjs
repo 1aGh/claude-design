@@ -131,6 +131,13 @@ export function classifyProjectFile(rel, opts = {}) {
     }
   }
 
+  // The annotations sidecar's REAL shape: flat at the design root, keyed by
+  // the slug (`ui-2.annotations.svg`). The in-group rule above never fires for
+  // it, so it fell through to `inert-media` and the FILE plane carried a file
+  // the DOC lane already owns — the two-lane erase described in the studio
+  // classifier (sync/file-membership.ts), which this file must mirror.
+  if (parts.length === 1 && lowerLast.endsWith('.annotations.svg')) return 'canvas-owned';
+
   if (COMPANION_SIDECAR_SUFFIXES.some((s) => lowerLast.endsWith(s))) return 'companion-text';
 
   const dot = lowerLast.lastIndexOf('.');

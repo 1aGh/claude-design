@@ -104,8 +104,24 @@ describe('file-membership — canvas-owned is Plane A, never Plane B', () => {
   test('.meta.json / .annotations.svg outside a group do not leak into the plane', () => {
     // `.json` is not positively enumerated; a stray meta sidecar stays home.
     expect(classifyProjectFile('notes/thing.meta.json')).toBe('never');
-    // A stray annotations svg outside a group is just an svg.
+    // A stray annotations svg in an unrelated SUBFOLDER is just an svg…
     expect(classifyProjectFile('notes/thing.annotations.svg')).toBe('inert-media');
+  });
+
+  test('the FLAT annotations sidecar is Plane A\'s — the two-lane erase', () => {
+    // Annotations live flat at the design root, keyed by slug
+    // (`ui-2.annotations.svg`) — the naming asymmetry the canvas artifacts
+    // vocabulary documents. The in-group rule never fires for that shape, so
+    // they classified `inert-media` and the FILE plane carried a file the DOC
+    // lane already owns. Two lanes, two conflict semantics, no shared
+    // ancestor: a stale doc-lane materialisation on one peer read as a fresh
+    // local edit to the file plane, was pushed, and erased a drawing made
+    // seconds earlier on the other machine (417 B of strokes at 10:50:28, an
+    // empty 72 B wrapper over them at 10:50:33 — live journal rows).
+    expect(classifyProjectFile('ui-2.annotations.svg')).toBe('canvas-owned');
+    expect(classifyProjectFile('ui-ahoj.annotations.svg')).toBe('canvas-owned');
+    // But a root-level svg that is NOT an annotations sidecar still flows.
+    expect(classifyProjectFile('logo.svg')).toBe('inert-media');
   });
 
   test('the sidecar suffixes flow; bare .json stays default-closed', () => {

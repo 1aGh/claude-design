@@ -218,6 +218,20 @@ export function classifyProjectFile(rel: string, opts: ClassifyOptions = {}): Fi
     }
   }
 
+  // The annotations sidecar's REAL shape: flat at the design root, keyed by
+  // the slug (`ui-2.annotations.svg`) — the naming asymmetry the canvas
+  // artifacts vocabulary documents. The in-group rule above never fires for
+  // it, so it fell through to `inert-media` and the FILE plane carried a file
+  // the DOC lane already owns. Two lanes, two conflict semantics, no shared
+  // ancestor: a stale doc-lane materialisation on one peer bumped the file's
+  // mtime, the file plane read that as a fresh local edit and pushed it, and
+  // a drawing made seconds earlier on the other machine was erased everywhere
+  // (observed live: 417 B of strokes at 10:50:28, an empty 72 B wrapper
+  // pushed over them at 10:50:33). The annotations lane's own stamped
+  // newest-wins protection never saw it coming — it guards the DOC lane, and
+  // this was the file plane acting alone. One owner: the canvas.
+  if (parts.length === 1 && lowerLast.endsWith('.annotations.svg')) return 'canvas-owned';
+
   if (COMPANION_SIDECAR_SUFFIXES.some((s) => lowerLast.endsWith(s))) return 'companion-text';
 
   const dot = lowerLast.lastIndexOf('.');
