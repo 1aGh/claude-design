@@ -128,6 +128,7 @@
           <div class="nav-list" id="nav-list">
             <button type="button" class="nav-item" data-view="overview" aria-current="page"><span class="nav-ic"><svg class="ic" aria-hidden="true"><use href="#i-overview"/></svg></span><span class="nav-label">Overview</span></button>
             <button type="button" class="nav-item" data-view="peers"><span class="nav-ic"><svg class="ic" aria-hidden="true"><use href="#i-peers"/></svg></span><span class="nav-label">Peers</span><span class="nav-count" id="nav-count-peers"></span></button>
+            <button type="button" class="nav-item" data-view="people"><span class="nav-ic"><svg class="ic" aria-hidden="true"><use href="#i-peers"/></svg></span><span class="nav-label">People</span><span class="nav-count" id="nav-count-people"></span></button>
             <button type="button" class="nav-item" data-view="tokens"><span class="nav-ic"><svg class="ic" aria-hidden="true"><use href="#i-tokens"/></svg></span><span class="nav-label">Tokens</span><span class="nav-count" id="nav-count-tokens"></span></button>
             <button type="button" class="nav-item" data-view="canvases"><span class="nav-ic"><svg class="ic" aria-hidden="true"><use href="#i-canvases"/></svg></span><span class="nav-label">Canvases</span><span class="nav-count" id="nav-count-canvases"></span></button>
             <button type="button" class="nav-item" data-view="activity"><span class="nav-ic"><svg class="ic" aria-hidden="true"><use href="#i-activity"/></svg></span><span class="nav-label">Activity</span></button>
@@ -258,6 +259,75 @@
               </section>
             </div>
 
+
+            <!-- PEOPLE -->
+            <div class="view" id="view-people" hidden>
+              <div class="grid grid--split">
+                <div class="grid-col">
+                  <section class="panel">
+                    <div class="panel-hd">Accounts <span class="sku">scrypt at rest</span></div>
+                    <div class="tbl-scroll">
+                      <table class="tbl" aria-labelledby="people-cap">
+                        <caption id="people-cap">Accounts</caption>
+                        <thead><tr><th scope="col">Email</th><th scope="col">Role</th><th scope="col">Created</th><th scope="col">State</th><th scope="col">Sessions</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+                        <tbody id="people-rows"><tr class="empty"><td colspan="6">No accounts yet.</td></tr></tbody>
+                      </table>
+                    </div>
+                  </section>
+                  <div id="people-platform-note" class="callout callout--info" hidden></div>
+                </div>
+
+                <div class="grid-col">
+                  <section class="panel" id="card-add-person">
+                    <div class="panel-hd">Add someone <span class="sku">they sign in with this</span></div>
+                    <div class="panel-bd">
+                      <form id="person-form" class="stack stack--4">
+                        <div class="field">
+                          <label class="field-label" for="person-email">Email</label>
+                          <input id="person-email" class="input" type="email" placeholder="alice@acme.com" required maxlength="200">
+                        </div>
+                        <div class="field">
+                          <label class="field-label" for="person-password">Initial password</label>
+                          <input id="person-password" class="input input--mono" type="text" minlength="12" required placeholder="at least 12 characters">
+                        </div>
+                        <div class="field">
+                          <label class="field-label" for="person-role">Role</label>
+                          <select id="person-role" class="input"><option value="member">member</option><option value="admin">admin</option></select>
+                        </div>
+                        <div class="actions"><button type="submit" class="btn btn--primary"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> Create account</button></div>
+                        <div id="person-error" class="callout callout--error" role="alert" hidden></div>
+                      </form>
+                    </div>
+                  </section>
+
+                  <section class="panel" id="card-person-invite">
+                    <div class="panel-hd">Invite by link <span class="sku">single use · expires</span></div>
+                    <div class="panel-bd">
+                      <form id="person-invite-form" class="stack stack--4">
+                        <div class="field">
+                          <label class="field-label" for="person-invite-email">Email</label>
+                          <input id="person-invite-email" class="input" type="email" placeholder="bob@acme.com" required maxlength="200">
+                        </div>
+                        <div class="field">
+                          <label class="field-label" for="person-invite-role">Role</label>
+                          <select id="person-invite-role" class="input"><option value="member">member</option><option value="admin">admin</option></select>
+                        </div>
+                        <div class="actions"><button type="submit" class="btn btn--primary"><svg class="ic" aria-hidden="true"><use href="#i-link"/></svg> Create invite link</button></div>
+                        <p class="field-help">The hub does not send email. Copy the link and send it however you already talk to them.</p>
+                        <div id="person-invite-error" class="callout callout--error" role="alert" hidden></div>
+                      </form>
+                      <div class="tbl-scroll">
+                        <table class="tbl" aria-labelledby="invites-cap">
+                          <caption id="invites-cap">Outstanding invites</caption>
+                          <thead><tr><th scope="col">Email</th><th scope="col">Role</th><th scope="col">Expires</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+                          <tbody id="invites-rows"><tr class="empty"><td colspan="4">None outstanding.</td></tr></tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </div>
             <!-- TOKENS -->
             <div class="view" id="view-tokens" hidden>
               <div class="grid grid--split">
@@ -276,11 +346,11 @@
 
                 <div class="grid-col">
                   <section class="panel" id="card-invite">
-                    <div class="panel-hd">Generate invite <span class="sku">HUB · /admin/api/token</span></div>
+                    <div class="panel-hd">Peer token <span class="sku">for a teammate with a git clone</span></div>
                     <div class="panel-bd">
                       <form id="invite-form" class="stack stack--4">
                         <div class="field">
-                          <label class="field-label" for="invite-label">Label this invite</label>
+                          <label class="field-label" for="invite-label">Label this token</label>
                           <input id="invite-label" class="input input--mono" type="text" placeholder="alice" required maxlength="64" pattern="[A-Za-z0-9 _\-.]+">
                         </div>
                         <label class="check" for="invite-wildcard">

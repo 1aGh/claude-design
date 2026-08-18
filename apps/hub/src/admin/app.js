@@ -178,6 +178,9 @@ async function refresh() {
     renderCanvases(canvases);
     renderActivity(activity);
     updateCounts(peers, tokens, canvases, status);
+    // People rides the same poll. Failing to load accounts must not blank the
+    // rest of the console, so it is awaited separately and swallowed loudly.
+    await loadPeople().catch((e) => console.warn('[hub-admin] people:', e.message));
     applySearch();
   } catch (err) {
     if (err.message !== 'Unauthorized') console.warn('[hub-admin] refresh failed:', err.message);
@@ -195,7 +198,31 @@ async function refresh() {
  * a sentence says where invites actually live.
  */
 function applyPlatformPosture(s) {
+  // TWO DIFFERENT FLAGS ARE SPELLED `strict`, and they mean opposite things
+  // about this surface (Track B B3):
+  //
+  //   identity.mode === 'strict'  → CLOUD identity. The dashboard owns
+  //                                 membership, so People must be HIDDEN.
+  //   HUB_OIDC_MODE=strict        → self-hosted, password login off. People is
+  //                                 MORE necessary there, because a verified
+  //                                 OIDC user still needs a role assigned.
+  //
+  // Only the first one is read here. `cloudIdentityStrict` is the precise
+  // name; keying off the bare word is how these two get conflated later.
   const platform = s?.identity?.mode === 'strict';
+  const peopleNav = document.querySelector('.nav-item[data-view="people"]');
+  const peopleView = $('view-people');
+  if (peopleNav) peopleNav.hidden = platform;
+  if (platform && peopleView) {
+    peopleView.hidden = true;
+    const note = $('people-platform-note');
+    if (note) {
+      note.hidden = false;
+      note.textContent =
+        'People are managed on your Maude dashboard — this project takes its members from your account.';
+    }
+    if (state.view === 'people') setView('overview');
+  }
   const invite = $('topbar-invite');
   if (!platform || !invite) return;
   invite.hidden = true;
@@ -321,6 +348,106 @@ function sessionsCell(n) {
   return n
     ? `<span class="sessions"><span class="sdot" aria-hidden="true"></span> ${n}</span>`
     : '<span class="sessions is-zero"><span class="sdot" aria-hidden="true"></span> 0</span>';
+}
+
+// ------------------------------------------------------------------- people
+//
+// Track B. The routes below have existed and been tested since Cloud Phase 2 —
+// `/users`, `/users/disable`, `/users/password`, `/invites` — and NOTHING
+// called them: `grep users app.js` returned zero. A self-hoster's only way to
+// add a teammate was to curl an undocumented admin API with HUB_SECRET. This
+// view is the whole difference between that and "a team uses this".
+//
+// The peer-token card in Tokens stays separate on purpose: one is a terminal
+// credential for a git peer, the other is an account for a person, and reading
+// them as the same thing is what this view exists to end.
+
+async function loadPeople() {
+  const [users, invites] = await Promise.all([api('/users'), api('/invites')]);
+  renderPeople(users, invites);
+}
+
+function renderPeople(u, inv) {
+  const tbody = $('people-rows');
+  const rows = u?.users ?? [];
+  tbody.innerHTML = rows.length
+    ? rows
+        .map((r) => {
+          const email = escapeHtml(r.email);
+          // `tokenCount` comes straight from GET /users — it is the number that
+          // answers "did the offboard actually take effect", which is the
+          // question this view exists for. No extra route needed.
+          return (
+            `<tr${r.disabled ? ' class="row--off"' : ''}>` +
+            `<td><span class="user">${avatar(r.email)} ${email}</span></td>` +
+            `<td>${escapeHtml(r.role)}</td>` +
+            `<td class="td-num">${escapeHtml(formatTime(r.createdAt))}</td>` +
+            `<td>${r.disabled ? '<b>disabled</b>' : 'active'}</td>` +
+            `<td>${sessionsCell(r.tokenCount ?? 0)}</td>` +
+            `<td class="td-act">` +
+            `<button class="btn btn--ghost btn--sm" data-pw="${email}"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg> Reset</button> ` +
+            `<button class="btn btn--danger btn--sm" data-toggle="${email}" data-disable="${r.disabled ? '0' : '1'}">${r.disabled ? 'Enable' : 'Disable'}</button>` +
+            `</td></tr>`
+          );
+        })
+        .join('')
+    : '<tr class="empty"><td colspan="6">No accounts yet.</td></tr>';
+
+  for (const btn of tbody.querySelectorAll('button[data-toggle]')) {
+    btn.addEventListener('click', () =>
+      setDisabled(btn.dataset.toggle, btn.dataset.disable === '1')
+    );
+  }
+  for (const btn of tbody.querySelectorAll('button[data-pw]')) {
+    btn.addEventListener('click', () => resetPassword(btn.dataset.pw));
+  }
+
+  const ibody = $('invites-rows');
+  const outstanding = inv?.invites ?? [];
+  ibody.innerHTML = outstanding.length
+    ? outstanding
+        .map((i) => {
+          const email = escapeHtml(i.email ?? '(any)');
+          return (
+            `<tr><td>${email}</td><td>${escapeHtml(i.role ?? 'member')}</td>` +
+            `<td class="td-num">${escapeHtml(formatTime(i.expiresAt))}</td>` +
+            `<td class="td-act"><button class="btn btn--danger btn--sm" data-revoke="${escapeHtml(i.id)}"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button></td></tr>`
+          );
+        })
+        .join('')
+    : '<tr class="empty"><td colspan="4">None outstanding.</td></tr>';
+  for (const btn of ibody.querySelectorAll('button[data-revoke]')) {
+    btn.addEventListener('click', () => revokeInvite(btn.dataset.revoke));
+  }
+
+  const count = $('nav-count-people');
+  if (count) count.textContent = rows.length ? String(rows.length) : '';
+}
+
+async function setDisabled(email, disable) {
+  // Disabling revokes credentials and kicks live sessions server-side — an
+  // operator disabling an account at 2am does not mean "cannot log in again".
+  await api(disable ? '/users/disable' : '/users/enable', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+  await loadPeople();
+}
+
+async function resetPassword(email) {
+  const password = prompt(`New password for ${email} (at least 12 characters)`);
+  if (!password) return;
+  try {
+    await api('/users/password', { method: 'POST', body: JSON.stringify({ email, password }) });
+    await loadPeople();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function revokeInvite(id) {
+  await api(`/invites/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  await loadPeople();
 }
 
 function renderTokens(t, peers) {
@@ -765,3 +892,48 @@ render();
 state.refreshTimer = setInterval(() => {
   if (state.secret) refresh();
 }, 5000);
+
+$('person-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('person-error').hidden = true;
+  try {
+    await api('/users', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: $('person-email').value.trim(),
+        password: $('person-password').value,
+        role: $('person-role').value,
+      }),
+    });
+    $('person-email').value = '';
+    $('person-password').value = '';
+    await loadPeople();
+  } catch (err) {
+    $('person-error').textContent = err.message;
+    $('person-error').hidden = false;
+  }
+});
+
+$('person-invite-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('person-invite-error').hidden = true;
+  try {
+    const r = await api('/invites', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: $('person-invite-email').value.trim(),
+        role: $('person-invite-role').value,
+      }),
+    });
+    $('person-invite-email').value = '';
+    // Shown ONCE, like every other credential this console mints. The hub
+    // sends no email — the operator delivers the link themselves.
+    // Reuse the console's one-time credential modal — a second reveal
+    // surface would be a second place for 'shown once' to drift.
+    if (r?.url) showInvite({ token: r.url, command: r.url, scope: r.role ?? 'member' }, r.email);
+    await loadPeople();
+  } catch (err) {
+    $('person-invite-error').textContent = err.message;
+    $('person-invite-error').hidden = false;
+  }
+});

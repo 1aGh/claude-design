@@ -30,6 +30,7 @@ import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { chmodSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { stampSchemaVersion } from './schema-version.mjs';
 
 const require = createRequire(import.meta.url);
 const Database = require('better-sqlite3');
@@ -73,6 +74,8 @@ function db(dataDir) {
   } catch {
     /* Windows / read-only fs — best effort. */
   }
+  // A2 — record the shape while we know it (see schema-version.mjs).
+  stampSchemaVersion(handle);
   dbCache.set(dataDir, handle);
   return handle;
 }
