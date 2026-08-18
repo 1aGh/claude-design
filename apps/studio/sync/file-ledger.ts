@@ -149,6 +149,27 @@ interface LedgerFileShape {
   cursor: number;
   updatedAt: number;
   rows: Record<string, LedgerRow>;
+  /**
+   * Deletions actually applied, per direction, within a rolling window.
+   *
+   * PERSISTED, and that is the whole point. The first version of the delete
+   * breaker recomputed its limit from one pass's worth of decisions, which
+   * makes it a rate limit and not a budget: ten per pass, six passes a minute
+   * once the hub can poke, and a two-hundred-file project is gone in three
+   * minutes without the limit ever tripping. Two per pass was under every arm
+   * of it unconditionally, at every project size.
+   *
+   * A budget has to remember, and it has to remember across a restart, or
+   * "restart the app" is the bypass.
+   */
+  deleteBudget?: { out: DeleteWindow; in: DeleteWindow };
+}
+
+/** Deletions applied since `since`, and where they went — for the report. */
+interface DeleteWindow {
+  since: number;
+  count: number;
+  recent: string[];
 }
 
 export interface FileLedger {
@@ -164,6 +185,15 @@ export interface FileLedger {
   reanchor(epoch: string | null): void;
 
   row(rel: string): LedgerRow | null;
+
+  /**
+   * How many deletions this direction has applied inside the live window.
+   * Rolls the window forward when it has expired, so a caller only ever sees
+   * the current budget.
+   */
+  deletesInWindow(direction: 'out' | 'in', windowMs: number): number;
+  /** Charge applied deletions against the window. Persisted. */
+  noteDeletes(direction: 'out' | 'in', rels: readonly string[], windowMs: number): void;
   ancestorOf(rel: string): string | null;
   /** The hub's hash for this path, as last learned. `undefined` = never learned. */
   remoteOf(rel: string): string | null | undefined;
@@ -333,9 +363,40 @@ export function createFileLedger(opts: FileLedgerOptions): FileLedger {
     return created;
   }
 
+  /** The live window for `direction`, rolled forward if it has expired. */
+  function windowFor(direction: 'out' | 'in', windowMs: number): DeleteWindow {
+    if (!data.deleteBudget) {
+      data.deleteBudget = {
+        out: { since: now(), count: 0, recent: [] },
+        in: { since: now(), count: 0, recent: [] },
+      };
+    }
+    const w = data.deleteBudget[direction];
+    if (now() - w.since >= windowMs) {
+      w.since = now();
+      w.count = 0;
+      w.recent = [];
+    }
+    return w;
+  }
+
   return {
     epoch: () => data.epoch,
     cursor: () => data.cursor,
+
+    deletesInWindow(direction, windowMs) {
+      return windowFor(direction, windowMs).count;
+    },
+
+    noteDeletes(direction, rels, windowMs) {
+      if (rels.length === 0) return;
+      const w = windowFor(direction, windowMs);
+      w.count += rels.length;
+      // A short tail, so the panel can say WHAT went without the ledger
+      // growing without bound on a busy project.
+      w.recent = [...w.recent, ...rels].slice(-50);
+      schedule();
+    },
 
     isDegraded(hubEpoch) {
       // Before the first read we have no epoch and nothing to be degraded

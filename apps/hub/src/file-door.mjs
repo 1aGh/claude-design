@@ -43,7 +43,11 @@ import { once } from 'node:events';
 import { createWriteStream, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import { checkoutFileClass, resolveCheckoutFileWrite } from './file-manifest.mjs';
+import {
+  checkoutFileClass,
+  resolveCheckoutFileWrite,
+  resolveProjectFileTarget,
+} from './file-manifest.mjs';
 import { matchesScope, verifyToken } from './tokens.mjs';
 
 /** `PUT /api/file/<rel>` — the single door. */
@@ -395,9 +399,23 @@ export async function handleFileDoor(ctx) {
  * hub never had, and absence-as-authority is what DDR-076 forbids.
  *
  * The bytes are QUARANTINED, never unlinked. `_trash/` on the hub is the same
- * recoverability spine the peers use, and the object-storage copy is untouched:
- * a CAS blob is content-addressed, so nothing that ever reached durability is
- * removed by a delete — only unreferenced.
+ * recoverability spine the peers use.
+ *
+ * WHAT ELSE STILL HOLDS A COPY, precisely — an earlier version of this comment
+ * claimed object storage keeps every deleted file, and that is true of exactly
+ * one class:
+ *
+ *   assets/**            CAS blob in object storage. Content-addressed, so a
+ *                        delete unreferences it and never removes it.
+ *   everything else      the hub's own git history, and only because the
+ *                        workspace agent force-stages the design root
+ *                        (`stageIgnored`) — a hub-owned project gitignores it,
+ *                        and generation backups bundle committed objects only.
+ *
+ * So `companion-text` and `code-module` are durable through history, not
+ * through the bucket. Widening the object-storage mirror to the whole plane is
+ * Increment 5's write-behind; until then, do not describe this route as
+ * bucket-durable for anything but assets.
  *
  * Same CAS as a write, same publish lock, same journal append. A delete that
  * raced somebody's edit loses the race and says so, which is the whole point:
@@ -449,10 +467,18 @@ async function handleDelete({ ctx, response, landing, target, match, expect }) {
 function quarantineForDelete(designRoot, abs, rel) {
   if (!existsSync(abs)) return null;
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const dest = join(designRoot, '_trash', stamp, rel);
-  mkdirSync(dirname(dest), { recursive: true });
-  renameSync(abs, dest);
-  return `_trash/${stamp}/${rel}`;
+  const destRel = `_trash/${stamp}/${rel}`;
+  // The DESTINATION gets the same two-guard treatment every write destination
+  // on this hub gets. It is the one that decides whether "quarantined, never
+  // unlinked" is true: a symlinked `_trash/` that lands the file outside the
+  // design root is a deletion wearing a recovery story.
+  const target = resolveProjectFileTarget(designRoot, destRel);
+  if (!target.ok) {
+    throw new Error('_trash/ does not resolve inside the design root');
+  }
+  mkdirSync(dirname(target.abs), { recursive: true });
+  renameSync(abs, target.abs);
+  return destRel;
 }
 
 /**

@@ -7,7 +7,15 @@
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
@@ -17,6 +25,7 @@ import {
   applyOwnershipBlock,
   buildOwnershipBlock,
   detachToRepo,
+  findOwnershipBlock,
   isGitRepo,
   isHubOwned,
   ownershipState,
@@ -243,5 +252,78 @@ describe('no git repo — the question does not arise', () => {
     // And nothing was written — Maude does not require git, so it does not
     // start leaving gitignores in projects that have no repo.
     assert.equal(existsSync(join(plain, '.gitignore')), false);
+  });
+});
+
+describe('a .gitignore is a shared, untrusted file', () => {
+  // The repo is committed and DDR-054 says peers can write it. The first
+  // version matched the markers as a bare substring and replaced everything
+  // between the first BEGIN and the first END — so a peer could wrap a
+  // victim's real rules in our markers and have `adopt` delete them.
+  const hostile = [
+    'node_modules/',
+    '# maude:hub-owned:begin',
+    '.env',
+    '*.pem',
+    'secrets/',
+    '# maude:hub-owned:end',
+  ].join('\n');
+
+  it('refuses to rewrite a block it did not write', () => {
+    const res = applyOwnershipBlock(hostile, '.design');
+    assert.equal(res.action, 'refused-malformed');
+    assert.equal(res.contents, hostile, 'not one rule touched');
+    assert.match(res.contents, /\.env/);
+    assert.match(res.contents, /secrets\//);
+  });
+
+  it('and refuses to remove one either', () => {
+    assert.equal(removeOwnershipBlock(hostile).action, 'refused-malformed');
+  });
+
+  it('a lone marker is malformed, not "already hub-owned"', () => {
+    // The cheaper half of the same finding: `ignored` derived from one marker
+    // made a hybrid report itself as settled, so the state DDR-228 exists to
+    // end would persist undetected.
+    assert.equal(isHubOwned('# maude:hub-owned:begin\nnode_modules/\n'), false);
+    assert.equal(findOwnershipBlock('# maude:hub-owned:begin\n').reason, 'malformed');
+  });
+
+  it('a marker inside a comment is not a marker', () => {
+    assert.equal(isHubOwned('# see # maude:hub-owned:begin for details\n'), false);
+  });
+
+  it('our own block still round-trips', () => {
+    const { contents } = applyOwnershipBlock('node_modules/\n', '.design');
+    assert.equal(isHubOwned(contents), true);
+    const back = removeOwnershipBlock(contents);
+    assert.equal(back.action, 'removed');
+    assert.match(back.contents, /node_modules\//);
+  });
+
+  it('adopt refuses outright rather than untracking against a file it cannot read', {
+    skip: gitOk ? false : 'git not available',
+  }, () => {
+    const root = repoWithDesign();
+    writeFileSync(join(root, '.gitignore'), hostile);
+    const res = adoptToHub(root);
+    assert.equal(res.action, 'refused-malformed');
+    assert.equal(res.untracked, 0);
+    assert.equal(trackedDesignPaths(root).length, 2, 'the design root is still tracked');
+    assert.equal(readFileSync(join(root, '.gitignore'), 'utf8'), hostile);
+  });
+
+  it('refuses to write through a symlinked .gitignore', {
+    skip: gitOk ? false : 'git not available',
+  }, () => {
+    const root = repoWithDesign();
+    const outside = mkdtempSync(join(tmpdir(), 'gi-target-'));
+    made.push(outside);
+    const victim = join(outside, 'important.txt');
+    writeFileSync(victim, 'do not overwrite me');
+    symlinkSync(victim, join(root, '.gitignore'));
+
+    assert.throws(() => adoptToHub(root), /not a regular file/);
+    assert.equal(readFileSync(victim, 'utf8'), 'do not overwrite me');
   });
 });

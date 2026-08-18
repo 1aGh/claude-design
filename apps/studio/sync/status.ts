@@ -73,6 +73,26 @@ export interface FilePlaneStatus {
    *  half of its own, so this is absent on a journal-less hub. */
   pushed?: number;
   /**
+   * A BREAKER IS HOLDING, and this is how anyone finds out.
+   *
+   * The breakers shipped with their state living only in a `console.warn` and
+   * a return field nothing read — so a hold was permanent, invisible, and had
+   * no exit. That is worse than DDR-214's "a status surface that lies": the
+   * surface was simply absent, while the release leaned on these controls as
+   * its justification for shipping deletion without a soak.
+   *
+   * `kind` says which one, `paths` says what is waiting, and `answer` names
+   * the config key that releases it — a hold a person cannot resolve is not a
+   * safety control, it is a stall.
+   */
+  held?: {
+    kind: 'delete-out' | 'delete-in' | 'first-anchor' | 'reanchor';
+    count: number;
+    paths: string[];
+    /** One sentence, in the user's terms, about what is waiting and why. */
+    detail: string;
+  }[];
+  /**
    * THE DORUČENKA (DDR-226 §7) — per-path delivery state.
    *
    * The counts above are what the old lane reported, and they are exactly

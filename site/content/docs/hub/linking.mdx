@@ -177,7 +177,17 @@ Three things never travel, in either direction:
 
 **Executable modules** (`.ts`, `.mjs` outside a canvas body) are the one class with a gate on both ends. The hub refuses them from anyone but an owner, and your machine only accepts them from a hub you have explicitly said may deliver them — a local answer, recorded when you link, that no sign-in response can change.
 
-When two people change the same file between syncs, neither copy is merged and neither is thrown away: the loser is renamed to `<name>.maude-conflict-<when>-<who>.<ext>` beside the winner and travels too, so both people see it. If a whole batch of files differs at once — the usual case the first time an existing project is linked — sync stops and asks you once, rather than filling the folder with conflict copies you did not ask for.
+When two people change the same file between syncs, neither copy is merged and neither is thrown away: the loser is renamed to `<name>.maude-conflict-<when>-<who>.<ext>` beside the winner and travels too, so both people see it. If a whole batch of files differs at once — the usual case the first time an existing project is linked — sync pauses and the Sync panel says so, rather than filling the folder with conflict copies you did not ask for. Set `linkedHub.resolveFirstAnchor` to `"keep-local"` or `"keep-cloud"` to settle the whole batch in one go.
+
+## When sync pauses
+
+Three things make sync stop and wait rather than act, and all three report into the Sync panel with the files they are holding:
+
+- **Too many deletions.** More than ten at once, more than a quarter of what the project tracks, or more than twenty-five in an hour. That last one is a budget rather than a per-check limit — it counts what has already gone and survives a restart, because a slow drain adds up the same as a fast one.
+- **A first link where both sides have content**, described above.
+- **A hub that keeps asking to start over**, which is what a broken or misconfigured hub looks like from the outside.
+
+In every case nothing has been removed or overwritten. `linkedHub.propagateDeletes: false` stops deletions travelling at all.
 
 To turn the file mirror off for a project, set `linkedHub.syncFiles: false` in `.design/config.json`. Canvases keep syncing; only the surrounding files stop.
 

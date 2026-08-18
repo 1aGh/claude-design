@@ -29,8 +29,25 @@
 // silently rewriting the taxonomy.
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+
+/**
+ * Write `.gitignore` only when it is a REGULAR FILE, and atomically.
+ *
+ * Git can carry a symlink named `.gitignore`, and a clone of a repo somebody
+ * else influences is exactly the surface this module runs against. Following
+ * one turns a mode switch into an arbitrary-path overwrite. Temp + rename
+ * also means a crash mid-write cannot leave a repo with half an ignore file.
+ */
+function writeGitignoreSafely(path, contents) {
+  if (existsSync(path) && !lstatSync(path).isFile()) {
+    throw new Error(`${path} is not a regular file — refusing to write through it`);
+  }
+  const tmp = `${path}.maude-${process.pid}.tmp`;
+  writeFileSync(tmp, contents, 'utf8');
+  renameSync(tmp, path);
+}
 
 /** The marker pair around the whole-folder ignore, so it can be removed exactly. */
 export const OWNERSHIP_BEGIN = '# maude:hub-owned:begin';
@@ -57,9 +74,47 @@ export function buildOwnershipBlock(designRel = '.design') {
   ].join('\n');
 }
 
-/** Is this repo already declared hub-owned? */
+/**
+ * The marker pair, matched as WHOLE LINES and only when well-formed.
+ *
+ * A substring test was not enough, and the gap had teeth: a `.gitignore` is a
+ * committed file in a shared repo, which DDR-054 says peers can write. Put a
+ * BEGIN marker near the top, an END marker at the bottom, and the victim's
+ * real rules in between — `.env`, `*.pem`, `secrets/` — and the "update the
+ * existing block" path would replace the whole span with our five lines. Every
+ * one of those rules gone, staged, and on a cloud-managed repo mirrored
+ * onward. So: line-anchored, exactly one pair, BEGIN before END, or this is
+ * not our block and we do not touch it.
+ *
+ * @returns {{ ok: true, start: number, end: number } | { ok: false, reason: string }}
+ */
+export function findOwnershipBlock(contents) {
+  if (typeof contents !== 'string') return { ok: false, reason: 'absent' };
+  const lines = contents.split('\n');
+  const begins = [];
+  const ends = [];
+  lines.forEach((line, i) => {
+    if (line.trim() === OWNERSHIP_BEGIN) begins.push(i);
+    if (line.trim() === OWNERSHIP_END) ends.push(i);
+  });
+  if (begins.length === 0 && ends.length === 0) return { ok: false, reason: 'absent' };
+  if (begins.length !== 1 || ends.length !== 1) return { ok: false, reason: 'malformed' };
+  if (ends[0] < begins[0]) return { ok: false, reason: 'malformed' };
+  // A well-formed block is OURS, and ours has a fixed SHAPE: comment lines,
+  // plus exactly one rule, and that rule is an anchored directory path. A line
+  // count is not enough — a hostile block wrapping four of the victim's real
+  // rules is the same length as the one we write.
+  const inner = lines.slice(begins[0] + 1, ends[0]).filter((l) => l.trim().length > 0);
+  const rules = inner.filter((l) => !l.trim().startsWith('#'));
+  if (rules.length !== 1 || !/^\/[^/].*\/$/.test(rules[0].trim())) {
+    return { ok: false, reason: 'malformed' };
+  }
+  return { ok: true, start: begins[0], end: ends[0] };
+}
+
+/** Is this repo already declared hub-owned, by a block we recognise? */
 export function isHubOwned(gitignoreContents) {
-  return typeof gitignoreContents === 'string' && gitignoreContents.includes(OWNERSHIP_BEGIN);
+  return findOwnershipBlock(gitignoreContents).ok === true;
 }
 
 /**
@@ -72,9 +127,20 @@ export function isHubOwned(gitignoreContents) {
  */
 export function applyOwnershipBlock(contents, designRel = '.design') {
   const block = buildOwnershipBlock(designRel);
-  if (isHubOwned(contents)) {
-    const re = new RegExp(`${OWNERSHIP_BEGIN}[\\s\\S]*?${OWNERSHIP_END}\\n?`, 'm');
-    return { contents: contents.replace(re, block), action: 'updated' };
+  const found = findOwnershipBlock(contents);
+  if (found.ok) {
+    const lines = contents.split('\n');
+    const replaced = [
+      ...lines.slice(0, found.start),
+      ...block.split('\n').slice(0, -1),
+      ...lines.slice(found.end + 1),
+    ];
+    return { contents: replaced.join('\n'), action: 'updated' };
+  }
+  if (found.reason === 'malformed') {
+    // REFUSE, never rewrite. Markers we did not write are somebody else's
+    // content, and guessing at its extent is how a rewrite eats real rules.
+    return { contents, action: 'refused-malformed' };
   }
   const base = contents.length === 0 || contents.endsWith('\n') ? contents : `${contents}\n`;
   return { contents: `${base}${base.length > 0 ? '\n' : ''}${block}`, action: 'added' };
@@ -82,9 +148,13 @@ export function applyOwnershipBlock(contents, designRel = '.design') {
 
 /** Remove the block, idempotently. Returns `{ contents, action }`. */
 export function removeOwnershipBlock(contents) {
-  if (!isHubOwned(contents)) return { contents, action: 'absent' };
-  const re = new RegExp(`\\n?${OWNERSHIP_BEGIN}[\\s\\S]*?${OWNERSHIP_END}\\n?`, 'm');
-  return { contents: contents.replace(re, '\n').replace(/\n{3,}/g, '\n\n'), action: 'removed' };
+  const found = findOwnershipBlock(contents);
+  if (!found.ok) {
+    return { contents, action: found.reason === 'malformed' ? 'refused-malformed' : 'absent' };
+  }
+  const lines = contents.split('\n');
+  const kept = [...lines.slice(0, found.start), ...lines.slice(found.end + 1)];
+  return { contents: kept.join('\n').replace(/\n{3,}/g, '\n\n'), action: 'removed' };
 }
 
 /**
@@ -213,8 +283,14 @@ export function adoptToHub(repoRoot, { designRel = '.design', dryRun = false } =
   const tracked = trackedDesignPaths(repoRoot, designRel);
 
   if (dryRun) return { action, untracked: tracked.length, tracked, dryRun: true };
+  // A `.gitignore` carrying markers we did not write is not ours to edit, and
+  // untracking the design root against one would be acting on a state we
+  // could not read. Refuse the whole transition, not just the write.
+  if (action === 'refused-malformed') {
+    return { action, untracked: 0, tracked, dryRun: false };
+  }
 
-  writeFileSync(gitignorePath, contents, 'utf8');
+  writeGitignoreSafely(gitignorePath, contents);
   if (tracked.length > 0) {
     // `-r --cached` in one call; `--ignore-unmatch` so a concurrent removal
     // between the listing and here is not a failed mode switch.
@@ -244,8 +320,8 @@ export function detachToRepo(repoRoot, { dryRun = false } = {}) {
   if (!existsSync(gitignorePath)) return { action: 'absent', dryRun };
   const before = readFileSync(gitignorePath, 'utf8');
   const { contents, action } = removeOwnershipBlock(before);
-  if (dryRun || action === 'absent') return { action, dryRun };
-  writeFileSync(gitignorePath, contents, 'utf8');
+  if (dryRun || action === 'absent' || action === 'refused-malformed') return { action, dryRun };
+  writeGitignoreSafely(gitignorePath, contents);
   execFileSync('git', ['add', '--', '.gitignore'], {
     cwd: repoRoot,
     stdio: ['ignore', 'ignore', 'pipe'],

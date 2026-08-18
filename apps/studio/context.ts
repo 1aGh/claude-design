@@ -78,6 +78,17 @@ export interface LinkedHub {
    */
   propagateDeletes?: boolean;
   /**
+   * How to settle a FIRST-ANCHOR hold, for the whole set at once.
+   *
+   * When a project is linked for the first time both sides usually have
+   * content and neither has been reconciled here, so sync holds rather than
+   * writing a conflict copy per file. `keep-local` pushes this machine's
+   * copies up; `keep-cloud` takes the project's and parks yours beside them.
+   * Absent means keep asking — the hold is not an error and waiting costs
+   * nothing but time.
+   */
+  resolveFirstAnchor?: 'keep-local' | 'keep-cloud';
+  /**
    * Sync v2 Increment 2 (DDR-226 §4) — the file-event control channel.
    *
    * Default ON where the hub advertises `ledger`; set to `false` to fall back

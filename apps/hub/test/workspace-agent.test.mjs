@@ -460,7 +460,16 @@ describe('asset lane', () => {
       writeFileSync(join(assets, `${'abcdef'[i].repeat(8)}.png`), `n${i}`);
       void sweeper.sweepNew();
     }
-    await new Promise((r) => setTimeout(r, 300));
+    // POLL, don't sleep. A fixed wait is a wall-clock bet against a machine
+    // under load — six 5 ms uploads finish in well under 300 ms on an idle box
+    // and not always on a busy one, which made this fail intermittently in
+    // `pnpm test` (where it shares the machine with every other package) while
+    // passing alone. The deadline is generous because it only ever bounds a
+    // real failure; the loop exits as soon as the work is actually done.
+    const deadline = Date.now() + 10_000;
+    while (put.length < 6 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
 
     assert.equal(put.length, 6, `every upload reached the bucket: ${put.join(', ')}`);
     assert.equal(new Set(put).size, 6, 'and none of them twice');
@@ -1147,5 +1156,49 @@ describe('a retired document (the move protocol, studio codec stampMovedTo)', ()
     assert.equal(out, null);
     assert.ok(!existsSync(join(repo, '.design/never-here.tsx')), 'nothing materialised');
     await agent.stop();
+  });
+});
+
+describe('the hub keeps history even when the project gitignores the design root', () => {
+  // DDR-228 makes a hub-owned project gitignore `/.design/`. This checkout is
+  // seeded from that repo, so it inherits the rule — and the hub would stop
+  // committing the one thing it exists to hold. That matters because the
+  // generation backup is `git bundle --all` (committed objects only) and
+  // object storage mirrors `assets/` alone: without this, a hub-owned design
+  // system has no durable copy anywhere, and a deletion is unrecoverable
+  // rather than merely annoying.
+  it('commits a canvas the .gitignore excludes', {
+    skip: gitAvailable() ? false : 'git not available',
+  }, async () => {
+    const repo = tmp();
+    execFileSync('git', ['init', '-q'], { cwd: repo, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 't@t.test'], { cwd: repo, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.name', 'T'], { cwd: repo, stdio: 'ignore' });
+    writeFileSync(
+      join(repo, '.gitignore'),
+      '# maude:hub-owned:begin\n/.design/\n# maude:hub-owned:end\n'
+    );
+    execFileSync('git', ['add', '-A'], { cwd: repo, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-qm', 'seed'], { cwd: repo, stdio: 'ignore' });
+
+    const agent = createWorkspaceAgent({
+      repoDir: repo,
+      designRel: '.design',
+      debounceMs: 5,
+      log: silent(),
+    });
+    await agent.start();
+
+    const doc = new Y.Doc();
+    doc.getText('html').insert(0, 'export default function Home() { return <main/>; }\n');
+    await agent.onDocumentStored({ documentName: 'ws/acme/main/home', document: doc, user: null });
+    const res = await agent.flush();
+
+    assert.equal(res.ok, true, `the commit landed: ${JSON.stringify(res)}`);
+    const tracked = execFileSync('git', ['ls-files', '--', '.design'], {
+      cwd: repo,
+      encoding: 'utf8',
+    });
+    assert.match(tracked, /\.design\/home\.tsx/, 'the canvas is in history despite the ignore');
   });
 });

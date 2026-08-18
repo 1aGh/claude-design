@@ -125,13 +125,34 @@ export const FIRST_ANCHOR_STORM_LIMIT = 10;
  */
 export const DELETE_BREAKER_MAX = 10;
 export const DELETE_BREAKER_MAX_FRACTION = 0.25;
+
 /**
- * The fraction rule needs a floor or it is nonsense at small N: in a project
- * tracking one file, deleting that file is 100% and every ordinary delete
- * trips the breaker. Below this many files in one pass, only the absolute
- * count decides.
+ * The window the budget is measured over, and the ceiling inside it.
+ *
+ * The first version of this breaker counted ONE PASS and reset completely on
+ * the next, which makes it a rate limit rather than a budget — and a rate
+ * limit is the wrong control here, because the thing it guards against is
+ * cumulative. Ten per pass, six passes a minute once a hub can poke, and a
+ * two-hundred-file project is gone in three minutes with the limit never once
+ * tripping. Two per pass was under every arm of it unconditionally, at every
+ * project size, forever.
+ *
+ * So the count is cumulative, windowed, and PERSISTED on the ledger —
+ * otherwise "restart the app" is the bypass. A window rather than a lifetime
+ * total because a real project does delete a lot of files eventually, just
+ * not forty of them in an hour without somebody meaning it.
  */
-export const DELETE_BREAKER_MIN_FOR_FRACTION = 3;
+export const DELETE_BUDGET_WINDOW_MS = 60 * 60 * 1000;
+export const DELETE_BUDGET_PER_WINDOW = 25;
+
+/**
+ * The proportion arm needs a small floor — in a project tracking one file,
+ * deleting that file is 100% — but the floor used to be the hole: at 3, two
+ * deletions per pass were under every arm forever. It is safe at 2 now only
+ * because the BUDGET arm catches the patient drain independently. Neither
+ * number is load-bearing alone; the three together are.
+ */
+export const DELETE_BREAKER_MIN_FOR_FRACTION = 2;
 
 /** Walk depth ceiling — matches the classifier's own shape cap. */
 const MAX_WALK_DEPTH = 8;
@@ -457,14 +478,19 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
    * ancestor that DOES exist and re-attach the tail. `path.join` is lexical
    * and never touches disk, which is exactly why it is not a containment check.
    */
-  function realParent(abs: string): string {
-    let cur = path.dirname(abs);
+  function realpathOfDeepestExisting(p: string): string {
+    let cur = p;
     for (;;) {
       try {
-        return realpathSync(cur);
+        // RE-ATTACH THE TAIL. Resolving the deepest existing ancestor and
+        // returning just that loses every directory below it that does not
+        // exist yet — which flattens `system/deep/a.css` to `a.css` on exactly
+        // the fresh-link path where none of those directories exist. The hub's
+        // own helper has always done this; this one was written without it.
+        return path.join(realpathSync(cur), path.relative(cur, p));
       } catch {
         const up = path.dirname(cur);
-        if (up === cur) return cur;
+        if (up === cur) return p;
         cur = up;
       }
     }
@@ -490,14 +516,14 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
    */
   function safeTarget(rel: string): { abs: string; parent: string } | null {
     const lexical = path.join(designRoot, rel);
-    const parent = realParent(lexical);
+    const abs = realpathOfDeepestExisting(lexical);
+    const parent = path.dirname(abs);
     if (parent !== realRoot && !parent.startsWith(realRoot + path.sep)) {
       log.warn?.(
         `[sync/files] refusing ${rel}: it resolves outside the design root (a symlinked directory on the path)`
       );
       return null;
     }
-    const abs = path.join(parent, path.basename(lexical));
     // A directory, a symlink, a socket — anything that is not a regular file
     // sitting where a file belongs is refused rather than replaced.
     try {
@@ -646,10 +672,21 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
     if (!existsSync(abs)) return null;
     const stamp = new Date(now()).toISOString().replace(/[:.]/g, '-');
     const destRel = `_trash/${stamp}/${rel}`;
-    const dest = path.join(designRoot, destRel);
+    // THROUGH `safeTarget`, like every other write on this side. This was the
+    // one path that skipped it, and it is the worst one to skip: the
+    // DESTINATION is where a file goes to be recoverable, so a symlinked
+    // `_trash/` that lands it outside the design root turns "quarantined,
+    // never unlinked" into a deletion with extra steps.
+    const target = safeTarget(destRel);
+    if (!target) {
+      log.warn?.(
+        `[sync/files] refusing to quarantine ${rel} — _trash/ does not resolve inside the root`
+      );
+      return null;
+    }
     try {
-      mkdirSync(path.dirname(dest), { recursive: true });
-      renameSync(abs, dest);
+      mkdirSync(target.parent, { recursive: true });
+      renameSync(abs, target.abs);
       return destRel;
     } catch (err) {
       log.warn?.(`[sync/files] could not quarantine ${rel}: ${(err as Error).message}`);
@@ -854,16 +891,34 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
     // directions, because a delete you have already done is not one a prompt
     // can take back.
     const tracked = Object.keys(ledger.rows()).length;
-    const overBreaker = (n: number): boolean =>
-      n > DELETE_BREAKER_MAX ||
-      (n >= DELETE_BREAKER_MIN_FOR_FRACTION &&
+
+    /**
+     * Three arms, and the cumulative one is the load-bearing addition.
+     *
+     *   burst      — more than `MAX` in one pass. The accident shape.
+     *   proportion — more than a quarter of what this machine tracks. Catches
+     *                a small project where ten is most of it.
+     *   budget     — more than `PER_WINDOW` across the whole window, counting
+     *                what previous passes already applied. Catches the patient
+     *                drain the first two are blind to, and survives a restart.
+     */
+    const overBreaker = (direction: 'out' | 'in', n: number): boolean => {
+      const already = ledger.deletesInWindow(direction, DELETE_BUDGET_WINDOW_MS);
+      if (n > DELETE_BREAKER_MAX) return true;
+      if (
+        n >= DELETE_BREAKER_MIN_FOR_FRACTION &&
         tracked > 0 &&
-        n / tracked > DELETE_BREAKER_MAX_FRACTION);
+        n / tracked > DELETE_BREAKER_MAX_FRACTION
+      ) {
+        return true;
+      }
+      return already + n > DELETE_BUDGET_PER_WINDOW;
+    };
 
     for (const direction of ['out', 'in'] as const) {
       const action = direction === 'out' ? 'propagate-delete' : 'quarantine';
       const hits = work.filter((w) => w.decision.action === action);
-      if (hits.length === 0 || !overBreaker(hits.length)) continue;
+      if (hits.length === 0 || !overBreaker(direction, hits.length)) continue;
       const paths = hits.map((w) => w.rel).sort();
       log.warn?.(
         direction === 'out'
@@ -965,6 +1020,20 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
         }.`
       );
     }
+    // CHARGE WHAT ACTUALLY HAPPENED against the window, per direction. Applied
+    // deletions only — a decision the breaker held, or one that failed, costs
+    // nothing, or a hub could exhaust the budget with attempts.
+    ledger.noteDeletes(
+      'out',
+      out.deleted.filter((d) => d.parked === null).map((d) => d.rel),
+      DELETE_BUDGET_WINDOW_MS
+    );
+    ledger.noteDeletes(
+      'in',
+      out.deleted.filter((d) => d.parked !== null).map((d) => d.rel),
+      DELETE_BUDGET_WINDOW_MS
+    );
+
     return out;
   }
 
@@ -1149,6 +1218,18 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
         // runtime state (DDR-115), so one person's delete never replicates as
         // everyone's copy of the deleted file.
         const parked = quarantineLocal(rel);
+        if (parked === null) {
+          // PARK FIRST, the same fail-closed rule the conflict path follows: a
+          // loser we cannot recover is a loser we must not create. Reporting a
+          // delete here and forgetting the row would also resurrect the file
+          // on the next pass, because with no ancestor it reads as brand new.
+          out.failed.push({ rel, reason: 'could not quarantine — refusing to delete' });
+          ledger.setState(rel, 'stuck', {
+            reason:
+              'the project deleted this file and it could not be moved to _trash/, so it was kept',
+          });
+          return false;
+        }
         ledger.forget(rel);
         out.deleted.push({ rel, parked });
         return true;

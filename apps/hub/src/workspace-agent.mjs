@@ -220,6 +220,20 @@ export function createWorkspaceAgent(opts) {
         run,
         debounceMs: opts.debounceMs,
         log,
+        // THE HUB COMMITS THE DESIGN ROOT EVEN WHEN GIT IS IGNORING IT.
+        //
+        // A hub-owned project (DDR-228) gitignores `/.design/`, and this
+        // checkout is seeded from that repo, so it inherits the rule and the
+        // hub would silently stop recording the one thing it exists to hold.
+        // Generation backups bundle committed objects only, and object storage
+        // mirrors `assets/` alone — so the design system would have had no
+        // durable copy anywhere, which is precisely what makes a deletion
+        // unrecoverable rather than merely inconvenient.
+        //
+        // Safe here and nowhere else: on a desktop the ignore file is the
+        // user's instruction about their own repo; on the hub the design root
+        // is the product.
+        stageIgnored: true,
       });
       ready = true;
       log.log?.(

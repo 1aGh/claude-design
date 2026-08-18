@@ -2717,10 +2717,44 @@ export function createSyncRuntime(
       fileTotals.pulled += result.pulled.length;
       fileTotals.conflicts += result.conflicts.length;
       filePushed += result.pushed.length;
+      // EVERY HOLD REACHES THE PANEL. Without this the breakers were a
+      // `console.warn` in a process log, and DDR-177's premise is that the
+      // target user never opens a terminal — so a control whose only output
+      // is a log line is a control nobody can act on.
+      const held: NonNullable<import('./status.ts').FilePlaneStatus['held']> = [];
+      if (result.deleteHeld) {
+        held.push({
+          kind: result.deleteHeld.direction === 'out' ? 'delete-out' : 'delete-in',
+          count: result.deleteHeld.count,
+          paths: result.deleteHeld.paths,
+          detail:
+            result.deleteHeld.direction === 'out'
+              ? `${result.deleteHeld.count} files are gone from this machine — more than sync will remove from the project without you saying so. Nothing was deleted anywhere else. Set linkedHub.propagateDeletes: false to stop asking, or delete them again once you have confirmed this was deliberate.`
+              : `The project wants to remove ${result.deleteHeld.count} files here — more than sync will delete without you saying so. Nothing was removed. They stay until you accept or the project puts them back.`,
+        });
+      }
+      if (result.firstAnchorHeld) {
+        held.push({
+          kind: 'first-anchor',
+          count: result.firstAnchorHeld.count,
+          paths: result.firstAnchorHeld.paths,
+          detail: `${result.firstAnchorHeld.count} files differ between this machine and the project, and neither copy has been reconciled here yet. Set linkedHub.resolveFirstAnchor to "keep-local" or "keep-cloud" to settle the whole set at once.`,
+        });
+      }
+      if (result.reanchorHeld) {
+        held.push({
+          kind: 'reanchor',
+          count: 0,
+          paths: [],
+          detail:
+            'The project has asked to start over repeatedly, which is what a broken or hostile hub looks like. Nothing was overwritten. Sync retries by itself; if this persists, the hub needs looking at.',
+        });
+      }
       statusStore?.updateFiles?.({
         ...fileTotals,
         pushed: filePushed,
         ...(filePlane ? { delivery: filePlane.doruceka() } : {}),
+        ...(held.length > 0 ? { held } : {}),
       });
       for (const f of result.failed) {
         console.warn(`[sync/files] ${f.rel}: ${f.reason}`);
@@ -2818,6 +2852,13 @@ export function createSyncRuntime(
               // file and it comes back. `linkedHub.propagateDeletes: false`
               // is the per-project opt-out; the breakers hold either way.
               propagateDeletes: linkedHub.propagateDeletes !== false,
+              // The answer to a first-anchor hold. A config key rather than a
+              // prompt because the hold outlives the pass that raised it, and
+              // DDR-177's user has no terminal to answer in.
+              ...(linkedHub.resolveFirstAnchor === 'keep-local' ||
+              linkedHub.resolveFirstAnchor === 'keep-cloud'
+                ? { resolveFirstAnchor: linkedHub.resolveFirstAnchor }
+                : {}),
               // Same exposure class as `syncMeta.by`, and the same reasoning:
               // a conflict copy nobody can attribute is a conflict copy nobody
               // resolves.

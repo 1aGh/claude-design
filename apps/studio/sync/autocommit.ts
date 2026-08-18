@@ -73,6 +73,23 @@ export interface AutoCommitOptions {
   /** Committer identity — the machine, never the human. */
   bot?: EditAttribution;
   log?: Pick<Console, 'warn' | 'error' | 'log'>;
+  /**
+   * Stage paths git is ignoring (`git add -f`). **Hub only.**
+   *
+   * On a desktop this must stay off: the ignore file is the user's, and
+   * force-adding would commit what they told git to skip. On the HUB it is the
+   * opposite — the design root IS the product there, not a mirror of it.
+   *
+   * This exists because of a real hole. Once a project goes hub-owned
+   * (DDR-228) its `.gitignore` carries `/.design/`, the hub's checkout is
+   * seeded from that repo and inherits it, and the hub quietly stops
+   * committing the design root. Generation backups are `git bundle --all`, so
+   * they carry committed objects only — meaning the design system had no copy
+   * in any backup, on top of having none in object storage (only `assets/` is
+   * mirrored). A deletion would then have been unrecoverable everywhere except
+   * a per-machine `_trash/` nothing prunes or indexes.
+   */
+  stageIgnored?: boolean;
 }
 
 export interface AutoCommit {
@@ -174,6 +191,7 @@ export function createAutoCommit(opts: AutoCommitOptions): AutoCommit {
     maxDebounceMs = DEFAULT_MAX_DEBOUNCE_MS,
     bot = DEFAULT_BOT,
     log = console,
+    stageIgnored = false,
   } = opts;
 
   const touched = new Set<string>();
@@ -342,7 +360,11 @@ export function createAutoCommit(opts: AutoCommitOptions): AutoCommit {
     // erroring. It does not widen the scope: the pathspec is still this exact
     // file list, so the "never commit something it wasn't told about" rule the
     // comment above states is intact.
-    const add = await run(['add', '-A', '--', ...files], { cwd: repoRoot });
+    // `-A` so a tracked path that is gone stages as a DELETION rather than
+    // erroring; `-f` only where the caller asked for it — see `stageIgnored`.
+    const add = await run(['add', '-A', ...(stageIgnored ? ['-f'] : []), '--', ...files], {
+      cwd: repoRoot,
+    });
     if (add.code !== 0) {
       log.warn?.(`[autocommit] git add failed: ${add.stderr.trim()}`);
       // RE-QUEUE, exactly as the `commit` branch below does. `touched` was

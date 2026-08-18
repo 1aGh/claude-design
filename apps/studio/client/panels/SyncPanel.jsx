@@ -354,6 +354,31 @@ export default function SyncPanel({
                 kept in _trash/.
               </div>
             )}
+            {/*
+              A HELD BREAKER, said out loud. These used to exist only as a
+              console.warn, which on a machine whose user never opens a
+              terminal is the same as not existing — while the release leaned
+              on them as its reason for shipping deletion without a soak.
+            */}
+            {Array.isArray(files.held) &&
+              files.held.map((h) => (
+                <div key={h.kind} className="sp-assets-retry" data-testid={`sync-held-${h.kind}`}>
+                  <strong>sync paused — nothing was removed.</strong> {h.detail}
+                  {h.paths?.length > 0 && (
+                    <details className="sp-held-paths">
+                      <summary>
+                        {h.count} file{h.count === 1 ? '' : 's'}
+                      </summary>
+                      <ul>
+                        {h.paths.slice(0, 50).map((rel) => (
+                          <li key={rel}>{rel}</li>
+                        ))}
+                        {h.paths.length > 50 && <li>…and {h.paths.length - 50} more</li>}
+                      </ul>
+                    </details>
+                  )}
+                </div>
+              ))}
           </section>
         )}
       </div>

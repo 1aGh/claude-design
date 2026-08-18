@@ -16,9 +16,9 @@ rule on each side, and each side asks its own copy rather than trusting the
 other's answer. Three things still never travel: the file naming your hub (a
 synced one would let a hub rewrite where it lives), your per-machine state like
 camera position and local history, and another program's conflict copies.
-Executable modules are the one class gated at both ends — your machine only
-accepts them from a hub you have explicitly said may send them, and that answer
-is recorded locally where no sign-in can change it.
+Executable modules are the one class gated at both ends. Linking asks once
+whether a hub may deliver them, defaulting to no, and that answer lives on your
+machine where no sign-in response can change it.
 
 Deleting works. Before, a removed file came back on the next pass, because
 absence and "I haven't heard about it" are the same thing on the wire until
@@ -26,8 +26,11 @@ somebody says otherwise. A deletion is now a statement with a timestamp, sent
 with the same precondition an edit carries — so if somebody changed the file
 while you were deleting it, their change wins and the file returns. Nothing is
 ever unlinked: the losing copy moves to a trash folder on both ends. And when a
-whole batch goes at once — a branch switch, a restore that half-finished — sync
-stops and asks rather than doing it, in both directions.
+batch goes at once — a branch switch, a restore that half-finished — sync
+pauses in both directions and the Sync panel says what it was about to do and
+to which files; nothing moves until you agree. That pause is a budget, not a
+per-check limit: it counts what has already been removed over the last hour and
+remembers across a restart, because the thing it guards against adds up.
 
 The folder also has exactly one owner now, where it used to quietly have two.
 Committing `.design/` while a hub mirrors it reads as extra safety and is the

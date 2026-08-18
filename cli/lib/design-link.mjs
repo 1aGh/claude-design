@@ -17,7 +17,15 @@ import { createInterface } from 'node:readline';
 import { parseArgs } from './argv.mjs';
 import { adoptToHub, detachToRepo, ownershipState } from './design-ownership.mjs';
 import { BEGIN_MARKER, writeGitignoreBlock } from './gitignore-block.mjs';
-import { addHub, getHub, isHubTrusted, normalizeUrl, removeHub, trustHub } from './hubs-config.mjs';
+import {
+  addHub,
+  getHub,
+  isHubTrusted,
+  normalizeUrl,
+  removeHub,
+  setHubCodeModules,
+  trustHub,
+} from './hubs-config.mjs';
 
 const DESIGN_CONFIG_PATH = '.design/config.json';
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
@@ -165,6 +173,17 @@ export async function runLink({ args, cwd = process.cwd(), forceAdopt = false })
     await maybeWriteGitignoreBlock(cwd, !!flags.yes);
   }
 
+  // The code-module consent (DDR-226 §9 / review finding A5). This is the
+  // ONLY writer: the receiver reads `codeModulesAllowed` from the stored hub
+  // record and nothing else may set it — least of all a sign-in response,
+  // which is the hub telling you what your own role is.
+  //
+  // Without a writer the field could never be true, so `code-module` had no
+  // transport at all in hub-owned mode: an owner could push one through the
+  // door and no peer would ever accept it. Closed harder than intended is
+  // still closed wrong.
+  await askCodeModuleConsent(normUrl, { assumeYes: !!flags.yes, loopback });
+
   // DDR-228 — a link must land in ONE of the two ownership modes.
   //
   // Linked-and-committed is not a lighter version of hub-owned; it is two
@@ -217,6 +236,40 @@ export async function runUnlink({ args, cwd = process.cwd() }) {
 
   process.stdout.write(
     `[design unlink] dropped link to ${url}.\n  config:  removed .design/config.json.linkedHub\n  token:   ${tokenRemoved ? 'cleared from ~/.config/maude/hubs.json' : flags['keep-token'] ? 'kept (--keep-token)' : '(none to clear)'}\n  files:   .design/*.html etc. untouched — repo is now in solo mode.\n`
+  );
+}
+
+/**
+ * Ask, once per hub, whether it may deliver executable modules.
+ *
+ * `.ts`/`.mjs` outside a canvas body are read by the AGENT and by every
+ * `maude design *` helper — a different blast radius from a `.tsx` rendering
+ * in the sandboxed canvas origin. Default NO on every non-answer (non-TTY,
+ * declined, anything unparsed): the pessimistic branch, same as every other
+ * default in this lane.
+ */
+async function askCodeModuleConsent(normUrl, { assumeYes = false, loopback = false } = {}) {
+  // A loopback pairing is this machine talking to itself; there is no remote
+  // party to consent about.
+  if (loopback) return;
+  const existing = getHub(normUrl);
+  if (existing && typeof existing.codeModulesAllowed === 'boolean') return;
+
+  let allow = false;
+  if (assumeYes) {
+    allow = false; // --yes accepts DEFAULTS, and this default is no.
+  } else if (process.stdin.isTTY) {
+    process.stdout.write(
+      '\n  Shared code (.ts / .mjs outside a canvas) is read by Claude and by the\n' +
+        '  maude helpers on this machine, not just rendered in a preview.\n'
+    );
+    allow = await promptYesNo(`  Let ${normUrl} deliver those to this machine? [y/N] `, false);
+  }
+  setHubCodeModules(normUrl, allow);
+  process.stdout.write(
+    allow
+      ? '[design link] this hub may deliver shared code modules to this machine.\n'
+      : `[design link] shared code modules from ${normUrl} will NOT be written here (design files still sync). Re-link and answer yes to change it.\n`
   );
 }
 

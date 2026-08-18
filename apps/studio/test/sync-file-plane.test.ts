@@ -29,6 +29,7 @@ import { join } from 'node:path';
 import { createFileLedger, type FileLedger } from '../sync/file-ledger.ts';
 import {
   createFilePlane,
+  DELETE_BUDGET_PER_WINDOW,
   foldRemote,
   REANCHOR_STORM_LIMIT,
   scanLocalFiles,
@@ -640,6 +641,20 @@ describe("the receiver defends its own root, not just the hub's", () => {
     expect(res.failed.length + res.dropped.length).toBeGreaterThan(0);
   });
 
+  test('a pull into directories that do not exist yet keeps its full path', async () => {
+    // The fresh-link case, and the bug the containment fix introduced: the
+    // deepest EXISTING ancestor of `system/deep/nested/a.css` in an empty tree
+    // is the design root itself, so resolving to that and appending the
+    // basename produced `<root>/a.css`. Every file in a first sync would have
+    // landed flattened at the top level.
+    const hub = fakeHub({ 'system/deep/nested/a.css': '.deep{}' });
+    const res = await plane(hub).reconcile();
+
+    expect(res.pulled).toEqual(['system/deep/nested/a.css']);
+    expect(read('system/deep/nested/a.css')).toBe('.deep{}');
+    expect(existsSync(join(root, 'a.css'))).toBe(false);
+  });
+
   test('refuses to replace a directory sitting where a file belongs', async () => {
     mkdirSync(join(root, 'system/ds/brand.css'), { recursive: true });
     const hub = fakeHub({ 'system/ds/brand.css': ':root{}' });
@@ -869,6 +884,55 @@ describe('the deletion breakers — the only protection now that this ships ON',
     expect(res.deleteHeld?.direction).toBe('in');
     expect(existsSync(join(root, 'system/ds/f0.css'))).toBe(true);
     expect(res.deleted).toEqual([]);
+  });
+
+  test('a patient drain is caught too — the budget remembers across passes', async () => {
+    // The finding this exists for: the first breaker counted ONE PASS and
+    // reset. Two per pass was under every arm of it at every project size, so
+    // a hub poking every 10s could remove a file every five seconds forever
+    // and never trip anything. A rate limit is the wrong control for a
+    // cumulative harm.
+    const seeded: Record<string, string> = {};
+    for (let i = 0; i < 60; i++) seeded[`system/ds/f${i}.css`] = `.a${i}{}`;
+    const hub = fakeHub(seeded);
+    const p = plane(hub, { propagateDeletes: true });
+    await p.reconcile();
+
+    let applied = 0;
+    let held = false;
+    // Two at a time — deliberately under the burst arm AND under the
+    // proportion arm (2/60 is 3%), which is exactly the attacker's cadence.
+    for (let round = 0; round < 20 && !held; round++) {
+      hub.tombstone(`system/ds/f${round * 2}.css`);
+      hub.tombstone(`system/ds/f${round * 2 + 1}.css`);
+      const res = await p.reconcile();
+      applied += res.deleted.length;
+      if (res.deleteHeld) held = true;
+    }
+
+    expect(held).toBe(true);
+    expect(applied).toBeLessThanOrEqual(DELETE_BUDGET_PER_WINDOW);
+  });
+
+  test('the budget survives a restart — a new plane over the same ledger still remembers', async () => {
+    const seeded: Record<string, string> = {};
+    for (let i = 0; i < 60; i++) seeded[`system/ds/f${i}.css`] = `.a${i}{}`;
+    const hub = fakeHub(seeded);
+    await plane(hub, { propagateDeletes: true }).reconcile();
+
+    for (let round = 0; round < 20; round++) {
+      hub.tombstone(`system/ds/f${round * 2}.css`);
+      hub.tombstone(`system/ds/f${round * 2 + 1}.css`);
+      // A FRESH plane each round, as a restarted dev-server would be. The
+      // ledger is the same, and the budget lives there — otherwise "restart
+      // the app" is the bypass.
+      const res = await plane(hub, { propagateDeletes: true }).reconcile();
+      if (res.deleteHeld) {
+        expect(round).toBeGreaterThan(0);
+        return;
+      }
+    }
+    throw new Error('the budget did not survive being reconstructed');
   });
 
   test('an ordinary single delete is not a storm', async () => {

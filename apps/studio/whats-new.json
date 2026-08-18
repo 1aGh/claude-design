@@ -17,7 +17,7 @@
       "kind": "feature",
       "surface": "design-ui",
       "title": "Delete a file and it stays deleted",
-      "summary": "Removing a file now removes it for everyone, instead of it quietly coming back on the next sync. If a whole batch disappears at once — a branch switch, a bad restore — sync stops and asks first, and anything it does remove is recoverable rather than gone."
+      "summary": "Removing a file now removes it for everyone, instead of it quietly coming back on the next sync. If more than a handful go at once — a branch switch, a bad restore — sync pauses and the Sync panel says what it was about to do; nothing is removed until you agree. Anything it does remove is moved to a trash folder on both machines rather than deleted."
     },
     {
       "id": "repo-owned-or-hub-owned",
@@ -26,7 +26,7 @@
       "kind": "improvement",
       "surface": "design-ui",
       "title": "One owner for your design folder",
-      "summary": "A project is either committed to your repo or mirrored by your hub — never both, which used to let a git pull and a sync undo each other. Switching either way takes one command and never moves a file off your disk."
+      "summary": "A project is either committed to your repo or mirrored by your hub — never both, which used to let a git pull and a sync undo each other. Switching either way takes one command and never moves a file off your disk. Linking also asks, once, whether that hub may send shared code to this machine."
     },
     {
       "id": "history-follows-the-cloud",
