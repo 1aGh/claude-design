@@ -360,6 +360,23 @@ async function main() {
     // On the fleet this is the `CELL_LIVE_PAIRING` pilot allowlist. A local
     // cell exists to exercise both planes, so it is on here.
     MAUDE_CELL_PAIRING: '1',
+    // THE CANVAS ORIGIN GOES THROUGH THE HUB'S DOOR, like the fleet's does.
+    //
+    // Without this the studio child serves its canvas origin RAW on a random
+    // loopback port and the shell embeds it directly — no door, no capability
+    // exchange, no injected role header. `projectReadOnly` in workspace mode
+    // deliberately fails CLOSED without that header, so every canvas-origin
+    // write answered 403 viewer: a person drew on the cloud canvas, the stroke
+    // rendered from iframe memory, the PUT was silently refused, and the next
+    // doc-lane materialisation erased it — which reads exactly like "desktop
+    // keeps overwriting my cloud drawings".
+    //
+    // `canvas.localhost` resolves to loopback in every Chromium/WebKit build
+    // (RFC 6761 treats *.localhost specially), so the hub recognises the Host,
+    // runs the real canvas door (token → cookie → role), and proxies to the
+    // child's canvas port — the same topology as canvas.<zone> on the fleet,
+    // which also makes the local rig honest about origin isolation.
+    MAUDE_PUBLIC_CANVAS_ORIGIN: `http://canvas.localhost:${port}`,
     // The studio child's port is otherwise a hardcoded 4399, so a SECOND local
     // cell silently fights the first one for it: the child loses the bind,
     // walks to the next free port, and the hub goes on proxying to a child that
