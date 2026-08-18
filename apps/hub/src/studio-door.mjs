@@ -183,5 +183,31 @@ export function servicePage(title, message, { action = null } = {}) {
 </head>
 <body class="service-page"><main><h1>${esc(title)}</h1><p>${esc(message)}</p>${
     action ? `<a class="button" href="${esc(action.href)}">${esc(action.label)}</a>` : ''
-  }</main></body></html>`;
+  }${oidcButton(esc)}</main></body></html>`;
+}
+
+/**
+ * "Sign in with <provider>" — Track C C6.
+ *
+ * Server-rendered and script-free, for the same reason the rest of this page
+ * is: it is opened when something is already wrong, and a page that needs a
+ * bundle to show a link is a page that can fail to show it.
+ *
+ * Under `hybrid` it sits beside the password form; under `strict` it is the
+ * only way in. It costs NOTHING against the admin bundle's gz ceiling — this
+ * file is not in that bundle, which is why the plan's "the People view plus an
+ * OIDC button will blow the budget" framing was wrong on both halves.
+ */
+function oidcButton(esc, env = process.env) {
+  const mode = env.HUB_OIDC_MODE;
+  if (mode !== 'hybrid' && mode !== 'strict') return '';
+  let label = String(env.HUB_OIDC_LABEL ?? '').trim();
+  if (!label) {
+    try {
+      label = new URL(String(env.HUB_OIDC_ISSUER ?? '')).hostname;
+    } catch {
+      label = 'your identity provider';
+    }
+  }
+  return `<p><a class="button" href="/auth/oidc/start">Sign in with ${esc(label)}</a></p>`;
 }

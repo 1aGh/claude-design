@@ -153,6 +153,26 @@ export function validateWorkspaceConfig(raw = {}) {
     };
   }
 
+  // BYO identity — Track C C6. Threaded through validation, .env AND compose;
+  // a var written into one but not the other never reaches the container, which
+  // already shipped once with MAUDE_ADMIN_PASSWORD (see renderCompose).
+  if (raw.oidc) {
+    const o = { ...raw.oidc };
+    o.issuer = String(o.issuer ?? '')
+      .trim()
+      .replace(/\/+$/, '');
+    o.mode = o.mode === 'strict' ? 'strict' : 'hybrid';
+    o.domains = String(o.domains ?? '').trim();
+    if (!o.issuer) errors.push('oidc.issuer is required when oidc is configured');
+    else if (!/^https:\/\//.test(o.issuer)) errors.push('oidc.issuer must be https');
+    if (!o.clientId) errors.push('oidc.clientId is required when oidc is configured');
+    if (!o.clientSecret) errors.push('oidc.clientSecret is required when oidc is configured');
+    // A filter, never a grant — but required, because without it every subject
+    // at a public issuer can queue itself into the operator's pending list.
+    if (!o.domains) errors.push('oidc.domains is required when oidc is configured');
+    cfg.oidc = o;
+  }
+
   // The backup namespace — Phase 0 F3.
   //
   // Until now nothing here mentioned MAUDE_BACKUP_PREFIX at all: the CELL
@@ -293,6 +313,23 @@ export function envEntries(cfg, { hubSecret, adminPassword }) {
       });
     }
   }
+  if (cfg.oidc) {
+    entries.push(
+      {
+        key: 'HUB_OIDC_MODE',
+        value: cfg.oidc.mode,
+        comment: 'hybrid = password login still works; strict = OIDC only',
+      },
+      { key: 'HUB_OIDC_ISSUER', value: cfg.oidc.issuer },
+      { key: 'HUB_OIDC_CLIENT_ID', value: cfg.oidc.clientId },
+      { key: 'HUB_OIDC_CLIENT_SECRET', value: cfg.oidc.clientSecret },
+      {
+        key: 'HUB_OIDC_ALLOWED_DOMAINS',
+        value: cfg.oidc.domains,
+        comment: 'a filter, never a grant — a permitted domain still needs an account',
+      }
+    );
+  }
   if (cfg.seedRepo) {
     entries.push({ key: 'MAUDE_SEED_REPO', value: cfg.seedRepo, comment: 'cloned on first boot' });
   }
@@ -350,6 +387,15 @@ export function renderCompose(cfg) {
           // and a var present in one but not the other never reaches the
           // container — which already shipped once, with MAUDE_ADMIN_PASSWORD.
           ...(cfg.backupPrefix ? ['MAUDE_BACKUP_PREFIX'] : []),
+        ]
+      : []),
+    ...(cfg.oidc
+      ? [
+          'HUB_OIDC_MODE',
+          'HUB_OIDC_ISSUER',
+          'HUB_OIDC_CLIENT_ID',
+          'HUB_OIDC_CLIENT_SECRET',
+          'HUB_OIDC_ALLOWED_DOMAINS',
         ]
       : []),
     ...(cfg.seedRepo ? ['MAUDE_SEED_REPO'] : []),

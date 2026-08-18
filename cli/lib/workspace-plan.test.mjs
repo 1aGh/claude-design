@@ -426,3 +426,48 @@ test('a namespace can never escape its own keyspace', () => {
   assert.ok(!cfg.backupPrefix.includes('/'));
   assert.ok(!cfg.backupPrefix.includes('..'));
 });
+
+// ------------------------------------------------------- BYO identity (C6)
+
+const OIDC = {
+  issuer: 'https://acme.eu.auth0.com',
+  clientId: 'cid',
+  clientSecret: 'shh',
+  domains: 'acme.com',
+};
+
+test('OIDC reaches BOTH .env and the container', () => {
+  // Hand-maintained lists on both sides. A var in one but not the other never
+  // arrives — that already shipped once, with MAUDE_ADMIN_PASSWORD.
+  const cfg = ok({ ...BASE, oidc: OIDC });
+  const env = renderEnv(envEntries(cfg, { hubSecret: 'x', adminPassword: 'y'.repeat(12) }));
+  const compose = renderCompose(cfg);
+  for (const key of [
+    'HUB_OIDC_MODE',
+    'HUB_OIDC_ISSUER',
+    'HUB_OIDC_CLIENT_ID',
+    'HUB_OIDC_CLIENT_SECRET',
+    'HUB_OIDC_ALLOWED_DOMAINS',
+  ]) {
+    assert.ok(env.includes(`${key}=`), `${key} missing from .env`);
+    assert.match(compose, new RegExp(`${key}: \\$\\{${key}\\}`), `${key} not forwarded`);
+  }
+});
+
+test('the allowed-domain list is required — it is a filter, never a grant', () => {
+  const r = validateWorkspaceConfig({ ...BASE, oidc: { ...OIDC, domains: '' } });
+  assert.match(r.errors.join(' '), /oidc.domains is required/);
+});
+
+test('an unrecognised mode falls back to hybrid rather than to strict', () => {
+  // Getting this backwards would lock an operator out of their own box on a
+  // typo. hybrid keeps the password door open.
+  assert.equal(ok({ ...BASE, oidc: { ...OIDC, mode: 'stric' } }).oidc.mode, 'hybrid');
+  assert.equal(ok({ ...BASE, oidc: { ...OIDC, mode: 'strict' } }).oidc.mode, 'strict');
+});
+
+test('no OIDC configured leaves no empty variables to misread', () => {
+  const env = renderEnv(envEntries(ok(BASE), { hubSecret: 'x', adminPassword: 'y'.repeat(12) }));
+  assert.ok(!/HUB_OIDC/.test(env));
+  assert.ok(!/HUB_OIDC/.test(renderCompose(ok(BASE))));
+});
