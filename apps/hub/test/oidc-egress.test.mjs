@@ -15,10 +15,20 @@ import { test } from 'node:test';
 import { assertSameOrigin, createRefetchBudget, isForbiddenAddress } from '../src/oidc-egress.mjs';
 
 test('the instance metadata service is refused, in every spelling', () => {
-  // The whole point. 169.254.169.254 is AWS, GCP and Azure metadata alike.
+  // The whole point. 169.254.169.254 is AWS, GCP and Azure metadata alike, and
+  // it can be smuggled through several IPv6 encodings — all judged by bytes.
   assert.equal(isForbiddenAddress('169.254.169.254'), true);
-  assert.equal(isForbiddenAddress('::ffff:169.254.169.254'), true, 'mapped form is not a bypass');
-  assert.equal(isForbiddenAddress('fe80::1'), true, 'IPv6 link-local');
+  assert.equal(isForbiddenAddress('::ffff:169.254.169.254'), true, 'mapped, dotted');
+  assert.equal(isForbiddenAddress('::ffff:a9fe:a9fe'), true, 'mapped, hex');
+  assert.equal(isForbiddenAddress('64:ff9b::a9fe:a9fe'), true, 'NAT64');
+  assert.equal(isForbiddenAddress('2002:a9fe:a9fe::'), true, '6to4');
+  assert.equal(isForbiddenAddress('::a9fe:a9fe'), true, 'IPv4-compatible');
+});
+
+test('the wider IPv6 private/link-local ranges are refused', () => {
+  for (const ip of ['fe80::1', 'fe9f::1', 'febf::1', 'fec0::1', 'ff02::1', '::ffff:7f00:1']) {
+    assert.equal(isForbiddenAddress(ip), true, `${ip} must be refused`);
+  }
 });
 
 test('loopback, RFC1918, CGNAT and unique-local are refused', () => {

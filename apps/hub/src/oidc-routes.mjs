@@ -29,7 +29,7 @@
 // Linking is therefore an explicit admin act in the People view
 // (`linkOidcSub`), and this module never calls it.
 
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createVerifier, usableEmailClaim } from './oidc.mjs';
 import { assertSameOrigin, fetchGuarded } from './oidc-egress.mjs';
 import { isRevoked } from './revocations.mjs';
@@ -148,6 +148,12 @@ export function createTransaction({ random = randomBytes } = {}) {
 }
 
 export function authorizeUrl(cfg, txn, redirectUri, authorizationEndpoint) {
+  // ORIGIN-CHECKED like the JWKS and token endpoints (B6). This is the one
+  // discovery field the browser is REDIRECTED to, so a discovery document that
+  // names an attacker origin here is an open redirect carrying client_id,
+  // state, nonce and redirect_uri to a phishing page. The other two endpoints
+  // were already pinned; this one was the gap.
+  assertSameOrigin(cfg.issuer, authorizationEndpoint);
   const u = new URL(authorizationEndpoint);
   u.searchParams.set('response_type', 'code');
   u.searchParams.set('client_id', cfg.clientId);
@@ -212,10 +218,17 @@ export function resolveSubject(dataDir, verified, cfg) {
     emailAllowed: Boolean(email),
     revoked: linkedUser ? isRevoked(dataDir, linkedUser.email, Date.now()) : false,
   });
-  if (outcome.action === 'pending') {
-    // Recorded so an operator can SEE who is waiting — the queue is the People
-    // view's half of this rule. The claimed address is display data.
-    recordPendingOidc(dataDir, { sub: verified.sub, email });
+  if (outcome.action === 'pending' && email) {
+    // Recorded ONLY for an allowlisted, verified address (B6) — otherwise any
+    // account holder at a public issuer could queue a row, and the queue is the
+    // operator's review surface. The claimed address is display data.
+    try {
+      recordPendingOidc(dataDir, { sub: verified.sub, email });
+    } catch (err) {
+      // A full queue must not turn a sign-in attempt into a 500; the person
+      // still has no session, which is the outcome that matters.
+      if (err.code !== 'PENDING_FULL') throw err;
+    }
   }
   return outcome;
 }
@@ -252,20 +265,46 @@ export async function exchangeCode(
 }
 
 /** Is this sign-in attempt still the one we started? */
-export function readTransaction(raw, { now = Date.now() } = {}) {
-  if (!raw) return null;
+/**
+ * Read a transaction cookie — SIGNED (B6).
+ *
+ * The cookie is `<payload>.<hmac>`; the HMAC is over the payload with a key
+ * derived from `HUB_SECRET`. Without it the cookie is attacker-authored state:
+ * a page that can set a cookie on the hub origin could choose `state`, `nonce`
+ * and `codeVerifier` — making PKCE's binding decorative and login-CSRF trivial —
+ * and extend the TTL indefinitely by choosing `createdAt`. The nonce is
+ * REQUIRED here, so a callback can never end up without one to check.
+ */
+export function readTransaction(raw, { secret, now = Date.now() } = {}) {
+  if (!raw || !secret) return null;
+  const dot = String(raw).lastIndexOf('.');
+  if (dot < 0) return null;
+  const payload = String(raw).slice(0, dot);
+  const mac = String(raw).slice(dot + 1);
+  const expected = txnMac(payload, secret);
+  const a = Buffer.from(mac);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
   let txn;
   try {
-    txn = JSON.parse(Buffer.from(String(raw), 'base64url').toString('utf8'));
+    txn = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
   } catch {
     return null;
   }
-  if (!txn?.state || !txn?.codeVerifier) return null;
+  if (!txn?.state || !txn?.codeVerifier || !txn?.nonce) return null;
   if (!txn.createdAt || now - txn.createdAt > TXN_TTL_MS) return null;
   return txn;
 }
 
-export const encodeTransaction = (txn) =>
-  Buffer.from(JSON.stringify(txn), 'utf8').toString('base64url');
+export function encodeTransaction(txn, secret) {
+  if (!secret) throw new Error('encodeTransaction: a signing secret is required');
+  const payload = Buffer.from(JSON.stringify(txn), 'utf8').toString('base64url');
+  return `${payload}.${txnMac(payload, secret)}`;
+}
+
+/** HMAC over the cookie payload, under a purpose-derived key (never HUB_SECRET raw). */
+function txnMac(payload, secret) {
+  return createHmac('sha256', `oidc-txn:${secret}`).update(payload).digest('base64url');
+}
 
 export { createVerifier };

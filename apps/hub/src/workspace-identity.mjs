@@ -88,7 +88,9 @@ export function writeWorkspaceId(dataDir, id) {
     }
     return existing ?? id;
   }
-  writeFileSync(path, `${JSON.stringify({ id, createdAt: new Date().toISOString() }, null, 2)}\n`);
+  writeFileSync(path, `${JSON.stringify({ id, createdAt: new Date().toISOString() }, null, 2)}\n`, {
+    mode: 0o600,
+  });
   try {
     chmodSync(path, 0o600);
   } catch {
@@ -121,25 +123,30 @@ export function adoptWorkspaceId(dataDir, id) {
 /**
  * May this hub write a generation into this keyspace?
  *
- * @param {{localId: string, newestManifest: object|null}} input
- *   `newestManifest` is the manifest of the newest generation already present,
- *   or null when the keyspace is empty.
+ * @param {{localId: string, owners: (string|null)[]}} input
+ *   `owners` is the owner of EVERY generation already present (null for a
+ *   legacy version-1 one). NOT just the newest: the newest is a single
+ *   attacker-chosen key, and generation keys sort lexically, so one
+ *   future-dated object would otherwise pin the refusal — or hide a real
+ *   conflict — forever. The decision has to see the whole keyspace.
  * @returns {{ok: true} | {ok: false, reason: string, conflictWith: string}}
  */
-export function decideBackupWrite({ localId, newestManifest }) {
-  if (!newestManifest) return { ok: true };
-  const owner = manifestOwner(newestManifest);
-  // A legacy (version 1) generation names no owner. It cannot be proven
-  // foreign, and refusing on it would disable backups for every existing
-  // deployment on upgrade — trading a latent bug for an immediate one. Write,
+export function decideBackupWrite({ localId, owners = [] }) {
+  // Any generation proved to belong to another workspace is a conflict,
+  // wherever it sits in the ordering.
+  const foreign = owners.find((o) => o && o !== localId);
+  if (foreign) {
+    return {
+      ok: false,
+      reason: 'this keyspace already holds generations owned by another workspace',
+      conflictWith: foreign,
+    };
+  }
+  // Legacy (version 1) generations name no owner. They cannot be proven
+  // foreign, and refusing on them would disable backups for every existing
+  // deployment on upgrade — a latent bug traded for an immediate one. Write,
   // and stamp ours; from this tick on the keyspace is identified.
-  if (!owner) return { ok: true };
-  if (owner === localId) return { ok: true };
-  return {
-    ok: false,
-    reason: 'this keyspace already holds generations owned by another workspace',
-    conflictWith: owner,
-  };
+  return { ok: true };
 }
 
 /**

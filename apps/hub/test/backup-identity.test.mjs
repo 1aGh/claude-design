@@ -95,16 +95,16 @@ test('adopting an identity is how a restored hub keeps writing as itself', () =>
 // ---------------------------------------------------------------- write side
 
 test('writing into an empty keyspace is allowed', () => {
-  assert.deepEqual(decideBackupWrite({ localId: 'me', newestManifest: null }), { ok: true });
+  assert.deepEqual(decideBackupWrite({ localId: 'me', owners: [] }), { ok: true });
 });
 
 test('writing into our own keyspace is allowed', () => {
-  assert.deepEqual(decideBackupWrite({ localId: 'me', newestManifest: gen('me') }), { ok: true });
+  assert.deepEqual(decideBackupWrite({ localId: 'me', owners: ['me'] }), { ok: true });
 });
 
 test('REFUSES to write into a keyspace owned by another workspace', () => {
   // The load-bearing assertion. Without it, hub B's ticks prune hub A away.
-  const verdict = decideBackupWrite({ localId: 'me', newestManifest: gen('them') });
+  const verdict = decideBackupWrite({ localId: 'me', owners: ['them'] });
   assert.equal(verdict.ok, false);
   assert.equal(verdict.conflictWith, 'them');
 });
@@ -112,7 +112,16 @@ test('REFUSES to write into a keyspace owned by another workspace', () => {
 test('a legacy generation does not block writing — upgrades must not lose backups', () => {
   // Refusing on a version-1 manifest would disable backups for every existing
   // deployment the moment it upgrades: a latent bug traded for an immediate one.
-  assert.deepEqual(decideBackupWrite({ localId: 'me', newestManifest: gen(null) }), { ok: true });
+  assert.deepEqual(decideBackupWrite({ localId: 'me', owners: [null] }), { ok: true });
+});
+
+test('a foreign owner is caught even when it is not the newest generation', () => {
+  // F7: the decision used to read only the lexically-newest manifest, so one
+  // future-dated own key would hide a real conflict beneath it. It must see
+  // the whole keyspace.
+  const verdict = decideBackupWrite({ localId: 'me', owners: ['them', 'me', null] });
+  assert.equal(verdict.ok, false);
+  assert.equal(verdict.conflictWith, 'them');
 });
 
 // ----------------------------------------------------------------- read side
@@ -331,4 +340,34 @@ test('legacy generations are reported, not called foreign', async () => {
   assert.equal(r.shared, false);
   assert.equal(r.unidentified, 1);
   assert.match(r.verdict, /unidentified/);
+});
+
+// -------------------------------------------------- containment (F1/B2)
+
+test('restoreLatest refuses a manifest that names a path outside the database set', async () => {
+  // The manifest is attacker-writable in a shared bucket. A name like
+  // "../repo/.git/hooks/post-checkout" would otherwise be written and then run
+  // by the next autosave.
+  const bucket = freshDir();
+  const target = fileTarget(`file://${bucket}`);
+  await target.put('backups/20260818T010000Z/hub.db.gz', Buffer.from([0x1f, 0x8b]));
+  await target.put(
+    'backups/20260818T010000Z/manifest.json',
+    Buffer.from(
+      JSON.stringify({
+        version: 2,
+        workspace: 'me',
+        files: [{ name: '../escape.sh' }],
+      })
+    )
+  );
+  await assert.rejects(
+    () =>
+      restoreLatest({
+        target,
+        destDir: join(freshDir(), 'out'),
+        ownership: { localId: 'me', prefixSet: true },
+      }),
+    /not a known database/
+  );
 });

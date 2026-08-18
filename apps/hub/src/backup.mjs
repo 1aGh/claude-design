@@ -302,10 +302,11 @@ export async function runBackup({
   // rather than leaving it as a log line nobody tails (F5).
   const workspaceId = workspace ?? ensureWorkspaceId(dataDir);
   const existing = await listBackups(target);
-  const newestManifest = existing.length
-    ? await readManifest(target, existing[existing.length - 1])
-    : null;
-  const allowed = decideBackupWrite({ localId: workspaceId, newestManifest });
+  // Every owner, not just the newest — a single future-dated key must not be
+  // able to hide a real conflict beneath it, nor pin a false one on top.
+  const owners = [];
+  for (const gen of existing) owners.push(manifestOwner(await readManifest(target, gen)));
+  const allowed = decideBackupWrite({ localId: workspaceId, owners });
   if (!allowed.ok) {
     const err = new Error(
       `runBackup: ${allowed.reason} (owner ${allowed.conflictWith}, this workspace ${workspaceId}). ` +
@@ -479,6 +480,16 @@ export async function restoreLatest({
   mkdirSync(destDir, { recursive: true });
   const restored = [];
   for (const file of manifest.files) {
+    // CONTAINMENT (F1). `file.name` comes from a manifest in object storage,
+    // which is attacker-writable in any shared bucket. A legitimate generation
+    // only ever lists the closed set of databases, so allowlist against it
+    // rather than trying to sanitise a path: `../repo/.git/hooks/post-checkout`
+    // would otherwise be written and then run by the very next autosave.
+    if (!BACKUP_DATABASES.includes(file.name)) {
+      throw new Error(
+        `restoreLatest: refusing ${latest} — manifest lists "${file.name}", not a known database`
+      );
+    }
     const dest = join(destDir, file.name);
     if (existsSync(dest) && !force) {
       throw new Error(
@@ -497,6 +508,13 @@ export async function restoreLatest({
   // that must restore the databases rather than fail.
   let repo = null;
   if (repoDir && run && manifest.repo) {
+    // Same containment as the databases: the bundle name is fixed, so a
+    // manifest that names anything else is refused rather than fetched.
+    if (manifest.repo.name !== REPO_BUNDLE) {
+      throw new Error(
+        `restoreLatest: refusing ${latest} — repo bundle named "${manifest.repo.name}", not ${REPO_BUNDLE}`
+      );
+    }
     const bytes = await target.get(`${latest}/${manifest.repo.name}`);
     if (!bytes) throw new Error(`restoreLatest: ${latest}/${manifest.repo.name} missing`);
     repo = await restoreRepo(repoDir, bytes, run, { force });

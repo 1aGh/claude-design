@@ -103,6 +103,11 @@ export async function run({ args, pkgRoot }) {
           },
         }
       : {}),
+    // BYO identity travels via --config only: a client secret does not belong
+    // on a command line (argv is visible in `ps` and shell history — see
+    // _credentials.md). The config block is passed straight through to
+    // validateWorkspaceConfig, which renders and forwards the HUB_OIDC_* vars.
+    ...(raw.oidc ? { oidc: raw.oidc } : {}),
   };
 
   // Read the existing .env BEFORE validating, because whether this deployment
@@ -268,12 +273,23 @@ function readExistingEnv(path) {
   try {
     for (const line of readFileSync(path, 'utf8').split('\n')) {
       const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
-      if (m) out[m[1]] = m[2];
+      // Values are single-quoted by renderEnv (F8), so unquote on the way back
+      // in — otherwise a re-run reads `'secret'` (with quotes) and re-quotes it,
+      // and every peer holding the old HUB_SECRET is locked out.
+      if (m) out[m[1]] = unquoteEnvValue(m[2]);
     }
   } catch {
     /* unreadable → treat as absent */
   }
   return out;
+}
+
+/** Reverse of `renderEnvValue`: strip the single quotes and unescape. */
+function unquoteEnvValue(v) {
+  if (v.length >= 2 && v.startsWith("'") && v.endsWith("'")) {
+    return v.slice(1, -1).replace(/'\\''/g, "'");
+  }
+  return v;
 }
 
 /** Readable, high-entropy, and safe to paste — no ambiguous glyphs. */

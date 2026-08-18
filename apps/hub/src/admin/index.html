@@ -275,6 +275,20 @@
                     </div>
                   </section>
                   <div id="people-platform-note" class="callout callout--info" hidden></div>
+
+                  <section class="panel" id="card-oidc-pending" hidden>
+                    <div class="panel-hd">Waiting for access <span class="sku">signed in, not yet linked</span></div>
+                    <div class="panel-bd">
+                      <p class="field-help">These identities verified against your provider but have no account here. Link one to an existing account, or dismiss it. The address shown is what the provider claimed — <b>type the account address yourself</b> rather than trusting it.</p>
+                      <div class="tbl-scroll">
+                        <table class="tbl" aria-labelledby="pending-cap">
+                          <caption id="pending-cap">Pending identities</caption>
+                          <thead><tr><th scope="col">Subject</th><th scope="col">Claimed email</th><th scope="col">First seen</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+                          <tbody id="pending-rows"><tr class="empty"><td colspan="4">None waiting.</td></tr></tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </section>
                 </div>
 
                 <div class="grid-col">

@@ -363,8 +363,72 @@ function sessionsCell(n) {
 // them as the same thing is what this view exists to end.
 
 async function loadPeople() {
-  const [users, invites] = await Promise.all([api('/users'), api('/invites')]);
+  const [users, invites, pending] = await Promise.all([
+    api('/users'),
+    api('/invites'),
+    // Pending is only populated when OIDC is configured; tolerate its absence.
+    api('/oidc/pending').catch(() => ({ pending: [] })),
+  ]);
   renderPeople(users, invites);
+  renderPending(pending);
+}
+
+/**
+ * The OIDC pending queue — Track C.
+ *
+ * The link action keys on the SUBJECT, and the admin types the target address.
+ * Rendering a "link to <claimed email>" button would re-introduce exactly the
+ * email→account inference the sign-in path refuses to make: the claimed address
+ * is attacker-influenceable, and a lookalike in the list is how an admin would
+ * be socially-engineered into linking the wrong one. The subject is shown in
+ * full for the same reason — two subjects sharing a prefix must not look alike.
+ */
+function renderPending(data) {
+  const card = $('card-oidc-pending');
+  const rows = data?.pending ?? [];
+  if (card) card.hidden = rows.length === 0;
+  const tbody = $('pending-rows');
+  if (!tbody) return;
+  tbody.innerHTML = rows.length
+    ? rows
+        .map((p) => {
+          const sub = escapeHtml(p.sub);
+          return (
+            `<tr><td><code>${sub}</code></td>` +
+            `<td>${escapeHtml(p.email ?? '—')}</td>` +
+            `<td class="td-num">${escapeHtml(formatTime(p.firstSeen))}</td>` +
+            `<td class="td-act">` +
+            `<button class="btn btn--ghost btn--sm" data-link="${sub}"><svg class="ic" aria-hidden="true"><use href="#i-link"/></svg> Link</button> ` +
+            `<button class="btn btn--danger btn--sm" data-dismiss="${sub}"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>` +
+            `</td></tr>`
+          );
+        })
+        .join('')
+    : '<tr class="empty"><td colspan="4">None waiting.</td></tr>';
+  for (const btn of tbody.querySelectorAll('button[data-link]')) {
+    btn.addEventListener('click', () => linkPending(btn.dataset.link));
+  }
+  for (const btn of tbody.querySelectorAll('button[data-dismiss]')) {
+    btn.addEventListener('click', () => dismissPending(btn.dataset.dismiss));
+  }
+}
+
+async function linkPending(sub) {
+  const email = prompt(
+    `Link identity ${sub} to which existing account? Type the account's email address.`
+  );
+  if (!email) return;
+  try {
+    await api('/oidc/link', { method: 'POST', body: JSON.stringify({ sub, email: email.trim() }) });
+    await loadPeople();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function dismissPending(sub) {
+  await api('/oidc/pending/dismiss', { method: 'POST', body: JSON.stringify({ sub }) });
+  await loadPeople();
 }
 
 function renderPeople(u, inv) {

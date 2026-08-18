@@ -42,7 +42,10 @@ import {
   authenticate,
   createUser,
   getUser,
+  linkOidcSub,
+  listPendingOidc,
   listUsers,
+  removePendingOidc,
   removeUser,
   setUserDisabled,
   setUserPassword,
@@ -350,6 +353,47 @@ function inviteProblem(reason) {
  */
 export async function handleUserAdminRoutes(ctx) {
   const { path, method, dataDir, respondJson, readJsonBody } = ctx;
+
+  // ---- OIDC pending queue + explicit linking (Track C) --------------------
+  //
+  // The one place a verified-but-unlinked identity becomes an account. Behind
+  // the admin Bearer gate, like every other mutation here. Linking is the
+  // deliberate act that sign-in refuses to perform on its own — see
+  // oidc-routes.mjs for why matching on the claimed email is a takeover.
+  if (method === 'GET' && path === '/oidc/pending') {
+    respondJson(200, { pending: listPendingOidc(dataDir) });
+    return true;
+  }
+  if (method === 'POST' && path === '/oidc/link') {
+    let body;
+    try {
+      body = await readJsonBody(ctx.request);
+    } catch (err) {
+      respondJson(400, { error: err.message });
+      return true;
+    }
+    try {
+      const user = linkOidcSub(dataDir, body?.email, body?.sub);
+      ctx.pushActivity?.({ type: 'oidc-link', user: user.email, doc: String(body?.sub ?? '') });
+      respondJson(200, { user });
+    } catch (err) {
+      respondJson(400, { error: err.message });
+    }
+    return true;
+  }
+  if (method === 'POST' && path === '/oidc/pending/dismiss') {
+    let body;
+    try {
+      body = await readJsonBody(ctx.request);
+    } catch (err) {
+      respondJson(400, { error: err.message });
+      return true;
+    }
+    const removed = removePendingOidc(dataDir, body?.sub);
+    ctx.pushActivity?.({ type: 'oidc-dismiss', doc: String(body?.sub ?? '') });
+    respondJson(200, { ok: true, removed });
+    return true;
+  }
 
   if (method === 'GET' && path === '/users') {
     const users = listUsers(dataDir).map((u) => ({

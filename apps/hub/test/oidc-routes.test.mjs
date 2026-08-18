@@ -239,11 +239,29 @@ test('the client secret and verifier go in the BODY, never the query', async () 
   assert.match(seen.body, /code_verifier=v/);
 });
 
-test('a stale or forged transaction cookie is not a transaction', async () => {
+test('a stale, forged or unsigned transaction cookie is not a transaction', async () => {
   const { encodeTransaction, readTransaction } = await import('../src/oidc-routes.mjs');
+  const secret = 'hub-secret';
   const txn = createTransaction();
-  assert.equal(readTransaction(encodeTransaction(txn))?.state, txn.state);
-  assert.equal(readTransaction('not-base64url-json'), null);
-  assert.equal(readTransaction(encodeTransaction({ ...txn, createdAt: 0 })), null, 'expired');
-  assert.equal(readTransaction(null), null);
+  const cookie = encodeTransaction(txn, secret);
+  assert.equal(readTransaction(cookie, { secret })?.state, txn.state);
+
+  // Wrong secret ⇒ the MAC fails ⇒ not a transaction. This is the whole point:
+  // a client that sets its own cookie cannot author state.
+  assert.equal(readTransaction(cookie, { secret: 'other' }), null, 'forged signature');
+  // The payload with no signature at all.
+  const [payload] = cookie.split('.');
+  assert.equal(readTransaction(payload, { secret }), null, 'unsigned');
+  assert.equal(readTransaction('not-base64url-json', { secret }), null);
+  assert.equal(
+    readTransaction(encodeTransaction({ ...txn, createdAt: 0 }, secret), { secret }),
+    null,
+    'expired'
+  );
+  assert.equal(
+    readTransaction(encodeTransaction({ ...txn, nonce: '' }, secret), { secret }),
+    null,
+    'no nonce'
+  );
+  assert.equal(readTransaction(null, { secret }), null);
 });

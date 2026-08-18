@@ -365,11 +365,29 @@ const DUMMY_HASH = hashPassword('maude-dummy-password-not-a-secret');
  * role — until an admin acts. `email` is the IdP's CLAIM, stored for display
  * so an operator can recognise who is waiting; it is never matched against.
  */
+/** The queue is an operator review surface, not a log — cap it (B6). */
+export const PENDING_OIDC_CAP = 500;
+
 export function recordPendingOidc(dataDir, { sub, email = null } = {}) {
   const subject = String(sub ?? '').trim();
   if (!subject) throw new Error('recordPendingOidc: a subject is required');
+  const handle = db(dataDir);
   const now = Date.now();
-  db(dataDir)
+  // Updating an existing subject is always allowed (it is already in the
+  // queue); a NEW subject is refused once the queue is full, so a bulk-
+  // provisioning account at an allowlisted domain cannot bury the real
+  // entries. The caller (resolveSubject) only reaches here for an
+  // allowlisted, verified subject, which already bounds who can queue at all.
+  const known = handle.prepare('SELECT 1 FROM oidc_pending WHERE sub = ?').get(subject);
+  if (!known) {
+    const count = handle.prepare('SELECT COUNT(*) AS n FROM oidc_pending').get().n;
+    if (count >= PENDING_OIDC_CAP) {
+      const err = new Error('the pending sign-in queue is full; an admin must clear it');
+      err.code = 'PENDING_FULL';
+      throw err;
+    }
+  }
+  handle
     .prepare(
       `INSERT INTO oidc_pending (sub, email, first_seen, last_attempt) VALUES (?, ?, ?, ?)
        ON CONFLICT(sub) DO UPDATE SET last_attempt = excluded.last_attempt,
@@ -377,6 +395,16 @@ export function recordPendingOidc(dataDir, { sub, email = null } = {}) {
     )
     .run(subject, email ? String(email).trim().toLowerCase() : null, now, now);
   return { sub: subject, email, firstSeen: now, lastAttempt: now };
+}
+
+/** How many accounts have an OIDC identity linked — the strict-mode boot gate. */
+export function countLinkedOidc(dataDir) {
+  try {
+    return db(dataDir).prepare('SELECT COUNT(*) AS n FROM users WHERE oidc_sub IS NOT NULL').get()
+      .n;
+  } catch {
+    return 0;
+  }
 }
 
 /** Everyone waiting for an admin to act. Rendered by the People view. */

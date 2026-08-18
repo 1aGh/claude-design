@@ -73,12 +73,6 @@ export function decideBoot({
   allowEmptyStart = false,
   listFailed = false,
 }) {
-  // An unreachable bucket is not evidence that anything was lost. Refusing on
-  // it would strand every operator whose credentials rotated, and it converts a
-  // storage blip into an outage — the trade this whole track exists to avoid.
-  if (listFailed) {
-    return { action: 'proceed', reason: 'the backup target could not be listed' };
-  }
   if (allowEmptyStart) {
     return { action: 'proceed', reason: 'MAUDE_ALLOW_EMPTY_START=1 was set deliberately' };
   }
@@ -87,6 +81,27 @@ export function decideBoot({
 
   if (dataPopulated && !checkoutMissing) {
     return { action: 'proceed', reason: 'the working set is present' };
+  }
+
+  // An unreachable bucket, checked AFTER the working-set test on purpose (F4).
+  // With `/data` present this is a warm start and a listing blip is harmless —
+  // proceed. But with `/data` EMPTY the bucket is the only thing that can tell
+  // "first boot" from "the backup is gone", so a blip must NOT read as first
+  // boot: minting a fresh identity and backing up an empty set is how the
+  // legacy generations get pruned away over the next few days. Refuse and let
+  // the operator retry, exactly as rehydrate's "exit non-zero on any doubt"
+  // contract intends.
+  if (listFailed) {
+    if (dataPopulated) {
+      return { action: 'proceed', reason: 'the backup target could not be listed (warm start)' };
+    }
+    return {
+      action: 'refuse',
+      reason:
+        'the working set is empty and the backup target could not be listed, so first-boot and ' +
+        'a lost volume are indistinguishable — refusing rather than starting empty. Retry when ' +
+        'storage is reachable, or set MAUDE_ALLOW_EMPTY_START=1 for a genuinely fresh deployment.',
+    };
   }
 
   // `/data` intact, `/repo` gone. Restoring only the checkout would pair a

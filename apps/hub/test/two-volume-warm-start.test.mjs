@@ -60,12 +60,19 @@ test('a genuine first boot starts fresh', () => {
   assert.equal(boot({}).action, 'fresh');
 });
 
-test('an unreachable backup target proceeds rather than stopping the hub', () => {
-  // Conditions gate machines: "the bucket did not answer" is not evidence that
-  // anything was lost, and converting a storage blip into an outage is the
-  // trade this whole track exists to avoid.
-  const v = boot({ dataPopulated: true, repoPopulated: false, listFailed: true });
+test('an unreachable target on a WARM start proceeds — a blip is not a loss', () => {
+  const v = boot({ dataPopulated: true, repoPopulated: true, listFailed: true });
   assert.equal(v.action, 'proceed');
+});
+
+test('an unreachable target on a COLD start REFUSES rather than starting empty', () => {
+  // F4/B8: with /data empty, the bucket is the only thing that distinguishes
+  // first boot from a lost volume. A blip that reads as first boot mints a
+  // fresh identity and prunes the real generations away over days. The
+  // listFailed check therefore sits BELOW the dataPopulated test.
+  const v = boot({ dataPopulated: false, repoPopulated: false, listFailed: true });
+  assert.equal(v.action, 'refuse');
+  assert.match(v.reason, /could not be listed/);
 });
 
 test('MAUDE_ALLOW_EMPTY_START overrides the refusal', () => {

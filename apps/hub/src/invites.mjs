@@ -189,9 +189,22 @@ export function redeemInvite(dataDir, { value, email, password, createAccount },
   const check = peekInvite(dataDir, value, now);
   if (!check.ok) return { ok: false, reason: check.reason };
 
-  const address = String(email ?? check.invite.email ?? '')
+  // WHEN AN INVITE IS BOUND TO AN ADDRESS, THAT ADDRESS WINS (B5). An invite
+  // carries a role, so a link the admin scoped to `bob@acme.com, member` must
+  // not be redeemable as `admin@acme.com` by whoever the link reaches — a
+  // forwarded link would otherwise mint an account of the invited role under
+  // any address the redeemer types. The redeemer's `email` only chooses the
+  // address for an UNBOUND invite (one created without one).
+  const bound = String(check.invite.email ?? '')
     .trim()
     .toLowerCase();
+  const requested = String(email ?? '')
+    .trim()
+    .toLowerCase();
+  if (bound && requested && requested !== bound) {
+    return { ok: false, reason: 'email-mismatch' };
+  }
+  const address = bound || requested;
   if (!address) return { ok: false, reason: 'email-required' };
 
   // Create the account FIRST. If it fails — duplicate address, weak password —

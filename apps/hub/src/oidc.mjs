@@ -112,6 +112,14 @@ export function createVerifier({
    * @returns {Promise<{sub: string, email: string|null, emailVerified: boolean, claims: object}>}
    */
   async function verifyIdToken(jwt, { nonce, now = Date.now() } = {}) {
+    // REQUIRED, not optional (B6). The earlier shape only checked the nonce
+    // `if (nonce !== undefined)`, so the obvious callback — `verifyIdToken(jwt,
+    // { nonce: txn.nonce })` against a txn whose nonce a client had stripped —
+    // silently disabled replay binding. Demanding it here means a caller cannot
+    // forget, and `readTransaction` already guarantees the txn carries one.
+    if (typeof nonce !== 'string' || !nonce) {
+      throw new Error('oidc: a nonce is required to verify an ID token');
+    }
     let resolved = await keySet(now);
     let payload;
     try {
@@ -124,7 +132,7 @@ export function createVerifier({
       ({ payload } = await jwtVerify(jwt, resolved, { issuer, audience, algorithms }));
     }
 
-    if (nonce !== undefined && payload.nonce !== nonce) {
+    if (payload.nonce !== nonce) {
       throw new Error('oidc: the ID token nonce does not match this sign-in attempt');
     }
     const sub = typeof payload.sub === 'string' ? payload.sub.trim() : '';
@@ -140,7 +148,7 @@ export function createVerifier({
     };
   }
 
-  return { verifyIdToken, keySet };
+  return { verifyIdToken, keySet, discovery: disco };
 }
 
 /**

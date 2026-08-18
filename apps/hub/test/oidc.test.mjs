@@ -45,7 +45,7 @@ async function setup() {
 
 test('a well-formed token verifies and yields the subject', async () => {
   const { verifier, sign } = await setup();
-  const r = await verifier.verifyIdToken(await sign());
+  const r = await verifier.verifyIdToken(await sign({ nonce: 'n' }), { nonce: 'n' });
   assert.equal(r.sub, 'auth0|abc123');
   assert.equal(r.email, 'alice@acme.com');
   assert.equal(r.emailVerified, true);
@@ -61,7 +61,7 @@ test('REFUSES a token signed by another key', async () => {
     .setSubject('auth0|abc123')
     .setExpirationTime('5m')
     .sign(other.privateKey);
-  await assert.rejects(() => verifier.verifyIdToken(forged));
+  await assert.rejects(() => verifier.verifyIdToken(forged, { nonce: 'n' }));
 });
 
 test('REFUSES alg:none', async () => {
@@ -71,7 +71,7 @@ test('REFUSES alg:none', async () => {
   const body = Buffer.from(
     JSON.stringify({ sub: 'x', iss: ISSUER, aud: AUDIENCE, exp: Date.now() / 1000 + 300 })
   ).toString('base64url');
-  await assert.rejects(() => verifier.verifyIdToken(`${header}.${body}.`));
+  await assert.rejects(() => verifier.verifyIdToken(`${header}.${body}.`, { nonce: 'n' }));
 });
 
 test('REFUSES an HS256 token signed with the public key as the secret', async () => {
@@ -86,15 +86,15 @@ test('REFUSES an HS256 token signed with the public key as the secret', async ()
     .setSubject('x')
     .setExpirationTime('5m')
     .sign(secret);
-  await assert.rejects(() => verifier.verifyIdToken(forged));
+  await assert.rejects(() => verifier.verifyIdToken(forged, { nonce: 'n' }));
 });
 
 test('REFUSES a wrong issuer and a wrong audience', async () => {
   const { verifier, sign } = await setup();
   const wrongIssuer = await sign({ iss: 'https://evil.example' });
   const wrongAudience = await sign({ aud: 'someone-else' });
-  await assert.rejects(() => verifier.verifyIdToken(wrongIssuer));
-  await assert.rejects(() => verifier.verifyIdToken(wrongAudience));
+  await assert.rejects(() => verifier.verifyIdToken(wrongIssuer, { nonce: 'n' }));
+  await assert.rejects(() => verifier.verifyIdToken(wrongAudience, { nonce: 'n' }));
 });
 
 test('REFUSES a nonce that does not match this sign-in attempt', async () => {
@@ -107,13 +107,13 @@ test('REFUSES a nonce that does not match this sign-in attempt', async () => {
 
 test('REFUSES a token with no subject — identity IS the subject', async () => {
   const { verifier, rs } = await setup();
-  const jwt = await new SignJWT({})
+  const jwt = await new SignJWT({ nonce: 'n' })
     .setProtectedHeader({ alg: 'RS256', kid: 'k1' })
     .setIssuer(ISSUER)
     .setAudience(AUDIENCE)
     .setExpirationTime('5m')
     .sign(rs.privateKey);
-  await assert.rejects(() => verifier.verifyIdToken(jwt), /no subject/);
+  await assert.rejects(() => verifier.verifyIdToken(jwt, { nonce: 'n' }), /no subject/);
 });
 
 test('discovery refuses a jwks_uri on another origin', async () => {

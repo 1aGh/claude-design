@@ -350,10 +350,34 @@ export function renderEnv(entries) {
   ];
   for (const e of entries) {
     if (e.comment) lines.push(`# ${e.comment}`);
-    lines.push(`${e.key}=${e.value}`);
+    lines.push(`${e.key}=${renderEnvValue(e.value)}`);
     lines.push('');
   }
   return `${lines.join('\n').trimEnd()}\n`;
+}
+
+/**
+ * Render one `.env` value safely (F8).
+ *
+ * Two failure modes a raw `${value}` opens, both with operator-pasted material
+ * (an S3 secret, an OIDC client secret):
+ *   - a NEWLINE injects an arbitrary extra line, which `readExistingEnv`'s
+ *     `^KEY=…$` parser then accepts and PERSISTS across the "re-run is the
+ *     upgrade path" flow — `secret\nHUB_INSECURE_HTTP=1` becomes real config.
+ *   - a `$` is re-interpolated by `docker compose`, so the container silently
+ *     gets a different value than the file shows — an unexplained lockout.
+ * A control character is rejected outright (it cannot be meant); everything
+ * else is single-quoted, and an embedded single quote is escaped the POSIX way.
+ */
+function renderEnvValue(raw) {
+  const v = String(raw ?? '');
+  if (/[\n\r\0]/.test(v)) {
+    throw new Error('refusing to write a .env value containing a newline or control character');
+  }
+  if (v === '') return '';
+  // Single-quote: inside single quotes the shell and compose interpolate
+  // nothing. `'\''` is the POSIX way to embed a single quote.
+  return `'${v.replace(/'/g, `'\\''`)}'`;
 }
 
 /**

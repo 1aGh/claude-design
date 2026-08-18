@@ -125,7 +125,7 @@ test('renderEnv announces that it holds secrets', () => {
   );
   assert.match(text, /Contains SECRETS/);
   assert.match(text, /Mode 0600, never committed/);
-  assert.match(text, /^HUB_SECRET=sekrit$/m);
+  assert.match(text, /^HUB_SECRET='sekrit'$/m);
   // The bootstrap password is flagged as temporary rather than left to linger.
   assert.match(text, /change it after, then remove this line/);
 });
@@ -391,7 +391,7 @@ test('a NEW render derives a backup namespace from the address', () => {
   const cfg = ok({ ...BASE, s3: S3 });
   assert.equal(cfg.backupPrefix, 'design.acme.com');
   const env = renderEnv(envEntries(cfg, { hubSecret: 'x', adminPassword: 'y'.repeat(12) }));
-  assert.match(env, /MAUDE_BACKUP_PREFIX=design\.acme\.com/);
+  assert.match(env, /MAUDE_BACKUP_PREFIX='design\.acme\.com'/);
 });
 
 test('an EXISTING deployment without a prefix is never given one', () => {
@@ -470,4 +470,20 @@ test('no OIDC configured leaves no empty variables to misread', () => {
   const env = renderEnv(envEntries(ok(BASE), { hubSecret: 'x', adminPassword: 'y'.repeat(12) }));
   assert.ok(!/HUB_OIDC/.test(env));
   assert.ok(!/HUB_OIDC/.test(renderCompose(ok(BASE))));
+});
+
+test('.env values are quoted, and a newline in a secret is refused (F8)', () => {
+  // A `$` must not be re-interpolated by compose, and a newline must not inject
+  // an extra line that a re-run would then persist.
+  const env = renderEnv(
+    envEntries(ok({ ...BASE, s3: { ...OIDC && S3, secretAccessKey: 'a$b' } }), {
+      hubSecret: 'x',
+      adminPassword: 'y'.repeat(12),
+    })
+  );
+  assert.match(env, /MAUDE_S3_SECRET_ACCESS_KEY='a\$b'/, 'a $ is single-quoted, not interpolated');
+  assert.throws(
+    () => renderEnv([{ key: 'X', value: 'a\nMAUDE_ALLOW_EMPTY_START=1' }]),
+    /newline or control character/
+  );
 });

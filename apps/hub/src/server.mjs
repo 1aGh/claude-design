@@ -117,6 +117,7 @@ import {
   walkIntervalFromEnv,
 } from './journal.mjs';
 import { LOOPBACK_HOSTS, sanitizeForLog } from './log-safety.mjs';
+import { assertStrictIsSurvivable, oidcConfig } from './oidc-routes.mjs';
 import { createRateStore } from './rate-store.mjs';
 import { mintRenderToken, verifyRenderToken } from './render-token.mjs';
 import { isReadOnlyRole, ROLES } from './role-matrix.mjs';
@@ -146,6 +147,7 @@ import {
   verifyToken,
 } from './tokens.mjs';
 import { clearTombstone, listTombstones, recordTombstone } from './tombstones.mjs';
+import { countLinkedOidc } from './users.mjs';
 import { createWorkspaceAgent } from './workspace-agent.mjs';
 
 const HUB_VERSION = readOwnVersion();
@@ -295,6 +297,23 @@ export function createHub(config = {}) {
       throw new Error(
         `refusing to serve a public hub over plaintext HTTP (publicUrl=${publicUrl}). Set HUB_PUBLIC_URL to an https:// URL (TLS terminates at your proxy), or set HUB_INSECURE_HTTP=1 for local-only testing.`
       );
+    }
+  }
+
+  // ---- OIDC boot gate (Track C) --------------------------------------------
+  //
+  // Refuse to start on a broken or dangerous identity config, rather than
+  // discovering it at the first sign-in. Two cases: an incomplete config (a
+  // mode set with a missing issuer/secret/allowlist), and `strict` with nobody
+  // linked — which locks the operator out of their own box with no way back but
+  // editing env on the host.
+  {
+    const oidc = oidcConfig(process.env);
+    if (oidc.enabled && oidc.errors.length) {
+      throw new Error(`refusing to start: HUB_OIDC_MODE is set but ${oidc.errors[0]}`);
+    }
+    if (oidc.enabled) {
+      assertStrictIsSurvivable(oidc, { linkedAccounts: countLinkedOidc(dataDir) });
     }
   }
 
