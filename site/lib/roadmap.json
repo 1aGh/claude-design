@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-18T17:34:58.745Z",
+  "generated": "2026-08-18T18:13:46.864Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1081,6 +1081,17 @@
       "phaseKey": null
     },
     {
+      "id": "feature-self-hosted-workspace-readiness",
+      "title": "Feature: Self-hosted workspace readiness — durability, people, BYO identity, and a guided setup",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-self-hosted-workspace-readiness.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
       "id": "feature-showcase-grounded-canvas-generation",
       "title": "Feature: Showcase-grounded canvas generation (`/design:new` + `/design:edit` reuse platform showcase layouts)",
       "status": "done",
@@ -2111,17 +2122,6 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-production-grade-hardening.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-self-hosted-workspace-readiness",
-      "title": "Feature: Self-hosted workspace readiness — durability, people, BYO identity, and a guided setup",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-self-hosted-workspace-readiness.md",
       "archived": false,
       "phaseKey": null
     },

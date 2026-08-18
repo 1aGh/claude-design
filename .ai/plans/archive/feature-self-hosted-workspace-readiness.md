@@ -348,3 +348,14 @@ Repo gates from `.ai/workflows.config.json` (no `typecheck` gate — `quality.ym
 - [ ] Docs freshness test green; `aws.mdx` either executed or labelled derived
 - [ ] All tasks completed; `/validate` passes; DDRs recorded
 - [ ] `pnpm --filter @maude/site gen:roadmap` run and the diff committed alongside
+
+---
+
+## Retro
+
+- **The debate earned its cost twice over.** The divergent bookend found the live backup-identity data-loss bug and the Track-C account-takeover *before a line was written* — both would otherwise have shipped. Convening it on a plan that "looked done" was the highest-leverage hour in the whole feature.
+- **`/flow:done`'s security gate is the real gate — three rounds.** Round 1 found 8 blockers (headline: OIDC was library code no route reached, while docs + a button sold it as enforced). Round 2 confirmed 6 closed and caught 2 not-closed **plus a regression the fix itself introduced** (`/oidc/*` never dispatched). Round 3 returned GO. Every fix was verified fail-first; the value was entirely in the adversarial re-reads, not in the first green suite.
+- **A wiring test must assert the connection, not the ends.** My `oidc-wired` grep checked producer and consumer files independently and passed while `/admin/api/oidc/*` 404'd. The lesson, now a house rule: an "is X wired" test boots the dispatch or asserts the router condition — grepping two files is a green check over an unwired feature.
+- **"The safe version is smaller" recurred.** `jose` deleted most of the verifier; killing auto-link removed a code path rather than adding a guard. Both times the security-correct answer was the smaller shipment — the pattern the debate named up front.
+- **Scope held.** AWS stayed documentation-only per the owner call; `aws.mdx` labels itself derived-not-driven rather than pretending it was run against a live account. The one honest gap carried forward: no live `docker compose` end-to-end (D7) — dry-run + unit + booted-server tests only.
+- **For next `/flow:plan`:** when a plan adds an env-var-gated feature, add "assert the route is dispatched" to the task's Validate line explicitly — the freshness/wiring tests are necessary but were, as written, foolable.
