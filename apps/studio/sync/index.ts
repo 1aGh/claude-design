@@ -964,6 +964,15 @@ export function createSyncRuntime(
   const movingLocally = new Set<string>();
   /** Retirements already being handled, so the per-update watcher fires once. */
   const retiring = new Set<string>();
+  /**
+   * Documents this runtime has SEEN retired. The hub goes on listing a retired
+   * document (nothing deletes docs until Increment 6), so without this memory
+   * the remote pull re-fetched the same retired docs every poll — connect,
+   * learn the fact, release, repeat — an infinite churn that saturated the
+   * membership queue, held every LIVE document in `pending` forever, and
+   * showed up to the user as "HUB SYNC stalled" with annotations not crossing.
+   */
+  const retiredDocs = new Set<string>();
 
   /**
    * A retired document arrived (another machine moved this canvas): release
@@ -1030,6 +1039,7 @@ export function createSyncRuntime(
     const onUpdate = () => {
       if (retiring.has(slug) || movingLocally.has(slug)) return;
       if (movedToFromDoc(doc) === null) return;
+      retiredDocs.add(slug);
       retiring.add(slug);
       doc.off('update', onUpdate);
       void onRetirementSeen(slug).finally(() => retiring.delete(slug));
@@ -1116,6 +1126,7 @@ export function createSyncRuntime(
       if (typeof p.hasUnsyncedChanges !== 'boolean') {
         await new Promise((r) => setTimeout(r, 400));
       }
+      retiredDocs.add(fromSlug);
       await releaseOne(fromSlug);
       console.log(`[sync/${fromSlug}] retired for move → ${toRel}`);
       return true;
@@ -1761,6 +1772,10 @@ export function createSyncRuntime(
       // a machine that pulled the project down after the move: connect, learn
       // the fact, let go. The watcher handles a stale local copy.
       if (movedToFromDoc(provider.document) !== null) {
+        // Remembered, so the remote pull never fetches this document again —
+        // logging this line every 20 s forever was the symptom that found the
+        // churn.
+        retiredDocs.add(canvas.slug);
         console.log(
           `[sync/${canvas.slug}] document is retired (canvas moved to ${movedToFromDoc(provider.document)}) — releasing.`
         );
@@ -1906,6 +1921,11 @@ export function createSyncRuntime(
       doc: Y.Doc
     ): void => {
       if (!pulledSlugs.has(canvas.slug)) return;
+      // A retired document (codec stampMovedTo) is not a canvas to place — its
+      // content lives at the new path in a different document. Deciding a
+      // location here would materialise a ghost on a machine pulling the
+      // project down fresh; handleSynced releases it a moment later.
+      if (movedToFromDoc(doc) !== null) return;
       const resolved = resolvePulledTarget({
         slug: canvas.slug,
         path: canvasPathFromDoc(doc),
@@ -2493,9 +2513,12 @@ export function createSyncRuntime(
         .filter((t) => !tombstoned.has(t.slug))
         .filter((t) => admitPullTarget(ctx, t.slug, t.bodyAbs))
         .filter((t) => admitPulledBody(t.slug, t.bodyAbs));
-      const fresh = admitted.filter(
-        (t) => !agents.has(t.slug) && !projections.has(t.slug) && !providers.has(t.slug)
-      );
+      const fresh = admitted
+        .filter((t) => !agents.has(t.slug) && !projections.has(t.slug) && !providers.has(t.slug))
+        // A document this runtime has seen retired is not a canvas to fetch —
+        // the hub keeps listing it, and re-pulling it every poll was the
+        // connect/release churn described at `retiredDocs`.
+        .filter((t) => !retiredDocs.has(t.slug));
       if (fresh.length === 0) return;
       // VOLUME IS A SECURITY PROPERTY HERE, NOT A PERFORMANCE ONE.
       //
