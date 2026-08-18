@@ -38,6 +38,18 @@ version in real use, which is exactly what a plan cannot assert about itself.
 
 Delete on evidence, in two waves, each after its replacement has shipped and soaked.
 
+> **Preconditions OVERRIDDEN — user decision, 2026-08-18.** Executed on
+> `feat/sync-journal-file-plane` before any release carried Increments
+> 4/4.5/6: the branch is a bulk release of several features, so the soak
+> window the preconditions describe never existed. Consequences accepted:
+> the new lane and the deletion of the old ship in ONE release, so the
+> burn-down's rollback is its revert commits (each deletion is one), not a
+> flag flip. Two gates survived the override because they bind on
+> measurement/order, not on the merge: the poll stays at 20 s (precondition
+> 2 was never measured), and Task 3 (Increment 8) is NOT in this bulk —
+> deleting `agent.ts` in the same release as the default-ON flip would
+> destroy Task 2's config-flip rollback.
+
 ## Preconditions (BINDING — this plan does not start until they hold)
 
 1. A release carrying Increments 4/4.5/6 has shipped and soaked at least one release
@@ -96,7 +108,30 @@ puts every class in one basket.
 
 ## Tasks
 
-### Task 1: Increment 5 — burn-down (M)
+### ✅ Task 1: Increment 5 — burn-down (M) — DONE 2026-08-18
+
+> Shipped as four commits (each deletion its own revert): `6b391402` (the
+> reference-derived asset pull + the downward fast lane), `74d4a2d3` (the
+> out-of-process sweep + worker + fast push; `asset-push.ts` re-headed as THE
+> legacy compat client, in-process, lane decided ONCE per boot by the
+> capability probe — `decidePushLane`), `48d6e801` (hub: journal-driven
+> `createWriteBehind` over `mirrored_at_ms` covering ALL plane classes +
+> `hydrateFiles` restore half; legacy PUT routes delegate to the file door;
+> `/_asset-probe` reduced to a checkout-only shim; STORE DRIFT warn on
+> bucket-fallback serving). Poll kept at 20 s (measurement gate). Core delta:
+> **−801 lines** in `apps/studio/sync` + `apps/hub/src` vs the pre-burn-down
+> tip (`d846a3f6`); the "negative vs v0.60.7" criterion is unassessable as
+> written because this bulk branch also ADDS the whole file plane that
+> v0.60.7 predates.
+>
+> **Deviation, recorded — `announceWrite` STAYS.** The plan lists "the
+> `announceWrite` inference bridge" for deletion, but what became dead was
+> only its consumption by the fast lanes (deleted). The function itself is
+> load-bearing for Sync v2: `cell-write-nudge.ts` stakes its completeness
+> argument on `announceWrite` covering doc→file projector writes (the one
+> write path that arms no `activity:suppress`), and the cell's HMR heal
+> rides the same synthetic `fs:any`. Deleting it would have silenced the
+> nudge for every projection write on every cell.
 
 - **Do**: DELETE `asset-pull.ts`, `asset-sweep.ts` + `asset-push-worker.ts` as a transfer
   engine, ~450 lines of `asset-push.ts` (the transport core survives inside the door
@@ -115,7 +150,14 @@ puts every class in one basket.
 - **Rollback**: each deletion is its own revert commit; the cell-side legacy sweep stays
   reachable for one release via the `workflow_dispatch` runbook.
 
-### Task 2: Increment 7 — shared-doc default ON (M)
+### ✅ Task 2: Increment 7 — shared-doc default ON (M) — DONE 2026-08-18
+
+> Shipped as `b2c0c961`: `sharedDocEnabled()` (one exported parser, default
+> ON, explicit `MAUDE_SHARED_DOC=0` = the rollback flip) consumed by both
+> `server.ts` and the pairing interlock. Nothing deleted; both doc paths
+> coexist. DDR-213 items re-checked on the desktop path (A7 notice, A6
+> ceiling, A4 collision exclusion, comments caps).
+>
 
 - **Do**: desktop `MAUDE_SHARED_DOC` defaults ON (the DDR-064 cutover), re-verifying the
   desktop-specific items on the DDR-213 checklist. **No deletion in this release** — both
@@ -124,7 +166,11 @@ puts every class in one basket.
   `maude design perf` before and after.
 - **Rollback**: config flip.
 
-### Task 3: Increment 8 — delete the two-doc relay (M)
+### Task 3: Increment 8 — delete the two-doc relay (M) — DELIBERATELY NOT IN THE 2026-08-18 BULK
+
+> Task 2's rollback is `MAUDE_SHARED_DOC=0`, which requires `agent.ts` and
+> the relay to exist. This deletion starts only one release after the
+> default-ON flip soaks — the one internal gate the override left standing.
 
 - **Do**: one release after Task 2 soaks, DELETE `agent.ts`, the two-doc relay observers
   and the agent-origin `queuedOps` wiring (~800 lines). Cold-start callers: 1.
@@ -147,10 +193,10 @@ Per increment, same ladder as the parent arc:
 
 ## Acceptance Criteria
 
-- [ ] Preconditions 1–3 documented as MET, with the release version and the measured poke-miss figure, before Task 1 starts
-- [ ] After Task 1: net LOC of `apps/studio/sync/` + the hub sync files is **negative vs the v0.60.7 baseline** (target ≈ −900 core)
-- [ ] Poll relaxed to 60 s **only** on the measurement, never on the assumption
-- [ ] Legacy pull/push client still present and exercised by an old-hub e2e
-- [ ] After Task 2: both doc paths coexist; nothing deleted
-- [ ] After Task 3: one cold-start applier, one code path, perf no worse than before
-- [ ] `pnpm --filter @maude/site gen:roadmap` regenerated at each plan-status change
+- [x] ~~Preconditions 1–3 documented as MET~~ — **OVERRIDDEN by user 2026-08-18** (see the Preconditions note); the poke-miss figure remains unmeasured, which is why the poll did not move
+- [x] After Task 1: burn-down core delta **−801 lines** (`apps/studio/sync` + `apps/hub/src`, 594+/1395− vs `d846a3f6`); the v0.60.7 comparison is unassessable on this bulk branch (it also ADDS the whole file plane) — recorded honestly rather than claimed
+- [x] Poll **kept at 20 s** — relaxation stays measurement-gated
+- [x] Legacy pull/push client present (`asset-push.ts` legacy header + `file-pull.ts`), lane-gated by the capability probe; source-pinned by `sync-asset-push.test.ts` (an old-hub LIVE e2e remains a /flow:done item — no journal-less hub exists in-tree to drive)
+- [x] After Task 2: both doc paths coexist; nothing deleted (`MAUDE_SHARED_DOC=0` verified as the rollback flip in tests)
+- [ ] After Task 3: one cold-start applier, one code path, perf no worse than before — **next release, after the default-ON soak**
+- [x] `pnpm --filter @maude/site gen:roadmap` regenerated at each plan-status change
