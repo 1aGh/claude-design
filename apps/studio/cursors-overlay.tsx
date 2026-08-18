@@ -19,7 +19,7 @@
 
 import { memo, useEffect, useState } from 'react';
 
-import { useViewportControllerContext } from './canvas-lib.tsx';
+import { useLiveViewport } from './canvas-lib.tsx';
 import { type ForeignAwareness, useCollab, useForeignAwareness } from './use-collab.tsx';
 
 const CURSOR_CSS = `
@@ -164,9 +164,17 @@ const Cursor = memo(function Cursor({ peer, viewport }: CursorProps): JSX.Elemen
  */
 interface PeerAnnotationSelectionProps {
   peer: ForeignAwareness;
+  /**
+   * Unused in the math below — the halo is measured straight off the DOM — but
+   * load-bearing as a PROP: `memo` compares props, and through a pan/zoom the
+   * peer never changes, so without a value that ticks with the camera this
+   * component would bail out of every re-render and leave the halo frozen in
+   * screen space while the stroke it outlines moves away underneath it.
+   */
+  viewport: ViewportSnapshot;
 }
 
-const PeerAnnotationSelection = memo(function PeerAnnotationSelection({
+export const PeerAnnotationSelection = memo(function PeerAnnotationSelection({
   peer,
 }: PeerAnnotationSelectionProps): JSX.Element | null {
   if (!peer.annotationSelection || peer.annotationSelection.length === 0) return null;
@@ -218,9 +226,11 @@ const PeerAnnotationSelection = memo(function PeerAnnotationSelection({
  */
 interface PeerSelectionProps {
   peer: ForeignAwareness;
+  /** See PeerAnnotationSelectionProps.viewport — the memo-invalidation tick. */
+  viewport: ViewportSnapshot;
 }
 
-const PeerSelection = memo(function PeerSelection({
+export const PeerSelection = memo(function PeerSelection({
   peer,
 }: PeerSelectionProps): JSX.Element | null {
   if (!peer.selection) return null;
@@ -267,14 +277,15 @@ const PeerSelection = memo(function PeerSelection({
 export function CursorsOverlay(): JSX.Element {
   ensureCursorStyles();
   const peers = useForeignAwareness();
-  const controller = useViewportControllerContext();
-  const liveVp = controller?.viewport ?? { x: 0, y: 0, zoom: 1 };
-  // Take a snapshot per render — controller.viewport already changes on
-  // throttle, so this stays smooth enough at 30 Hz.
-  const [vp, setVp] = useState<ViewportSnapshot>(liveVp);
-  useEffect(() => {
-    setVp({ x: liveVp.x, y: liveVp.y, zoom: liveVp.zoom });
-  }, [liveVp.x, liveVp.y, liveVp.zoom]);
+  // LIVE, not the published viewport. `controller.viewport` republishes only on
+  // the settle (SETTLE_MS), so through a pan/zoom it is one frozen value: every
+  // peer cursor and every peer selection frame sat at the screen position the
+  // camera had when the gesture STARTED and only snapped onto the content half
+  // a second after it ended. Same root cause, same fix as the annotation resize
+  // handles — read the camera that is written on every applyViewport. Settled,
+  // `useLiveViewport()` IS the published value, and it only subscribes to the
+  // shared rAF ticker while a gesture is in flight.
+  const vp = useLiveViewport();
 
   // Bump a render tick whenever annotations change so PeerAnnotationSelection
   // re-resolves [data-id] bounds. Without this, a peer resizing a stroke
@@ -299,10 +310,10 @@ export function CursorsOverlay(): JSX.Element {
   return (
     <div className="dc-cursor-overlay" aria-hidden="true">
       {peers.map((peer) => (
-        <PeerSelection key={`sel-${peer.clientID}`} peer={peer} />
+        <PeerSelection key={`sel-${peer.clientID}`} peer={peer} viewport={vp} />
       ))}
       {peers.map((peer) => (
-        <PeerAnnotationSelection key={`asel-${peer.clientID}`} peer={peer} />
+        <PeerAnnotationSelection key={`asel-${peer.clientID}`} peer={peer} viewport={vp} />
       ))}
       {peers.map((peer) => (
         <Cursor key={peer.clientID} peer={peer} viewport={vp} />
