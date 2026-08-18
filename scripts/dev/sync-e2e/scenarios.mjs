@@ -144,28 +144,29 @@ const canvasMove = {
   },
 };
 
-const canvasRename = {
-  id: 'canvas-rename',
-  title: 'a canvas renamed',
+const canvasRenameByHand = {
+  id: 'canvas-rename-by-hand',
+  title: 'a canvas re-created under a new name (the product has no rename)',
   plane: 'doc+file',
   async act({ from, run, dir }) {
-    // Rename is `moveCanvas` to the same directory under a new name — the same
-    // route the tree's rename affordance calls.
+    // THERE IS NO RENAME. Not on `/_api/fs-move` (it takes `toDir` and no
+    // `toName`), not in the tree's row menu (Move to… and Delete only), not
+    // anywhere in the studio — `renameCanvas` does not exist as a verb.
+    //
+    // This scenario used to pretend otherwise: it POSTed a `toName` the route
+    // ignores, quietly fell through to create-new + delete-old, and reported
+    // itself as `canvas-rename` passing. A green row for a feature that is not
+    // there is worse than a missing row, so it now says what it does.
+    //
+    // What it still tests is real and worth testing: the create and the delete
+    // both have to cross, which is the sequence a person is forced into today.
     const before = tag(run, `rn-${dir}`);
-    await from.api('/_api/canvas', { method: 'POST', body: { name: before, group: 'ui' } });
     const after = `${before}-renamed`;
-    await from.api('/_api/fs-move', {
-      method: 'POST',
-      body: { file: `.design/${uiRel(before)}`, toDir: '.design/ui', toName: `${after}.tsx` },
-    }).catch(() => null);
-    // Not every build exposes a rename verb on the move route. When it does
-    // not, fall back to what the UI does: create the new one, delete the old.
-    if (!(await fileEventually(from, uiRel(after), 3_000))) {
-      await from.api('/_api/canvas', { method: 'POST', body: { name: after, group: 'ui' } });
-      await from.api(`/_api/canvas?file=${encodeURIComponent(`.design/${uiRel(before)}`)}`, {
-        method: 'DELETE',
-      });
-    }
+    await from.api('/_api/canvas', { method: 'POST', body: { name: before, group: 'ui' } });
+    await from.api('/_api/canvas', { method: 'POST', body: { name: after, group: 'ui' } });
+    await from.api(`/_api/canvas?file=${encodeURIComponent(`.design/${uiRel(before)}`)}`, {
+      method: 'DELETE',
+    });
     return { before: uiRel(before), after: uiRel(after), slug: uiSlug(after) };
   },
   settle: ({ to }, m) => waitFor(() => to.has(m.after), { label: m.after }),
@@ -175,8 +176,13 @@ const canvasRename = {
       const seen = await browser.waitPresent(`[data-testid="canvas-row-${m.slug}"]`, {
         timeoutMs: 20_000,
       });
-      checks.push(['the renamed row shows in the tree', seen.ok]);
+      checks.push(['the new row shows in the tree', seen.ok]);
     }
+    checks.push([
+      'the old name is gone on the far side (deletion propagation — Increment 6)',
+      !to.has(m.before),
+      'expected-pending',
+    ]);
     return checks;
   },
 };
@@ -210,6 +216,48 @@ const canvasDelete = {
       ['gone locally', !from.has(m.rel)],
       [
         'gone on the far side (deletion propagation — Increment 6)',
+        !to.has(m.rel),
+        'expected-pending',
+      ],
+    ];
+  },
+};
+
+const folderDelete = {
+  id: 'folder-delete',
+  title: 'a folder deleted, with a canvas in it',
+  plane: 'file',
+  async act({ from, to, run, dir }) {
+    // Delete a folder that has already CROSSED, or the scenario proves nothing:
+    // removing something the far side never had is indistinguishable from a
+    // no-op. Same route as a canvas delete, pointed at a directory.
+    const folder = tag(run, `deldir-${dir}`);
+    const inner = tag(run, `deldir-${dir}-inner`);
+    await from.api('/_api/fs-mkdir', { method: 'POST', body: { parent: 'ui', name: folder } });
+    await from.api('/_api/canvas', { method: 'POST', body: { name: inner, group: 'ui' } });
+    await from.api('/_api/fs-move', {
+      method: 'POST',
+      body: { file: `.design/${uiRel(inner)}`, toDir: `.design/ui/${folder}` },
+    });
+    const rel = `ui/${folder}/${inner}.tsx`;
+    const arrived = await waitFor(() => to.has(rel), { timeoutMs: 40_000 });
+    const res = await from.api(`/_api/canvas?file=${encodeURIComponent(`.design/ui/${folder}`)}`, {
+      method: 'DELETE',
+    });
+    return { folder: `ui/${folder}`, rel, arrived: arrived.ok, trashed: res?.trashed ?? [] };
+  },
+  settle: async ({ to }, m) => {
+    const gone = await waitFor(() => !to.has(m.rel), { timeoutMs: 8_000, label: m.rel });
+    return { ...gone, ok: true, pending: !gone.ok };
+  },
+  async verify({ from, to }, m) {
+    return [
+      ['the folder had crossed before the delete (so the test means something)', m.arrived],
+      ['the folder is gone locally', !from.has(m.folder)],
+      // Recoverability, not just removal — the whole point of the trash.
+      ['its canvas went to _trash/, not to nothing', m.trashed.some((t) => t.endsWith('.tsx'))],
+      [
+        'gone on the far side too (deletion propagation — Increment 6)',
         !to.has(m.rel),
         'expected-pending',
       ],
@@ -655,10 +703,6 @@ const shared = (side) =>
 
 /* ------------------------------------------------------------- helpers --- */
 
-async function fileEventually(side, rel, ms) {
-  const r = await waitFor(() => side.has(rel), { timeoutMs: ms });
-  return r.ok;
-}
 
 /**
  * Does the side actually SERVE the asset, not merely hold the bytes?
@@ -740,8 +784,9 @@ export const SCENARIOS = [
   canvasCreate,
   folderCreate,
   canvasMove,
-  canvasRename,
+  canvasRenameByHand,
   canvasDelete,
+  folderDelete,
   canvasEdit,
   artboardMove,
   dsSpecimenCreate,
