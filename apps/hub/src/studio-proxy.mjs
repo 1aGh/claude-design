@@ -496,7 +496,7 @@ export function createStudioProxy({
     //
     // The same `decide()` the shell door runs, at the role the capability
     // vouches — so a viewer's capability gets the same 403 sentence at both
-    // doors, `/_api/photo-edit` stays refused at both, and a write path the
+    // doors, `/_api/export` stays refused at both, and a write path the
     // manifest never classified fails closed here before it reaches the
     // studio. The studio's own gates (readOnlyRefusal + the canvas-origin
     // allowlist) still run behind this; two enforcement points that share one

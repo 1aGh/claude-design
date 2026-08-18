@@ -45,7 +45,14 @@ export function isWorkspaceMode(env: NodeJS.ProcessEnv = process.env): boolean {
  *
  * TWO KINDS OF ENTRY LIVE HERE, and both belong:
  *
- *   1. surfaces that EVALUATE tenant content on our compute (export, photo-edit);
+ *   1. surfaces that EVALUATE tenant content on our compute (export, shell-shot);
+ *      — NOT `/_api/photo-edit`, which was withheld here for a while under
+ *      that rationale and never fit it: the route validates and stores a JSON
+ *      sidecar (`assets/<sha8>.photo.json`), and the DECODING it was blamed
+ *      for happens in the member's own browser (PhotoPreviewBridge) — the
+ *      exact same division of labour that makes `/_canvas-shell` servable.
+ *      The withhold's real effect was that photo edits could not be saved in
+ *      the cloud at all, reported as "photo editing doesn't work";
  *   2. surfaces that hold, spend or reveal a SECRET on our compute — a provider
  *      key, the operator's GitHub token, the user's own `claude` session, the
  *      process log. DDR-123's "claude never on our infra" is only a fact while
@@ -57,10 +64,6 @@ export const FORBIDDEN_ROUTE_PREFIXES: ReadonlyArray<{ prefix: string; why: stri
     {
       prefix: '/_api/export',
       why: 'export renders the canvas through a headless browser — it EVALUATES tenant TSX',
-    },
-    {
-      prefix: '/_api/photo-edit',
-      why: 'photo editing decodes and processes tenant-supplied media in-process',
     },
     {
       prefix: '/_api/generate',

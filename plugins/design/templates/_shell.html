@@ -475,6 +475,17 @@
               // now), so both URLs converge on the good bytes.
               const assetName = (msg.file || '').split('/').pop();
               if (!assetName) return;
+              // A PhotoEdit sidecar (`<sha8>.photo.json`) — nothing on the
+              // page references the sidecar itself, so re-pointing <img> would
+              // be a no-op. Hand the fact to the canvas instead: canvas-lib's
+              // PhotoPreviewBridge re-fetches the edit and re-bakes the photo.
+              if (/\.photo\.json$/i.test(assetName)) {
+                const sha8 = assetName.replace(/\.photo\.json$/i, '');
+                document.dispatchEvent(
+                  new CustomEvent('maude:photo-edit-refreshed', { detail: { sha8: sha8 } })
+                );
+                return;
+              }
               const v = msg.version || Date.now();
               const nameMatches = function (u) {
                 if (!u) return false;

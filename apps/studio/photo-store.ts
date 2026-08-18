@@ -144,6 +144,13 @@ export function createPhotoStore(ctx: Context): PhotoStore {
     try {
       // Bun.write creates the assets/ dir if absent.
       await Bun.write(abs, JSON.stringify(toWrite, null, 2));
+      // Say the write happened. In a cell the recursive fs.watch never fires,
+      // and `fs:any` is how (a) the HMR broadcaster tells open canvases to
+      // re-bake the photo and (b) the write-nudge tells the hub to journal the
+      // sidecar — without it a photo edit saved in the cloud reached peers
+      // only on the walk-import belt, and open canvases not at all. Locally
+      // the real watcher fires too; the broadcaster's debounce coalesces.
+      ctx.bus.emit('fs:any', path.relative(ctx.paths.designRoot, abs).split(path.sep).join('/'));
     } catch (e) {
       return { ok: false, status: 500, error: e instanceof Error ? e.message : 'write failed' };
     }

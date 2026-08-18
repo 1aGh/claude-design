@@ -3021,6 +3021,39 @@ export function PhotoPreviewBridge() {
     };
   }, []);
 
+  // A peer's photo edit arrived: the sidecar changed on disk, the shell heard
+  // it on the HMR socket and re-dispatched it here. Re-fetch and re-apply —
+  // deliberately OUTSIDE the hydration scan's once-per-asset `attempted` set,
+  // which exists to stop mutation-driven fetch amplification and which is
+  // exactly why a synced edit used to appear only after Cmd+R (the scan had
+  // already spent this asset's one attempt on mount).
+  useEffect(() => {
+    const onRefreshed = (e: Event) => {
+      const sha8 = (e as CustomEvent<{ sha8?: unknown }>).detail?.sha8;
+      if (typeof sha8 !== 'string' || !/^[0-9a-f]{8}$/i.test(sha8)) return;
+      // Resolve the full `assets/<sha8>.<ext>` ref from the live DOM — the
+      // event carries only the hash (the sidecar name has no extension).
+      let asset: string | null = null;
+      for (const n of document.querySelectorAll('img, image')) {
+        const ref = extractAssetRef(n);
+        if (ref?.includes(`assets/${sha8}.`)) {
+          asset = ref;
+          break;
+        }
+      }
+      if (!asset) return; // no photo on this canvas uses that asset
+      fetch(`/_api/photo-edit?asset=${encodeURIComponent(asset)}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((edit) => {
+          // A deleted/reset edit applies as null → restores the original src.
+          apply(asset as string, edit && !isDefaultEdit(edit) ? (edit as PhotoEdit) : null);
+        })
+        .catch(() => {});
+    };
+    document.addEventListener('maude:photo-edit-refreshed', onRefreshed);
+    return () => document.removeEventListener('maude:photo-edit-refreshed', onRefreshed);
+  }, [apply]);
+
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
       const m = e.data as { dgn?: string; asset?: unknown; edit?: unknown; busy?: unknown } | null;
