@@ -65,9 +65,23 @@ export interface CellPairingVerdict {
   detail?: string;
 }
 
-/** Env truthiness, matching `server.ts`'s MAUDE_SHARED_DOC parsing exactly. */
+/** Env truthiness for the opt-in interlocks below (explicit `1`-style value). */
 function on(value: string | undefined): boolean {
   return /^(1|true|on|yes)$/i.test(value ?? '');
+}
+
+/**
+ * Is the single-shared-doc model enabled? — DEFAULT ON (the DDR-064 cutover,
+ * Sync v2 Increment 7). Only an explicit falsy value opts a machine back onto
+ * the proven two-doc path, and that opt-out IS the rollback for this release:
+ * both paths coexist, nothing is deleted, `MAUDE_SHARED_DOC=0` flips back.
+ *
+ * ONE parser, exported — `server.ts` and the pairing gate used to carry
+ * byte-identical mirrors of the opt-in regex, and a default flip is exactly
+ * the change that would have let them drift.
+ */
+export function sharedDocEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return !/^(0|false|off|no)$/i.test(env.MAUDE_SHARED_DOC ?? '');
 }
 
 /**
@@ -159,14 +173,15 @@ export function resolveCellPairing(
     };
   }
 
-  if (!on(env.MAUDE_SHARED_DOC)) {
+  if (!sharedDocEnabled(env)) {
     return {
       pairing: null,
       refusal: 'shared-doc-off',
       detail:
-        'refusing to pair without MAUDE_SHARED_DOC=1 — pairing IS the single-shared-doc ' +
-        'model (DDR-064). Without it the loopback provider would open a second Y.Doc per ' +
-        'canvas beside the browser room, which is the two-doc world pairing exists to end.',
+        'refusing to pair with MAUDE_SHARED_DOC explicitly off — pairing IS the ' +
+        'single-shared-doc model (DDR-064). Without it the loopback provider would open a ' +
+        'second Y.Doc per canvas beside the browser room, which is the two-doc world ' +
+        'pairing exists to end.',
     };
   }
 

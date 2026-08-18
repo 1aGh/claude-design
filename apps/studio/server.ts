@@ -34,6 +34,7 @@ import { createHttp } from './http.ts';
 import { createInspectRegistry } from './inspect.ts';
 import { startHeapWatch } from './mem.ts';
 import { normalizeSessionKey, runInSession, SESSION_HEADER } from './session-scope.ts';
+import { sharedDocEnabled } from './sync/cell-pairing.ts';
 import { createSyncSupervisor } from './sync/supervisor.ts';
 import {
   assertContainment,
@@ -56,13 +57,15 @@ await bootSelfHeal();
 
 const ctx = createContext();
 
-// Phase 9.2 (DDR-064) — `MAUDE_SHARED_DOC` feature flag. OPT-IN (default OFF),
-// the inverse of MAUDE_CANVAS_ORIGIN_SPLIT's opt-out parsing: only an explicit
-// truthy value enables the single-shared-doc path. OFF = the proven two-doc +
-// disk-reconcile path = byte-for-byte current behavior. The flag is threaded
-// onto ctx here (before createCollab / createSyncRuntime read it) so every
-// downstream consumer sees one source of truth.
-ctx.sharedDoc = /^(1|true|on|yes)$/i.test(process.env.MAUDE_SHARED_DOC ?? '');
+// DDR-064 cutover (Sync v2 Increment 7) — `MAUDE_SHARED_DOC` now defaults ON:
+// the collab room's Y.Doc is THE doc per canvas, everywhere. The two-doc +
+// disk-reconcile path still exists in full and `MAUDE_SHARED_DOC=0` flips a
+// machine back onto it — that config flip is this release's rollback, which is
+// why NOTHING is deleted here (the relay's deletion is the next increment,
+// one soak later). The flag is threaded onto ctx here (before createCollab /
+// createSyncRuntime read it) so every downstream consumer sees one source of
+// truth, parsed by the same function the cell-pairing interlock uses.
+ctx.sharedDoc = sharedDocEnabled(process.env);
 
 // Forward-declared so the api.commentsAdd/patch/delete/addReply callback can
 // reach into the collab registry (Phase 8 Task 3 bridge). collab is initialized
