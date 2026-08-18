@@ -554,42 +554,52 @@ const presence = {
     }
     // Open the SAME canvas on both machines, by clicking its row — the only
     // reliable way in, and incidentally a check that the row is clickable.
+    // OPEN IT THE WAY A PERSON WOULD: type into the search box, then click the
+    // one row left. Clicking the row directly looked simpler and failed for two
+    // reasons a screenshot made obvious — with twenty-odd canvases the target
+    // sits below the fold so the click misses, and a popover left open by an
+    // earlier scenario silently swallows it. Filtering fixes both, because it
+    // is what the box is for.
     const row = `[data-testid="canvas-row-${m.slug}"]`;
-    for (const side of [from, to]) {
-      await side.browserHandle.open(side.uiUrl);
+    const openIt = async (side) => {
+      const b = side.browserHandle;
+      await b.open(side.uiUrl);
       await sleep(1_500);
-      let found = await side.browserHandle.waitPresent(row, { timeoutMs: 25_000 });
-      // No rows can mean "not synced" or "the session lapsed and this is the
-      // sign-in form". They are different problems and only one of them is
-      // about sync, so rule the auth one out before reporting anything.
-      if (!found.ok && typeof side.reSignIn === 'function') {
+      // A lapsed session shows the sign-in form, which is an auth problem
+      // wearing a sync problem's clothes. Rule it out before reporting.
+      if (!(await b.present('[data-testid="canvas-search"]')) && typeof side.reSignIn === 'function') {
         await side.reSignIn();
-        await side.browserHandle.open(side.uiUrl);
+        await b.open(side.uiUrl);
         await sleep(1_500);
-        found = await side.browserHandle.waitPresent(row, { timeoutMs: 25_000 });
       }
-      if (found.ok) await side.browserHandle.click(row);
-    }
+      await b.run(['fill', '[data-testid="canvas-search"]', m.name]);
+      await sleep(800);
+      const found = await b.waitPresent(row, { timeoutMs: 25_000 });
+      if (found.ok) await b.click(row);
+      // THE ACTIVE PATH, not an iframe. A brief board has no artboards and
+      // therefore mounts no iframe at all, so "an iframe exists" was asking the
+      // wrong question — it happened to pass one direction and not the other.
+      return waitFor(
+        async () => {
+          const bar = await b.eval(
+            'document.querySelector(\'[data-testid="statusbar"]\')?.textContent ?? ""'
+          );
+          return typeof bar === 'string' && bar.includes(`${m.name}.tsx`);
+        },
+        { timeoutMs: 25_000, label: 'the status bar naming this canvas' }
+      );
+    };
+    const here = await openIt(from);
+    const there = await openIt(to);
     // WHAT THIS CAN AND CANNOT ASSERT, stated rather than fudged.
     //
     // Participant chips and live cursors render inside the CANVAS IFRAME, which
     // is a separate origin by design (DDR-054). A parent-document query cannot
     // reach them, and `.st-presence` in the shell is the LOCAL user's own
     // avatar — it never shows anybody else, so counting it would be a check
-    // that fails whether presence works or not. (It did, for one run, and the
-    // red row said nothing true.)
-    //
-    // So this asserts the MECHANICS it can actually see — both machines really
-    // have the same canvas mounted, which is the precondition presence needs —
-    // and leaves the collaborative half to the screenshots, which is honest
-    // about being a human check rather than pretending to be a machine one.
-    const mounted = (b) =>
-      waitFor(async () => (await b.count('iframe')) >= 1, {
-        timeoutMs: 30_000,
-        label: 'the canvas iframe',
-      });
-    const here = await mounted(from.browserHandle);
-    const there = await mounted(to.browserHandle);
+    // that fails whether presence works or not. So: the precondition here, and
+    // the screenshots for the collaborative half, honest about being a human
+    // check rather than pretending to be a machine one.
     await from.browserHandle.shot(`presence--${m.slug}--from`);
     await to.browserHandle.shot(`presence--${m.slug}--to`);
     return [

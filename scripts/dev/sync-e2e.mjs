@@ -502,14 +502,29 @@ async function coldStart(ctx, cellRoot) {
   const fresh = new Side({ name: 'fresh', base: `http://127.0.0.1:${freshPort}`, designRoot: freshDesign });
   fresh.uiUrl = fresh.base;
 
-  // KNOWN GAP, so the row says what it is instead of just going red.
+  // TWO KNOWN SHAPES, so a red row here means something new rather than
+  // something already written down.
   //
-  // A canvas MOVED into a folder on a peer gets a new folder-prefixed slug and
-  // a new document, while the pre-move document lingers (deletion propagation
-  // is Increment 6). A brand-new machine links fewer canvases than the hub
-  // lists — the cell's own moved canvases pull correctly, a peer's do not.
-  // Recorded as a finding; not fixed here.
-  const movedOnPeer = (rel) => rel.split('/').length > 2 && rel.includes('-to-cloud');
+  // A — ON THE CLOUD, ABSENT FROM THE DESKTOP. With deletion emission off
+  //     (Increment 6), a canvas deleted or renamed away ON A PEER leaves its
+  //     file behind on the cloud's checkout while its DOCUMENT is gone. A fresh
+  //     machine pulls from the document list, so not receiving a file that no
+  //     document describes is CORRECT — the cloud is the stale one, not the
+  //     newcomer.
+  //
+  // B — ON BOTH LIVE MACHINES, IN A SUBFOLDER, ABSENT FROM THE FRESH ONE. A
+  //     canvas moved into a folder on a peer gets a new folder-prefixed slug
+  //     and a new document while the pre-move one lingers, and the newcomer
+  //     drops it at admission. That is the recorded finding
+  //     `maude/peer-moved-canvas-missing-on-a-fresh-machine`, entangled with
+  //     Increment 6 by construction: until deletions propagate, two documents
+  //     describe one file and cold start has to choose.
+  //
+  // Anything else — a top-level canvas, an asset, a design-system file — is a
+  // real gap and still fails loudly.
+  const goneFromTheDesktopToo = (rel) => !ctx.desktop.has(rel);
+  const peerMovedIntoAFolder = (rel) => ctx.desktop.has(rel) && rel.split('/').length > 2;
+  const knownShape = (rel) => goneFromTheDesktopToo(rel) || peerMovedIntoAFolder(rel);
 
   const want = ctx.cloud
     .tracked()
@@ -520,12 +535,12 @@ async function coldStart(ctx, cellRoot) {
     label: 'the whole project',
   });
   const short = want.filter((r) => !fresh.has(r));
-  const knownGapOnly = short.length > 0 && short.every(movedOnPeer);
+  const knownGapOnly = short.length > 0 && short.every(knownShape);
   record({
     scenario: 'cold-start',
     dir: 'hub-to-fresh',
     check: knownGapOnly
-      ? `the whole project landed (${want.length} files) — bar the peer-moved canvases (known gap)`
+      ? `the whole project landed (${want.length} files) — bar the two known shapes (Increment 6 residue / peer-moved canvases)`
       : `the whole project landed (${want.length} files)`,
     status: arrived.ok ? 'pass' : knownGapOnly ? 'pending' : 'fail',
     ms: arrived.ms,
@@ -545,12 +560,12 @@ async function coldStart(ctx, cellRoot) {
     ['the whole design system', ds],
   ]) {
     const missing = set.filter((r) => !fresh.has(r));
-    const onlyKnownGap = missing.length > 0 && missing.every(movedOnPeer);
+    const onlyKnownGap = missing.length > 0 && missing.every(knownShape);
     record({
       scenario: 'cold-start',
       dir: 'hub-to-fresh',
       check: onlyKnownGap
-        ? `${label} (${set.length}) — only peer-moved canvases short (known gap)`
+        ? `${label} (${set.length}) — short only by the two known shapes (Increment 6 residue / peer-moved canvases)`
         : `${label} (${set.length})`,
       status: missing.length === 0 ? 'pass' : onlyKnownGap ? 'pending' : 'fail',
       ms: null,
