@@ -128,7 +128,7 @@ test('a bucket-only asset is ABSENT — the canvas can reference the checkout fo
   assert.deepEqual(res.json.present, [], 'skipping this leaves a permanent grey box');
 });
 
-test('present only when BOTH stores hold it', async () => {
+test('a checkout-held asset is present whether or not the bucket also holds it', async () => {
   const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
   store.set('assets/deadbeef.png', Buffer.from('bytes'));
   mkdirSync(join(designRoot, 'assets'), { recursive: true });
@@ -137,21 +137,28 @@ test('present only when BOTH stores hold it', async () => {
   assert.deepEqual(res.json.present, ['assets/deadbeef.png']);
 });
 
-test('a checkout-only asset is absent too — the bucket is what survives a restart', async () => {
+test('a checkout-only asset IS present — the shim answers from the one store it serves (Increment 5)', async () => {
+  // The probe used to require BOTH stores, because the bucket mirror could lag
+  // and a bucket miss was one teardown from a real loss. The journal-driven
+  // write-behind now owns that gap (an unmirrored row is a queued upload, and
+  // it is loud) — so the probe answers the only question the legacy client
+  // asks: "can this cell serve it?" The checkout is exactly that.
   const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
   mkdirSync(join(designRoot, 'assets'), { recursive: true });
   writeFileSync(join(designRoot, 'assets/deadbeef.png'), 'bytes');
   const res = await probe({ token: minted.value, paths: ['assets/deadbeef.png'] });
-  assert.deepEqual(res.json.present, []);
+  assert.deepEqual(res.json.present, ['assets/deadbeef.png']);
 });
 
-test('a bucket-only hub (no checkout) still answers from the store it has', async () => {
-  // Requiring a mirror a deployment never writes would re-upload the world
-  // on every boot — the failure this probe exists to end.
+test('a hub with no checkout answers ABSENT — conservative, and checkout-only by design', async () => {
+  // The compat shim never reads object storage. A bucket-only deployment gets
+  // "absent", and the legacy client re-uploads — idempotent and cheap, where a
+  // wrong "present" is a grey box nobody retries. (A bucket-only hub is also
+  // outside the legacy support window; every cell in it has a checkout.)
   const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
   store.set('assets/deadbeef.png', Buffer.from('bytes'));
   const res = await probe({ token: minted.value, paths: ['assets/deadbeef.png'], root: '' });
-  assert.deepEqual(res.json.present, ['assets/deadbeef.png']);
+  assert.deepEqual(res.json.present, []);
 });
 
 test('a path the WRITE route would refuse is reported absent, never an error', async () => {

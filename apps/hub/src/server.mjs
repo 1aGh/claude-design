@@ -53,8 +53,14 @@ import {
   verifyAdminAuth,
   writeAdminSecret,
 } from './admin-auth.mjs';
-import { createAssetSweeper, hydrateAssets } from './asset-lane.mjs';
-import { handleAssetProbeRoute, handleAssetRoute, handleCheckoutAssetRoute } from './assets.mjs';
+import { createWriteBehind, hydrateAssets, hydrateFiles } from './asset-lane.mjs';
+import {
+  handleAssetProbeRoute,
+  handleAssetRoute,
+  handleCheckoutAssetRoute,
+  parseAssetPath,
+  parseCheckoutAssetPath,
+} from './assets.mjs';
 import {
   handleAuthRoutes,
   handleUserAdminRoutes,
@@ -62,7 +68,12 @@ import {
 } from './auth-routes.mjs';
 import { scheduleBackups, targetFromConfig, targetFromEnv } from './backup.mjs';
 import { maybeIssueOnBoot, verifyAndConsume } from './bootstrap.mjs';
-import { BROWSER_SESSION_COOKIE, cookieValue, handleBrowserAuth } from './browser-auth.mjs';
+import {
+  BROWSER_SESSION_COOKIE,
+  cookieValue,
+  handleBrowserAuth,
+  handleOidc,
+} from './browser-auth.mjs';
 import {
   checkBundleIdentity,
   formatIdentityFailure,
@@ -424,7 +435,7 @@ export function createHub(config = {}) {
   // Cloud Phase 27 B3 — built once the storage credentials resolve (below), and
   // read by the proxy's post-upload hook. Null until then, and null forever on
   // a hub with no object storage, which is every self-hosted one.
-  let assetSweeper = null;
+  let writeBehind = null;
   /** One line, not one per request, when render tokens cannot be minted. */
   let warnedNoCanvasToken = false;
 
@@ -466,9 +477,9 @@ export function createHub(config = {}) {
         console.error(`[journal] append failed for ${sanitizeForLog(rel)}: ${err.message}`);
       }
     }
-    assetSweeper?.sweepNew().catch((err) => {
-      console.error(`[assets] post-write mirror failed: ${err.message}`);
-    });
+    // No mirror call here — the write-behind subscribes to `journal.onAppend`,
+    // so the row this append just produced IS the mirror trigger (Sync v2
+    // Increment 5: journal-driven, covering every file-plane class).
   };
 
   /**
@@ -521,18 +532,15 @@ export function createHub(config = {}) {
         publicUrl: process.env.HUB_PUBLIC_URL ?? null,
         hash: (input) => createHash('sha256').update(input).digest('hex'),
         // B3 — a browser upload reaches object storage now, not at the next
-        // boot. Fire-and-forget: the upload has already succeeded, and a mirror
-        // failure must not un-succeed it (the bytes are still in the checkout,
-        // and the next boot sweep is the backstop it always was).
-        // The browser-upload door is PROXIED — the bytes stream through to the
-        // studio child, so the hub never learns which path landed and cannot
-        // name one to the journal. The child reports its own writes over
-        // `POST /api/journal/report` (a nudge; the hub still reads its own
-        // disk), and walk-import is the backstop. So this stays payload-free.
+        // boot. The browser-upload door is PROXIED — the bytes stream through
+        // to the studio child, so the hub never learns which path landed and
+        // cannot name one to the journal. The child reports its own writes
+        // over `POST /api/journal/report` (a nudge; the hub still reads its
+        // own disk), whose append the write-behind subscribes to; this hook is
+        // only a flush nudge for rows that landed just before, and
+        // walk-import stays the backstop. Payload-free, as before.
         onAssetWritten: () => {
-          assetSweeper?.sweepNew().catch((err) => {
-            console.error(`[assets] post-upload mirror failed: ${err.message}`);
-          });
+          writeBehind?.note();
         },
         // NEVER LET THIS THROW INTO THE REQUEST LOOP.
         //
@@ -847,6 +855,24 @@ export function createHub(config = {}) {
         });
         if (handled) bailFromOnRequest();
       }
+      // ---- THE OIDC DOOR (Track C) ---------------------------------------
+      //
+      // Same ending as the password door — a peer-token session cookie — with
+      // the "who are you?" answered by the operator's identity provider. The
+      // decision (linked ⇒ in, everyone else ⇒ pending) lives in
+      // `resolveSubject`; this is only the HTTP.
+      if (authPath === '/auth/oidc/start' || authPath === '/auth/oidc/callback') {
+        const handled = await handleOidc({
+          request,
+          response,
+          path: authPath,
+          method,
+          dataDir,
+          secret,
+          publicUrl,
+        });
+        if (handled) bailFromOnRequest();
+      }
       // ---- THE CANVAS ORIGIN (DDR-054) ------------------------------------
       //
       // A different hostname, no cookie, and that is the point: a cookie scoped
@@ -880,6 +906,42 @@ export function createHub(config = {}) {
       // and reachable ONLY for validated keys. Never a presigned URL: the
       // canvas CSP is `img-src 'self'` and a presigned URL would be a bearer
       // credential living inside tenant-authored content.
+      // Sync v2 Increment 5 — ONE door. The legacy write routes
+      // (`PUT /assets/<key>`, `PUT /_asset-file/<rel>`) delegate to the file
+      // door, so admission, CAS, quota, the owner gate and the journal have a
+      // single home; the URLs stay answerable for the legacy client window
+      // (≥2 releases, Open decision 4). A legacy client sends no
+      // `x-maude-expect-hash`, which the door reads as "no precondition" —
+      // exactly the semantics the old routes had. A path neither parser
+      // accepts falls through to the legacy handlers' own refusals.
+      if (
+        method === 'PUT' &&
+        (authPath.startsWith('/assets/') || authPath.startsWith('/_asset-file/'))
+      ) {
+        const key = authPath.startsWith('/assets/') ? parseAssetPath(authPath) : null;
+        const rel = key !== null ? `assets/${key}` : parseCheckoutAssetPath(authPath);
+        if (rel !== null) {
+          const handled = await handleFileDoor({
+            request,
+            response,
+            pathname: `/api/file/${rel.split('/').map(encodeURIComponent).join('/')}`,
+            method,
+            dataDir,
+            secret,
+            designRoot: journalDesignRoot,
+            journal,
+            onWritten: noteCheckoutWrite,
+            onDeleted: noteCheckoutDelete,
+            checkRateLimit: rateLimit
+              ? (req) => checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
+              : undefined,
+            checkWriteRateLimit: rateLimit
+              ? (label) => checkConnRateLimit(assetWriteBuckets, label, assetWriteRateLimitMax)
+              : undefined,
+          });
+          if (handled) bailFromOnRequest();
+        }
+      }
       if (authPath.startsWith('/assets/')) {
         const handled = await handleAssetRoute({
           request,
@@ -1580,8 +1642,8 @@ export function createHub(config = {}) {
      * closure write but a `ReferenceError` on every cell boot with storage
      * configured. Caught by the linter, not by a test, and worth the sentence.
      */
-    setAssetSweeper(sweeper) {
-      assetSweeper = sweeper;
+    setWriteBehind(wb) {
+      writeBehind = wb;
     },
     /** The file journal, or null on a hub with no checkout. Tests read it. */
     journal,
@@ -2871,15 +2933,9 @@ async function runAsMain() {
       );
     }
     if (s3Source.configured && repoDir) {
-      // Sweep at boot: assets arrive with a commit, and a cell wakes on every
-      // migration, so boot is already the frequent event. A timer would mostly
-      // re-HEAD objects that have not changed.
-      //
-      // Cloud Phase 27 B3 — that reasoning has one hole, and it is the one a
-      // customer meets first. A BROWSER upload arrives with no commit and no
-      // boot, so those bytes lived only in `/repo` until the cell next
-      // restarted — served fine from the checkout the whole time, and one
-      // teardown from gone. `sweepNew()` below closes it per upload.
+      // Flush at boot: the journal's unstamped `mirrored_at_ms` rows are the
+      // write-behind's whole work queue, so a crash or teardown between an
+      // append and its mirror costs nothing — this pass settles the backlog.
       const designRoot = join(repoDir, process.env.MAUDE_DESIGN_ROOT ?? '.design');
       s3Source
         .config()
@@ -2919,27 +2975,49 @@ async function runAsMain() {
               }
             },
           });
-          if (restored.restored.length || restored.failed.length) {
+          // The same restore for every OTHER file-plane class — the `files/`
+          // prefix the write-behind fills. Durability without a way back is a
+          // receipt, not a backup (F-6/B2).
+          const restoredFiles = await hydrateFiles({
+            designRoot,
+            s3,
+            onWritten: ({ path: rel }) => {
+              if (built.journal) {
+                built.journal.recordWrite({ designRoot, path: rel, source: 'hydrate' });
+              }
+            },
+          });
+          if (
+            restored.restored.length ||
+            restored.failed.length ||
+            restoredFiles.restored.length ||
+            restoredFiles.failed.length
+          ) {
             built.recordAssetHydrate({
-              restored: restored.restored.length,
-              present: restored.present,
-              failed: restored.failed.length,
+              restored: restored.restored.length + restoredFiles.restored.length,
+              present: restored.present + restoredFiles.present,
+              failed: restored.failed.length + restoredFiles.failed.length,
             });
           }
-          const sweeper = createAssetSweeper({ designRoot, s3 });
-          built.setAssetSweeper(sweeper);
-          return sweeper.sweepAll();
+          // The journal-driven write-behind (Sync v2 Increment 5). Every
+          // accepted file-plane write already lands a journal row — through
+          // the door, the studio child's report, walk-import or a hydrate —
+          // so subscribing to the append IS subscribing to every write
+          // surface at once, with no per-door hook to forget.
+          const wb = createWriteBehind({ designRoot, s3, journal: built.journal });
+          built.setWriteBehind(wb);
+          built.journal?.onAppend(() => wb.note());
+          return wb.flush();
         })
         .then((r) => {
           built.recordAssetSweep({
-            uploaded: r.uploaded.length,
-            skipped: r.skipped,
-            failed: r.failed.length,
+            uploaded: r.mirrored ?? 0,
+            failed: r.failed ?? 0,
           });
         })
         .catch((err) => {
           built.recordAssetSweep({ error: err.message.slice(0, 120) });
-          console.error(`[hub] asset sweep failed: ${err.message}`);
+          console.error(`[hub] asset write-behind failed: ${err.message}`);
         });
     }
   }

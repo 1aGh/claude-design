@@ -22,8 +22,9 @@ import { after, describe, it } from 'node:test';
 
 import * as Y from 'yjs';
 
-import { createAssetSweeper, pendingAssets, sweepAssets } from '../src/asset-lane.mjs';
+import { createWriteBehind, writeBehindKey } from '../src/asset-lane.mjs';
 import { createGitRunner } from '../src/git-runner.mjs';
+import { closeJournal, openJournal } from '../src/journal.mjs';
 import { mergeSharedMetaIntoLocal } from '../src/meta-merge.mjs';
 import { safeUrl, seedRepo } from '../src/seed-repo.mjs';
 import { createWorkspaceAgent, slugFromDocName } from '../src/workspace-agent.mjs';
@@ -321,163 +322,151 @@ describe('seedRepo', () => {
   });
 });
 
-/* ------------------------------------------------------------ asset lane */
+/* ------------------------------------------- the journal-driven write-behind */
 
-describe('asset lane', () => {
-  it("mirrors exactly what the proxy will serve — including a DS's own named files", () => {
-    // Real projects are not all hashes. alligators references
-    // `graphics/camo-bg.png` and `gator_badge_roundel.svg`; requiring
-    // content-addressed names left a hosted project rendering without its own
-    // brand, silently.
-    assert.deepEqual(
-      pendingAssets([
-        'a1b2c3d4.png',
-        'gator_badge_roundel.svg',
-        'graphics/camo-bg.png',
-        'fonts/Gators-Bold.woff2',
-        '../escape',
-        'a/b/c/d/e/f/too-deep.png',
-        '.hidden',
-        'a1b2c3d4.png',
-      ]),
-      ['a1b2c3d4.png', 'fonts/Gators-Bold.woff2', 'gator_badge_roundel.svg', 'graphics/camo-bg.png']
-    );
-  });
+describe('write-behind (Sync v2 Increment 5)', () => {
+  /** A journal + designRoot pair with real files, so recordWrite can hash them. */
+  function scene() {
+    const dataDir = tmp();
+    const designRoot = tmp();
+    const journal = openJournal(dataDir);
+    const record = (rel, content = 'x') => {
+      mkdirSync(join(designRoot, rel, '..'), { recursive: true });
+      writeFileSync(join(designRoot, rel), content);
+      return journal.recordWrite({ designRoot, path: rel, source: 'peer-put' });
+    };
+    return { dataDir, designRoot, journal, record };
+  }
 
-  it('never mirrors a path that could escape the assets prefix', () => {
-    for (const bad of ['../secret', 'a/../../etc/passwd', '/abs.png', 'a//b.png']) {
-      assert.deepEqual(pendingAssets([bad]), [], bad);
+  it('mirrors EVERY file-plane class the journal names — not only assets/', async () => {
+    // The old sweeper walked `<designRoot>/assets/` and nothing else, so
+    // `companion-text`, `code-module` and nested `system/**/assets/*` files
+    // were durable only through git history (the F-6/B2 hole). The journal is
+    // the classifier's own record of the plane, so driving the mirror from it
+    // covers the whole plane by construction.
+    const { dataDir, designRoot, journal, record } = scene();
+    try {
+      record('assets/aaaaaaaa.png', 'cas-bytes');
+      record('system/ds/brand.css', '.brand{}');
+      record('system/ds/assets/wordmark.svg', '<svg/>');
+      const put = [];
+      const wb = createWriteBehind({
+        designRoot,
+        s3: { bucket: 'x' },
+        journal,
+        prefix: '',
+        log: silent(),
+        deps: { putObject: async (_c, key) => put.push(key) },
+      });
+      await wb.flush();
+      assert.deepEqual(put.sort(), [
+        // Top-level content-addressed assets keep the legacy layout the read
+        // proxy serves; everything else is keyed by path under files/.
+        'assets/aaaaaaaa.png',
+        'files/system/ds/assets/wordmark.svg',
+        'files/system/ds/brand.css',
+      ]);
+      // Every row is stamped — the queue is empty, so a second flush is free.
+      assert.deepEqual(journal.unmirrored(), []);
+      await wb.flush();
+      assert.equal(put.length, 3);
+      wb.stop();
+    } finally {
+      closeJournal(dataDir);
     }
   });
 
-  it('skips what the bucket already holds instead of re-uploading it', async () => {
-    const dir = tmp();
-    const assets = join(dir, 'assets');
-    mkdirSync(assets);
-    writeFileSync(join(assets, 'aaaaaaaa.png'), 'one');
-    writeFileSync(join(assets, 'bbbbbbbb.png'), 'two');
-    const put = [];
-    const r = await sweepAssets({
-      designRoot: dir,
-      s3: { bucket: 'x' },
-      log: silent(),
-      deps: {
-        headObject: async (_c, key) => (key === 'assets/aaaaaaaa.png' ? { size: 3 } : null),
-        putObject: async (_c, key) => put.push(key),
-      },
-    });
-    assert.deepEqual(r.uploaded, ['bbbbbbbb.png']);
-    assert.equal(r.skipped, 1);
-    assert.deepEqual(put, ['assets/bbbbbbbb.png']);
-  });
-
-  it('a failed upload does not abort the sweep', async () => {
-    const dir = tmp();
-    mkdirSync(join(dir, 'assets'));
-    writeFileSync(join(dir, 'assets', 'aaaaaaaa.png'), 'one');
-    writeFileSync(join(dir, 'assets', 'bbbbbbbb.png'), 'two');
-    const r = await sweepAssets({
-      designRoot: dir,
-      s3: { bucket: 'x' },
-      log: silent(),
-      deps: {
-        headObject: async () => null,
-        putObject: async (_c, key) => {
-          if (key.includes('aaaa')) throw new Error('502');
-          return null;
-        },
-      },
-    });
-    assert.deepEqual(r.uploaded, ['bbbbbbbb.png']);
-    assert.equal(r.failed.length, 1);
-  });
-
-  it('a browser upload is mirrored without waiting for the next boot', async () => {
-    // Cloud Phase 27 B3. The boot sweep rests on "assets arrive with a commit,
-    // and a cell wakes on every migration" — a browser upload arrives with
-    // neither, so those bytes lived only in /repo until the cell restarted:
-    // served fine from the checkout the whole time, and one teardown from gone.
-    const dir = tmp();
-    const assets = join(dir, 'assets');
-    mkdirSync(assets);
-    writeFileSync(join(assets, 'aaaaaaaa.png'), 'committed');
-    const put = [];
-    const heads = [];
-    const sweeper = createAssetSweeper({
-      designRoot: dir,
-      s3: { bucket: 'x' },
-      log: silent(),
-      deps: {
-        headObject: async (_c, key) => {
-          heads.push(key);
-          return null;
-        },
-        putObject: async (_c, key) => put.push(key),
-      },
-    });
-
-    await sweeper.sweepAll();
-    assert.deepEqual(put, ['assets/aaaaaaaa.png']);
-
-    // The upload lands on the tree the way `POST /_api/asset` leaves it.
-    writeFileSync(join(assets, 'bbbbbbbb.png'), 'uploaded in a browser');
-    const headsBefore = heads.length;
-    await sweeper.sweepNew();
-
-    assert.deepEqual(put, ['assets/aaaaaaaa.png', 'assets/bbbbbbbb.png']);
-    // ONE head, not one per file in the project. A full re-sweep would be 793
-    // HEADs on a real project for an upload that added exactly one.
-    assert.equal(heads.length - headsBefore, 1);
-  });
-
-  it('a burst of uploads collapses into one pass, and none is dropped', async () => {
-    const dir = tmp();
-    const assets = join(dir, 'assets');
-    mkdirSync(assets);
-    const put = [];
-    let inFlight = 0;
-    let maxInFlight = 0;
-    const sweeper = createAssetSweeper({
-      designRoot: dir,
-      s3: { bucket: 'x' },
-      log: silent(),
-      deps: {
-        headObject: async () => null,
-        putObject: async (_c, key) => {
-          inFlight += 1;
-          maxInFlight = Math.max(maxInFlight, inFlight);
-          await new Promise((r) => setTimeout(r, 5));
-          put.push(key);
-          inFlight -= 1;
-        },
-      },
-    });
-    await sweeper.sweepAll();
-
-    // Six images dragged onto a canvas: each POST fires the hook, and one of
-    // them lands mid-pass — the case a naive single-flight guard drops.
-    for (let i = 0; i < 6; i++) {
-      writeFileSync(join(assets, `${'abcdef'[i].repeat(8)}.png`), `n${i}`);
-      void sweeper.sweepNew();
+  it('a tombstone mirrors nothing and settles its own row', async () => {
+    // The blob stays in the bucket, unreferenced — quarantine semantics, the
+    // reason a propagated delete is recoverable. The ROW still has to settle,
+    // or the queue never drains.
+    const { dataDir, designRoot, journal, record } = scene();
+    try {
+      record('assets/aaaaaaaa.png');
+      journal.recordWrite({
+        designRoot,
+        path: 'assets/aaaaaaaa.png',
+        source: 'peer-put',
+        deleted: true,
+      });
+      const put = [];
+      const wb = createWriteBehind({
+        designRoot,
+        s3: { bucket: 'x' },
+        journal,
+        prefix: '',
+        log: silent(),
+        deps: { putObject: async (_c, key) => put.push(key) },
+      });
+      await wb.flush();
+      // The write row and the tombstone share the path; the newest row (the
+      // tombstone) decides, so nothing uploads and both rows settle.
+      assert.deepEqual(put, []);
+      assert.deepEqual(journal.unmirrored(), []);
+      wb.stop();
+    } finally {
+      closeJournal(dataDir);
     }
-    // POLL, don't sleep. A fixed wait is a wall-clock bet against a machine
-    // under load — six 5 ms uploads finish in well under 300 ms on an idle box
-    // and not always on a busy one, which made this fail intermittently in
-    // `pnpm test` (where it shares the machine with every other package) while
-    // passing alone. The deadline is generous because it only ever bounds a
-    // real failure; the loop exits as soon as the work is actually done.
-    const deadline = Date.now() + 10_000;
-    while (put.length < 6 && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 10));
-    }
-
-    assert.equal(put.length, 6, `every upload reached the bucket: ${put.join(', ')}`);
-    assert.equal(new Set(put).size, 6, 'and none of them twice');
   });
 
-  it('does nothing when the hub has no bucket', async () => {
-    const r = await sweepAssets({ designRoot: tmp(), s3: null, log: silent() });
-    assert.deepEqual(r, { uploaded: [], skipped: 0, failed: [] });
+  it('a failed put stays queued — the crash-safety property, LOUD (the sweepNew lesson)', async () => {
+    const { dataDir, designRoot, journal, record } = scene();
+    try {
+      record('assets/aaaaaaaa.png');
+      let fail = true;
+      const put = [];
+      const errors = [];
+      const wb = createWriteBehind({
+        designRoot,
+        s3: { bucket: 'x' },
+        journal,
+        prefix: '',
+        log: { log() {}, warn() {}, error: (m) => errors.push(m) },
+        deps: {
+          putObject: async (_c, key) => {
+            if (fail) throw new Error('502');
+            put.push(key);
+          },
+        },
+      });
+      await wb.flush();
+      // Unstamped ⇒ still the queue's work; and the failure was named.
+      assert.equal(journal.unmirrored().length, 1);
+      assert.match(errors.join('\n'), /only in the checkout/);
+      fail = false;
+      await wb.flush();
+      assert.deepEqual(put, ['assets/aaaaaaaa.png']);
+      assert.deepEqual(journal.unmirrored(), []);
+      wb.stop();
+    } finally {
+      closeJournal(dataDir);
+    }
+  });
+
+  it('no object storage ⇒ a clean no-op, exactly like the journal tail', async () => {
+    const { dataDir, journal, record, designRoot } = scene();
+    try {
+      record('assets/aaaaaaaa.png');
+      const wb = createWriteBehind({
+        designRoot,
+        s3: null,
+        journal,
+        prefix: '',
+        log: silent(),
+      });
+      const r = await wb.flush();
+      assert.equal(r.skipped, 'no-target');
+      wb.stop();
+    } finally {
+      closeJournal(dataDir);
+    }
+  });
+
+  it('writeBehindKey — the two layouts, and a tenant scope prefixes both', () => {
+    assert.equal(writeBehindKey('assets/aaaaaaaa.png'), 'assets/aaaaaaaa.png');
+    assert.equal(writeBehindKey('system/ds/brand.css'), 'files/system/ds/brand.css');
+    assert.equal(writeBehindKey('assets/aaaaaaaa.png', 't1'), 't1/assets/aaaaaaaa.png');
+    assert.equal(writeBehindKey('system/ds/brand.css', 't1'), 't1/files/system/ds/brand.css');
   });
 });
 

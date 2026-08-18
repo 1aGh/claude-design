@@ -30,7 +30,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 
-import { assetNameFromKey, hydrateAssets, missingFromCheckout } from '../src/asset-lane.mjs';
+import {
+  assetNameFromKey,
+  fileRelFromKey,
+  hydrateAssets,
+  hydrateFiles,
+  missingFromCheckout,
+} from '../src/asset-lane.mjs';
 
 const dirs = [];
 function tmp() {
@@ -304,5 +310,69 @@ describe('hydrateAssets', () => {
     });
     assert.deepEqual(r.restored, []);
     assert.equal(r.failed[0].reason, 'not found in the bucket');
+  });
+});
+
+describe('hydrateFiles — the files/ prefix, the restore half of the write-behind (Increment 5)', () => {
+  it('restores an absent plane file, journals it, and never overwrites', async () => {
+    const dir = tmp();
+    mkdirSync(join(dir, 'system/ds'), { recursive: true });
+    writeFileSync(join(dir, 'system/ds/existing.css'), 'LOCAL EDIT');
+    const written = [];
+    const r = await hydrateFiles({
+      designRoot: dir,
+      s3: { bucket: 'x' },
+      prefix: '',
+      log: silent(),
+      deps: {
+        listObjects: async () => [
+          { key: 'files/system/ds/brand.css' },
+          { key: 'files/system/ds/existing.css' },
+        ],
+        getObject: async (_c, key) => Buffer.from(`bucket:${key}`),
+      },
+      onWritten: (info) => written.push(info.path),
+    });
+    assert.deepEqual(r.restored, ['system/ds/brand.css']);
+    assert.equal(r.present, 1);
+    assert.equal(
+      readFileSync(join(dir, 'system/ds/brand.css'), 'utf8'),
+      'bucket:files/system/ds/brand.css'
+    );
+    // The local edit survives — the bucket is a shadow, never an authority.
+    assert.equal(readFileSync(join(dir, 'system/ds/existing.css'), 'utf8'), 'LOCAL EDIT');
+    assert.deepEqual(written, ['system/ds/brand.css']);
+  });
+
+  it('a listed key the write door would refuse never becomes a path', async () => {
+    // The listing is remote input (DDR-054). Admission is the SAME call the
+    // door makes — classifier + symlink containment — so runtime state, canvas
+    // lanes and traversal shapes are refused identically.
+    const dir = tmp();
+    const r = await hydrateFiles({
+      designRoot: dir,
+      s3: { bucket: 'x' },
+      prefix: '',
+      log: silent(),
+      deps: {
+        listObjects: async () => [
+          { key: 'files/_history/x.png' },
+          { key: 'files/config.json' },
+          { key: 'files/../escape.css' },
+          { key: 'other-prefix/system/ds/brand.css' },
+        ],
+        getObject: async () => Buffer.from('x'),
+      },
+    });
+    assert.deepEqual(r.restored, []);
+    assert.equal(existsSync(join(dir, '_history/x.png')), false);
+    assert.equal(existsSync(join(dir, 'config.json')), false);
+  });
+
+  it('fileRelFromKey refuses a foreign scope rather than trimming it', () => {
+    assert.equal(fileRelFromKey('files/system/ds/a.css'), 'system/ds/a.css');
+    assert.equal(fileRelFromKey('t1/files/system/ds/a.css', 't1'), 'system/ds/a.css');
+    assert.equal(fileRelFromKey('t2/files/system/ds/a.css', 't1'), null);
+    assert.equal(fileRelFromKey('system/ds/a.css'), null);
   });
 });

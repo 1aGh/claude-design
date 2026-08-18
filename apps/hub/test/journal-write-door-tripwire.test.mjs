@@ -79,13 +79,26 @@ describe('every checkout write door is journal-hooked', () => {
 
   it('the arg-carrying hooks really carry a path', () => {
     // A hook that fires payload-free tells the journal nothing, which is the
-    // pre-Sync-v2 shape. Both asset doors must name what landed.
-    const assets = readFileSync(join(SRC, 'assets.mjs'), 'utf8');
-    const calls = assets.match(/onWritten\?\.\([^)]*\)/g) ?? [];
-    assert.ok(calls.length >= 2, 'expected both asset write doors to fire onWritten');
+    // pre-Sync-v2 shape. Since Increment 5 `assets.mjs` no longer writes at
+    // all (its PUTs delegate to the file door in server.mjs), so the hooks to
+    // pin live at the ONE door and the hydrate lanes.
+    const door = readFileSync(join(SRC, 'file-door.mjs'), 'utf8');
+    const lane = readFileSync(join(SRC, 'asset-lane.mjs'), 'utf8');
+    const calls = [
+      ...(door.match(/onWritten\?\.\([^)]*\)/g) ?? []),
+      ...(lane.match(/onWritten\?\.\([^)]*\)/g) ?? []),
+    ];
+    assert.ok(calls.length >= 3, 'expected the door + both hydrate lanes to fire onWritten');
     for (const call of calls) {
-      assert.match(call, /path:/, `payload-free onWritten hook: ${call}`);
+      assert.match(call, /path/, `payload-free onWritten hook: ${call}`);
     }
+    // And the legacy asset routes stay write-free — a PUT branch reappearing
+    // in assets.mjs would be a SECOND write path beside the door.
+    const assets = readFileSync(join(SRC, 'assets.mjs'), 'utf8');
+    assert.ok(
+      !/onWritten\?\.\(/.test(assets) && !/renameSync\(/.test(assets),
+      'assets.mjs grew a write path again — writes belong to the file door'
+    );
   });
 
   it('EVERY write door the server wires goes through the one notifier', () => {

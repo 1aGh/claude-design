@@ -359,6 +359,19 @@ function makeHandle({ db, getMeta, setMeta, now }) {
       stmts.markMirrored.run(atMs, seq);
     },
 
+    /**
+     * Rows the write-behind has not confirmed durable — ITS work queue
+     * (Sync v2 Increment 5). `mirrored_at_ms` is stamped only after the
+     * object-storage put succeeds, so a crash between append and mirror
+     * loses nothing: the row is still here on the next flush.
+     */
+    unmirrored(limit = 500) {
+      return db
+        .prepare('SELECT * FROM file_journal WHERE mirrored_at_ms IS NULL ORDER BY seq ASC LIMIT ?')
+        .all(Math.max(1, limit))
+        .map(toWire);
+    },
+
     cursorFor(label) {
       return stmts.getCursor.get(label) ?? null;
     },

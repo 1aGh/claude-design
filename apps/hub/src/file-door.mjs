@@ -140,6 +140,10 @@ function respond(response, status, message) {
       'Content-Length': Buffer.byteLength(body),
       'X-Content-Type-Options': 'nosniff',
       Connection: 'close',
+      // A 429 that TELLS the caller when to come back — the contract the
+      // legacy asset routes carried (RCA 2026-08-11), preserved here now that
+      // their PUTs delegate to this door. 60 s == the rate-limit window.
+      ...(status === 429 ? { 'Retry-After': '60' } : {}),
     })
     .end(body);
 }
