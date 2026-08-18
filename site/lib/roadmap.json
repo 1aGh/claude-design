@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-18T13:16:06.523Z",
+  "generated": "2026-08-18T14:01:49.786Z",
   "currentPhase": null,
   "phases": [
     {
@@ -681,6 +681,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/archive/feature-cloud-connect-ux.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-cloud-managed-git-posture",
+      "title": "Feature: Cloud-managed git posture — the desktop stops running local git and shows the cloud's history",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-cloud-managed-git-posture.md",
       "archived": true,
       "phaseKey": null
     },
@@ -2057,17 +2068,6 @@
       "summary": "The moodboard direction gates catch a disliked direction before the scaffold. They do not catch a scaffold that ran but produced silently-broken output — empty files trusted as written, a transpile...",
       "planPath": ".ai/plans/archive/setup-ds-round2-scaffold-integrity-and-devserver-fixes.md",
       "archived": true,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-cloud-managed-git-posture",
-      "title": "Feature: Cloud-managed git posture — the desktop stops running local git and shows the cloud's history",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-cloud-managed-git-posture.md",
-      "archived": false,
       "phaseKey": null
     },
     {
