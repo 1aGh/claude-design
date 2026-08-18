@@ -43,7 +43,7 @@ import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { listProjectFiles, readCanvasGroups } from './file-manifest.mjs';
-import { classifyProjectFile, isFilePlaneClass } from './file-membership.mjs';
+import { classifyProjectFile, isFilePlaneClass, isProjectFileShape } from './file-membership.mjs';
 
 const require = createRequire(import.meta.url);
 // better-sqlite3 is a runtime-external native binding (see build.ts). Loading
@@ -405,9 +405,22 @@ function makeHandle({ db, getMeta, setMeta, now }) {
      * which is what makes "reset the tail after a backup" safe even if the
      * process dies between the snapshot and the reset.
      *
+     * Every replayed row is re-classified, not trusted. `recordWrite` treats
+     * "the classifier decides membership and nobody else" as its central
+     * invariant, and a tail that bypassed it stated the invariant in one place
+     * and broke it in another: whoever can write `tenants/<id>/journal/tail.ndjson`
+     * could inject rows for `never`-class paths, or tombstones for real files,
+     * and they would flow straight out of `GET /api/journal`. Contained today
+     * by the re-classification at both readers — and it stops being contained
+     * the moment Increment 6 wires tombstone application. Refusals count as
+     * `malformed`, which is already the counter the drill asserts on.
+     *
+     * `designRoot` is optional so a caller without a checkout still gets the
+     * shape gate; with one, the full classifier runs.
+     *
      * @returns {{ applied: number, skipped: number, malformed: number, head: number }}
      */
-    replayTail(text) {
+    replayTail(text, { designRoot } = {}) {
       const before = handle.head();
       let applied = 0;
       let skipped = 0;
@@ -438,6 +451,20 @@ function makeHandle({ db, getMeta, setMeta, now }) {
           if (row.seq <= before || stmts.byId.get(row.seq)) {
             skipped += 1;
             continue;
+          }
+          if (!isProjectFileShape(row.path)) {
+            malformed += 1;
+            continue;
+          }
+          if (designRoot) {
+            const cls = classifyProjectFile(row.path, {
+              canvasGroups: readCanvasGroups(designRoot),
+              hasFile: (r) => existsSync(join(designRoot, r)),
+            });
+            if (!isFilePlaneClass(cls)) {
+              malformed += 1;
+              continue;
+            }
           }
           stmts.insertAtSeq.run({
             seq: row.seq,
@@ -595,6 +622,14 @@ export function handleJournalRoutes({
     const match = bearer ? verify(bearer) : null;
     if (!match) {
       respondJson(401, { error: 'a token is required' });
+      return true;
+    }
+    // Same posture as the file door, which refuses read-only at its own gate.
+    // Harmless today — the caller is loopback and the hub only reads its own
+    // disk — but "a viewer may cause journal rows to be appended" is not a
+    // sentence worth leaving true just because the current caller is trusted.
+    if (match.readOnly) {
+      respondJson(403, { error: 'this token is read-only' });
       return true;
     }
     if (!journal || !designRoot) {
@@ -775,7 +810,7 @@ export function createJournalTail({
  *   - `state: 'lost'`      the tail could not be read → a TRUE rewind; the
  *                          caller rotates the epoch
  */
-export async function replayTailFromTarget({ journal, target, log = console }) {
+export async function replayTailFromTarget({ journal, target, designRoot, log = console }) {
   if (!target) return { state: 'empty', reason: 'no object storage configured' };
   let raw;
   try {
@@ -784,8 +819,20 @@ export async function replayTailFromTarget({ journal, target, log = console }) {
     log.error?.(`[journal] tail unreadable: ${err.message}`);
     return { state: 'lost', reason: err.message };
   }
-  if (!raw) return { state: 'empty', reason: 'no tail object' };
-  const result = journal.replayTail(raw.toString('utf8'));
+  if (!raw) {
+    // "No tail" and "no tail, on a tenant that had already issued seqs" are
+    // not the same fact. The first is a genuine first boot. The second is
+    // UNRECONSTRUCTIBLE: the journal rewinds to the generation's head, and
+    // under an unchanged epoch the next appends re-issue seqs peers already
+    // consumed. Peers above the restored head are rescued by the fail-closed
+    // `since > head → reanchor` rule; peers BELOW it read re-issued seqs as
+    // fresh news with nothing degraded, which is the "cursors go stale
+    // forever" outcome the epoch exists to prevent.
+    return journal.head() > 0
+      ? { state: 'lost', reason: 'no tail object, but this tenant had already issued seqs' }
+      : { state: 'empty', reason: 'no tail object' };
+  }
+  const result = journal.replayTail(raw.toString('utf8'), { designRoot });
   if (result.malformed > 0) {
     log.error?.(
       `[journal] tail replay skipped ${result.malformed} malformed line(s) — the log may be short of rows peers already hold.`

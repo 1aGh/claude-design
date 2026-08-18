@@ -31,7 +31,13 @@ import { join } from 'node:path';
 import { Writable } from 'node:stream';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
-import { handleFileDoor, parseFileDoorPath } from '../src/file-door.mjs';
+import {
+  handleFileDoor,
+  parseFileDoorPath,
+  quotaFor,
+  quotaSnapshot,
+  resetQuotas,
+} from '../src/file-door.mjs';
 import { closeJournal, openJournal } from '../src/journal.mjs';
 import { addToken } from '../src/tokens.mjs';
 
@@ -374,5 +380,43 @@ describe('compare-and-swap survives the body upload, not just the check', () => 
     const [ra, rb] = await Promise.all([call(a), call(b)]);
     const codes = [ra.status, rb.status].sort();
     assert.deepEqual(codes, [200, 409], 'one publishes, the other is told it collided');
+  });
+});
+
+describe('the write quota is per token and per window, not per process forever', () => {
+  beforeEach(() => resetQuotas());
+  afterEach(() => resetQuotas());
+
+  it('one token exhausting its quota does not lock the door for anyone else', async () => {
+    // The old shape was a single module-level counter shared by every token
+    // and never decayed: 2 GiB of entirely legitimate cumulative writes and
+    // the door answered 507 for the whole tenant until the process restarted.
+    const mine = quotaFor('peer');
+    mine.used = mine.cap; // as if this token had just written its whole quota
+
+    const refused = await call(exchange({ rel: 'system/ds/a.css', body: 'x' }));
+    assert.equal(refused.status, 507, 'the greedy token is refused');
+
+    const other = addToken(dataDir, { label: 'somebody-else', scope: '*' }).value;
+    const ok = await call(exchange({ rel: 'system/ds/b.css', body: 'y', bearer: other }));
+    assert.equal(ok.status, 200, 'everybody else still writes');
+  });
+
+  it('the window rolls, so a quota is a pause and not a permanent outage', () => {
+    const t0 = 1_000_000;
+    const first = quotaFor('peer', t0);
+    first.used = first.cap;
+    assert.equal(quotaFor('peer', t0).used, first.cap, 'same window, same row');
+
+    const later = quotaFor('peer', t0 + 60 * 60 * 1000 + 1);
+    assert.equal(later.used, 0, 'a new window starts clean');
+  });
+
+  it('is observable rather than an invisible module global', async () => {
+    await call(exchange({ rel: 'system/ds/c.css', body: 'hello' }));
+    const snap = quotaSnapshot();
+    const row = snap.find((r) => r.label === 'peer');
+    assert.ok(row, `the writing token appears in the snapshot: ${JSON.stringify(snap)}`);
+    assert.equal(row.used, 5);
   });
 });

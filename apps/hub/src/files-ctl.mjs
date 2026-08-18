@@ -48,6 +48,30 @@ export function isFilesCtlDoc(name) {
  * `verifyRestored`'s document count, and in the operator's canvas count. The
  * document has to be invisible to everything except the channel.
  */
+/**
+ * `beforeHandleAwareness` for the control document: drop presence entirely.
+ *
+ * `connectionConfig.readOnly` gates Y content (SyncStep2 / Update) and NOT
+ * awareness, which is applied to the document and fanned out to every
+ * connection regardless. Since every valid token of every scope is admitted to
+ * this document by design, that combination made it an authenticated
+ * cross-scope broadcast bus and a fan-out amplifier — peers scoped to disjoint
+ * canvases could exchange arbitrary payloads on it, undoing the scope
+ * isolation the ordinary check buys everywhere else.
+ *
+ * Emptying the state map is what the caller's re-encode sees, so nothing is
+ * stored and nothing is broadcast. Presence has no meaning on a channel whose
+ * entire vocabulary is one integer. Every other document is left alone.
+ *
+ * @returns {boolean} whether this call dropped anything (for tests + logging)
+ */
+export function dropCtlAwareness({ document, states }) {
+  if (!isFilesCtlDoc(document?.name ?? '')) return false;
+  const had = typeof states?.size === 'number' ? states.size > 0 : false;
+  states?.clear?.();
+  return had;
+}
+
 export function withoutCtlPersistence(extension) {
   const origStore = extension.onStoreDocument?.bind(extension);
   const origLoad = extension.onLoadDocument?.bind(extension);

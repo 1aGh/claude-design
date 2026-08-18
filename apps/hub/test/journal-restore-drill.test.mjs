@@ -187,4 +187,43 @@ describe('restore drill — backup, wipe, rehydrate, replay', () => {
     assert.equal(journal.epoch(), epochBefore);
     assert.equal(journal.head(), 0);
   });
+
+  it('a MISSING tail on a tenant that already issued seqs IS a rewind', async () => {
+    // The distinction the epoch exists for. "No tail" on a fresh tenant is a
+    // first boot; the same answer on a tenant with a head means the seqs peers
+    // already consumed cannot be proven, and re-issuing them under an
+    // unchanged epoch is how a cursor goes stale forever without saying so.
+    const target = fileTarget(backupDir);
+    const journal = openJournal(dataDir);
+    writeFileSync(join(designRoot, 'system/ds/a.css'), ':root{}');
+    journal.recordWrite({ designRoot, path: 'system/ds/a.css', source: 'peer-put' });
+    assert.ok(journal.head() > 0, 'this tenant has issued seqs');
+
+    const res = await replayTailFromTarget({ journal, target, log: quiet });
+    assert.equal(res.state, 'lost', 'unreconstructible, not empty');
+    assert.match(res.reason, /already issued seqs/);
+  });
+
+  it('a replayed row that the classifier refuses is malformed, not admitted', async () => {
+    // `recordWrite` treats the classifier as the sole membership oracle. A
+    // tail that skipped it stated the invariant in one place and broke it in
+    // another — whoever can write the tail object could inject rows for
+    // `never`-class paths straight into `GET /api/journal`.
+    const journal = openJournal(dataDir);
+    const rows = [
+      { seq: 901, path: '_history/leak.css', sha256: 'a'.repeat(64) },
+      { seq: 902, path: '../../etc/passwd', sha256: 'b'.repeat(64) },
+      { seq: 903, path: 'system/ds/ok.css', sha256: 'c'.repeat(64) },
+    ]
+      .map((r) => JSON.stringify(r))
+      .join('\n');
+
+    const res = journal.replayTail(rows, { designRoot });
+    assert.equal(res.malformed, 2, 'both the runtime-state path and the traversal are refused');
+    assert.equal(res.applied, 1, 'the real one still lands');
+    assert.ok(
+      !journal.latestFor('_history/leak.css'),
+      'the runtime-state row never entered the log'
+    );
+  });
 });

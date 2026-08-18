@@ -20,6 +20,16 @@
 /** How long to wait for a journal page. Same figure as the manifest fetch. */
 const JOURNAL_TIMEOUT_MS = 6000;
 
+/**
+ * The hub's own published page ceiling, restated here.
+ *
+ * A receiver that trusts the sender to respect the sender's cap has no cap.
+ */
+const MAX_JOURNAL_PAGE = 2000;
+
+/** An epoch is a UUID-ish token; anything longer is not one. */
+const MAX_EPOCH_LEN = 128;
+
 /** How long to wait for `/health`. A capability probe must never hang a boot. */
 const HEALTH_TIMEOUT_MS = 4000;
 
@@ -44,6 +54,8 @@ export interface JournalPage {
   /** The cursor is not in this log — re-anchor against a full compaction. */
   reanchor: boolean;
   reason?: string;
+  /** The hub sent more than its own published ceiling; the rest was dropped. */
+  overflowed?: true;
 }
 
 /** A designRoot-relative path shape a peer will turn into a real file. */
@@ -95,8 +107,17 @@ export async function fetchJournal(opts: {
     });
     if (!res.ok) return null;
     const body = (await res.json()) as Record<string, unknown>;
-    const head = typeof body?.head === 'number' && Number.isFinite(body.head) ? body.head : 0;
-    const epoch = typeof body?.epoch === 'string' ? body.epoch : null;
+    // The head and the epoch are the anchor the whole cursor protocol rests
+    // on, and both arrive from a component DDR-054 calls untrusted. A
+    // fractional or negative head, or an unbounded epoch string, gets
+    // persisted into the ledger verbatim otherwise.
+    const rawHead = body?.head;
+    const head =
+      typeof rawHead === 'number' && Number.isInteger(rawHead) && rawHead >= 0 ? rawHead : 0;
+    const epoch =
+      typeof body?.epoch === 'string' && body.epoch.length > 0 && body.epoch.length <= MAX_EPOCH_LEN
+        ? body.epoch
+        : null;
     if (body?.reanchor === true) {
       return {
         epoch,
@@ -107,13 +128,29 @@ export async function fetchJournal(opts: {
         ...(typeof body.reason === 'string' ? { reason: body.reason.slice(0, 120) } : {}),
       };
     }
+    // CAP THE PAGE at the hub's own published ceiling. An honest hub never
+    // exceeds it; a hostile one ignores its own cap, and every entry past this
+    // point becomes a ledger row on disk, a key in `_sync.json`, and a member
+    // of the union every future pass re-walks. One response should not be able
+    // to grow this machine's state without bound.
     const rawEntries = Array.isArray(body?.entries) ? body.entries : [];
+    const overflowed = rawEntries.length > MAX_JOURNAL_PAGE;
     const entries: JournalEntry[] = [];
-    for (const raw of rawEntries) {
+    for (const raw of rawEntries.slice(0, MAX_JOURNAL_PAGE)) {
       const parsed = parseEntry(raw);
       if (parsed !== null) entries.push(parsed);
     }
-    return { epoch, head, entries, truncated: body?.truncated === true, reanchor: false };
+    return {
+      epoch,
+      head,
+      entries,
+      // An over-long page is treated as truncated, which is already the signal
+      // meaning "there is more; come back" — so the pass converges instead of
+      // silently believing it saw everything.
+      truncated: body?.truncated === true || overflowed,
+      reanchor: false,
+      ...(overflowed ? { overflowed: true } : {}),
+    };
   } catch {
     return null;
   }

@@ -37,6 +37,22 @@ export interface HubRecord {
    * renewal", which is exactly the old behaviour.
    */
   expiresAt?: number;
+  /**
+   * A LOCAL, user-given consent: may this hub deliver executable modules?
+   *
+   * `role` above is the hub's own claim about you, re-read from every sign-in
+   * response — a cache of what the hub said, not local knowledge. Deriving the
+   * `code-module` receive gate from it meant the gate was set by the party it
+   * defends against: a hostile hub answers `user.role: "owner"` once and every
+   * `.ts`/`.mjs` it offers lands in `.design/`, where the AGENT and the
+   * `maude design *` helpers read it — a different blast radius from a `.tsx`
+   * rendering in the sandboxed canvas origin.
+   *
+   * So it is recorded here at link time by an explicit answer and NEVER
+   * rewritten by a login response. Absent means no — the pessimistic branch,
+   * the same direction every other default in this file leans.
+   */
+  codeModulesAllowed?: boolean;
 }
 
 export interface HubsConfig {

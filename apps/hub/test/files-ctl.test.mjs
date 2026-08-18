@@ -19,6 +19,7 @@ import { Server } from '@hocuspocus/server';
 import {
   createFilesPoke,
   documentMap,
+  dropCtlAwareness,
   FILES_CTL_DOC,
   isFilesCtlDoc,
   POKE_COALESCE_MS,
@@ -277,5 +278,38 @@ describe('parsePoke — the frame is untrusted input', () => {
       JSON.stringify({ t: 'files', head: 3, path: 'system/evil.css', sha256: 'ab' })
     );
     assert.deepEqual(parsed, { head: 3 });
+  });
+});
+
+describe('the control document carries no presence', () => {
+  // `readOnly` gates Y content and not awareness, and every valid token of
+  // every scope is admitted to this document by design. Without this, a peer
+  // could publish arbitrary state — for as many synthetic clientIDs as it
+  // liked — to every other peer on the hub, which is a cross-scope broadcast
+  // bus wearing a presence hat.
+  const states = () =>
+    new Map([
+      [1, { user: 'alice', payload: 'x'.repeat(64) }],
+      [2, { user: 'mallory' }],
+    ]);
+
+  it('drops every awareness state on the ctl document', () => {
+    const s = states();
+    const dropped = dropCtlAwareness({ document: { name: FILES_CTL_DOC }, states: s });
+    assert.equal(dropped, true);
+    assert.equal(s.size, 0, 'nothing is stored and nothing fans out');
+  });
+
+  it('leaves presence on ordinary documents completely alone', () => {
+    const s = states();
+    const dropped = dropCtlAwareness({ document: { name: 'ws/acme/main/home' }, states: s });
+    assert.equal(dropped, false);
+    assert.equal(s.size, 2, 'real collaboration still shows who is here');
+  });
+
+  it('survives a malformed payload without throwing', () => {
+    assert.doesNotThrow(() => dropCtlAwareness({}));
+    assert.doesNotThrow(() => dropCtlAwareness({ document: null, states: null }));
+    assert.equal(dropCtlAwareness({ document: { name: FILES_CTL_DOC }, states: new Map() }), false);
   });
 });

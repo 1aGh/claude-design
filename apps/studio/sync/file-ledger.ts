@@ -122,6 +122,19 @@ export interface LedgerRow {
   reason?: string;
   /** Where the conflict copy was parked, so the panel can point at it. */
   conflictCopy?: string;
+  /**
+   * The remote hash whose bytes we have ALREADY parked aside.
+   *
+   * Epoch-degraded parking is otherwise not idempotent: the decision is
+   * `noop` + `parkRemote`, so the ancestor deliberately does not move and the
+   * next pass finds the identical state — and the copy name carries a
+   * millisecond stamp, so it produces a NEW file every time. A hub answering
+   * `reanchor` on every request (or rotating its epoch, which is a legitimate
+   * event) therefore fills the disk one conflict copy per diverged path per
+   * pass, and each copy is then scanned as `create-up` and uploaded back.
+   * Remembering which remote we parked makes the second pass a no-op.
+   */
+  parkedRemote?: string;
   pushedAt?: number;
   pulledAt?: number;
   healedAt?: number;

@@ -182,6 +182,22 @@ export const FILE_PASS_DEBOUNCE_MS = 400;
 export const REMOTE_POLL_SOON_MS = 1_500;
 
 /**
+ * The floor between two POKE-DRIVEN passes — DDR-226 §9's promised cooldown.
+ *
+ * `pollRemoteSoon` coalesces a burst, which is a debounce, not a cooldown: it
+ * caps how many passes a burst collapses into and says nothing about sustained
+ * rate. A hub emitting a poke every 1.5 s therefore drove a full document poll
+ * + asset pass + `.design/` tree walk at roughly 13x the intended cadence,
+ * indefinitely, with no counter that tripped — sustained CPU, disk and battery
+ * on the victim, from the component DDR-054 calls untrusted, and the multiplier
+ * that made the conflict-copy amplification practical.
+ *
+ * Half the scheduled poll: fast enough that a poke is still the reason cloud
+ * edits arrive in seconds, bounded enough that spam buys almost nothing.
+ */
+export const POKE_COOLDOWN_MS = REMOTE_POLL_MS / 2;
+
+/**
  * How many previously-unknown canvases one listing may land.
  *
  * A ceiling on the TOTAL is not enough on its own: a hub that answers with
@@ -547,11 +563,21 @@ export function createSyncRuntime(
   // the new plane (the downward file pull here + the widened sweep inside
   // `listPushableAssets`); with it off, behavior is today's, byte-for-byte.
   const syncFilesOn = linkedHub.syncFiles === true || process.env.MAUDE_SYNC_FILES === '1';
-  // The owner-hub gate for `code-module` entries, decided from LOCAL state
-  // only: the role this machine's credential store vouched for at sign-in
-  // (never a hub-supplied claim), or the hub being this cell's own loopback
-  // pairing — where the hub and the checkout are the same trust domain.
-  const allowCodeModules = cellPairing !== null || storedRecord?.role === 'owner';
+  // The gate for `code-module` entries — genuinely local state, at last.
+  //
+  // This used to read `storedRecord?.role === 'owner'`, described in the
+  // receiving lane as "never anything the hub said". It was exactly what the
+  // hub said: `role` is copied from the sign-in response on every login, so a
+  // hostile hub answering `user.role: "owner"` once set its own receive gate
+  // forever after. That matters more than the canvas case it resembles — a
+  // `.tsx` renders in the sandboxed canvas origin, but a `.ts`/`.mjs` landing
+  // outside the canvas-owned lane is read by the AGENT and by every
+  // `maude design *` helper.
+  //
+  // Now: an explicit per-hub consent recorded at link time and never rewritten
+  // by a login response, or this cell's own loopback pairing — where the hub
+  // and the checkout are one trust domain and there is no remote party.
+  const allowCodeModules = cellPairing !== null || storedRecord?.codeModulesAllowed === true;
 
   // DDR-102 — the default factory multiplexes every provider over ONE shared
   // WebSocket per hub URL; the runtime owns its disposal (stop(), after the
@@ -873,11 +899,40 @@ export function createSyncRuntime(
    * something to call — the boot pull has just run at that point anyway.
    */
   let remotePollSoonTimer: ReturnType<typeof setTimeout> | null = null;
-  function pollRemoteSoon(): void {
+  /** When the last poke-driven pass actually started. */
+  let lastPokePassAt = 0;
+  /** Pokes refused by the cooldown since the last one that ran. */
+  let pokesThrottled = 0;
+
+  /**
+   * @param opts.cooled  apply the anti-spam floor. True for hub-driven pokes;
+   *                     false for our own reconnects and boot, which are
+   *                     locally caused and must stay immediate.
+   */
+  function pollRemoteSoon(opts: { cooled?: boolean } = {}): void {
     if (stopped || remotePollSoonTimer !== null) return;
+    if (opts.cooled) {
+      const since = Date.now() - lastPokePassAt;
+      if (since < POKE_COOLDOWN_MS) {
+        // Folded into the scheduled tick rather than dropped: the poll
+        // underneath is still the reconciler, so a throttled poke costs
+        // latency and never correctness.
+        pokesThrottled += 1;
+        return;
+      }
+    }
     remotePollSoonTimer = setTimeout(() => {
       remotePollSoonTimer = null;
       if (stopped) return;
+      if (opts.cooled) {
+        lastPokePassAt = Date.now();
+        if (pokesThrottled > 0) {
+          console.warn(
+            `[sync/ctl] ${pokesThrottled} poke(s) folded into this pass — the hub is poking faster than once per ${POKE_COOLDOWN_MS / 1000}s.`
+          );
+          pokesThrottled = 0;
+        }
+      }
       void remotePull?.().catch(() => {
         /* the scheduled poll retries — a missed opportunistic one is not news */
       });
@@ -1378,7 +1433,17 @@ export function createSyncRuntime(
     // is built) and once after the pulls settle, from the final descriptors.
     // Reads the LIVE set, not the boot array — see `descriptors`.
     const markUntrusted = (): void => {
-      if (!cellPairing) writeUntrustedMarkers(ctx, [...descriptors.values()], linkedHub.url);
+      if (cellPairing) return;
+      // Plane B's landed set comes from the ledger, which is the only place
+      // that knows what the hub actually delivered here. A path that never
+      // arrived is not marked (the markers pointing at a phantom is the exact
+      // failure the two-write dance above exists to avoid).
+      const planeFiles = fileLedger
+        ? Object.entries(fileLedger.rows())
+            .filter(([, row]) => row.syncedHash !== null)
+            .map(([rel]) => rel)
+        : [];
+      writeUntrustedMarkers(ctx, [...descriptors.values()], linkedHub.url, planeFiles);
     };
     markUntrusted();
     if (canvases.length === 0) {
@@ -2650,6 +2715,11 @@ export function createSyncRuntime(
       for (const f of result.failed) {
         console.warn(`[sync/files] ${f.rel}: ${f.reason}`);
       }
+      // A pass that landed bytes widened the hub-written set, so the
+      // untrusted-context markers have to describe it. Cheap and idempotent —
+      // the writer rebuilds the whole set each call — but only when something
+      // actually arrived, so a converged pass costs nothing.
+      if (result.pulled.length > 0 || result.conflicts.length > 0) markUntrusted();
     };
     planeResultSink = noteFilePlane;
     /**
@@ -2760,7 +2830,7 @@ export function createSyncRuntime(
               // cost one early pass, and the scheduled poll remains the
               // reconciler underneath it.
               pokesSeen += 1;
-              pollRemoteSoon();
+              pollRemoteSoon({ cooled: true });
             },
           });
           console.log(

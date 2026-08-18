@@ -35,8 +35,8 @@
 // verbatim, because they are the mitigations that make a binary write door
 // safe at all: anchored path shape, classifier admission judged on the REAL
 // (symlink-resolved) landing path, writes to the RESOLVED parent, per-file and
-// per-session byte budgets, streaming with a mid-stream cap, tmp+rename. This
-// door adds preconditions; it relaxes nothing.
+// per-token windowed byte quotas, streaming with a mid-stream cap, tmp+rename.
+// This door adds preconditions; it relaxes nothing.
 
 import { createHash, randomBytes } from 'node:crypto';
 import { once } from 'node:events';
@@ -52,9 +52,54 @@ export const FILE_DOOR_PREFIX = '/api/file/';
 /** Per-file ceiling. Kept BELOW the platform's own body limit on purpose. */
 const MAX_FILE_BYTES = 95 * 1024 * 1024;
 
-/** Per-process budget, so one token cannot write the disk full one file at a time. */
-const SESSION_BUDGET_BYTES = 2 * 1024 * 1024 * 1024;
-const defaultBudget = { cap: SESSION_BUDGET_BYTES, used: 0 };
+/**
+ * Per-token, per-window write quota — DDR-226 §9's "cumulative per-hub
+ * accumulation quota", made observable instead of implicit.
+ *
+ * It used to be one module-level `{cap, used}` shared by every token and never
+ * decayed: after 2 GiB of entirely legitimate cumulative writes the door
+ * answered 507 for EVERYONE until the process restarted. On a cell a restart is
+ * the normal path, so the failure was intermittent and read as "sync randomly
+ * stops working" — and one token uploading 2 GiB locked the door for the whole
+ * tenant. A quota that punishes the innocent for the guilty's traffic is not a
+ * quota, it is an outage with a threshold.
+ */
+const QUOTA_BYTES_PER_WINDOW = 2 * 1024 * 1024 * 1024;
+const QUOTA_WINDOW_MS = 60 * 60 * 1000;
+
+/** label → { used, since }. Rolls forward whole windows rather than sliding. */
+const quotas = new Map();
+
+/**
+ * The live quota row for `label`, rolled to the current window.
+ *
+ * Shaped like the old `{cap, used}` so `streamAndHash` is unchanged, and
+ * returned by reference so the post-write charge lands on the right row.
+ */
+export function quotaFor(label, now = Date.now(), windowMs = QUOTA_WINDOW_MS) {
+  const key = label || '<anonymous>';
+  let row = quotas.get(key);
+  if (!row || now - row.since >= windowMs) {
+    row = { cap: QUOTA_BYTES_PER_WINDOW, used: 0, since: now };
+    quotas.set(key, row);
+  }
+  return row;
+}
+
+/** What `/health` reports: one entry per token that has written this window. */
+export function quotaSnapshot(now = Date.now(), windowMs = QUOTA_WINDOW_MS) {
+  const out = [];
+  for (const [label, row] of quotas) {
+    if (now - row.since >= windowMs) continue;
+    out.push({ label, used: row.used, cap: row.cap, windowStarted: row.since });
+  }
+  return out;
+}
+
+/** Test seam — the quota map is process-global by design. */
+export function resetQuotas() {
+  quotas.clear();
+}
 
 /**
  * Parse `/api/file/<rel>` into a designRoot-relative path.
@@ -118,7 +163,7 @@ function respondJson(response, status, payload) {
  */
 async function streamAndHash(request, abs, { maxBytes, budget }) {
   if (budget.used >= budget.cap) {
-    return { ok: false, status: 507, message: 'write budget for this session is exhausted' };
+    return { ok: false, status: 507, message: 'write quota for this token is exhausted' };
   }
   const tmp = `${abs}.tmp-${process.pid}-${randomBytes(6).toString('hex')}`;
   const hash = createHash('sha256');
@@ -272,9 +317,12 @@ export async function handleFileDoor(ctx) {
     return true;
   }
 
+  // The quota is per TOKEN and per window, so one peer's legitimate bulk
+  // upload cannot lock the door for the tenant (see `quotaFor`).
+  const budget = ctx.budget ?? quotaFor(match.label);
   const r = await streamAndHash(request, target.abs, {
     maxBytes: ctx.maxFileBytes ?? MAX_FILE_BYTES,
-    budget: ctx.budget ?? defaultBudget,
+    budget,
   });
   if (!r.ok) {
     if (r.detail) console.error(`[hub] file door ${landing} failed: ${r.detail}`);
@@ -315,7 +363,7 @@ export async function handleFileDoor(ctx) {
       respond(response, 500, 'write failed');
       return true;
     }
-    (ctx.budget ?? defaultBudget).used += r.total;
+    budget.used += r.total;
 
     // The journal append + the bucket mirror, through the one notifier. The row
     // it produces is the receipt below — and it names where the bytes ACTUALLY

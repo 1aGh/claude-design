@@ -19,13 +19,20 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createFileLedger, type FileLedger } from '../sync/file-ledger.ts';
-import { createFilePlane, foldRemote, scanLocalFiles } from '../sync/file-plane.ts';
+import {
+  createFilePlane,
+  foldRemote,
+  REANCHOR_STORM_LIMIT,
+  scanLocalFiles,
+} from '../sync/file-plane.ts';
 
 const HUB = 'https://hub.test';
 const sha = (s: string | Uint8Array) => createHash('sha256').update(s).digest('hex');
@@ -48,9 +55,11 @@ afterEach(() => {
 function fakeHub(initial: Record<string, string> = {}) {
   let seq = 0;
   const rows = new Map<string, { seq: number; sha256: string; size: number; body: string }>();
-  const epoch = 'epoch-1';
   const puts: { rel: string; expect: string | null; body: string }[] = [];
   let lieAboutSize = false;
+  let forceReanchor = false;
+  let reanchorBudget = 0;
+  let epochValue = 'epoch-1';
   const add = (rel: string, body: string) => {
     seq += 1;
     rows.set(rel, { seq, sha256: sha(body), size: body.length, body });
@@ -62,11 +71,26 @@ function fakeHub(initial: Record<string, string> = {}) {
     if (u.pathname === '/api/journal') {
       const since = Number(u.searchParams.get('since') ?? '0');
       const askedEpoch = u.searchParams.get('epoch');
-      if (askedEpoch && askedEpoch !== epoch) {
-        return new Response(JSON.stringify({ epoch, head: seq, reanchor: true }), { status: 200 });
+      if (reanchorBudget > 0) {
+        reanchorBudget -= 1;
+        return new Response(JSON.stringify({ epoch: epochValue, head: seq, reanchor: true }), {
+          status: 200,
+        });
+      }
+      if (forceReanchor) {
+        return new Response(JSON.stringify({ epoch: epochValue, head: seq, reanchor: true }), {
+          status: 200,
+        });
+      }
+      if (askedEpoch && askedEpoch !== epochValue) {
+        return new Response(JSON.stringify({ epoch: epochValue, head: seq, reanchor: true }), {
+          status: 200,
+        });
       }
       if (since > seq) {
-        return new Response(JSON.stringify({ epoch, head: seq, reanchor: true }), { status: 200 });
+        return new Response(JSON.stringify({ epoch: epochValue, head: seq, reanchor: true }), {
+          status: 200,
+        });
       }
       const entries = [...rows.entries()]
         .filter(([, r]) => r.seq > since)
@@ -80,9 +104,12 @@ function fakeHub(initial: Record<string, string> = {}) {
           deleted: false,
         }))
         .sort((a, b) => a.seq - b.seq);
-      return new Response(JSON.stringify({ epoch, head: seq, entries, truncated: false }), {
-        status: 200,
-      });
+      return new Response(
+        JSON.stringify({ epoch: epochValue, head: seq, entries, truncated: false }),
+        {
+          status: 200,
+        }
+      );
     }
     if (u.pathname.startsWith('/_project-file/')) {
       const rel = decodeURIComponent(u.pathname.slice('/_project-file/'.length));
@@ -127,11 +154,23 @@ function fakeHub(initial: Record<string, string> = {}) {
     puts,
     add,
     rewindTo,
-    epoch,
+    epoch: () => epochValue,
     head: () => seq,
     /** Declare every row as costing nothing — the A1 primitive. */
     understateSizes: () => {
       lieAboutSize = true;
+    },
+    /** Answer `reanchor` to everything — the hostile-hub shape. */
+    alwaysReanchor: () => {
+      forceReanchor = true;
+    },
+    /** Answer `reanchor` for the next `n` requests only. */
+    reanchorFor: (n: number) => {
+      reanchorBudget = n;
+    },
+    /** A LEGITIMATE epoch rotation (a restore, DDR-226 §3). */
+    rotateEpoch: () => {
+      epochValue = `epoch-${Math.abs(seq) + 2}`;
     },
   };
 }
@@ -281,6 +320,22 @@ describe('down — the hub has something we do not', () => {
     const res = await plane(hub).reconcile();
     expect(res.dropped.some((d) => d.rel === 'config.json')).toBe(true);
     expect(read('config.json')).toContain('canvasGroups');
+  });
+
+  test('a refused path is reported but never becomes a stored row', async () => {
+    // A hostile page used to cost two persistent writes per junk path — one
+    // from `noteRemote` before any classifier ran, one from the `stuck` row
+    // after — neither pruned by count, both surviving a restart, and both
+    // re-walked in the union on every later pass.
+    const hub = fakeHub();
+    for (let i = 0; i < 200; i++) hub.add(`junk/payload-${i}.exe`, 'x');
+    const p = plane(hub);
+    const res = await p.reconcile();
+
+    expect(res.dropped.length).toBeGreaterThan(0);
+    const receipt = p.doruceka();
+    const stored = Object.keys(receipt).filter((k) => k.startsWith('junk/'));
+    expect(stored).toEqual([]);
   });
 });
 
@@ -535,5 +590,107 @@ describe('the F6 budget applies to this lane too', () => {
     const pass = await plane(hub, { maxPassBytes: 100 }).reconcile();
     expect(pass.pulled.length).toBe(0);
     expect(pass.failed.length + (pass.budgetExhausted ? 1 : 0)).toBeGreaterThan(0);
+  });
+});
+
+describe("the receiver defends its own root, not just the hub's", () => {
+  test('a symlinked intermediate directory cannot land bytes outside the root', async () => {
+    // Lexical traversal is refused upstream by the classifier's shape gate, so
+    // this is the case that was genuinely uncovered: `writeFileSync` and
+    // `renameSync` follow DIRECTORY symlinks happily, and the hub defends this
+    // on its own write surfaces while the receiver did not.
+    const outside = mkdtempSync(join(tmpdir(), 'plane-outside-'));
+    mkdirSync(join(root, 'system'), { recursive: true });
+    symlinkSync(outside, join(root, 'system/escaped'), 'dir');
+
+    const hub = fakeHub({ 'system/escaped/stolen.css': 'PAYLOAD' });
+    const res = await plane(hub).reconcile();
+
+    expect(existsSync(join(outside, 'stolen.css'))).toBe(false);
+    expect(res.pulled).toEqual([]);
+    expect(res.failed.length + res.dropped.length).toBeGreaterThan(0);
+  });
+
+  test('refuses to replace a directory sitting where a file belongs', async () => {
+    mkdirSync(join(root, 'system/ds/brand.css'), { recursive: true });
+    const hub = fakeHub({ 'system/ds/brand.css': ':root{}' });
+    const res = await plane(hub).reconcile();
+    expect(res.pulled).toEqual([]);
+    expect(statSync(join(root, 'system/ds/brand.css')).isDirectory()).toBe(true);
+  });
+});
+
+describe('a hub that re-anchors forever is not obeyed forever', () => {
+  test('the storm limit holds the pass instead of parking a copy per tick', async () => {
+    const hub = fakeHub({ 'system/ds/brand.css': 'theirs' });
+    write('system/ds/brand.css', 'mine');
+    const p = plane(hub);
+
+    // Every request answers `reanchor`, which is the shape a hostile hub uses
+    // to keep `degraded` true and make every diverged path park a fresh copy.
+    hub.alwaysReanchor();
+
+    let held = false;
+    for (let i = 0; i < REANCHOR_STORM_LIMIT + 3; i++) {
+      const res = await p.reconcile();
+      if (res.reanchorHeld) held = true;
+    }
+    expect(held).toBe(true);
+    expect(read('system/ds/brand.css')).toBe('mine');
+  });
+
+  test('the degraded park happens once per remote hash, not once per pass', async () => {
+    // Converge first, so there is a real ancestor to be degraded away from.
+    const hub = fakeHub({ 'system/ds/brand.css': 'v1' });
+    const p = plane(hub);
+    await p.reconcile();
+    expect(read('system/ds/brand.css')).toBe('v1');
+
+    // Now both sides move, and the hub's log restarts — a legitimate event
+    // (DDR-226 §3), not only a hostile one. Under `degraded` the ancestor
+    // stops being overwrite authority, so their copy is parked beside ours.
+    write('system/ds/brand.css', 'mine');
+    hub.add('system/ds/brand.css', 'theirs');
+    hub.rotateEpoch();
+
+    const first = await p.reconcile();
+    expect(first.reanchored).toBe(true);
+    expect(first.conflicts.length).toBe(1);
+    const parkedHub = readdirSync(join(root, 'system/ds')).filter((f) => f.includes('-hub.css'));
+    expect(parkedHub.length).toBe(1);
+
+    // The bug was UNBOUNDED: the decision is `noop`, so the ancestor never
+    // moves and the next pass finds the identical state — and the copy name
+    // carries a millisecond stamp, so every pass wrote a NEW file, which was
+    // then scanned as `create-up` and uploaded back. Settling is the property.
+    for (let i = 0; i < 6; i++) await p.reconcile();
+    const after = readdirSync(join(root, 'system/ds')).filter((f) => f.includes('-hub.css'));
+    expect(after).toEqual(parkedHub);
+
+    const last = await p.reconcile();
+    expect(last.conflicts).toEqual([]);
+  });
+
+  test('a repeated degraded pass re-parks nothing — the remote hash is remembered', async () => {
+    // The memo, exercised directly. `alwaysReanchor` would hit the storm
+    // breaker after five, which would mask the thing under test; this stays
+    // under it, so what stops the second park is the memo and only the memo.
+    const hub = fakeHub({ 'system/ds/brand.css': 'v1' });
+    const p = plane(hub);
+    await p.reconcile();
+
+    write('system/ds/brand.css', 'mine');
+    hub.add('system/ds/brand.css', 'theirs');
+
+    hub.reanchorFor(1);
+    const first = await p.reconcile();
+    expect(first.conflicts.length).toBe(1);
+
+    // Degraded again, same remote hash, still under the storm limit.
+    hub.reanchorFor(1);
+    const second = await p.reconcile();
+    const copies = readdirSync(join(root, 'system/ds')).filter((f) => f.includes('-hub.css'));
+    expect(copies.length).toBe(1);
+    expect(second.conflicts.some((c) => c.copy?.includes('-hub.css'))).toBe(false);
   });
 });

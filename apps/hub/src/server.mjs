@@ -88,6 +88,7 @@ import {
 } from './file-manifest.mjs';
 import {
   createFilesPoke,
+  dropCtlAwareness,
   FILES_CTL_DOC,
   isFilesCtlDoc,
   withoutCtlPersistence,
@@ -564,11 +565,24 @@ export function createHub(config = {}) {
         // else. A peer learns that the journal moved; it learns WHAT moved
         // only by asking `GET /api/journal`, which IS scope-filtered.
         //
-        // ADMITTED READ-ONLY, unconditionally. Hocuspocus enforces that at the
-        // protocol level (SyncStep2 and Update messages are dropped), so no
-        // peer — patched, scripted or merely out of date — can put content
-        // into the control document even though the persistence layer would
-        // refuse to store it anyway. Two locks on a door that should not open.
+        // ADMITTED READ-ONLY, unconditionally. Hocuspocus enforces that for
+        // SyncStep2 and Update, so no peer — patched, scripted or merely out
+        // of date — can put Y CONTENT into the control document even though
+        // the persistence layer would refuse to store it anyway.
+        //
+        // `readOnly` does NOT cover AWARENESS, which is applied and fanned out
+        // to every connection on the document regardless. Since every valid
+        // token of every scope is admitted here by design, that made the ctl
+        // channel an authenticated cross-scope broadcast bus and a fan-out
+        // amplifier — peers scoped to disjoint canvases could exchange
+        // arbitrary payloads on it, quietly undoing the isolation the scope
+        // check buys everywhere else. `beforeHandleAwareness` below drops
+        // awareness on this document outright; presence has no meaning on a
+        // channel whose entire vocabulary is one integer.
+        //
+        // Viewer (`match.readOnly`) tokens are admitted here too, deliberately:
+        // knowing the journal moved tells you nothing you could not learn by
+        // asking, and the ask is scope-filtered.
         if (isFilesCtlDoc(documentName)) {
           if (connectionConfig) connectionConfig.readOnly = true;
           return {
@@ -1300,6 +1314,21 @@ export function createHub(config = {}) {
     },
     async onLoadDocument({ documentName }) {
       if (verbose) console.log(`[hub] load documentName=${sanitizeForLog(documentName)}`);
+    },
+
+    /**
+     * The control document carries no presence — DDR-226 §4.
+     *
+     * `connectionConfig.readOnly` gates Y content and not awareness, and every
+     * valid token of every scope is admitted to `maude.files` by design. That
+     * combination made it an authenticated cross-scope broadcast bus: a peer
+     * could publish arbitrary state, for as many synthetic clientIDs as it
+     * liked, to every other peer on the hub. Emptying the state map here is
+     * what the re-encode downstream sees, so nothing is stored and nothing
+     * fans out. Every other document keeps presence untouched.
+     */
+    async beforeHandleAwareness({ document, states }) {
+      dropCtlAwareness({ document, states });
     },
 
     // Cloud Phase 16 Task 1 — server-owned history.
@@ -2824,12 +2853,15 @@ async function runAsMain() {
             // source is forensics, and "this came back from the bucket after a
             // wake" is a different fact from "a desktop pushed it".
             onWritten: ({ path: rel }) => {
-              if (journal && journalDesignRoot) {
-                journal.recordWrite({
-                  designRoot: journalDesignRoot,
-                  path: rel,
-                  source: 'hydrate',
-                });
+              // `built.journal`, not a bare `journal`: the latter is a const
+              // inside `createHub` and this callback runs in `runAsMain`, so
+              // every call threw a ReferenceError. `hydrateAssets` catches per
+              // asset, so the only symptom was a log line each — and a hydrate
+              // source that appended nothing. A woken cell refilled dozens of
+              // assets and told no peer about any of them until the next
+              // walk-import, which is the exact gap this lane was added to close.
+              if (built.journal) {
+                built.journal.recordWrite({ designRoot, path: rel, source: 'hydrate' });
               }
             },
           });

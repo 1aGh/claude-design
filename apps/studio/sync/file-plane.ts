@@ -40,6 +40,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   renameSync,
   statSync,
   writeFileSync,
@@ -67,6 +68,35 @@ const MAX_FILE_BYTES = 512 * 1024 * 1024;
 /** How many files one pass will move. The remainder is the next pass's work. */
 const MAX_FILES_PER_PASS = 200;
 
+/**
+ * How many consecutive `reanchor` answers before we stop obeying them.
+ *
+ * A re-anchor is a full compaction read plus `pruneRemotes`, and it sets
+ * `degraded`, under which every differing path parks a copy of the hub's
+ * bytes. A hub that answers `reanchor` to everything is therefore a
+ * disk-filling primitive rather than a peer with a rotated epoch.
+ */
+export const REANCHOR_STORM_LIMIT = 5;
+
+/**
+ * How many FIRST-ANCHOR conflicts one pass will resolve before it stops and asks.
+ *
+ * The flip-day shape, and it is structural rather than hypothetical: a project
+ * that has been linked with the file plane off has a hub `system/**` that is
+ * stale by construction, so the first pass with it on finds dozens of paths
+ * where both sides have content and this machine has never reconciled either —
+ * every one a `diverged` with no ancestor. Resolving them silently means a
+ * person opens their editor to a tree of `*.maude-conflict-*` files they did
+ * not ask for and cannot easily undo in bulk.
+ *
+ * Under the limit it is ordinary conflict handling. Over it, the pass holds
+ * everything, reports the count, and waits for a bulk keep-local / keep-cloud
+ * answer — with the Open-decision-2 fallback of proceeding conservatively
+ * (park, propagate nothing) if nobody answers, so a headless desktop cannot
+ * stall forever.
+ */
+export const FIRST_ANCHOR_STORM_LIMIT = 10;
+
 /** Walk depth ceiling — matches the classifier's own shape cap. */
 const MAX_WALK_DEPTH = 8;
 
@@ -86,6 +116,13 @@ export interface FilePlaneResult {
   reanchored: boolean;
   /** The pass stopped on the aggregate byte budget. */
   budgetExhausted?: true;
+  /** Consecutive `reanchor` answers tripped the storm limit; the pass held. */
+  reanchorHeld?: true;
+  /**
+   * More first-anchor conflicts than one pass will decide alone. The paths are
+   * listed so the panel can offer one keep-local / keep-cloud for all of them.
+   */
+  firstAnchorHeld?: { count: number; paths: string[] };
 }
 
 export interface FilePlaneOptions {
@@ -106,6 +143,12 @@ export interface FilePlaneOptions {
   label: string;
   /** Increment 6. Off means a local absence is HELD, never propagated. */
   propagateDeletes?: boolean;
+  /**
+   * The user's bulk answer to a first-anchor storm — `'keep-local'` pushes
+   * ours over theirs, `'keep-cloud'` takes theirs and parks ours. Absent means
+   * a storm holds and asks (see `FIRST_ANCHOR_STORM_LIMIT`).
+   */
+  resolveFirstAnchor?: 'keep-local' | 'keep-cloud';
   fetchImpl?: typeof fetch;
   log?: Pick<Console, 'log' | 'warn'>;
   now?: () => number;
@@ -217,8 +260,24 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
   const now = opts.now ?? Date.now;
   const base = opts.hubUrl.replace(/\/+$/, '');
   const { ledger, designRoot } = opts;
+  /**
+   * The design root with its own symlinks resolved. Containment is judged
+   * against THIS, not the configured string — otherwise a project reached
+   * through a symlinked path (a Syncthing tree, a `/tmp` fixture on macOS)
+   * fails its own containment check for every legitimate write.
+   */
+  const realRoot = (() => {
+    try {
+      return realpathSync(designRoot);
+    } catch {
+      return designRoot;
+    }
+  })();
 
   const auth = () => ({ authorization: `Bearer ${opts.token()}` });
+
+  /** Consecutive passes the hub answered `reanchor` to. Reset by any that did not. */
+  let reanchorsInARow = 0;
 
   /** Fetch one file's bytes and verify them against the hash we were promised. */
   async function fetchVerified(
@@ -353,26 +412,103 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
     return false;
   }
 
+  /**
+   * `realpathSync` for a path that does not exist yet — resolve the deepest
+   * ancestor that DOES exist and re-attach the tail. `path.join` is lexical
+   * and never touches disk, which is exactly why it is not a containment check.
+   */
+  function realParent(abs: string): string {
+    let cur = path.dirname(abs);
+    for (;;) {
+      try {
+        return realpathSync(cur);
+      } catch {
+        const up = path.dirname(cur);
+        if (up === cur) return cur;
+        cur = up;
+      }
+    }
+  }
+
+  /**
+   * Where `rel` may actually be written, or null.
+   *
+   * The lane this replaced carried a lexical containment assertion; this one
+   * carried neither that nor the refusal to overwrite a non-file. Lexical
+   * traversal is still blocked upstream (the classifier's shape gate refuses
+   * `..`, absolutes, backslashes and control chars, and `journal-client.ts`
+   * re-validates independently) — but a SYMLINKED INTERMEDIATE DIRECTORY is a
+   * different question, and `writeFileSync` + `renameSync` follow those
+   * happily. `<designRoot>/system/ds/assets -> ~/.ssh` would land
+   * `system/ds/assets/config.css` outside the design root entirely.
+   *
+   * The hub defends this case explicitly on its own write surfaces; the
+   * receiver did not, which is an asymmetry against DDR-226 §9's "receivers
+   * re-shape-validate paths and re-classify locally". Same two-guard shape as
+   * the hub's: resolve the real parent, assert it is under the real root, and
+   * then do every filesystem op on `join(realParent, basename)`.
+   */
+  function safeTarget(rel: string): { abs: string; parent: string } | null {
+    const lexical = path.join(designRoot, rel);
+    const parent = realParent(lexical);
+    if (parent !== realRoot && !parent.startsWith(realRoot + path.sep)) {
+      log.warn?.(
+        `[sync/files] refusing ${rel}: it resolves outside the design root (a symlinked directory on the path)`
+      );
+      return null;
+    }
+    const abs = path.join(parent, path.basename(lexical));
+    // A directory, a symlink, a socket — anything that is not a regular file
+    // sitting where a file belongs is refused rather than replaced.
+    try {
+      if (!statSync(abs).isFile()) {
+        log.warn?.(`[sync/files] refusing ${rel}: the target exists and is not a regular file`);
+        return null;
+      }
+    } catch {
+      /* absent is the normal case for a create */
+    }
+    return { abs, parent };
+  }
+
+  /**
+   * Would this peer ever accept `rel` at all? The cheap gate, run before a
+   * hub-named path is allowed to become persistent state.
+   *
+   * Deliberately weaker than the admission check at decision time: it has no
+   * scanned local map, so it asks the disk directly. Anything it lets through
+   * is still fully re-classified there.
+   */
+  function admissible(rel: string): boolean {
+    const cls = classifyProjectFile(rel, {
+      canvasGroups: opts.canvasGroups,
+      hasFile: (r) => existsSync(path.join(designRoot, r)),
+    });
+    return isFilePlaneClass(cls);
+  }
+
   /** Land bytes at `rel`, atomically. Throws on failure — `adoptAfter` catches. */
   function materialize(rel: string, bytes: Uint8Array): void {
-    const abs = path.join(designRoot, rel);
-    mkdirSync(path.dirname(abs), { recursive: true });
-    const tmp = `${abs}.part`;
+    const target = safeTarget(rel);
+    if (!target) throw new Error(`refusing to write ${rel} — it does not resolve inside the root`);
+    mkdirSync(target.parent, { recursive: true });
+    const tmp = `${target.abs}.part`;
     writeFileSync(tmp, bytes);
-    renameSync(tmp, abs);
+    renameSync(tmp, target.abs);
   }
 
   /** Copy the local file aside under a name both ends can see. Returns the rel. */
   function parkLocal(rel: string): string | null {
     const abs = path.join(designRoot, rel);
     const copyRel = conflictCopyName(rel, now(), opts.label);
-    const copyAbs = path.join(designRoot, copyRel);
+    const target = safeTarget(copyRel);
+    if (!target) return null;
     try {
       const bytes = readFileSync(abs);
-      mkdirSync(path.dirname(copyAbs), { recursive: true });
-      const tmp = `${copyAbs}.part`;
+      mkdirSync(target.parent, { recursive: true });
+      const tmp = `${target.abs}.part`;
       writeFileSync(tmp, bytes);
-      renameSync(tmp, copyAbs);
+      renameSync(tmp, target.abs);
       return copyRel;
     } catch (err) {
       log.warn?.(`[sync/files] could not park ${rel}: ${(err as Error).message}`);
@@ -467,6 +603,22 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
     let degraded = ledger.isDegraded(page.epoch);
 
     if (page.reanchor) {
+      // A RE-ANCHOR STORM IS A DISK-FILLING PRIMITIVE, so obedience is capped.
+      //
+      // Re-anchoring is a full compaction read plus `pruneRemotes`, and it sets
+      // `degraded`, under which every differing path parks a copy of the hub's
+      // bytes. A hub that answers `reanchor` to every request therefore drives
+      // unbounded work and (before the park memo) unbounded files. Past the
+      // limit the pass holds and says so; the next pass tries again from a
+      // clean counter, so a legitimate epoch rotation still converges.
+      reanchorsInARow += 1;
+      if (reanchorsInARow > REANCHOR_STORM_LIMIT) {
+        log.warn?.(
+          `[sync/files] the hub has asked to re-anchor ${reanchorsInARow} times in a row — holding this pass. Ancestors are untouched and nothing was overwritten.`
+        );
+        out.reanchorHeld = true;
+        return out;
+      }
       out.reanchored = true;
       log.warn?.(
         `[sync/files] re-anchoring against the hub (${page.reason ?? 'cursor not in this log'}).`
@@ -487,6 +639,8 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
       if (page === null || page.reanchor) return out;
     }
 
+    if (!out.reanchored) reanchorsInARow = 0;
+
     // THE HUB'S SIDE IS THE LEDGER'S REPLICA, UPDATED BY THIS PAGE — not the
     // page itself. A delta says "these changed"; it says nothing at all about
     // the paths it omits. Reading that silence as "the hub does not have them"
@@ -495,6 +649,22 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
     // forbids it. Only a FULL read may retract a remembered remote.
     const delta = foldRemote(page.entries);
     for (const [rel, row] of delta) {
+      // CLASSIFY BEFORE REMEMBERING. Admission used to run at decision time
+      // only, which meant every path the hub named — including a page of pure
+      // junk — became a ledger row on disk and a key in `_sync.json` first,
+      // and a second `stuck` row immediately after. One response could grow
+      // this machine's persistent state without bound, and the rows were never
+      // pruned by count, so the poisoning survived restarts. The full
+      // admission below is unchanged; this is the cheaper gate in front of it.
+      if (!admissible(rel)) {
+        // Reported, so a refusal is never silent — but not REMEMBERED. `drop`
+        // declines to mint a row for a path this machine does not already
+        // track, so the pass says what it refused without the hub being able
+        // to grow our ledger by naming things.
+        drop(out, rel, 'the hub offered a path this peer does not admit', ledger);
+        delta.delete(rel);
+        continue;
+      }
       ledger.noteRemote(rel, row.deleted ? null : row.sha256, row.seq);
     }
     if (fullRead) ledger.pruneRemotes(new Set(delta.keys()));
@@ -503,7 +673,7 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
     const local = scanLocalFiles(designRoot, ledger, opts.canvasGroups);
 
     // ── 3. Decide ────────────────────────────────────────────────────────
-    const work: {
+    let work: {
       rel: string;
       decision: ReturnType<typeof decideFile>;
       local: LocalFile | undefined;
@@ -591,6 +761,41 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
       work.push({ rel, decision, local: here, row, remoteHash });
     }
 
+    // FLIP-DAY BREAKER. Counted before anything is applied, because the point
+    // is to not have parked forty files by the time anyone notices.
+    const firstAnchor = work.filter(
+      (w) =>
+        w.decision.action === 'conflict-aside' &&
+        ledger.ancestorOf(w.rel) === null &&
+        w.local !== undefined
+    );
+    if (firstAnchor.length > 0 && opts.resolveFirstAnchor === 'keep-local') {
+      // Ours wins the set: drop the pull half of each conflict and let the
+      // push half send local up. Nothing is parked, because nothing is lost —
+      // the hub's copy is still in its own journal and its own object storage.
+      for (const w of firstAnchor) {
+        w.decision = {
+          action: 'push',
+          reason: 'you chose to keep this machine’s copies for the whole set',
+        };
+      }
+    }
+    if (firstAnchor.length > FIRST_ANCHOR_STORM_LIMIT && !opts.resolveFirstAnchor) {
+      const paths = firstAnchor.map((w) => w.rel).sort();
+      log.warn?.(
+        `[sync/files] ${paths.length} files differ on both sides and this machine has never reconciled any of them — holding, rather than parking ${paths.length} conflict copies. Choose keep-local or keep-cloud for the set.`
+      );
+      out.firstAnchorHeld = { count: paths.length, paths: paths.slice(0, 200) };
+      for (const w of firstAnchor) {
+        ledger.setState(w.rel, 'conflict', {
+          reason: 'both sides have content and neither has been reconciled here yet',
+        });
+      }
+      // Everything that is NOT a first-anchor conflict still flows: holding a
+      // whole pass over one class would stall ordinary sync too.
+      work = work.filter((w) => !firstAnchor.includes(w));
+    }
+
     // ── 4. Apply ─────────────────────────────────────────────────────────
     //
     // Referenced assets first (DDR-223's strokes→bytes coupling): a picture a
@@ -660,19 +865,37 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
         // Only the epoch-degraded rows reach here: keep local, park THEIR
         // copy so it is recoverable, and let the push half send ours up.
         if (decision.parkRemote && remoteHash) {
-          const got = await fetchVerified(rel, remoteHash);
-          if (got.ok) {
-            const copyRel = conflictCopyName(rel, now(), 'hub');
-            try {
-              materialize(copyRel, got.bytes);
-              ledger.setState(rel, 'conflict', {
-                reason: 'the hub’s log restarted; their copy is parked beside yours',
-                conflictCopy: copyRel,
-              });
-              out.conflicts.push({ rel, copy: copyRel });
-            } catch (err) {
-              out.failed.push({ rel, reason: (err as Error).message });
+          // ONCE per remote hash. The decision is `noop`, so the ancestor
+          // deliberately does not move and the next pass sees the identical
+          // state — without this memo a hub that re-anchors every request
+          // (or merely rotates its epoch, which is a legitimate event) writes
+          // a fresh timestamped copy of every diverged path on every pass,
+          // and each copy is then scanned as `create-up` and pushed back up.
+          if (ledger.row(rel)?.parkedRemote === remoteHash) return true;
+          const claim = claimedSize(row);
+          if (!budget.take(claim)) {
+            out.budgetExhausted = true;
+            return false;
+          }
+          const got = await fetchVerified(rel, remoteHash, budget.remaining() + claim);
+          if (!got.ok) {
+            if (got.overCap && budget.remaining() + claim < MAX_FILE_BYTES) {
+              out.budgetExhausted = true;
             }
+            return false;
+          }
+          if (!chargeOverrun(budget, rel, got.bytes.byteLength, claim, out)) return false;
+          const copyRel = conflictCopyName(rel, now(), 'hub');
+          try {
+            materialize(copyRel, got.bytes);
+            ledger.setState(rel, 'conflict', {
+              reason: 'the hub’s log restarted; their copy is parked beside yours',
+              conflictCopy: copyRel,
+              parkedRemote: remoteHash,
+            });
+            out.conflicts.push({ rel, copy: copyRel });
+          } catch (err) {
+            out.failed.push({ rel, reason: (err as Error).message });
           }
         }
         return true;
@@ -856,6 +1079,10 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
 
 function drop(out: FilePlaneResult, rel: string, reason: string, ledger?: FileLedger): void {
   out.dropped.push({ rel, reason });
+  // Only for a path this machine actually tracks. A path we have never held
+  // and will never accept is not "stuck" — it is not ours, and minting a row
+  // to say so is how a hostile page turned one response into permanent state.
+  if (ledger && !ledger.row(rel)) return;
   // A REFUSAL OUTRANKS EVERYTHING (DDR-214, applied to files). A path this
   // peer declines is not "local-only" — it is not here at all, and never will
   // be until something changes. Letting it fall through to the default state
