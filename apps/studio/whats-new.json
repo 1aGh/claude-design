@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "canvas-zoom-and-selection-feel",
+      "version": null,
+      "date": null,
+      "kind": "improvement",
+      "title": "Zooming and drawing feel right",
+      "summary": "The mouse wheel and trackpad pinch now move the zoom about twice as far per notch, closer to the canvas tools you already use. Ink you draw scales with the zoom in the browser the way it always did in the desktop app, and the resize handles around a selection now follow a pan or zoom live instead of sitting where the shape used to be until you let go.",
+      "surface": "design-ui"
+    },
+    {
       "id": "cloud-canvases-heal-themselves",
       "version": null,
       "date": null,

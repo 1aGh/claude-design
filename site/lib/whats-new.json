@@ -1,11 +1,65 @@
 {
-  "generated": "2026-08-14T14:28:17.759Z",
-  "version": "0.60.4",
+  "generated": "2026-08-18T11:06:26.683Z",
+  "version": "0.60.7",
   "entries": [
     {
-      "id": "annotations-survive-cold-start",
+      "id": "canvas-zoom-and-selection-feel",
       "version": null,
       "date": null,
+      "kind": "improvement",
+      "title": "Zooming and drawing feel right",
+      "summary": "The mouse wheel and trackpad pinch now move the zoom about twice as far per notch, closer to the canvas tools you already use. Ink you draw scales with the zoom in the browser the way it always did in the desktop app, and the resize handles around a selection now follow a pan or zoom live instead of sitting where the shape used to be until you let go.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "cloud-canvases-heal-themselves",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "The cloud stops needing a reload",
+      "summary": "A file that arrives in the cloud now shows up in an open tab by itself. Before, the bytes landed but nothing told the page, so a picture stayed a broken frame until you reloaded by hand — it looked like sync had failed when it had already finished.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "instant-asset-sync",
+      "version": "0.60.7",
+      "date": "2026-08-16",
+      "kind": "improvement",
+      "title": "Pictures sync in seconds",
+      "summary": "A picture you drop on a canvas is pushed by itself the moment it lands, and the other side fetches it the moment the reference arrives — seconds end to end, instead of waiting for the next full sweep or polling tick.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "assets-arrive-and-heal",
+      "version": "0.60.6",
+      "date": "2026-08-15",
+      "kind": "fix",
+      "title": "Dropped images reach every machine, live",
+      "summary": "A picture added on one machine now arrives on your others while you watch: the cloud serves it the moment it has it, and a broken-image frame heals in place when the file lands — no reload needed.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "preview-edit-mode-toggle",
+      "version": "0.60.6",
+      "date": "2026-08-15",
+      "kind": "feature",
+      "title": "Preview, Edit and Present in one switch",
+      "summary": "Canvases open in Edit — clicking selects right away, like Figma. A new three-way switch in the toolbar flips to Preview (the mock is live and clickable; comments and drawing still work) or straight into Presentation.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "desktop-splash-recovers-itself",
+      "version": "0.60.6",
+      "date": "2026-08-15",
+      "kind": "fix",
+      "title": "No more getting stuck on “Starting…”",
+      "summary": "The desktop app could go black and sit on the startup screen for good — often right after a command finished — with a force-quit as the only way out. It now finds its way back on its own, in about a second, and keeps your session instead of losing it.",
+      "surface": "desktop"
+    },
+    {
+      "id": "annotations-survive-cold-start",
+      "version": "0.60.5",
+      "date": "2026-08-14",
       "kind": "fix",
       "title": "Your drawings survive a cloud restart",
       "summary": "Stickers, drawings and dropped images on the canvas no longer vanish after the cloud restarts, and a freshly added image now reaches your other machines instead of showing a broken frame. Annotations keep their own edit time now, and an empty record can never silently replace real strokes.",
@@ -13,8 +67,8 @@
     },
     {
       "id": "self-contained-asset-sweep",
-      "version": null,
-      "date": null,
+      "version": "0.60.5",
+      "date": "2026-08-14",
       "kind": "fix",
       "title": "Asset upload works on a clean machine",
       "summary": "The desktop app uploads your project images with its own bundled runtime, so the upload no longer fails with an executable-not-found error on machines without developer tools installed.",
