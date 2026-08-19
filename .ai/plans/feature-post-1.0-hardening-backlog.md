@@ -88,6 +88,17 @@ is left is harness quality, not correctness:
   baseline and cascades (observed: one run reported 6 failures purely from this).
   It also broke a `git stash pop` mid-investigation. Restore should not depend on
   a clean exit.
+- **E-1 — five server-booting studio tests race on CI and pass locally.** Surfaced
+  by the new non-blocking `studio-suite` job on its first real runs (the whole
+  point of it): `POST /_api/import-asset`, `POST /_api/import-brand`,
+  `_active.json round-trip` (the v=1 case), `exporters/jobs` byte
+  retrieval/eviction, and `issue #74` comments file-watch re-broadcast. The
+  signature is a read that beats the server's own write — e.g. `ENOENT ...
+  /tmp/mdcc-test-*/.design/_active.json` — with the sibling assertion in the same
+  file passing. macOS has never shown them. Same family as E0 and E1: waits that
+  assume a settle rather than awaiting a signal. Left red on purpose for now —
+  the job cannot fail the merge, and inventing timeouts without an idle-machine
+  measurement just moves the ceiling.
 - **E0 — `collab-stress.test.ts` has no headroom by construction.** Its body runs
   a deliberate 10-second stress window under bun's 10-second default timeout, so
   the budget EQUALS the workload: measured 10.09 s passing in isolation, and it

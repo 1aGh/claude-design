@@ -37,6 +37,15 @@ const git: GitRunner = (args, { cwd }) =>
     child.stderr.on('data', (d) => {
       stderr += d;
     });
+    // SPAWN FAILURE IS A RESULT, NOT A CRASH — mirroring the production runner
+    // (`git/service.ts`, which resolves 127 on 'error'). Without a listener the
+    // 'error' event is unhandled, and autocommit is DEBOUNCED: a commit queued
+    // by a finished test can fire after its temp repo is gone, so the late
+    // spawn reports `ENOENT ... posix_spawn 'git'` with no test to attribute it
+    // to. bun then prints "Unhandled error between tests" and exits 1 on a run
+    // with 844 pass / 0 fail — which is exactly how the required sync-lane gate
+    // came back red on a suite that had nothing wrong with it.
+    child.on('error', (e) => resolve({ code: 127, stdout, stderr: String(e) }));
     child.on('close', (code) => resolve({ code: code ?? 1, stdout, stderr }));
   });
 
