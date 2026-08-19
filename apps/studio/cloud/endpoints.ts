@@ -293,7 +293,10 @@ export function createCloudEndpoints(ctx: Ctx) {
         headers: { authorization: `Bearer ${file.token}`, 'content-type': 'application/json' },
         body: JSON.stringify({ project: projectId }),
       });
-      if (opened.status !== 200 || !opened.body?.token) {
+      // `url` is checked alongside `token`: linkToWorkspace requires a
+      // workspace URL, and a 200 body missing it would have linked against
+      // `undefined` rather than refusing.
+      if (opened.status !== 200 || !opened.body?.token || !opened.body.url) {
         return {
           status: 502,
           json: { ok: false, error: 'The project could not be opened with this account.' },
@@ -322,7 +325,7 @@ export function createCloudEndpoints(ctx: Ctx) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ code }),
       });
-      if (exchanged.status !== 200 || !exchanged.body?.token) {
+      if (exchanged.status !== 200 || !exchanged.body?.token || !exchanged.body.url) {
         return {
           status: 410,
           json: {

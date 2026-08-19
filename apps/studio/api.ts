@@ -2159,7 +2159,12 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
 
   async function saveAsset(bytes: Uint8Array): Promise<SaveAssetResult> {
     if (!bytes || bytes.length === 0) return { ok: false, status: 400, error: 'empty body' };
-    return saveAssetFromStream(new Response(bytes).body as ReadableStream<Uint8Array>);
+    // TS 5.7 widens a plain Uint8Array to Uint8Array<ArrayBufferLike>, which
+    // BodyInit rejects (it excludes SharedArrayBuffer-backed views). These
+    // bytes never are one.
+    return saveAssetFromStream(
+      new Response(bytes as Uint8Array<ArrayBuffer>).body as ReadableStream<Uint8Array>
+    );
   }
 
   // Stage F1 (feature-element-editing-robustness) — list the versioned content-
@@ -4044,7 +4049,11 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     const hash = typeof input.contentHash === 'string' ? input.contentHash : undefined;
     const verb = typeof input.verb === 'string' ? input.verb : '';
     const abs = r.abs;
-    let run: ((source: string) => { source: string } & Record<string, unknown>) | null = null;
+    // Just `{ source: string }`: the `& Record<string, unknown>` was there for
+    // the rest-spread below, but an INTERFACE return (SpeedResult and friends)
+    // has no implicit index signature, so no verb's function was actually
+    // assignable — every branch failed the check the same way.
+    let run: ((source: string) => { source: string }) | null = null;
     switch (verb) {
       case 'speed': {
         const rate = Number(input.rate);
@@ -4141,6 +4150,8 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     ctx.bus.emit('activity:suppress', rel);
     try {
       const before = await Bun.file(abs).text();
+      // The switch above either assigned `run` or returned; say so to the checker.
+      if (!run) return { ok: false, status: 400, error: `unknown clip verb "${verb}"` };
       const result = await applyOnDisk(abs, run);
       const after = await Bun.file(abs).text();
       let seq: number | undefined;
@@ -5716,10 +5727,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       for (const m of matches) {
         const files = await findFiles(m.abs, m.rel, ['.tsx', '.html']);
         for (const f of files) {
-          const fname = f
-            .split('/')
-            .pop()
-            ?.replace(/\.(tsx|html)$/i, '');
+          const fname = (f.split('/').pop() ?? '').replace(/\.(tsx|html)$/i, '');
           const group = f.split('/').slice(-2, -1)[0] || folderName;
           const label = fname.toLowerCase() === 'index' ? group : fname;
           items.push({ label, path: f, group });

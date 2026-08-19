@@ -443,6 +443,35 @@ async function handleDelete({ ctx, response, landing, target, match, expect }) {
       return true;
     }
 
+    // THE DELETE BREAKER, AT THE DOOR (F-1).
+    //
+    // The desktop has refused a runaway delete since `propagateDeletes` shipped
+    // ON; the hub accepted an unbounded stream of them. That is the lossy
+    // direction — a tombstone admitted here is a delete every peer applies —
+    // and the shapes it guards against are ordinary, not exotic: a branch
+    // switch, a `git clean`, a botched restore on one machine. In each the
+    // mechanism works perfectly and the outcome is a disaster, so the control
+    // is a rate rather than a permission.
+    //
+    // Checked INSIDE the path lock and BEFORE the quarantine, so a burst of
+    // concurrent DELETEs cannot each read the budget as available and then all
+    // spend it, and so nothing is moved for a request that is about to be
+    // refused.
+    const budget = ctx.journal?.deleteBudget?.() ?? { ok: true };
+    if (!budget.ok) {
+      // 429, not 403: the credential is fine and the path is fine — this is a
+      // rate, and a rate is something the caller can act on by waiting or by
+      // asking a person whether the purge was meant.
+      respondJson(response, 429, {
+        error: 'deletion breaker: too many deletions in this window — refusing to delete more',
+        path: landing,
+        used: budget.used,
+        limit: budget.limit,
+        windowMs: budget.windowMs,
+      });
+      return true;
+    }
+
     // QUARANTINE BEFORE THE ROW. If the copy cannot be parked the tombstone is
     // refused, because a deletion nobody can undo is not one this lane makes.
     let parked = null;

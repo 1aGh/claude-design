@@ -40,6 +40,7 @@ import {
   type Stroke,
   type TextStroke,
 } from '../annotations-model.ts';
+import type { ArrowLineType } from '../canvas-arrowheads.ts';
 import {
   attrValue,
   type Bounds,
@@ -107,14 +108,15 @@ const CAP_MAP: Readonly<Record<string, 'none' | 'triangle' | 'line'>> = Object.a
   }
 );
 
-const LINE_TYPE_MAP: Readonly<Record<string, 'straight' | 'elbow' | 'curve'>> = Object.assign(
-  Object.create(null),
-  {
-    STRAIGHT: 'straight',
-    ELBOWED: 'elbow',
-    CURVED: 'curve',
-  }
-);
+// Values are ArrowLineType — 'curved', not 'curve'. The old 'curve' matched no
+// arm of the renderer's `lineType === 'curved'` checks, so every curved FigJam
+// connector imported as a stroke nothing could draw as curved (it fell through
+// to straight). Typed against the real union so a third spelling cannot recur.
+const LINE_TYPE_MAP: Readonly<Record<string, ArrowLineType>> = Object.assign(Object.create(null), {
+  STRAIGHT: 'straight',
+  ELBOWED: 'elbow',
+  CURVED: 'curved',
+});
 
 export interface PendingImage {
   /** The stroke whose `href` must be rewritten once the asset lands. */
@@ -184,7 +186,7 @@ function imageRef(node: FigmaNode): string | null {
 export function nearestStickyColor(hex: string | null): string {
   const target = hex ? hexToRgb01(hex) : null;
   if (!target) return STICKY_PALETTE[0];
-  let best = STICKY_PALETTE[0];
+  let best: (typeof STICKY_PALETTE)[number] = STICKY_PALETTE[0];
   let bestDist = Number.POSITIVE_INFINITY;
   for (const candidate of STICKY_PALETTE) {
     const c = hexToRgb01(candidate);

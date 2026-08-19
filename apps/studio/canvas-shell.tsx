@@ -3005,6 +3005,14 @@ function CanvasRouter({
       // Record onto the in-canvas undo stack so Cmd+Z reverts the rewrite. The
       // edit already posted above (record, don't re-run do()). before/after are
       // the trimmed bodies the edit-text endpoint persists.
+      //
+      // ONLY the record is gated on `file`. An earlier version of this guard
+      // sat above the `postMessage` and returned out of the whole function —
+      // which silently dropped THE EDIT ITSELF, not just an unusable undo
+      // entry. `deriveFile` returning undefined must not cost the user their
+      // typing; it costs them only a Cmd+Z step they could not have applied
+      // anyway (a record with no canvas is one undo can never target).
+      if (!file) return;
       undoStackRef.current.record(
         buildEditSourceRecord({
           op: 'text',

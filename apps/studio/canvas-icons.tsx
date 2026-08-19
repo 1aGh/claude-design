@@ -8,7 +8,7 @@
  *             32 × 32, leaving 8 px of optical padding on every side.
  */
 
-import type { SVGProps } from 'react';
+import type { JSX, SVGProps } from 'react';
 
 type IconProps = SVGProps<SVGSVGElement> & { size?: number };
 

@@ -2071,7 +2071,10 @@ export function createHttp(
             { status: result.status, headers: { 'Cache-Control': 'no-store' } }
           );
         }
-        return Response.json({ ok: true, ...result }, { headers: { 'Cache-Control': 'no-store' } });
+        // Spread FIRST: `result` carries its own `ok`, so the old ordering made
+        // the literal dead. Same value either way (this branch is past the
+        // `!result.ok` return), but the guarantee now reads as one.
+        return Response.json({ ...result, ok: true }, { headers: { 'Cache-Control': 'no-store' } });
       }
       return new Response('Method not allowed', { status: 405 });
     },

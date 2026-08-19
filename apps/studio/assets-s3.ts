@@ -230,7 +230,12 @@ export function createAssetMirror(
 
   const send = (method: string, key: string, body: Uint8Array | null = null) => {
     const { url, headers } = signRequest(cfg, { method, key, body });
-    return fetch(url, { method, headers, ...(body === null ? {} : { body }) });
+    // Uint8Array<ArrayBufferLike> vs BodyInit — see saveAsset in api.ts.
+    return fetch(url, {
+      method,
+      headers,
+      ...(body === null ? {} : { body: body as Uint8Array<ArrayBuffer> }),
+    });
   };
 
   return {

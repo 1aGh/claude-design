@@ -26,10 +26,28 @@ const key = (init: Record<string, unknown>) =>
     window.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...k }));
   }, init);
 
+/**
+ * How many beats the Timeline is showing, in WHICHEVER projection it chose.
+ *
+ * This used to count `[data-testid="timeline-storyline"] .tl-beat` only — the
+ * banded (iMovie) layout — and that made the scenario permanently red against
+ * its own fixture. `TimelinePanel`'s `bandMode` is
+ * `storyline.length > 0 && sequences.some((s) => rowKind(s) !== 'jsx')`, and
+ * `Cut.tsx` is deliberately media-free (three JSX scenes, so the harness needs
+ * no assets and stays deterministic) — every sequence is `rowKind === 'jsx'`,
+ * so the panel deliberately renders the stacked row-per-sequence projection
+ * instead. That was a product decision (dogfood 2026-07-30: a purely digital
+ * comp keeps "the truthful, layer-expandable view"), not a regression, and the
+ * scenario simply outlived its premise.
+ *
+ * Counting `timeline-seq-*` covers BOTH projections — it is the per-sequence
+ * block either way — so the select / split / delete / undo assertions test what
+ * the product actually renders for this comp. Verified by hand against a live
+ * panel: split 3 → 4, delete 4 → 3, undo 3 → 4, with the fixture rewritten on
+ * disk each time.
+ */
 const beatCount = () =>
-  browser.execute(
-    () => document.querySelectorAll('[data-testid="timeline-storyline"] .tl-beat').length
-  );
+  browser.execute(() => document.querySelectorAll('[data-testid^="timeline-seq-"]').length);
 
 describe('timeline — manual cut (select · split · delete · undo · zoom)', () => {
   let fixtureBytes: string;
@@ -43,7 +61,7 @@ describe('timeline — manual cut (select · split · delete · undo · zoom)', 
     writeFileSync(FIXTURE, fixtureBytes);
   });
 
-  it('opens the Cut canvas and the Timeline shows the three-band storyline', async () => {
+  it('opens the Cut canvas and the Timeline shows all three beats', async () => {
     const row = $('[data-testid="canvas-row-ui-cut"]');
     await row.waitForExist({ timeout: 30000 });
     await row.click();
@@ -56,11 +74,14 @@ describe('timeline — manual cut (select · split · delete · undo · zoom)', 
     // The comp announce + source parse settle async — wait for the storyline.
     await browser.waitUntil(async () => (await beatCount()) === 3, {
       timeout: 20000,
-      timeoutMsg: 'storyline never showed 3 beats',
+      timeoutMsg: 'timeline never showed 3 beats',
     });
-    await expect($('[data-testid="timeline-storyline"]')).toExist();
+    // The TRACK, not the storyline row — see `beatCount`. `timeline-storyline`
+    // exists only in band mode, which this media-free fixture deliberately does
+    // not trigger; asserting it here is what made this scenario permanently red.
+    await expect($('[data-testid="timeline-track"]')).toExist();
     await expect($('[data-testid="timeline-zoom"]')).toExist();
-    await capture('storyline-3-beats');
+    await capture('timeline-3-beats');
   });
 
   it('click selects a beat (accent outline), Esc deselects', async () => {

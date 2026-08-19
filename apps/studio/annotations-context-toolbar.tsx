@@ -1008,7 +1008,9 @@ export function AnnotationContextToolbar({
   const canAlign = selectedStrokes.length >= 2;
 
   // Active values for swatch highlighting — when uniform across selection.
-  const uniqColor = uniformValue(selectedStrokes.map((s) => s.color));
+  // Image / link / mediaref strokes carry no `color` — `uniformValue` already
+  // filters undefined out, the `in` check just says so to the checker.
+  const uniqColor = uniformValue(selectedStrokes.map((s) => ('color' in s ? s.color : undefined)));
   const uniqFill = caps.fill
     ? uniformValue(
         selectedStrokes.map((s) =>

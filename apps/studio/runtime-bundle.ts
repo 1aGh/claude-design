@@ -383,5 +383,10 @@ function subPathExternals(_pkg: RuntimePackage): string[] {
  * own cold-start is already the longest tail.
  */
 export async function prewarmRuntimeBundles(): Promise<void> {
-  await Promise.all(RUNTIME_PACKAGES.map(getRuntimeBundle));
+  // Arrow, not a bare reference: `.map` passes (value, index, array), so
+  // `.map(getRuntimeBundle)` handed the ARRAY INDEX to the function's optional
+  // `opts` parameter — every pre-warm after the first ran with a nonsense
+  // options object. Silent, because a pre-warm that misbehaves just means the
+  // real build happens on first GET.
+  await Promise.all(RUNTIME_PACKAGES.map((pkg) => getRuntimeBundle(pkg)));
 }

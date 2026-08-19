@@ -66,6 +66,29 @@ const MAX_FILE_BYTES = 512 * 1024 * 1024;
 /** How many entries one `GET /api/journal` page carries. */
 export const MAX_JOURNAL_PAGE = 2000;
 
+/**
+ * THE HUB-SIDE HALF OF THE DELETION BREAKER (F-1).
+ *
+ * `apps/studio/sync/file-plane.ts` has carried `DELETE_BUDGET_WINDOW_MS` /
+ * `DELETE_BUDGET_PER_WINDOW` since `propagateDeletes` shipped ON — cumulative,
+ * windowed, ledger-persisted, because a per-pass rate limit is the wrong
+ * control for a cumulative harm (ten per pass, six passes a minute, and a
+ * two-hundred-file project is gone in three minutes without the limit tripping
+ * once). The DOOR had no such budget at all. A gate on one side of a two-sided
+ * lane is half a gate, and this is the lossy direction: a tombstone accepted
+ * here is a delete every peer applies.
+ *
+ * Same numbers as the desktop, deliberately — two different ceilings on the
+ * same harm would just mean the lower one is the real one and the other is
+ * decoration.
+ *
+ * PERSISTENCE IS FREE HERE: the count is a query over `file_journal` itself, so
+ * "restart the hub" is not the bypass it would be for in-memory state, and it
+ * survives rehydrate with the generation.
+ */
+export const DELETE_BUDGET_WINDOW_MS = 60 * 60 * 1000;
+export const DELETE_BUDGET_PER_WINDOW = 25;
+
 /** One open handle per dataDir. Native init is expensive; cache it. */
 const handleCache = new Map();
 
@@ -158,6 +181,9 @@ function makeHandle({ db, getMeta, setMeta, now }) {
     ),
     since: db.prepare('SELECT * FROM file_journal WHERE seq > ? ORDER BY seq ASC LIMIT ?'),
     byId: db.prepare('SELECT * FROM file_journal WHERE seq = ?'),
+    deletionsSince: db.prepare(
+      'SELECT COUNT(*) AS n FROM file_journal WHERE deleted = 1 AND at_ms >= ?'
+    ),
     compaction: db.prepare(
       `SELECT j.* FROM file_journal j
         JOIN (SELECT path, MAX(seq) AS seq FROM file_journal GROUP BY path) m
@@ -329,6 +355,34 @@ function makeHandle({ db, getMeta, setMeta, now }) {
       return { seq: row.seq, sha256: stat.sha256, noop: false, deleted: false };
     },
 
+    /**
+     * Tombstone rows appended at or after `sinceMs` — the delete breaker's
+     * numerator. See `DELETE_BUDGET_PER_WINDOW`.
+     *
+     * @param {number} sinceMs
+     * @returns {number}
+     */
+    deletionsSince(sinceMs) {
+      const row = stmts.deletionsSince.get(Number.isFinite(sinceMs) ? sinceMs : 0);
+      return row?.n ?? 0;
+    },
+
+    /**
+     * Is there budget for one more deletion right now?
+     *
+     * @returns {{ ok: true } | { ok: false, used: number, limit: number, windowMs: number }}
+     */
+    deleteBudget() {
+      const used = handle.deletionsSince(now() - DELETE_BUDGET_WINDOW_MS);
+      if (used < DELETE_BUDGET_PER_WINDOW) return { ok: true };
+      return {
+        ok: false,
+        used,
+        limit: DELETE_BUDGET_PER_WINDOW,
+        windowMs: DELETE_BUDGET_WINDOW_MS,
+      };
+    },
+
     /** Entries after `since`, capped. `truncated` says the page is partial. */
     entriesSince(since, limit = MAX_JOURNAL_PAGE) {
       const capped = Math.max(1, Math.min(limit, MAX_JOURNAL_PAGE));
@@ -423,10 +477,25 @@ function makeHandle({ db, getMeta, setMeta, now }) {
      * invariant, and a tail that bypassed it stated the invariant in one place
      * and broke it in another: whoever can write `tenants/<id>/journal/tail.ndjson`
      * could inject rows for `never`-class paths, or tombstones for real files,
-     * and they would flow straight out of `GET /api/journal`. Contained today
-     * by the re-classification at both readers — and it stops being contained
-     * the moment Increment 6 wires tombstone application. Refusals count as
-     * `malformed`, which is already the counter the drill asserts on.
+     * and they would flow straight out of `GET /api/journal`.
+     *
+     * ── The tombstone half, re-argued (F-1) ────────────────────────────────
+     * This comment used to state its own expiry: "contained today by the
+     * re-classification at both readers — and it stops being contained the
+     * moment Increment 6 wires tombstone application." Increment 6 landed
+     * (`sync/index.ts` imports `tombstone-apply`), so the class part is no
+     * longer the whole answer: re-classification decides WHETHER a path is in
+     * the plane, and says nothing about whether `deleted` is true.
+     *
+     * `deleted` cannot simply be re-derived from disk the way `recordWrite`
+     * derives content, because a tail legitimately carries deletes that happened
+     * AFTER the generation this checkout was restored from — the file is still
+     * present on disk and the tombstone is still real. So the control is a RATE,
+     * not a permission, exactly as it is on the desktop: a replay may apply at
+     * most `DELETE_BUDGET_PER_WINDOW` tombstones, counted cumulatively against
+     * the ones already in the window. A real rehydrate is far under it; an
+     * injected purge is not. Overflow rows count as `malformed`, which is
+     * already the counter the drill asserts on.
      *
      * `designRoot` is optional so a caller without a checkout still gets the
      * shape gate; with one, the full classifier runs.
@@ -438,6 +507,12 @@ function makeHandle({ db, getMeta, setMeta, now }) {
       let applied = 0;
       let skipped = 0;
       let malformed = 0;
+      // Cumulative with whatever the window already holds — a replay cannot
+      // top the budget back up by being a separate operation.
+      let tombstoneBudget = Math.max(
+        0,
+        DELETE_BUDGET_PER_WINDOW - handle.deletionsSince(now() - DELETE_BUDGET_WINDOW_MS)
+      );
       const lines = String(text ?? '')
         .split('\n')
         .filter((l) => l.trim().length > 0);
@@ -478,6 +553,16 @@ function makeHandle({ db, getMeta, setMeta, now }) {
               malformed += 1;
               continue;
             }
+          }
+          // The delete breaker, applied to the tail. See the docblock above:
+          // classification says nothing about `deleted`, and a tombstone that
+          // lands here is a delete every peer applies.
+          if (row.deleted) {
+            if (tombstoneBudget <= 0) {
+              malformed += 1;
+              continue;
+            }
+            tombstoneBudget -= 1;
           }
           stmts.insertAtSeq.run({
             seq: row.seq,

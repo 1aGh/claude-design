@@ -80,6 +80,37 @@ jobs:
           (cd apps/studio && bun install --frozen-lockfile)
           bash scripts/check-cloud-binary.sh
 
+      - name: Studio typecheck (tsc) + checker coverage
+        # REQUIRED. No CI job ran `tsc` at all until v1.0.0's gate set, and
+        # apps/studio/tsconfig.json's hand-written `include` had no `*.tsx`
+        # entry — 52 tracked files, `canvas-lib.tsx` among them, were reached by
+        # no checker whatsoever. The coverage script is the ratchet: it asserts
+        # `tsc --listFiles` still covers every tracked non-test source, so the
+        # surface cannot silently shrink back. Toolchain is already installed by
+        # the cloud-binary gate above (Bun + `bun install` in apps/studio).
+        run: |
+          (cd apps/studio && bunx tsc --noEmit)
+          bash scripts/check-tsc-coverage.sh
+
+      - name: Sync-lane tests (required)
+        # REQUIRED, and deliberately narrower than the full studio suite. The
+        # file plane is the newest and least-exercised code in the tree and it
+        # carries data custody over a transport the threat model calls
+        # untrusted; ~43 files, ~30 s. `dist/` is checked before AND after
+        # because a `bun test` run in this tree has been observed regenerating
+        # unminified dev bundles over the committed release artifacts — whatever
+        # is committed is what ships, so a clobber must fail the build, not be
+        # discovered at release time.
+        run: |
+          git diff --quiet -- apps/studio/dist/ \
+            || { echo "::error::apps/studio/dist/ was already dirty before the tests ran"; exit 1; }
+          (cd apps/studio && bun test test/sync-*.test.ts --timeout 20000)
+          git diff --quiet -- apps/studio/dist/ || {
+            echo "::error::apps/studio/dist/ was modified by the test run — the committed release bundles were clobbered."
+            git --no-pager diff --stat -- apps/studio/dist/
+            exit 1
+          }
+
       - name: Hub backup restore drill
         # The exit gate for Cloud Phase 2 Task 3. A backup nobody has restored
         # is a hypothesis: a database that restores readable-but-EMPTY looks
@@ -113,3 +144,52 @@ jobs:
 
       - name: Site build (validates fumadocs MDX + Next compile)
         run: pnpm --filter @maude/site build
+
+  studio-suite:
+    # NON-BLOCKING ON PURPOSE. The full apps/studio suite (~337 files, ~4400
+    # tests) has never run in any workflow, so its true health on clean
+    # hardware is unmeasured — every local figure so far was taken on a laptop
+    # running other suites at the same time, which fabricates failures (a boot
+    # test that waits 10 s fails under bun's 5 s default the moment the machine
+    # is loaded). Blocking on an unmeasured suite would either stall every PR or
+    # teach everyone to ignore a red check.
+    #
+    # So it runs, it reports, and it cannot fail the merge. What it produces is
+    # the CLEAN data that decides which tests (if any) belong on a quarantine
+    # list — and once that list is empty and stable, this job's
+    # `continue-on-error` comes off and it becomes required.
+    name: Studio suite (full, non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --no-frozen-lockfile
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.3'
+
+      - name: Install (apps/studio, own bun.lock per DDR-009)
+        run: cd apps/studio && bun install --frozen-lockfile
+
+      - name: Full studio suite
+        # Same dist clobber guard as the required sync lane above — this job
+        # cannot fail the merge, but a clobbered bundle still has to be visible.
+        run: |
+          git diff --quiet -- apps/studio/dist/ \
+            || { echo "::error::apps/studio/dist/ was already dirty before the tests ran"; exit 1; }
+          (cd apps/studio && bun test --timeout 20000)
+          git diff --quiet -- apps/studio/dist/ || {
+            echo "::error::apps/studio/dist/ was modified by the test run — the committed release bundles were clobbered."
+            git --no-pager diff --stat -- apps/studio/dist/
+            exit 1
+          }

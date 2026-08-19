@@ -14,6 +14,7 @@
  * own avatar to release. tldraw-style.
  */
 
+import type { JSX } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useViewportControllerContext } from './canvas-lib.tsx';

@@ -34,6 +34,7 @@ import http from 'isomorphic-git/http/node';
 
 import { gitLogArgs, gitLogEnv, parseGitLog } from './log-format.ts';
 import { withRepoLock } from './repo-lock.ts';
+import { safeGitPrefix } from './safe-rel.ts';
 
 // Read LIVE, not as a module-load const — the same reason `noSystemGit()` below
 // is a function, and a sharper one since Cloud Phase 27 D2: a CELL now runs with
@@ -222,9 +223,27 @@ function isRepo(dir: string): boolean {
 }
 
 /** Normalize a status-matrix prefix: strip leading/trailing slashes, forward-slash. */
+/**
+ * The design-root containment prefix, normalised and VALIDATED (F-13/B12).
+ *
+ * This used to strip slashes and nothing else, so a `designRoot` of
+ * `../../..` normalised to `../../..` and `underPrefix` then matched nothing —
+ * or, on the staging side, named files outside the design root entirely. The
+ * rules live in `safe-rel.ts`; see its docblock for why containment (not argv)
+ * is the risk here.
+ *
+ * A REFUSED prefix falls back to `'.design'`, never to `''`. Empty means "no
+ * containment filter at all", so treating a hostile value as absent would
+ * WIDEN the scope to the whole repository — the opposite of what refusing it
+ * is for.
+ */
 function normPrefix(p?: string): string {
-  if (!p) return '';
-  return p.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  const safe = safeGitPrefix(p);
+  if (safe !== null) return safe;
+  console.warn(
+    `[git] refusing an unsafe design-root prefix (${JSON.stringify(p)}) — falling back to '.design'`
+  );
+  return '.design';
 }
 
 function underPrefix(filepath: string, prefix: string): boolean {
@@ -897,7 +916,9 @@ async function checkoutLocked(dir: string, name: string): Promise<GitBranchResul
       } else {
         const remoteNames = await git
           .listBranches({ fs, dir, remote: DEFAULT_REMOTE })
-          .catch(() => []);
+          // Annotated: a bare `[]` infers never[], which made the `.includes`
+          // below take a `never` and rejected any real branch name.
+          .catch((): string[] => []);
         if (!remoteNames.includes(name))
           return { ok: false, error: "Couldn't find that draft — try Refresh." };
         await git.checkout({ fs, dir, ref: name, remote: DEFAULT_REMOTE, track: true });

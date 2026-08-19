@@ -144,12 +144,22 @@ function synthDblclick(sel: string, cx: number, cy: number) {
  * only once the LEAF ITSELF is selected. Editing from a cold selection
  * therefore takes 2–4 dblclicks depending on depth — this helper repeats the
  * gesture until the predicate holds (edit mode entered / hint toast shown). */
+/**
+ * `maxTries` was 5, and that was too tight to be a budget at all. Measured by
+ * hand against an IDLE same-origin Chromium (the fastest case this gesture ever
+ * sees): the h1 needed 3 dblclicks and the `.map` card needed 4 — so the drill
+ * routinely spent 80% of the allowance before doing anything, and WKWebView
+ * under load simply ran out. That is the whole of this file's flakiness: runs
+ * alternated between 3 and 4 failures depending on whether the ladder finished.
+ * 12 is still bounded (each try costs one 300 ms pause) and no longer a coin
+ * flip. A predicate that never holds still fails — just not for lack of room.
+ */
 async function synthDblclickUntil(
   sel: string,
   cx: number,
   cy: number,
   predicate: () => Promise<boolean>,
-  maxTries = 5
+  maxTries = 12
 ): Promise<boolean> {
   for (let i = 0; i < maxTries; i++) {
     await synthDblclick(sel, cx, cy);
@@ -395,7 +405,7 @@ describe('canvas-text-editing (native-desktop / WKWebView)', () => {
     await browser.pause(150);
   });
 
-  it('artboard: synthetic dblclick enters edit mode, caret collapsed at click point, accent caret-color', async () => {
+  it('artboard: synthetic dblclick enters edit mode with the whole string selected (Figma steer 2026-07-20)', async () => {
     const box = await frameLocalBox(H1);
     if (!box) throw new Error('no h1 box');
     await synthDblclickUntil(
@@ -410,9 +420,18 @@ describe('canvas-text-editing (native-desktop / WKWebView)', () => {
     // the leaf is reached and the editor opens.)
     expect(p.ce).toBe('plaintext-only');
     expect(p.editingClass).toBe(true);
-    // Caret at the CLICK POINT, not select-all (the artboard baseline).
-    expect(p.selCollapsed).toBe(true);
-    expect(p.selText).toBe('');
+    // SELECT-ALL on entry, not caret-at-click.
+    //
+    // This asserted `selCollapsed === true` / `selText === ''` and had been red
+    // ever since the user steer of 2026-07-20, which made the DBLCLICK entry
+    // select the whole string (`enterEditModeAt`'s `opts.selectAll` branch:
+    // "reaching the leaf via the drill ladder puts the whole string under your
+    // fingers, ready to overwrite" — Figma's behaviour). Caret-at-click is
+    // still the contract for the OTHER entry points (the annotation Text tool,
+    // and any click INSIDE an already-open editor), which is where
+    // `placeCaretAt` is exercised. The scenario simply outlived its premise.
+    expect(p.selCollapsed).toBe(false);
+    expect(p.selText).toBe('Maude desktop E2E');
     // Unified accent caret-color (explicit, not the UA 'auto').
     expect(p.caretColor).not.toBe('auto');
     expect(p.caretColor).toBeTruthy();
@@ -465,6 +484,46 @@ describe('canvas-text-editing (native-desktop / WKWebView)', () => {
     expect(p.customCaret).toBe(true);
     expect(p.customCaretAnim ?? '').toContain('maude-caret-blink');
     expect(p.caretColor).toBe('rgba(0, 0, 0, 0)'); // caret-color: transparent
+
+    // COLLAPSE the selection before measuring the overlay.
+    //
+    // Entry now selects the whole string (see the previous test), and an
+    // overlay drawn for a RANGE has no caret position to sit at — it measured
+    // {left: 0}, which is what made the geometry assertions below fail. So put
+    // the caret where a user would: a plain click inside the already-open
+    // editor, which `enterEditModeAt`'s docblock names as the supported gesture
+    // ("Subsequent clicks/dblclicks inside the editor are native … click =
+    // caret"). That restores exactly what this test was written to prove — the
+    // custom caret tracks the collapsed selection — under the current entry
+    // contract rather than the retired one.
+    await browser.execute(
+      (x, y) => {
+        const iframe = document.querySelector(
+          '[data-testid="canvas-frame"]'
+        ) as HTMLIFrameElement | null;
+        const doc = iframe?.contentDocument;
+        const win = iframe?.contentWindow as (Window & typeof globalThis) | null;
+        const el = doc?.activeElement as HTMLElement | null;
+        if (!doc || !win || !el) return false;
+        const range = (
+          doc as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null }
+        ).caretRangeFromPoint?.(x, y);
+        const sel = win.getSelection();
+        if (range && sel) {
+          range.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(range);
+          return true;
+        }
+        return false;
+      },
+      Math.round(box.cx),
+      Math.round(box.cy)
+    );
+    await browser.pause(200);
+    const collapsed = await probe(H1);
+    expect(collapsed.selCollapsed).toBe(true);
+
     // Positioned at the selection — inside the h1 rect (1px tolerance).
     const c = await frameLocalBox('[data-maude-caret]');
     if (!c) throw new Error('no caret box');
@@ -888,7 +947,9 @@ describe('canvas-text-editing (native-desktop / WKWebView)', () => {
     // engine rewrites CARDS[1].body, not card 0 or 2.
     // feature-4 drill ladder: repeat the dblclick until the editor opens
     // (each dblclick drills one chain level first).
-    for (let attempt = 0; attempt < 5; attempt++) {
+    // 12, not 5 — see `synthDblclickUntil`: this card measured 4 dblclicks on an
+    // idle Chromium, so a 5-try budget was one slow frame from failing.
+    for (let attempt = 0; attempt < 12; attempt++) {
       // eslint-disable-next-line no-await-in-loop
       await browser.execute(
         (x, y) => {

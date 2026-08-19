@@ -298,7 +298,13 @@ export function createFileLedger(opts: FileLedgerOptions): FileLedger {
         version: 1,
         hubUrl: opts.hubUrl,
         epoch: typeof parsed.epoch === 'string' ? parsed.epoch : null,
-        cursor: Number.isInteger(parsed.cursor) && parsed.cursor >= 0 ? parsed.cursor : 0,
+        // `typeof` first: Number.isInteger is a runtime guard, not a narrowing
+        // one, so a ledger written by an older build with no `cursor` key read
+        // as `number` to the checker while being `undefined` at runtime.
+        cursor:
+          typeof parsed.cursor === 'number' && Number.isInteger(parsed.cursor) && parsed.cursor >= 0
+            ? parsed.cursor
+            : 0,
         updatedAt: now(),
         rows: sanitizeRows(parsed.rows as Record<string, unknown>),
       };

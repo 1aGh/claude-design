@@ -11,6 +11,7 @@
  * `/design:edit` that's about to rewrite their HTML.
  */
 
+import type { JSX } from 'react';
 import { useEffect, useState } from 'react';
 
 function deriveFile(): string | null {

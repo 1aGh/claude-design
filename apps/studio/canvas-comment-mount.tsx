@@ -30,7 +30,6 @@ import {
   Component,
   type ComponentType,
   createElement,
-  Fragment,
   type ReactNode,
   useCallback,
   useEffect,
@@ -494,20 +493,20 @@ export interface MountCanvasOptions {
 // from the one DCArtboard (canvas-lib) consumes. Same reasoning the real
 // ToolProvider lives in DesignCanvas, not in this layer's MaybeToolProvider.
 function buildCanvasTree(Canvas: ComponentType, file: string | undefined): ReactNode {
-  return createElement(
-    MaybeToolProvider,
-    // DDR-223 — this layer's provider instance keeps the DDR-187 posture:
-    // bare DS specimens stay ALIVE with native cursors (there is no palette,
-    // no editing, nothing to boot into edit for). On a UI canvas the inner
-    // canvas-lib ToolProvider (a separate bundle, separate context) owns the
-    // real boot posture (edit/`move`); this ancestor instance only carries the
-    // comment tool + claim layer and converges on the first tool keydown.
-    { initial: 'browse' as const },
-    createElement(
-      MaybeSelectionSetProvider,
-      null,
-      createElement(CommentHost, { file }, createElement(Canvas))
-    )
+  // DDR-223 — this layer's provider instance keeps the DDR-187 posture:
+  // bare DS specimens stay ALIVE with native cursors (there is no palette,
+  // no editing, nothing to boot into edit for). On a UI canvas the inner
+  // canvas-lib ToolProvider (a separate bundle, separate context) owns the
+  // real boot posture (edit/`move`); this ancestor instance only carries the
+  // comment tool + claim layer and converges on the first tool keydown.
+  return (
+    <MaybeToolProvider initial="browse">
+      <MaybeSelectionSetProvider>
+        <CommentHost file={file}>
+          <Canvas />
+        </CommentHost>
+      </MaybeSelectionSetProvider>
+    </MaybeToolProvider>
   );
 }
 
@@ -576,20 +575,20 @@ export class CanvasErrorBoundary extends Component<
   },
   { hasError: boolean }
 > {
-  state = { hasError: false };
+  override state = { hasError: false };
   static getDerivedStateFromError(): { hasError: boolean } {
     return { hasError: true };
   }
-  componentDidCatch(): void {
+  override componentDidCatch(): void {
     this.props.onError();
   }
-  componentDidUpdate(prev: { attempt: number }): void {
+  override componentDidUpdate(prev: { attempt: number }): void {
     // A new canvas (new attempt) arrived → clear the error and try rendering it.
     if (prev.attempt !== this.props.attempt && this.state.hasError) {
       this.setState({ hasError: false });
     }
   }
-  render(): ReactNode {
+  override render(): ReactNode {
     if (this.state.hasError) return this.props.fallback();
     return this.props.children;
   }
@@ -648,16 +647,14 @@ function CanvasHmrRuntime({
     return LG ? buildCanvasTree(LG, file) : null;
   }, [file]);
 
-  return createElement(
-    Fragment,
-    null,
-    createElement(
-      CanvasErrorBoundary,
-      { attempt, onError: handleError, fallback },
-      // key=attempt → each soft-reload remounts a fresh subtree (and resets the
-      // boundary's child), matching the clean-slate semantics of a full reload.
-      createElement(OkSignal, { key: attempt, Canvas: canvas, file, onOk: handleOk })
-    ),
-    holding.on ? createElement(HmrHoldingToast, { message: holding.message }) : null
+  return (
+    <>
+      <CanvasErrorBoundary attempt={attempt} onError={handleError} fallback={fallback}>
+        {/* key=attempt → each soft-reload remounts a fresh subtree (and resets the
+            boundary's child), matching the clean-slate semantics of a full reload. */}
+        <OkSignal key={attempt} Canvas={canvas} file={file} onOk={handleOk} />
+      </CanvasErrorBoundary>
+      {holding.on ? <HmrHoldingToast message={holding.message} /> : null}
+    </>
   );
 }

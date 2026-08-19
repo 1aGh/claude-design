@@ -255,15 +255,10 @@ function buildCssInjector(slug: string, css: string): string {
 function importAllowlist(
   designRoot: string,
   denials: Array<{ specifier: string; reason: string }>
-): {
-  name: string;
-  setup: (builder: {
-    onResolve: (
-      opts: { filter: RegExp },
-      cb: (args: { path: string; importer: string }) => unknown
-    ) => void;
-  }) => void;
-} {
+  // Bun's own plugin type, not a hand-rolled structural twin: the local shape
+  // described a narrower `setup` than Bun.build's `plugins` accepts, so the
+  // value was not assignable at the one place it is used.
+): import('bun').BunPlugin {
   const root = path.resolve(designRoot);
   const inRoot = (p: string) => p === root || p.startsWith(root + path.sep);
   const deny = (specifier: string, reason: string): never => {

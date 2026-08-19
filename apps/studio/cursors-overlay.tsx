@@ -17,6 +17,7 @@
  * 30 Hz publish cadence keeps it smooth enough for the multiplayer demo.
  */
 
+import type { JSX } from 'react';
 import { memo, useEffect, useState } from 'react';
 
 import { useLiveViewport } from './canvas-lib.tsx';

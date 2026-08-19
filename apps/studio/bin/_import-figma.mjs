@@ -372,7 +372,10 @@ export async function importBoard({
   url,
   root,
   designRootRel = '.design',
-  slug,
+  // `= undefined` is the default it already had implicitly — spelled out so the
+  // parameter reads as OPTIONAL (the studio's panel route passes no slug and
+  // relies on the `slug ?? figjam-<key>` fallback below).
+  slug = undefined,
   dryRun = false,
   confirmLarge = false,
   local = null,
@@ -1145,7 +1148,7 @@ export async function importFrames({
   url,
   root,
   designRootRel = '.design',
-  slug,
+  slug = undefined,
   dryRun = false,
   kind = 'digital',
   local = null,
@@ -1322,7 +1325,9 @@ export async function explodeArtboard({
   artboardId,
   confirmDocument = false,
   dryRun = false,
-  session,
+  // Optional: falls back to a fresh CodegenSession below. The studio route
+  // never supplies one.
+  session = undefined,
   // Injected for the same reason `assets.ts` injects `ResolveDeps`: so this can
   // be exercised without the network. A test that used the real one would spend
   // the developer's actual PAT against a fixture file key.

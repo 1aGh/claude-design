@@ -18,6 +18,14 @@ on:
         description: 'Dry run (build but do not publish)'
         type: boolean
         default: false
+      skip-desktop-gate:
+        description: >-
+          BREAK GLASS: publish to npm without waiting for build-desktop's
+          blank-window gates. Only for a release that genuinely cannot produce a
+          desktop build (e.g. the macOS runner is down). The choice is logged in
+          the job summary.
+        type: boolean
+        default: false
 
 jobs:
   create-release:
@@ -207,8 +215,93 @@ jobs:
         run: |
           gh release upload "$GITHUB_REF_NAME" "apps/studio/${{ env.BIN }}" --clobber || true
 
-  publish-main:
+  # ── The desktop blank-window gates, in FRONT of npm publish (A6) ────────────
+  #
+  # THE HOLE THIS CLOSES. `publish-main` used to need only `build-binaries`,
+  # while the two gates that catch a packaged app which installs cleanly and
+  # then opens to an empty window — `check-bundle-completeness --smoke` (DDR-177)
+  # and `check-client-boots` (v0.51.1) — live in build-desktop.yml, a SEPARATE
+  # workflow on the same tag. Two workflows racing means npm could (and on a
+  # slow desktop leg, would) publish before either gate had run. A gate that the
+  # thing it guards can finish ahead of is not a gate.
+  #
+  # WHY A WAITER AND NOT `needs:`. GitHub Actions has no cross-workflow `needs:`,
+  # and moving the macOS Tauri leg into this file would drag the signing and
+  # notarization secrets along with it for no benefit. So this job asks the API
+  # what build-desktop concluded FOR THIS EXACT SHA and blocks on the answer —
+  # which is the same guarantee, stated where the publish can see it.
+  #
+  # It is deliberately cheap (ubuntu, no checkout of the build tree, no build):
+  # all it does is wait and report.
+  desktop-gate:
+    name: Desktop blank-window gates (blocking npm publish)
     needs: build-binaries
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    steps:
+      - name: Wait for build-desktop on this SHA
+        # Only where there is something to gate. build-desktop fires on
+        # `v*.*.*` tags, so on a non-tag dispatch (and on a dry-run, which
+        # publishes nothing) no run will ever appear for this SHA and the wait
+        # below would burn its full window before failing a release that was
+        # never going to publish.
+        if: >-
+          inputs.skip-desktop-gate != true
+          && startsWith(github.ref, 'refs/tags/v')
+          && (github.event_name == 'push' || inputs.dry-run != true)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # ~60 min: the macOS leg builds a universal binary and notarizes, and
+          # notarization alone is unbounded in principle. Timing out is a
+          # REFUSAL, not a pass — see the exit below.
+          DEADLINE=$(( SECONDS + 60*60 ))
+          echo "Waiting for 'Build desktop app' to conclude for $SHA"
+          while [ "$SECONDS" -lt "$DEADLINE" ]; do
+            CONCLUSION=$(gh api \
+              "repos/$REPO/actions/workflows/build-desktop.yml/runs?head_sha=$SHA&per_page=1" \
+              --jq '.workflow_runs[0].conclusion // "pending"' 2>/dev/null || echo "pending")
+            STATUS=$(gh api \
+              "repos/$REPO/actions/workflows/build-desktop.yml/runs?head_sha=$SHA&per_page=1" \
+              --jq '.workflow_runs[0].status // "missing"' 2>/dev/null || echo "missing")
+            echo "  status=$STATUS conclusion=$CONCLUSION"
+            case "$CONCLUSION" in
+              success)
+                echo "::notice::build-desktop succeeded — the bundle-completeness and client-boot gates passed."
+                exit 0 ;;
+              failure|cancelled|timed_out|action_required)
+                echo "::error::build-desktop concluded '$CONCLUSION' for $SHA — refusing to publish to npm."
+                echo "A packaged app that does not boot is exactly what these gates exist to stop shipping."
+                exit 1 ;;
+            esac
+            sleep 30
+          done
+          echo "::error::build-desktop did not conclude within the wait window for $SHA."
+          echo "Timing out is a REFUSAL: publishing now would mean publishing past an unrun gate."
+          exit 1
+
+      - name: Record a break-glass skip
+        if: inputs.skip-desktop-gate == true
+        shell: bash
+        run: |
+          {
+            echo "### ⚠ Desktop gate SKIPPED (break glass)"
+            echo ""
+            echo "This release published to npm **without** waiting for"
+            echo "\`check-bundle-completeness --smoke\` or \`check-client-boots\`."
+            echo "The packaged desktop app is unverified for this version."
+            echo ""
+            echo "Actor: \`${{ github.actor }}\` · SHA: \`${{ github.sha }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::desktop blank-window gates skipped by explicit break-glass input"
+
+  publish-main:
+    needs: [build-binaries, desktop-gate]
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -76,11 +76,16 @@ async function decodeToBitmap(
   b64: string,
   mime: 'image/png' | 'image/jpeg' = 'image/png'
 ): Promise<ImageBitmap> {
-  return createImageBitmap(new Blob([b64ToBytes(b64)], { type: mime }));
+  // Uint8Array<ArrayBufferLike> vs BlobPart — see saveAsset in api.ts.
+  return createImageBitmap(new Blob([b64ToBytes(b64) as Uint8Array<ArrayBuffer>], { type: mime }));
 }
 
 let vstate: {
   output: Output;
+  // Held alongside `output` because mediabunny's `Output` types `target` as the
+  // Target union — the concrete BufferTarget (the only one this encoder ever
+  // constructs) is what carries `.buffer`.
+  target: BufferTarget;
   source: CanvasSource;
   canvas: OffscreenCanvas;
   ctx: OffscreenCanvasRenderingContext2D;
@@ -123,7 +128,8 @@ const api: MaudeEnc = {
     }
     if (!codec) throw new Error('no encodable video codec available in this browser');
 
-    const output = new Output({ format: outFormat, target: new BufferTarget() });
+    const target = new BufferTarget();
+    const output = new Output({ format: outFormat, target });
     // `latencyMode: 'quality'` is pinned, not left to the default. Per WebCodecs
     // §7.11 `realtime` explicitly permits the encoder to DROP frames to hit a
     // bitrate/framerate target, while `quality` MUST NOT — and mediabunny flips
@@ -139,7 +145,7 @@ const api: MaudeEnc = {
     output.addVideoTrack(source, { frameRate: fps });
     await output.start();
     const container = outFormat instanceof Mp4OutputFormat ? 'mp4' : 'webm';
-    vstate = { output, source, canvas, ctx, fps, frame: 0, container, codec };
+    vstate = { output, target, source, canvas, ctx, fps, frame: 0, container, codec };
     return { container, codec };
   },
 
@@ -170,7 +176,7 @@ const api: MaudeEnc = {
   async finishVideo() {
     if (!vstate) throw new Error('startVideo not called');
     await vstate.output.finalize();
-    const buf = vstate.output.target.buffer;
+    const buf = vstate.target.buffer;
     if (!buf) throw new Error('encode produced no buffer');
     const res: EncodeResult = {
       b64: bytesToB64(buf),

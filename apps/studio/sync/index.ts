@@ -1349,7 +1349,11 @@ export function createSyncRuntime(
     // design root — see `pullTargets` for why flat); local-only canvases go up
     // as they always did. Best-effort: an older hub without the listing route,
     // or an unreachable one, syncs exactly as before.
-    const remoteListing = await fetchRemoteListing(linkedHub.url, resolvedToken);
+    // `token`, not the boot-time `resolvedToken`: silent renewal swaps the live
+    // credential in place, so reading it at call time is what every other hub
+    // call here does. Identical at boot; correct if start() ever re-runs after
+    // a renewal (and it types, which `resolvedToken`'s `string | null` did not).
+    const remoteListing = await fetchRemoteListing(linkedHub.url, token);
     // BOOT LEARNS THE DELETIONS BEFORE IT PULLS ANYTHING. The peer-side apply
     // lives further down (it needs the live descriptor map), so this boot pass
     // only has to make sure the pull does not fetch a canvas the project has

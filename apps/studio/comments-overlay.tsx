@@ -73,6 +73,11 @@ interface ComposeSelection {
   id?: string;
   selector: string;
   artboardId?: string | null;
+  /** Occurrence index within `selector` — always set by buildComposeSelection,
+   *  read into the comment payload below. Missing from this local mirror of
+   *  dom-selection's `Selection`, so the payload was silently sending
+   *  `undefined` to the checker's eyes and the real value at runtime. */
+  index: number;
   tag: string;
   classes: string;
   text: string;

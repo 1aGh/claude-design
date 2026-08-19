@@ -75,7 +75,11 @@ export interface KindOverlayProps {
   visibility: OverlayVisibility;
 }
 
-export type KindOverlayRenderFn = (props: KindOverlayProps) => ReactNode;
+export type KindOverlayRenderFn = ((props: KindOverlayProps) => ReactNode) & {
+  /** React DevTools label. Every registered renderer sets it; the registry
+   *  holds plain functions, so it is not inherited from a component type. */
+  displayName?: string;
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Per-kind content registry. Foundation registers nothing here — the generic

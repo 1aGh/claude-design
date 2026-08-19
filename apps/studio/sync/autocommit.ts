@@ -29,6 +29,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 import { withRepoLock } from '../git/repo-lock.ts';
+import { partitionSafeGitRels } from '../git/safe-rel.ts';
 
 /** How long the tree must be quiet before a commit fires. */
 const DEFAULT_DEBOUNCE_MS = 3000;
@@ -303,10 +304,27 @@ export function createAutoCommit(opts: AutoCommitOptions): AutoCommit {
    * for every canvas in a busy window.
    */
   async function partitionForStaging(
-    files: string[]
+    input: string[]
   ): Promise<{ stage: string[]; drop: string[] }> {
+    // SHAPE GATE FIRST (F-13/B12). These rels are built from `designRel` plus a
+    // path the file plane delivered, and they end up in `git add -- <paths>`.
+    // The `--` defuses a leading `-`, but nothing defuses `..`: a rel escaping
+    // the design root is a well-formed pathspec that stages a file the sync
+    // lane has no business touching — `../../.github/workflows/*` reached from
+    // a lane scoped to `.design/`. Refused paths are DROPPED, not thrown on:
+    // one poisoned rel must not wedge the queue for everybody else's work
+    // (the failure mode this whole function was written to avoid).
+    const { safe: files, refused } = partitionSafeGitRels(input);
+    if (refused.length > 0) {
+      console.warn(
+        `[autocommit] refusing ${refused.length} path(s) that are not safe repo-relative: ${refused
+          .slice(0, 5)
+          .map((r) => JSON.stringify(r))
+          .join(', ')}`
+      );
+    }
     const missing = files.filter((f) => !existsSync(path.join(repoRoot, f)));
-    if (missing.length === 0) return { stage: files, drop: [] };
+    if (missing.length === 0) return { stage: files, drop: refused };
 
     const known = await run(['ls-files', '--', ...missing], { cwd: repoRoot });
     // If the probe itself fails, keep every path: guessing "untracked" here
@@ -320,7 +338,7 @@ export function createAutoCommit(opts: AutoCommitOptions): AutoCommit {
               .filter(Boolean)
           )
         : new Set(missing);
-    const drop = missing.filter((f) => !tracked.has(f));
+    const drop = [...refused, ...missing.filter((f) => !tracked.has(f))];
     if (drop.length === 0) return { stage: files, drop: [] };
     const dropSet = new Set(drop);
     return { stage: files.filter((f) => !dropSet.has(f)), drop };
