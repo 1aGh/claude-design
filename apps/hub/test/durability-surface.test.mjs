@@ -56,8 +56,9 @@ function seedDataDir(dir) {
  * for, and un-unref'ing the production timer to make a test pass would trade a
  * flaky test for a hub that will not shut down.
  */
-function firstStatus({ dataDir, target }) {
+function awaitStatuses({ dataDir, target, count = 1 }) {
   return new Promise((resolve, reject) => {
+    const seen = [];
     // Ref'd on purpose (no .unref()) — this is the handle that keeps us alive.
     const keepAlive = setInterval(() => {}, 1000);
     const done = (fn, v) => {
@@ -65,7 +66,7 @@ function firstStatus({ dataDir, target }) {
       fn(v);
     };
     const bail = setTimeout(
-      () => done(reject, new Error('firstStatus: onStatus never fired')),
+      () => done(reject, new Error(`awaitStatuses: got ${seen.length} of ${count}`)),
       10_000
     );
     const stop = scheduleBackups({
@@ -74,12 +75,19 @@ function firstStatus({ dataDir, target }) {
       intervalMs: 15,
       log: { log() {}, error() {} },
       onStatus: (s) => {
+        seen.push(s);
+        if (seen.length < count) return;
         stop();
         clearTimeout(bail);
-        done(resolve, s);
+        done(resolve, seen);
       },
     });
   });
+}
+
+/** Wait for `onStatus` to fire once, then stop the schedule. */
+async function firstStatus({ dataDir, target }) {
+  return (await awaitStatuses({ dataDir, target, count: 1 }))[0];
 }
 
 test('/health never carries durability — degradation is not a liveness signal', () => {
@@ -132,22 +140,12 @@ test('the schedule keeps running after a refusal rather than wedging', async () 
   const target = fileTarget(`file://${bucket}`);
   await firstStatus({ dataDir: seedDataDir(freshDir()), target });
 
-  const dataDir = seedDataDir(freshDir());
-  const seen = [];
-  await new Promise((resolve) => {
-    const stop = scheduleBackups({
-      dataDir,
-      target,
-      intervalMs: 15,
-      log: { log() {}, error() {} },
-      onStatus: (s) => {
-        seen.push(s.state);
-        if (seen.length === 2) {
-          stop();
-          resolve();
-        }
-      },
-    });
-  });
+  // Through the shared helper. This wait was hand-rolled and carried the SAME
+  // unref'd-timer bug — which is exactly why fixing only `firstStatus` left this
+  // one test red for a second CI round. Two copies of a wait is two chances to
+  // get it wrong; there is one now.
+  const seen = (await awaitStatuses({ dataDir: seedDataDir(freshDir()), target, count: 2 })).map(
+    (s) => s.state
+  );
   assert.deepEqual(seen, ['identity-conflict', 'identity-conflict']);
 });
