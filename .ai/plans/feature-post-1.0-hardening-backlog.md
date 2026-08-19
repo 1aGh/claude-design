@@ -88,6 +88,12 @@ is left is harness quality, not correctness:
   baseline and cascades (observed: one run reported 6 failures purely from this).
   It also broke a `git stash pop` mid-investigation. Restore should not depend on
   a clean exit.
+- **E0 — `collab-stress.test.ts` has no headroom by construction.** Its body runs
+  a deliberate 10-second stress window under bun's 10-second default timeout, so
+  the budget EQUALS the workload: measured 10.09 s passing in isolation, and it
+  is the one test that tips over in a full-suite run on a loaded machine (seen on
+  merged main, load 9.9). Not flakiness in the usual sense — give it an explicit
+  `--timeout` well above its own window, or shorten `STRESS_MS`.
 - **E3 — the default `wdio.conf.ts` spec glob claims scenarios that have their own
   configs.** `specs: scenarios/**/*.e2e.ts` sweeps in `onboarding`, `cloud`,
   `git-*`, `acp-*`, `parity` — each of which has a dedicated conf supplying env
