@@ -173,6 +173,14 @@ export function authenticateForMode(
   { email, password, token },
   { local, revoked, env = process.env, secret, now = Date.now() }
 ) {
+  // HUB_OIDC_MODE=strict means OIDC is the ONLY way in — password sign-in is
+  // refused (Track C B1-a). Checked inline (not via an import of oidc-routes,
+  // which would cycle through users.mjs) and BEFORE the local fall-through, so
+  // both password doors inherit it. `oidcConfig` already forbids strict from
+  // coexisting with MAUDE_CLOUD_IDENTITY, so this is the whole rule.
+  if (env.HUB_OIDC_MODE === 'strict' && (email || password)) {
+    return { ok: false, reason: 'password-refused-oidc-strict' };
+  }
   if (!cloudIdentityEnabled(env)) {
     return local(email, password);
   }

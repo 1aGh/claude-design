@@ -1,4 +1,17 @@
-// Design-sync — Cloud Phase 25 D1/D2/D3.
+// Design EXPORT to a repository — Cloud Phase 25 D1/D2/D3, reclassified by
+// DDR-228.
+//
+// Despite the filename this is not a sync lane, and calling it one is what the
+// two-mode model had to stop. It opens a PULL REQUEST: one-shot, reviewed,
+// merged by a person, with no cursor, no ancestor, no conflict resolution and
+// no return path. Nothing converges here.
+//
+// The distinction is load-bearing now. A hub-owned project's `.design/` is
+// gitignored precisely so git and the hub are never both owners of the same
+// bytes; this route is how those bytes reach a repository anyway — once, as a
+// reviewed change. It is the escape hatch that makes "no hybrid" liveable
+// rather than a restriction, and wiring it as a continuous lane would rebuild
+// the hybrid under a different name.
 //
 // THE MODE PEOPLE EXPECTED. Today's mirror pushes the CELL'S OWN REPOSITORY —
 // whole history, onto a disjoint branch of a repo the customer owns. That is a

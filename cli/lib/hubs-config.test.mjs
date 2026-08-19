@@ -12,6 +12,7 @@ import {
   normalizeUrl,
   removeHub,
   saveHubsConfig,
+  setHubCodeModules,
 } from './hubs-config.mjs';
 
 function withTmpConfig(fn) {
@@ -22,7 +23,11 @@ function withTmpConfig(fn) {
   try {
     return fn(path);
   } finally {
-    if (prior === undefined) process.env.HUBS_CONFIG_PATH = undefined;
+    // `env.X = undefined` sets the STRING "undefined", so the override leaked
+    // out of the harness and every later `addHub` in the same process wrote a
+    // file literally named `undefined` into the repo root. `delete` is the
+    // only way to actually unset it.
+    if (prior === undefined) delete process.env.HUBS_CONFIG_PATH;
     else process.env.HUBS_CONFIG_PATH = prior;
     rmSync(dir, { recursive: true, force: true });
   }
@@ -115,5 +120,46 @@ test('a relink preserves the vouched role, and still clears per-machine attestat
     assert.equal(after.token, 'mau_second');
     assert.equal(after.role, 'viewer', 'the role survives a relink');
     assert.equal(after.adoptedAt, undefined, 'a per-machine attestation does not');
+  });
+});
+
+// The code-module consent — the finding was that `codeModulesAllowed` was
+// declared, read by the receiver, and set by NOTHING. So the gate could never
+// open and `code-module` had no transport at all in hub-owned mode: an owner
+// could push one through the door and no peer would ever accept it, which is
+// the same "delivered nowhere" shape the file plane was built to fix.
+//
+// Through `withTmpConfig` like every other test here — the config is a real
+// file on a real path, so a test that skips the harness reads whatever the
+// previous one left behind.
+
+test('the consent records, and survives a token re-save', () => {
+  withTmpConfig(() => {
+    const url = 'https://consent.example.test';
+    addHub(url, 'tok-1');
+    assert.equal(getHub(url).codeModulesAllowed, undefined, 'absent means no');
+
+    setHubCodeModules(url, true);
+    assert.equal(getHub(url).codeModulesAllowed, true);
+
+    // A silent token renewal must not revoke a decision the person made.
+    addHub(url, 'tok-2');
+    assert.equal(getHub(url).codeModulesAllowed, true);
+    assert.equal(getHub(url).token, 'tok-2');
+  });
+});
+
+test('the consent is false for anything that is not an explicit yes', () => {
+  withTmpConfig(() => {
+    const url = 'https://consent-strict.example.test';
+    addHub(url, 't');
+    setHubCodeModules(url, 'yes');
+    assert.equal(getHub(url).codeModulesAllowed, false);
+  });
+});
+
+test('setting consent on an unlinked hub does nothing', () => {
+  withTmpConfig(() => {
+    assert.equal(setHubCodeModules('https://nobody.example.test', true), false);
   });
 });

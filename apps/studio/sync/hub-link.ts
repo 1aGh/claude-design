@@ -35,7 +35,17 @@ export interface HubLinkResult {
 const HUB_PROBE_TIMEOUT_MS = 4000;
 
 interface HubsFile {
-  hubs: Record<string, { token: string; linkedAt: number; role?: string; expiresAt?: number }>;
+  hubs: Record<
+    string,
+    {
+      token: string;
+      linkedAt: number;
+      role?: string;
+      expiresAt?: number;
+      /** Local consent — see `HubRecord.codeModulesAllowed` in hubs-config.ts. */
+      codeModulesAllowed?: boolean;
+    }
+  >;
   trusted?: string[];
 }
 
@@ -135,11 +145,16 @@ export function saveHubCredential(
       /* malformed → start fresh rather than throw */
     }
   }
+  // `codeModulesAllowed` is LOCAL consent and survives every re-save. A
+  // sign-in response can change what the hub claims your role is; it must not
+  // be able to change what you agreed this hub may deliver.
+  const priorConsent = cfg.hubs[normUrl]?.codeModulesAllowed;
   cfg.hubs[normUrl] = {
     token,
     linkedAt: Date.now(),
     ...(role ? { role } : {}),
     ...(typeof expiresAt === 'number' && Number.isFinite(expiresAt) ? { expiresAt } : {}),
+    ...(typeof priorConsent === 'boolean' ? { codeModulesAllowed: priorConsent } : {}),
   };
   if (!Array.isArray(cfg.trusted)) cfg.trusted = [];
   if (!cfg.trusted.includes(normUrl)) cfg.trusted.push(normUrl);

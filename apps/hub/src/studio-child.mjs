@@ -199,6 +199,10 @@ export function childEnv(env = process.env, { port }) {
     ...(env.MAUDE_PUBLIC_CANVAS_ORIGIN
       ? { MAUDE_PUBLIC_CANVAS_ORIGIN: env.MAUDE_PUBLIC_CANVAS_ORIGIN }
       : {}),
+    // Extra legit shell embedders (frame-ancestors) — see studio server.ts.
+    ...(env.MAUDE_EXTRA_SHELL_ORIGINS
+      ? { MAUDE_EXTRA_SHELL_ORIGINS: env.MAUDE_EXTRA_SHELL_ORIGINS }
+      : {}),
     ...(env.HUB_PUBLIC_URL ? { HUB_PUBLIC_URL: env.HUB_PUBLIC_URL } : {}),
     // C4 — a browser tab has no window title, so the client has to be told
     // which project it is showing and where "back" is.
@@ -210,6 +214,23 @@ export function childEnv(env = process.env, { port }) {
     ...(env.MAUDE_WORKSPACE_ALLOW_DEV_MODULES
       ? { MAUDE_WORKSPACE_ALLOW_DEV_MODULES: env.MAUDE_WORKSPACE_ALLOW_DEV_MODULES }
       : {}),
+    // Passed through so the CONTAINER WATCHER GAP is reproducible off Linux.
+    //
+    // The gap is inotify-specific: on macOS `fs.watch` DOES fire for the atomic
+    // tmp+rename writes the hub makes, so a developer on a laptop cannot tell
+    // whether an open canvas healed because the Sync v2 control channel
+    // delivered a poke or because the watcher noticed anyway. Setting
+    // MAUDE_NO_WATCH=1 on a local workspace run removes the watcher and leaves
+    // the poke as the ONLY path — which is exactly the cell's situation, and
+    // the difference between testing the fix and testing around it.
+    //
+    // Its original job (a headless render server that must not hot-reload
+    // mid-capture) is unchanged; this only makes it reachable from the hub's
+    // environment instead of only from a direct studio launch.
+    ...(env.MAUDE_NO_WATCH ? { MAUDE_NO_WATCH: env.MAUDE_NO_WATCH } : {}),
+    // Cell-side kill switch for the file-event channel (DDR-226 §4) — the
+    // operator runbook's twin of `linkedHub.fileEvents:false`.
+    ...(env.MAUDE_FILE_EVENTS ? { MAUDE_FILE_EVENTS: env.MAUDE_FILE_EVENTS } : {}),
     ...(env.NAPI_RS_NATIVE_LIBRARY_PATH
       ? { NAPI_RS_NATIVE_LIBRARY_PATH: env.NAPI_RS_NATIVE_LIBRARY_PATH }
       : {}),

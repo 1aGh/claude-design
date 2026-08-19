@@ -183,28 +183,44 @@ test('the invite carries the ROLE — a member invite cannot mint an admin', () 
   assert.equal(asAdmin.user.role, 'admin');
 });
 
-test('an email hint is a default, not a restriction', () => {
-  // Binding an invite to an address sounds safer, but it means the person who
-  // forwards it to the right colleague has broken it — which is the most
-  // common thing that happens to an invite in a small team.
-  const invite = createInvite(dataDir, { email: 'intended@example.com' });
-  const res = redeemInvite(dataDir, {
-    value: invite.value,
+test('a BOUND invite enforces its address — the role travels with the link', () => {
+  // An invite carries a role, so treating its address as a mere hint means a
+  // forwarded link mints an account of the invited role under whatever address
+  // the redeemer types (B5). A bound invite is for one person; forwarding it is
+  // supposed to break. "Invite whoever" is what an UNBOUND invite is for.
+  const bound = createInvite(dataDir, { email: 'intended@example.com', role: 'admin' });
+  const stolen = redeemInvite(dataDir, {
+    value: bound.value,
+    email: 'attacker@example.com',
     password: 'a-perfectly-fine-password',
     createAccount,
   });
-  assert.equal(res.ok, true);
-  assert.equal(res.user.email, 'intended@example.com', 'the hint is used when none is given');
+  assert.equal(stolen.ok, false);
+  assert.equal(stolen.reason, 'email-mismatch');
 
-  const other = createInvite(dataDir, { email: 'intended@example.com' });
-  const forwarded = redeemInvite(dataDir, {
-    value: other.value,
+  // Redeemed AS the bound address, it works — with or without the redeemer
+  // restating it.
+  const ok = redeemInvite(dataDir, {
+    value: bound.value,
+    password: 'a-perfectly-fine-password',
+    createAccount,
+  });
+  assert.equal(ok.ok, true);
+  assert.equal(ok.user.email, 'intended@example.com');
+});
+
+test('an UNBOUND invite lets the redeemer choose the address', () => {
+  // The small-team "forward it to whoever" workflow, made explicit rather than
+  // smuggled through a bound invite's address.
+  const invite = createInvite(dataDir, {});
+  const res = redeemInvite(dataDir, {
+    value: invite.value,
     email: 'actual-colleague@example.com',
     password: 'a-perfectly-fine-password',
     createAccount,
   });
-  assert.equal(forwarded.ok, true, 'a forwarded invite still works');
-  assert.equal(forwarded.user.email, 'actual-colleague@example.com');
+  assert.equal(res.ok, true);
+  assert.equal(res.user.email, 'actual-colleague@example.com');
 });
 
 test('an expired invite cannot be redeemed', () => {

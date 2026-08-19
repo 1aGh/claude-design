@@ -34,6 +34,7 @@ import { createHttp } from './http.ts';
 import { createInspectRegistry } from './inspect.ts';
 import { startHeapWatch } from './mem.ts';
 import { normalizeSessionKey, runInSession, SESSION_HEADER } from './session-scope.ts';
+import { sharedDocEnabled } from './sync/cell-pairing.ts';
 import { createSyncSupervisor } from './sync/supervisor.ts';
 import {
   assertContainment,
@@ -56,13 +57,15 @@ await bootSelfHeal();
 
 const ctx = createContext();
 
-// Phase 9.2 (DDR-064) — `MAUDE_SHARED_DOC` feature flag. OPT-IN (default OFF),
-// the inverse of MAUDE_CANVAS_ORIGIN_SPLIT's opt-out parsing: only an explicit
-// truthy value enables the single-shared-doc path. OFF = the proven two-doc +
-// disk-reconcile path = byte-for-byte current behavior. The flag is threaded
-// onto ctx here (before createCollab / createSyncRuntime read it) so every
-// downstream consumer sees one source of truth.
-ctx.sharedDoc = /^(1|true|on|yes)$/i.test(process.env.MAUDE_SHARED_DOC ?? '');
+// DDR-064 cutover (Sync v2 Increment 7) — `MAUDE_SHARED_DOC` now defaults ON:
+// the collab room's Y.Doc is THE doc per canvas, everywhere. The two-doc +
+// disk-reconcile path still exists in full and `MAUDE_SHARED_DOC=0` flips a
+// machine back onto it — that config flip is this release's rollback, which is
+// why NOTHING is deleted here (the relay's deletion is the next increment,
+// one soak later). The flag is threaded onto ctx here (before createCollab /
+// createSyncRuntime read it) so every downstream consumer sees one source of
+// truth, parsed by the same function the cell-pairing interlock uses.
+ctx.sharedDoc = sharedDocEnabled(process.env);
 
 // Forward-declared so the api.commentsAdd/patch/delete/addReply callback can
 // reach into the collab registry (Phase 8 Task 3 bridge). collab is initialized
@@ -97,6 +100,19 @@ const api = createApi(ctx, {
   // + `_active.json` retarget, bridged the same forward-declared way as the
   // comments/annotations hooks above.
   isRoomPinned: (slug) => collab?.registry.isPinned(slug) ?? false,
+  // The move protocol (codec stampMovedTo): the sync runtime stamps the old
+  // document retired + detaches, which unpins the room — after which the
+  // forceDrop below actually drops it and the rename is safe. Forward-declared
+  // like the other hooks; `ctx.syncControl` is set once the supervisor exists.
+  retireCanvasForMove: async (fromSlug, toRel) => {
+    try {
+      const runtime = ctx.syncControl?.current?.();
+      return (await runtime?.retireForMove?.(fromSlug, toRel)) ?? false;
+    } catch (err) {
+      console.warn(`[move] retire failed for ${fromSlug}:`, err);
+      return false;
+    }
+  },
   flushAndDropRoom: async (slug) => {
     if (collab) await collab.registry.forceDrop(slug);
   },
@@ -580,7 +596,26 @@ const publicShellOrigin = (() => {
     return '';
   }
 })();
-ctx.mainOrigin = `http://localhost:${server.port} http://127.0.0.1:${server.port}${publicShellOrigin}`;
+// Additional legit embedders, space-separated (validated per-origin). A cell
+// can genuinely have MORE than one shell name — the local rig serves its shell
+// on `http://studio.cell.localhost:<port>` (same-site with the canvas origin,
+// so the SameSite=Strict capability cookie flows exactly as it does in
+// production) while `127.0.0.1:<port>` stays alive for tooling — and listing
+// only one of them turns the other into a silent sad-page iframe refusal.
+const extraShellOrigins = (process.env.MAUDE_EXTRA_SHELL_ORIGINS ?? '')
+  .split(/[\s,]+/)
+  .filter(Boolean)
+  .map((u) => {
+    try {
+      return new URL(u).origin;
+    } catch {
+      return '';
+    }
+  })
+  .filter(Boolean)
+  .map((o) => ` ${o}`)
+  .join('');
+ctx.mainOrigin = `http://localhost:${server.port} http://127.0.0.1:${server.port}${publicShellOrigin}${extraShellOrigins}`;
 
 // T2 (9.1-A) — segregated canvas-content origin. ON BY DEFAULT (opt-OUT) since
 // phase-9.1: a second listener binds an OS-assigned free port, advertised as

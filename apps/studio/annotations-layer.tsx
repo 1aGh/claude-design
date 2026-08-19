@@ -21,6 +21,7 @@
  * on commit, debounced 200 ms.
  */
 
+import type { JSX } from 'react';
 import {
   type CSSProperties,
   createContext,
@@ -72,6 +73,7 @@ import {
   type DrawMods,
   defaultFillFor,
   type EditorFmt,
+  type EllipseStroke,
   FILL_PALETTE,
   fmtEqual,
   HALO_PAD_PX,
@@ -90,6 +92,7 @@ import {
   LINK_GLYPH_D2,
   LINK_GLYPH_STROKE,
   LINK_TITLE_FILL,
+  type LinkStroke,
   type ListType,
   linkCardLayout,
   listPrefixedBody,
@@ -104,6 +107,7 @@ import {
   normalizeRect,
   normalizeSticky,
   normFmt,
+  type PenStroke,
   penPathD,
   polygonPoints,
   resolveDefaultInk,
@@ -726,9 +730,8 @@ const ANNOT_CSS = `
    * positioning. An SVG inside with width:100%/height:100% resolves to 0 px
    * and Chrome clips children even under overflow:visible. We hardcode a
    * very large width/height instead so the SVG viewport easily covers any
-   * world-coord stroke. vector-effect="non-scaling-stroke" on every stroke
-   * keeps thickness px-constant under CSS zoom; overflow:visible covers the
-   * rare edge case of a stroke straying outside this 200k box.
+   * world-coord stroke; overflow:visible covers the rare edge case of a
+   * stroke straying outside this 200k box.
    */
   width: 200000px;
   height: 200000px;
@@ -2220,15 +2223,17 @@ export function AnnotationsLayer() {
     // — byte-identical to the old hardcode — browse in preview, so drawing an
     // annotation never silently exits the alive posture). Sticky lets the user
     // draw many shapes in a row (canonical pattern: tldraw double-click to
-    // lock). Eraser stays armed by default — that tool is destructive, not
-    // constructive. Map a highlighter pen (a 'pen' stroke with the flag) back
-    // to the 'highlighter' tool id so its sticky-lock check matches the
-    // active tool.
+    // lock). Map a highlighter pen (a 'pen' stroke with the flag) back to the
+    // 'highlighter' tool id so its sticky-lock check matches the active tool.
+    //
+    // No eraser case here: an eraser commits no stroke, so `cur.tool` (a stroke
+    // KIND, off `drawingRef`) can never be 'eraser' — erase leaves through the
+    // `isErase` branch above. It stays armed by being unreachable from here,
+    // not by a guard. The typecheck surface completion (A2) proved the old
+    // `!== 'eraser'` test was dead.
     const toolJustUsed = cur.tool === 'pen' && cur.highlighter ? 'highlighter' : cur.tool;
-    if (toolJustUsed !== 'eraser') {
-      const stickyOnThis = sticky.locked && sticky.tool === toolJustUsed;
-      if (!stickyOnThis) resetTool();
-    }
+    const stickyOnThis = sticky.locked && sticky.tool === toolJustUsed;
+    if (!stickyOnThis) resetTool();
     drawAnchorRef.current = null;
     lastDrawPointRef.current = null;
     setDrawing(null);
@@ -3840,8 +3845,10 @@ function AnnotationsInput({
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SVG — portaled INTO `.dc-world` so the world's CSS zoom + translate apply
-// natively. `vector-effect="non-scaling-stroke"` keeps stroke px-thick at any
-// zoom level. `pointer-events: none` on the container — strokes are decorative
+// natively, which is what makes drawn ink scale with the zoom. Selection chrome
+// and card hairlines opt into `vector-effect="non-scaling-stroke"` per element
+// to stay px-thick; drawn ink deliberately does not (see `common` in
+// `renderStroke`). `pointer-events: none` on the container — strokes are decorative
 // for now (Phase 5.1 Task 6 will reintroduce hit-test via the selection store).
 
 function AnnotationsSvg({
@@ -4192,11 +4199,15 @@ function MediaRefPlayers({
   strokes,
   visible,
 }: {
-  worldRef: React.RefObject<HTMLElement | null>;
+  // Same shape the context actually hands out (nullable OUTSIDE a world
+  // provider, exactly like the sibling overlay at MediaRefChrome) — the old
+  // `RefObject<HTMLElement | null>` both mis-typed the caller and let
+  // `worldRef.current` be dereferenced on a null context.
+  worldRef: ReturnType<typeof useWorldRefContext>;
   strokes: readonly Stroke[];
   visible: boolean;
 }) {
-  const target = worldRef.current;
+  const target = worldRef?.current ?? null;
   if (!target || !visible) return null;
   const HEADER = 26;
   const refs = strokes.filter(
@@ -5768,6 +5779,13 @@ function StrokeNodeBase({
       </g>
     );
   }
+  // Deliberately NO `vector-effect="non-scaling-stroke"` here: drawn ink is
+  // world-space content and must thicken/thin with the zoom, the way it does in
+  // Figma/FigJam. The attribute also rendered differently per engine — Blink
+  // honours it under the world's CSS `zoom` (ink stayed a fixed screen width at
+  // every zoom level), WebKit ignores it under `transform: scale`, so the same
+  // board drew differently in Chrome than in the desktop shell. Card hairlines
+  // and selection chrome below still opt in — those ARE fixed-px by intent.
   const common = {
     'data-id': stroke.id,
     'data-tool': stroke.tool,
@@ -5775,7 +5793,6 @@ function StrokeNodeBase({
     strokeWidth: stroke.width,
     strokeLinecap: 'round' as const,
     strokeLinejoin: 'round' as const,
-    vectorEffect: 'non-scaling-stroke' as const,
   };
   if (stroke.tool === 'pen') {
     // Highlighter (item 8) — overlaps darken via multiply; the translucent hue

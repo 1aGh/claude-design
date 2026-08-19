@@ -2,9 +2,10 @@
 // project file the canvas lanes do not own (feature-sync-file-plane, binding
 // decision maude/sync-two-plane-manifest-architecture).
 //
-// WHAT THIS REPLACES, AND WHY THE HEADER OF `asset-pull.ts` STILL MATTERS.
-// The asset pull derives its wants LOCALLY (it fetches only names its own
-// files reference), so a hostile hub can never place a file nobody asked for.
+// WHAT THIS REPLACES, AND WHY THE DELETED `asset-pull.ts`'s INVARIANT STILL
+// MATTERS. The reference-derived asset pull (deleted in Sync v2 Increment 5)
+// derived its wants LOCALLY (it fetched only names its own files reference),
+// so a hostile hub could never place a file nobody asked for.
 // That invariant is exactly what made the 103-file gap unfixable: a fresh
 // link REFERENCES nothing, so it can want nothing, so the design system that
 // makes the canvases render never arrives (RCA
@@ -52,6 +53,7 @@ import {
   type FileClass,
   isFilePlaneClass,
 } from './file-membership.ts';
+import { createPullBudget } from './pull-budget.ts';
 import { quarantineFile } from './tombstone-apply.ts';
 
 /** How long to wait for the manifest. Same figure as the doc listing. */
@@ -93,6 +95,9 @@ export interface FilePullResult {
   /** Refused by re-classification or per-class admission. */
   dropped: { rel: string; reason: string }[];
   failed: { rel: string; reason: string }[];
+  /** F6 — the pass stopped on the aggregate byte budget rather than the count
+   *  cap. The remainder is the next pass's work. */
+  budgetExhausted?: true;
 }
 
 /**
@@ -153,6 +158,8 @@ export interface PullFilesOptions {
   fetchImpl?: typeof fetch;
   log?: Pick<Console, 'log' | 'warn'>;
   now?: () => number;
+  /** F6 — override the aggregate per-pass byte ceiling (tests). */
+  maxPassBytes?: number;
 }
 
 /**
@@ -255,8 +262,26 @@ export async function pullFiles(opts: PullFilesOptions): Promise<FilePullResult>
     );
   }
 
+  // F6 (DDR-226 §9) — the per-file cap and the count cap multiply, and the hub
+  // picks both factors. One aggregate ceiling per pass closes that. This lane
+  // has the manifest, so the charge lands BEFORE the request: an oversize batch
+  // costs no transfer at all.
+  const budget = createPullBudget({
+    label: 'sync/files',
+    log,
+    ...(opts.maxPassBytes !== undefined ? { maxBytes: opts.maxPassBytes } : {}),
+  });
+
   for (const { entry, abs, conflict } of batch) {
     const rel = entry.path;
+    if (budget.exhausted()) break;
+    // The manifest size is hub-supplied and therefore a hint — it reserves the
+    // budget; the ACTUAL bytes are re-charged below, so an understated size
+    // cannot buy a bigger transfer.
+    if (!budget.take(entry.size)) {
+      out.budgetExhausted = true;
+      break;
+    }
     try {
       const res = await fetchImpl(
         `${base}/_project-file/${rel.split('/').map(encodeURIComponent).join('/')}`,
@@ -273,6 +298,16 @@ export async function pullFiles(opts: PullFilesOptions): Promise<FilePullResult>
       if (body.byteLength > MAX_PULL_BYTES) {
         out.failed.push({ rel, reason: `implausible size (${body.byteLength} B)` });
         continue;
+      }
+      // Charge the overrun: the manifest's size was a hint, the wire is the
+      // fact. A body larger than declared must not slip past the ceiling.
+      if (body.byteLength > entry.size && !budget.take(body.byteLength - entry.size)) {
+        out.failed.push({
+          rel,
+          reason: `pass byte budget reached (declared ${entry.size} B, sent ${body.byteLength} B)`,
+        });
+        out.budgetExhausted = true;
+        break;
       }
       // The manifest named a hash; the bytes must BE that hash. A mismatch is
       // usually a write racing the poll — a free retry, never a landing.
@@ -311,7 +346,9 @@ export async function pullFiles(opts: PullFilesOptions): Promise<FilePullResult>
 
   if (out.pulled.length > 0 || out.conflicts.length > 0) {
     log.log(
-      `[sync/files] pulled ${out.pulled.length} project file(s) down (${out.skipped} already here, ${out.conflicts.length} conflict(s), ${out.failed.length} failed).`
+      `[sync/files] pulled ${out.pulled.length} project file(s) down (${out.skipped} already here, ${out.conflicts.length} conflict(s), ${out.failed.length} failed${
+        out.budgetExhausted ? ', pass byte budget reached — resuming next pass' : ''
+      }).`
     );
   }
   return out;

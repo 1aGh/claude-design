@@ -19,15 +19,14 @@
     "noEmit": true,
     "allowJs": true,
     "forceConsistentCasingInFileNames": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    // @maude/canvas-lib is the virtual specifier canvases import; the dev-server's
+    // Bun.build plugin resolves it to this same file (DDR-025).
+    "paths": {
+      "@maude/canvas-lib": ["./canvas-lib.tsx"]
+    }
   },
-  "include": [
-    "*.ts",
-    "draw/**/*.ts",
-    "client/**/*.ts",
-    "client/**/*.tsx",
-    "client/**/*.jsx",
-    "test/**/*.ts"
-  ],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+  "//include": "Broad by design. An explicit root list silently orphaned 52 tracked files (canvas-lib.tsx, every overlay, commands/**) because it lacked '*.tsx' — reached by no checker at all. scripts/check-tsc-coverage.sh pins this: every tracked non-test .ts/.tsx here must appear in `tsc --listFiles`.",
+  "include": ["**/*.ts", "**/*.tsx", "**/*.jsx"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.test.tsx"]
 }

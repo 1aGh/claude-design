@@ -713,6 +713,7 @@ export function createAcp(ctx: Context, aiActivity?: AiActivity): Acp {
         decision?: unknown;
         action?: unknown;
         content?: unknown;
+        seq?: unknown;
       };
 
       const chatId = typeof frame.chat === 'string' && frame.chat ? frame.chat : 'default';

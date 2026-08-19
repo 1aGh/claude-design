@@ -39,6 +39,7 @@ import {
   htmlFromDoc,
   mergeSharedMetaIntoLocal,
   metaFromDoc,
+  movedToFromDoc,
   stampAnnotationsEdit,
   stampBodyEdit,
 } from './codec.ts';
@@ -259,6 +260,13 @@ export function createDocProjection(opts: DocProjectionOptions): DocProjection {
 
   async function flush(): Promise<void> {
     if (!dirty || stopped) return;
+    // A RETIRED document is write-inert — its canvas moved to a new path in a
+    // new document, and materialising this one is how a moved canvas
+    // resurrected itself at its old path (see codec stampMovedTo).
+    if (movedToFromDoc(doc) !== null) {
+      dirty = false;
+      return;
+    }
     dirty = false;
     if (flushTimer) {
       clearTimeout(flushTimer);
@@ -301,6 +309,9 @@ export function createDocProjection(opts: DocProjectionOptions): DocProjection {
 
   function applyFromFs(evt: { path: string; bytes: Uint8Array; hash: string }): boolean {
     if (stopped) return false;
+    // Write-inert both ways — a local edit to a stale pre-move file must not
+    // revive the retired document (see codec stampMovedTo).
+    if (movedToFromDoc(doc) !== null) return false;
     // Echo of our own doc→file write — drop.
     if (opts.echoGuard?.consume(evt.path, evt.hash)) return false;
     // Circuit breaker — a file that won't parse can't spin the loop.
@@ -370,6 +381,8 @@ export function createDocProjection(opts: DocProjectionOptions): DocProjection {
 
   function reconcile(): void {
     if (stopped) return;
+    // A retired doc materialises NOTHING (see codec stampMovedTo).
+    if (movedToFromDoc(doc) !== null) return;
     // Materialize the converged doc to disk (html/css/meta). The *IfChanged
     // writers already guard against clobbering non-empty local with empty doc
     // values, so this is safe to run at cold start before the authoritative

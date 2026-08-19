@@ -194,8 +194,8 @@ export function annotationsFromDoc(doc: Y.Doc): string | null {
  * This distinction is load-bearing for cold start (the 2026-08-14 annotations
  * eraser): the wrapper is a non-empty STRING, so every `!== ''` emptiness
  * guard let a stale hub wrapper overwrite a peer's real strokes — and with the
- * strokes went the `assets/<sha8>` references `asset-pull` scans, so freshly
- * dropped images never crossed machines. Live delete-all still materializes
+ * strokes went the `assets/<sha8>` references the asset lane pulled by, so
+ * freshly dropped images never crossed machines. Live delete-all still materializes
  * the wrapper through `writeAnnotationsIfChanged` (deletes must propagate);
  * only COLD-START decisions treat it as emptiness.
  */
@@ -256,8 +256,58 @@ function sharedMetaCanonical(meta: Record<string, unknown>): string {
   return JSON.stringify(out);
 }
 
+/**
+ * THE META LANE CAN DUPLICATE ITSELF, SO IT HAS TO BE ABLE TO HEAL.
+ *
+ * Meta is a WHOLE VALUE carried in a Y.Text, written by delete-all +
+ * insert-all. That is duplication-prone by construction, and the case is not
+ * exotic — it is the normal one: every peer holding the file tries to publish
+ * it, and two peers inserting the same string into an empty lane produce two
+ * inserts Yjs has no reason to merge. The result is
+ * `{"title":"Home"}{"title":"Home"}`: not a value, not empty, and — because
+ * every consumer runs it through `JSON.parse` and bails — indistinguishable
+ * from "this canvas has no meta".
+ *
+ * Observed live: nine canvases created on a laptop reached the hub with correct
+ * bodies and doubled meta, so a third machine syncing the project got their
+ * titles, kinds and design-system bindings dropped on the floor. Silently.
+ *
+ * Preventing every interleaving is not on offer while the lane is a Y.Text. So
+ * the lane repairs instead: a stack of IDENTICAL copies is recognised for what
+ * it is — one value, published twice — and collapses back to one. Anything else
+ * unparseable stays `null`, which routes to the existing "the doc has no
+ * opinion" path rather than to a guess.
+ */
+export function normalizeSharedMeta(raw: string | null): string | null {
+  if (raw === null || raw.length === 0) return null;
+  if (parsesAsObject(raw)) return raw;
+  // Split only at a `}{` seam — the exact shape concurrent whole-value inserts
+  // produce. A JSON string containing "}{" cannot create a false seam here,
+  // because each resulting segment must itself parse as a complete object.
+  const parts = raw.split(/(?<=\})(?=\{)/);
+  if (parts.length < 2) return null;
+  const first = parts[0] ?? '';
+  if (!parts.every((p) => p === first) || !parsesAsObject(first)) return null;
+  return first;
+}
+
+function parsesAsObject(s: string): boolean {
+  try {
+    const v = parseJsonSafe(s);
+    return !!v && typeof v === 'object' && !Array.isArray(v);
+  } catch {
+    return false;
+  }
+}
+
 /** The synced shared-meta JSON string held in the doc, or null when unset. */
 export function metaFromDoc(doc: Y.Doc): string | null {
+  return normalizeSharedMeta(doc.getText(Y_SYNC_TYPES.meta).toString());
+}
+
+/** What the doc LITERALLY holds — for the repair path, which needs to know
+ *  that the stored text differs from the value it normalises to. */
+export function rawMetaFromDoc(doc: Y.Doc): string | null {
   const s = doc.getText(Y_SYNC_TYPES.meta).toString();
   return s.length > 0 ? s : null;
 }
@@ -283,10 +333,37 @@ export function applyMetaToDoc(doc: Y.Doc, fullMetaJson: string, origin?: unknow
     return false;
   }
   const t = doc.getText(Y_SYNC_TYPES.meta);
-  if (t.toString() === shared) return false;
+  // Compare against the NORMALISED value, not the literal text: a lane holding
+  // two identical copies already carries this exact meta, and treating it as a
+  // difference would rewrite it on every pass forever.
+  if (normalizeSharedMeta(t.toString()) === shared) return false;
   doc.transact(() => {
     if (t.length > 0) t.delete(0, t.length);
     t.insert(0, shared);
+  }, origin);
+  return true;
+}
+
+/**
+ * Collapse a duplicated meta lane back to one copy.
+ *
+ * Repairing on APPLY alone is not enough — a canvas nobody edits again would
+ * keep its doubled meta forever, and a machine that syncs the project
+ * afterwards would keep dropping it. This runs on cold start, where the doc has
+ * synced and "what it holds" is a fact rather than ignorance.
+ *
+ * Returns true when it changed something. A lane that is empty, already single,
+ * or unparseable-in-some-other-way is left exactly as it is: this repairs the
+ * one shape it can prove, and guesses at nothing.
+ */
+export function repairSharedMeta(doc: Y.Doc, origin?: unknown): boolean {
+  const t = doc.getText(Y_SYNC_TYPES.meta);
+  const raw = t.toString();
+  const single = normalizeSharedMeta(raw);
+  if (single === null || single === raw) return false;
+  doc.transact(() => {
+    t.delete(0, t.length);
+    t.insert(0, single);
   }, origin);
   return true;
 }
@@ -454,6 +531,81 @@ export function stampCanvasPath(doc: Y.Doc, rel: string, origin?: unknown): bool
  *  every caller must put it through `validateCanvasPath` (canvas-path.ts). */
 export function canvasPathFromDoc(doc: Y.Doc): string | null {
   const v = doc.getMap<unknown>(Y_SYNC_TYPES.syncMeta).get('path');
+  return typeof v === 'string' && v.length > 0 ? v : null;
+}
+
+/* ------------------------------------------------------------- retirement */
+
+/**
+ * Mark this document RETIRED BY A MOVE: its canvas now lives at `toRel`, in a
+ * DIFFERENT document (the slug is derived from the path, so a moved canvas is
+ * a new document by construction — nothing can rename a Hocuspocus doc).
+ *
+ * Before this stamp existed, the pre-move document simply lived on: the hub
+ * kept materialising it at the old path, every peer's cold start saw "doc has
+ * a body, disk has no file" and resurrected it, and a moved canvas came back
+ * as a duplicate on every machine that ever synced it. Observed live: moving
+ * `shoj` into a folder on the desktop left BOTH `ui/dbucket/shoj.tsx` and a
+ * re-materialised `ui/shoj.tsx` on both machines, plus two documents on the
+ * hub.
+ *
+ * The stamp is a STATEMENT, deliberately not an empty body: emptiness is
+ * ambiguous (a crash mid-write, an unseeded doc), and DDR-223 spent a whole
+ * arc making emptiness weak. `movedTo` is unambiguous, carries WHERE the
+ * content went, and — because the content provably lives at the new path in
+ * the new document — quarantining the old file against it is safe in a way
+ * that acting on a bare deletion never is (that one stays Increment 6).
+ *
+ * Consumers:
+ *   - every materialise path treats a retired doc as WRITE-INERT — it never
+ *     lands another byte on disk and never accepts another local edit;
+ *   - the sync runtime, on SEEING the stamp arrive, releases the canvas and
+ *     quarantines the stale local copy into `_trash/` (recoverable, DDR-102's
+ *     spine) — except on the machine performing the move, which renames the
+ *     file itself;
+ *   - the hub's workspace agent quarantines the checkout copy and commits the
+ *     deletion, so the cloud tree stops listing the ghost.
+ */
+export function stampMovedTo(doc: Y.Doc, toRel: string, origin?: unknown): boolean {
+  const next = String(toRel ?? '').replace(/\\/g, '/');
+  if (!next) return false;
+  const map = doc.getMap<unknown>(Y_SYNC_TYPES.syncMeta);
+  if (map.get('movedTo') === next) return false;
+  doc.transact(() => {
+    map.set('movedTo', next);
+    map.set('movedAt', Date.now());
+    map.set('movedBy', peerLabel());
+  }, origin);
+  return true;
+}
+
+/**
+ * Un-retire a document that says it moved to where it already is.
+ *
+ * A move renames the canvas's artifacts onto the new slug, and the retirement
+ * stamp lives INSIDE the document — so any copy of the old document that reaches
+ * the new slug arrives pre-stamped "I have moved away", and every peer that
+ * opens it releases the canvas instead of syncing it. Clearing the stamp is the
+ * correction, and because it is a doc edit it travels to every peer that already
+ * believed the lie. The caller decides the "already is" part; this only writes.
+ */
+export function clearMovedTo(doc: Y.Doc, origin?: unknown): boolean {
+  const map = doc.getMap<unknown>(Y_SYNC_TYPES.syncMeta);
+  if (map.get('movedTo') === undefined) return false;
+  doc.transact(() => {
+    map.delete('movedTo');
+    map.delete('movedAt');
+    map.delete('movedBy');
+  }, origin);
+  return true;
+}
+
+/** Where a retired document says its canvas went, or null for a live one.
+ *  UNTRUSTED — a consumer that turns this into a path must validate it the
+ *  same way it validates `syncMeta.path`. Most consumers only need the
+ *  null/non-null fact. */
+export function movedToFromDoc(doc: Y.Doc): string | null {
+  const v = doc.getMap<unknown>(Y_SYNC_TYPES.syncMeta).get('movedTo');
   return typeof v === 'string' && v.length > 0 ? v : null;
 }
 

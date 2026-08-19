@@ -97,14 +97,35 @@ export function addHub(url, token, extra = {}) {
   const norm = normalizeUrl(url);
   const cfg = loadHubsConfig();
   const priorRole = cfg.hubs[norm]?.role;
+  // LOCAL CONSENT SURVIVES EVERY RE-SAVE. `role` is a cache of what the hub
+  // said about you at sign-in; `codeModulesAllowed` is what YOU said about the
+  // hub, and a login response must not be able to change it.
+  const priorConsent = cfg.hubs[norm]?.codeModulesAllowed;
   cfg.hubs[norm] = {
     token,
     linkedAt: Date.now(),
     ...(priorRole ? { role: priorRole } : {}),
+    ...(typeof priorConsent === 'boolean' ? { codeModulesAllowed: priorConsent } : {}),
     ...extra,
   };
   saveHubsConfig(cfg);
   return cfg.hubs[norm];
+}
+
+/**
+ * Record whether this machine accepts executable modules from `url`.
+ *
+ * The one writer for the receiver's `code-module` gate. Deliberately separate
+ * from `addHub` so it is greppable: a second setter appearing anywhere is the
+ * bug this function exists to make visible.
+ */
+export function setHubCodeModules(url, allowed) {
+  const norm = normalizeUrl(url);
+  const cfg = loadHubsConfig();
+  if (!cfg.hubs[norm]) return false;
+  cfg.hubs[norm].codeModulesAllowed = allowed === true;
+  saveHubsConfig(cfg);
+  return true;
 }
 
 /** Remove a hub entry. Returns true if anything was removed. */

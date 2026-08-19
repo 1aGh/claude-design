@@ -99,6 +99,7 @@ import { clearLocatorSlug, readLocator, writeLocator } from './locator.ts';
 import { STICKERS_DIR } from './paths.ts';
 import { getPaperPreset, MAX_PRINT_MM } from './print/units.ts';
 import { sessionDir } from './session-scope.ts';
+import { isWorkspaceMode } from './workspace-mode.ts';
 
 // Directories that never hold user-facing canvases. Exported so the
 // external-canvas watcher (`canvas-list-watch.ts`) shares one source instead of
@@ -728,6 +729,16 @@ export interface ApiHooks {
    * move rather than rename a file out from under a live hub session.
    */
   isRoomPinned?: (slug: string) => boolean;
+  /**
+   * The MOVE protocol (codec `stampMovedTo`): stamp the slug's shared document
+   * retired-to-`toRel`, push the stamp, and detach the sync provider — so the
+   * move can proceed instead of being refused. On a cell EVERY canvas is
+   * pinned (the studio child's own runtime holds the doc), which made the
+   * pinned refusal a universal "cannot move anything in the cloud".
+   * Returns false when no runtime carries the slug — the caller keeps the
+   * refusal for that case (an unretired pinned room is still unsafe to move).
+   */
+  retireCanvasForMove?: (fromSlug: string, toRel: string) => Promise<boolean>;
   /** Flush + force-tear-down a canvas's collab room ahead of a move (best
    *  effort — a room may not be live for the slug at all). */
   flushAndDropRoom?: (slug: string) => Promise<void>;
@@ -1877,6 +1888,17 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       // Trailing newline — consistent with canvas-create.ts + sync/codec.ts
       // (mergeSharedMetaIntoLocal), so a layout edit doesn't churn the newline.
       await Bun.write(metaAbs, `${JSON.stringify(next, null, 2)}\n`);
+      // Same reason as the annotations sidecar below, and the same bug: this
+      // lane writes the FILE and nothing else, so in a cell — where there is no
+      // `fs.watch` — the layout never entered the doc and never reached a peer.
+      // Not "late", NEVER: a canvas `.meta.json` is `canvas-owned`, so it is
+      // excluded from the journal by design and the walk-import belt behind
+      // every other class does not cover it either. Dragging an artboard in the
+      // cloud left every other machine showing the old position indefinitely,
+      // while the same drag on a laptop crossed in seconds (a laptop watcher
+      // fires) — which reads as "sync is broken one way" rather than as a
+      // missing announce.
+      announceWritten(path.relative(paths.designRoot, metaAbs));
     }
 
     // Return the merged view (shared meta + camera) — identical to GET, so the
@@ -1925,6 +1947,13 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     const clean = sanitizeAnnotationSvg(svg);
     await Bun.write(annotationsPath(file), clean);
     onAnnotationsChanged?.(file, clean);
+    // Annotations reach OTHER VIEWERS over the collab room, which is why this
+    // never needed an `fs:any`. But the file is also a versioned, file-plane
+    // sidecar (DDR-115), and the file plane learns about a cell's own writes
+    // through exactly this event — so without it, a sticky note drawn in the
+    // cloud crossed to open browsers instantly and to a peer's DISK a quarter
+    // of an hour later.
+    announceWritten(`${fileSlug(file)}.annotations.svg`);
     return true;
   }
 
@@ -1961,6 +1990,30 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
    * ever parsed — only magic bytes are read. `saveAsset(bytes)` wraps this so
    * both the route and any programmatic caller share ONE tested path.
    */
+  /**
+   * Say that a file this process wrote has landed.
+   *
+   * Most write paths get this for free: they arm `activity:suppress` before
+   * writing, and `createContainerWriteBridge` turns that into the `fs:any` a
+   * cell's `fs.watch` never fires. The asset writer does not — it streams to a
+   * temp file and content-addresses the name, so there is no `rel` to suppress
+   * until after the rename, by which point suppression means nothing.
+   *
+   * That gap was invisible while `fs:any` only drove hot-reload (the uploader
+   * already knew, and other viewers reloaded eventually). It stopped being
+   * invisible when the same event became how a cell tells its hub to journal a
+   * write: an image dropped in the cloud got no row until the 15-minute
+   * walk-import belt found it, so it reached a peer's laptop up to fifteen
+   * minutes later while every other kind of edit crossed in seconds.
+   *
+   * WORKSPACE-MODE ONLY, on the same reasoning as the bridge: locally
+   * `fs.watch` fires for this rename and a second source would double-load.
+   */
+  function announceWritten(rel: string): void {
+    if (!isWorkspaceMode()) return;
+    ctx.bus.emit('fs:any', rel);
+  }
+
   async function saveAssetFromStream(stream: ReadableStream<Uint8Array>): Promise<SaveAssetResult> {
     const assetsDir = path.join(paths.designRoot, 'assets');
     const tmpName = `.tmp-${crypto.randomBytes(8).toString('hex')}`;
@@ -2081,6 +2134,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       await rename(tmpAbs, fileAbs);
       assetBytesWritten += total;
       const rel = `assets/${name}`;
+      announceWritten(rel);
       // S3/R2 lane (Cloud Phase 3) — mirror the bytes so a second machine can
       // resolve them without the file riding git. Deliberately awaited but
       // never able to fail the save: the asset is already on disk, the mirror
@@ -2105,7 +2159,12 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
 
   async function saveAsset(bytes: Uint8Array): Promise<SaveAssetResult> {
     if (!bytes || bytes.length === 0) return { ok: false, status: 400, error: 'empty body' };
-    return saveAssetFromStream(new Response(bytes).body as ReadableStream<Uint8Array>);
+    // TS 5.7 widens a plain Uint8Array to Uint8Array<ArrayBufferLike>, which
+    // BodyInit rejects (it excludes SharedArrayBuffer-backed views). These
+    // bytes never are one.
+    return saveAssetFromStream(
+      new Response(bytes as Uint8Array<ArrayBuffer>).body as ReadableStream<Uint8Array>
+    );
   }
 
   // Stage F1 (feature-element-editing-robustness) — list the versioned content-
@@ -3030,15 +3089,29 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       }
     }
 
-    // Collab guard — refuse a move while a shared-doc hub provider is pinned
-    // to this slug's room (DDR-064); otherwise flush + force-drop so the room
-    // isn't left keyed to a slug that no longer resolves to a file.
+    // Collab guard — a pinned room (shared-doc hub provider attached, DDR-064)
+    // must not have its file renamed out from under it. The old behaviour was
+    // to REFUSE, which on a cell meant moving was impossible outright: cell
+    // pairing pins every canvas, so a guard written for a rare local state
+    // fired on 100% of cloud moves. Now the move COORDINATES: the sync runtime
+    // stamps the document retired-to-the-new-path (the move protocol, codec
+    // stampMovedTo) and detaches — after which the rename is exactly as safe
+    // as on an unpinned desktop. The refusal remains only for the case where
+    // no runtime can do that, because then the pin really is unownable here.
     if (hooks.isRoomPinned?.(fromSlug)) {
-      return {
-        ok: false,
-        status: 409,
-        error: 'canvas has a live shared session — cannot move while pinned to the hub',
-      };
+      const retired = (await hooks.retireCanvasForMove?.(fromSlug, toRel)) ?? false;
+      if (!retired) {
+        return {
+          ok: false,
+          status: 409,
+          error: 'canvas has a live shared session — cannot move while pinned to the hub',
+        };
+      }
+    } else {
+      // An unpinned canvas may still have a live synced document (the desktop
+      // agent lane pins nothing) — retire it too, or the old document lives on
+      // and re-materialises the canvas at its old path on every machine.
+      await hooks.retireCanvasForMove?.(fromSlug, toRel);
     }
     await hooks.flushAndDropRoom?.(fromSlug);
 
@@ -3054,6 +3127,16 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     const moved: string[] = [path.relative(paths.repoRoot, toAbs)];
     for (const artifact of canvasArtifacts({ rel, paths })) {
       if (artifact.kind === 'primary') continue; // already moved above
+      if (artifact.carryOnMove === false) {
+        // The old slug's CRDT cache — carrying it would hand the new document
+        // the retirement stamp we just wrote. Drop it; the canvas is on disk.
+        // A FILE, not a tree: `recursive` would turn a future slug regression
+        // into a directory delete, and this path is only ever one cache file.
+        await rm(artifact.abs, { force: true }).catch((err) => {
+          console.warn(`[move] could not drop the stale doc cache: ${(err as Error).message}`);
+        });
+        continue;
+      }
       const dest = relocatedName(artifact, rel, toRel, paths);
       if (path.resolve(dest) === path.resolve(artifact.abs)) continue;
       try {
@@ -3255,11 +3338,15 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       }
     }
 
-    // Collab guard for every canvas found, BEFORE any disk mutation — refuse
-    // the whole batch if even one room is pinned (a shared-doc hub provider
-    // attached, DDR-064).
+    // Collab guard for every canvas found, BEFORE any disk mutation. Same
+    // coordinated retire as moveCanvas — refuse only when a pinned room could
+    // not be retired, and retire even unpinned synced documents so none of
+    // them lives on to resurrect its canvas at the old path.
     for (const r of canvasRels) {
-      if (hooks.isRoomPinned?.(fileSlug(r))) {
+      const slug = fileSlug(r);
+      const toRel = toRelDir + r.slice(relDir.length);
+      const retired = (await hooks.retireCanvasForMove?.(slug, toRel)) ?? false;
+      if (!retired && hooks.isRoomPinned?.(slug)) {
         return {
           ok: false,
           status: 409,
@@ -3962,7 +4049,11 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     const hash = typeof input.contentHash === 'string' ? input.contentHash : undefined;
     const verb = typeof input.verb === 'string' ? input.verb : '';
     const abs = r.abs;
-    let run: ((source: string) => { source: string } & Record<string, unknown>) | null = null;
+    // Just `{ source: string }`: the `& Record<string, unknown>` was there for
+    // the rest-spread below, but an INTERFACE return (SpeedResult and friends)
+    // has no implicit index signature, so no verb's function was actually
+    // assignable — every branch failed the check the same way.
+    let run: ((source: string) => { source: string }) | null = null;
     switch (verb) {
       case 'speed': {
         const rate = Number(input.rate);
@@ -4059,6 +4150,8 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     ctx.bus.emit('activity:suppress', rel);
     try {
       const before = await Bun.file(abs).text();
+      // The switch above either assigned `run` or returned; say so to the checker.
+      if (!run) return { ok: false, status: 400, error: `unknown clip verb "${verb}"` };
       const result = await applyOnDisk(abs, run);
       const after = await Bun.file(abs).text();
       let seq: number | undefined;
@@ -5634,10 +5727,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       for (const m of matches) {
         const files = await findFiles(m.abs, m.rel, ['.tsx', '.html']);
         for (const f of files) {
-          const fname = f
-            .split('/')
-            .pop()
-            ?.replace(/\.(tsx|html)$/i, '');
+          const fname = (f.split('/').pop() ?? '').replace(/\.(tsx|html)$/i, '');
           const group = f.split('/').slice(-2, -1)[0] || folderName;
           const label = fname.toLowerCase() === 'index' ? group : fname;
           items.push({ label, path: f, group });

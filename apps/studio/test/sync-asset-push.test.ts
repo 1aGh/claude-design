@@ -14,7 +14,6 @@ import {
   isPushableAssetRel,
   listPushableAssets,
   pushAssets,
-  pushOneAsset,
   putTimeoutMs,
 } from '../sync/asset-push.ts';
 
@@ -43,12 +42,22 @@ describe('listPushableAssets — classifier membership over the whole design roo
     mkdirSync(join(designRoot, '_history/assets'), { recursive: true });
     writeFileSync(join(designRoot, '_history/assets/old.png'), 'x');
 
-    expect(listPushableAssets(designRoot)).toEqual([
+    // `syncFiles: false` is now stated rather than assumed: the flag defaults
+    // ON from Increment 4, so a test that meant "the narrow media sweep" has
+    // to say so. What it pins is unchanged.
+    expect(listPushableAssets(designRoot, { syncFiles: false })).toEqual([
       'assets/a1b2c3d4.png',
       'system/alligators/assets/fonts/Gators-Bold.woff2',
       'system/alligators/assets/logos/horizontal-green.svg',
       'system/alligators/assets/photos/P1020428.JPG',
     ]);
+
+    // With the plane on, the photo sidecar travels too — it is the
+    // non-destructive edit state for that image, and an image whose edits stay
+    // behind arrives looking wrong rather than arriving late.
+    expect(listPushableAssets(designRoot, { syncFiles: true })).toContain(
+      'assets/a1b2c3d4.photo.json'
+    );
   });
 
   test('non-asset extensions and dotfiles are filtered; missing root is []', () => {
@@ -89,9 +98,10 @@ describe('listPushableAssets — classifier membership over the whole design roo
       'system/ds/preview/_brand-css.ts',
       'system/ds/preview/_layout.css',
     ]);
-    // Flag OFF ⇒ today's reach, byte-for-byte: none of these are binary
-    // media under an assets/ dir, so none of them move.
-    expect(listPushableAssets(designRoot)).toEqual([]);
+    // Explicitly OFF ⇒ the pre-Sync-v2 reach, byte-for-byte: none of these are
+    // binary media under an assets/ dir, so none of them move. This is the
+    // documented per-project rollback, so it keeps its own test.
+    expect(listPushableAssets(designRoot, { syncFiles: false })).toEqual([]);
   });
 
   test('declared canvasGroups decide what a canvas body IS', () => {
@@ -832,137 +842,90 @@ describe('isPushableAssetRel — the on-change trigger', () => {
 // is the half that was missing. A behavioural test needs a live runtime plus a
 // 1.5 s debounce and destabilises `sync-runtime.test.ts`'s shared fixtures, so
 // the invariant is pinned where it is cheap and unambiguous instead.
-describe('the runtime sweeps on change, not only at boot', () => {
+describe('the runtime schedules the legacy push on change, not only at boot', () => {
   const SYNC = readFileSync(join(import.meta.dir, '..', 'sync', 'index.ts'), 'utf8');
 
-  test('the fs watcher decides with isPushableAssetRel and schedules a sweep', () => {
+  test('the fs watcher decides with isPushableAssetRel and schedules a pass', () => {
     // The predicate gets the project's OWN canvas groups — with the default
     // set a custom-group project's shared module would answer canvas-owned
-    // and silently never schedule the sweep that uploads it. (Since the
-    // 2026-08-16 latency fix the same gate also feeds the fast lane; the
-    // sweep stays the reconciler.)
+    // and silently never schedule the pass that uploads it.
     expect(SYNC).toContain('if (isPushableAssetRel(rel, ctx.cfg.canvasGroups)) {');
-    expect(SYNC).toContain('scheduleAssetSweep(linkedHub.url);');
+    expect(SYNC).toContain('scheduleLegacyPush(linkedHub.url);');
   });
 
-  test('bursts coalesce, and a change DURING a sweep is not lost', () => {
-    // Dragging six images on is six events; each sweep costs a probe over the
-    // wire. And a file written while a sweep runs was not in that sweep's list.
+  test('bursts coalesce, and a change DURING a pass is not lost', () => {
+    // Dragging six images on is six events; each pass costs a probe over the
+    // wire. And a file written while a pass runs was not in that pass's list.
     expect(SYNC).toMatch(/ASSET_SWEEP_DEBOUNCE_MS = [\d_]+/);
-    expect(SYNC).toContain('assetSweepAgain');
+    expect(SYNC).toContain('legacyPushAgain');
   });
 
-  test('only one sweep runs at a time, and stop() clears the pending one', () => {
-    expect(SYNC).toMatch(/if \(stopped \|\| assetSweep\) return;/);
-    expect(SYNC).toContain('if (assetSweepTimer !== null) clearTimeout(assetSweepTimer);');
+  test('the lane is decided once by the capability probe, and a journal hub never sees the legacy client', () => {
+    // Sync v2 Increment 5 — the burn-down's one invariant: exactly ONE push
+    // lane per boot. A journal hub gets the plane; only a journal-less hub
+    // (or an unreachable/opted-out probe) gets the legacy client.
+    expect(SYNC).toContain('decidePushLane(filePlane === null);');
+    expect(SYNC).toMatch(
+      /if \(stopped \|\| cellPairing \|\| legacyLane !== true\) return; \/\/ the cell never pushes/
+    );
+    expect(SYNC).toContain(
+      'if (legacyLane === false) return; // the plane owns pushes on this hub'
+    );
+  });
+
+  test('stop() clears the pending pass and cancels a running one', () => {
+    expect(SYNC).toContain('if (legacyPushTimer !== null) clearTimeout(legacyPushTimer);');
+    expect(SYNC).toContain('legacyPushCancel = true;');
   });
 });
 
-describe('pushOneAsset — the fast lane (2026-08-16 latency fix)', () => {
-  test('probes once via /_asset-probe, then PUTs the single file', async () => {
+describe('pushAssets — the cancel hook (the Sync panel button, legacy window)', () => {
+  test('cancelled() abandons the rest of the pass', async () => {
     const designRoot = scratchDesignRoot();
     mkdirSync(join(designRoot, 'assets'), { recursive: true });
-    writeFileSync(join(designRoot, 'assets/aaaaaaaa.png'), 'fresh sticker');
-
-    const calls: Array<{ method: string; url: string }> = [];
-    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      const method = init?.method ?? 'GET';
-      calls.push({ method, url });
-      if (url.endsWith('/_asset-probe')) return Response.json({ present: [] });
-      return new Response('{"ok":true}', { status: 200 });
-    }) as typeof fetch;
-
-    const r = await pushOneAsset({
-      designRoot,
-      rel: 'assets/aaaaaaaa.png',
-      hubUrl: 'https://alligators.cloud.maude.sh/',
-      token: () => 'mau_tok',
-      fetchImpl,
-    });
-    expect(r).toEqual({ ok: true });
-    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
-      'POST https://alligators.cloud.maude.sh/_asset-probe',
-      'PUT https://alligators.cloud.maude.sh/assets/aaaaaaaa.png',
-    ]);
-  });
-
-  test('a file the hub already holds is skipped — the pull-echo guard', async () => {
-    // The fast lane fires off fs:any, and the asset PULL writes into assets/
-    // too — without this skip the lane would upload the hub's own bytes back.
-    const designRoot = scratchDesignRoot();
-    mkdirSync(join(designRoot, 'assets'), { recursive: true });
-    writeFileSync(join(designRoot, 'assets/aaaaaaaa.png'), 'pulled bytes');
+    writeFileSync(join(designRoot, 'assets/aaaaaaaa.png'), 'a');
+    writeFileSync(join(designRoot, 'assets/bbbbbbbb.png'), 'b');
+    writeFileSync(join(designRoot, 'assets/cccccccc.png'), 'c');
 
     let puts = 0;
     const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url.endsWith('/_asset-probe')) return Response.json({ present: ['assets/aaaaaaaa.png'] });
       if (init?.method === 'PUT') puts += 1;
-      return new Response('{"ok":true}', { status: 200 });
-    }) as typeof fetch;
+      return new Response('not found', { status: 404 });
+    }) as unknown as typeof fetch;
 
-    const r = await pushOneAsset({
+    const out = await pushAssets({
       designRoot,
-      rel: 'assets/aaaaaaaa.png',
-      hubUrl: 'https://alligators.cloud.maude.sh',
-      token: () => 'mau_tok',
-      fetchImpl,
-    });
-    expect(r).toEqual({ ok: true, skipped: true });
-    expect(puts).toBe(0);
-  });
-
-  test('DS-tree asset routes to /_asset-file/; non-pushable rels refuse; failures report', async () => {
-    const designRoot = scratchDesignRoot();
-    mkdirSync(join(designRoot, 'system/ds/assets'), { recursive: true });
-    writeFileSync(join(designRoot, 'system/ds/assets/mark.svg'), 'brand');
-
-    const urls: string[] = [];
-    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url.endsWith('/_asset-probe')) return Response.json({ present: [] });
-      if (init?.method === 'PUT') {
-        urls.push(url);
-        return new Response('refused', { status: 403 });
-      }
-      return new Response(null, { status: 404 });
-    }) as typeof fetch;
-
-    const r = await pushOneAsset({
-      designRoot,
-      rel: 'system/ds/assets/mark.svg',
       hubUrl: 'https://hub.example.com',
       token: () => 't',
       fetchImpl,
+      log: { log: () => {}, warn: () => {} },
+      // Cancel after the first upload settles.
+      cancelled: () => puts >= 1,
     });
-    expect(urls).toEqual(['https://hub.example.com/_asset-file/system/ds/assets/mark.svg']);
-    expect(r.ok).toBe(false);
-    expect(r.reason).toContain('403');
-
-    // Runtime state / config never enter the fast lane.
-    const refused = await pushOneAsset({
-      designRoot,
-      rel: '_history/x/old.png',
-      hubUrl: 'https://hub.example.com',
-      token: () => 't',
-      fetchImpl,
-    });
-    expect(refused.ok).toBe(false);
-    expect(refused.reason).toBe('not a pushable asset');
-  });
-
-  test('the runtime wires the fast lanes: push off fs:any, pull off reference files', () => {
-    // Same source-pin style as the sweep-trigger suite above.
-    expect(SYNC2).toContain('queueFastPush(rel');
-    expect(SYNC2).toMatch(/REFERENCE_FILE_RE\.test\(rel\)/);
-    expect(SYNC2).toContain('requestFastPull');
-    // stop() tears the lanes down.
-    expect(SYNC2).toContain('for (const t of fastPushTimers.values()) clearTimeout(t);');
-    expect(SYNC2).toContain('requestFastPull = null;');
-    // The cell never pushes — same guard as the sweep.
-    expect(SYNC2).toMatch(/if \(stopped \|\| cellPairing\) return; \/\/ the cell never pushes/);
+    expect(puts).toBe(1);
+    // The rest of the set was neither pushed nor reported failed — it is the
+    // next pass's work, exactly like a budget wall.
+    expect(out.pushed.length + out.failed.length + out.skipped).toBeLessThan(3);
   });
 });
 
-const SYNC2 = readFileSync(join(import.meta.dir, '..', 'sync', 'index.ts'), 'utf8');
+describe('the syncFiles default — Increment 4 flipped it ON', () => {
+  // The flip is one boolean in two places (`sync/index.ts` and here), and a
+  // drift between them means the sweep and the plane disagree about which
+  // files exist — the jurisdiction overlap Sync v2 exists to end. So the
+  // default is asserted, not assumed.
+  const designRoot = () => {
+    const root = scratchDesignRoot();
+    mkdirSync(join(root, 'system/ds'), { recursive: true });
+    writeFileSync(join(root, 'system/ds/brand.css'), 'x');
+    return root;
+  };
+
+  test('absent config ⇒ the plane is on', () => {
+    expect(listPushableAssets(designRoot())).toEqual(['system/ds/brand.css']);
+  });
+
+  test('`linkedHub.syncFiles: false` is the per-project rollback and still works', () => {
+    expect(listPushableAssets(designRoot(), { syncFiles: false })).toEqual([]);
+  });
+});

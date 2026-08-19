@@ -1,0 +1,69 @@
+---
+title: On AWS
+description: EC2 with an EBS volume, S3 for media and backups, an ALB for TLS — and the two AWS defaults that quietly break a workspace.
+---
+
+> **Derived, not driven.** Every value here comes from reading the hub's own requirements, and the stack has been exercised end to end locally — but this page has not been run against a live AWS account. Treat it as a careful specification rather than a transcript, and tell us where it is wrong.
+
+A workspace is **one stateful container with two volumes**. Almost everything below follows from that.
+
+## Two AWS defaults that break it
+
+**Fargate.** Its storage is ephemeral, so `/repo` starts empty on every task. With a seed configured that used to mean re-cloning over the loss; today it means the hub refuses to start. Either way it is not a deployment. **Use the EC2 launch type**, or run Docker on the instance directly.
+
+**EFS for `/data`.** Yjs persistence is small-write-heavy and SQLite over NFS is the wrong shape for it. **Use a gp3 EBS volume.**
+
+Neither is exotic advice — they are simply the two choices an AWS-shaped instinct reaches for first.
+
+## The shape
+
+- **EC2**, `t4g.small` (arm64) is comfortable. One instance.
+- **A gp3 EBS volume**, mounted for `/data` and `/repo`, with **`DeleteOnTermination=false`**. That single flag is the difference between replacing an instance and losing a project.
+- **An ALB** with an ACM certificate. It upgrades WebSockets natively, so you can skip Caddy and let the ALB terminate TLS. Set the idle timeout well above the default — sync sockets are long-lived; 4000 s is a reasonable ceiling.
+- **S3** for media and backups.
+- **DLM snapshots** of the EBS volume as a second, independent layer. The hub's own backups depend on the hub working; snapshots do not.
+
+**No autoscaling, and desired count 1.** The hub is single-process and stateful — Y.Doc in memory, SQLite on disk. Two instances over one volume is a corrupt database, not double the capacity. Set the deployment's `minimumHealthyPercent` to 0 so a rollout stops the old task before starting the new one.
+
+## IAM — least privilege for the bucket
+
+The hub needs four verbs against one prefix. Nothing else.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::acme-design-assets/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket"],
+      "Resource": "arn:aws:s3:::acme-design-assets"
+    }
+  ]
+}
+```
+
+**No lifecycle rule on `assets/`.** A canvas in git history can reference media no current canvas does, so "unreferenced" never means "unreachable" — an expired object is a permanently broken canvas with no recovery path. Backups under `backups/` rotate themselves (14 generations); they need no lifecycle rule either.
+
+## Require IMDSv2
+
+```
+HttpTokens=required, HttpPutResponseHopLimit=1
+```
+
+Not boilerplate. If you configure [BYO identity](/docs/hub/identity), the hub fetches a key set from a URL your identity provider names. The hub pins that fetch to the issuer's origin and refuses to connect to any private or link-local address — but IMDSv2 is the layer that does not depend on us getting that right, and `169.254.169.254` is where the instance's credentials live.
+
+## Bringing it up
+
+1. Create the volume and instance; attach the EBS volume with `DeleteOnTermination=false`.
+2. Point DNS at the ALB.
+3. `maude hub workspace-up --dry-run --domain design.acme.com …` and read what it would write.
+4. Drop `--dry-run`, then read the verification report **honestly** — a check that could not run prints as skipped, never as passed.
+5. `maude hub restore-drill`, and schedule it.
+6. Remove `MAUDE_SEED_REPO` from `.env`.
+
+Then [Durability](/docs/hub/durability), which is the page that matters once this is live.

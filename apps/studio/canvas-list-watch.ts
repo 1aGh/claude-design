@@ -47,10 +47,23 @@ export function isCanvasCandidate(rel: string, groupPaths: string[]): boolean {
   const p = rel.replace(/\\/g, '/').replace(/^\/+/, '');
   if (!p) return false;
   const low = p.toLowerCase();
-  if (!low.endsWith('.tsx') && !low.endsWith('.html')) return false;
+  // A DIRECTORY IS A CANDIDATE TOO. Renaming or moving a folder OUTSIDE the app
+  // (Finder, `mv`, `git checkout` of a branch that renamed it) changes the path
+  // of every canvas inside it, but the only event that reaches here names the
+  // DIRECTORY — `ui/dbox2` — which has no `.tsx` on the end. Gating on the
+  // extension therefore ignored it, so the tree kept listing the old folder and,
+  // worse, the sync runtime kept a descriptor pointing at a path that no longer
+  // existed: the canvases in that folder silently stopped syncing until some
+  // unrelated write to a `.tsx` happened to nudge the same recompute.
+  // `snapshot()` is authoritative, so a directory that turns out to hold no
+  // canvases costs one recompute and emits nothing.
+  const last = p.slice(p.lastIndexOf('/') + 1);
+  const looksLikeDir = !last.includes('.');
+  if (!looksLikeDir && !low.endsWith('.tsx') && !low.endsWith('.html')) return false;
   const segs = p.split('/');
   for (const s of segs) {
     if (!s) return false;
+    if (s === '..') return false; // the extension test used to be the guard here
     if (s.startsWith('_')) return false;
     if (SKIP_DIRS.has(s)) return false;
   }

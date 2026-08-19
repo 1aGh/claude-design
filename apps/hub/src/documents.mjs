@@ -35,6 +35,8 @@
 // The field is ADDITIVE: a peer older than this change ignores it and behaves
 // as it does today.
 
+import { isFilesCtlDoc } from './files-ctl.mjs';
+
 /** `GET /api/documents` — the documents this token may open, with sizes. */
 export const DOCUMENTS_PATH = '/api/documents';
 
@@ -101,6 +103,18 @@ export function handleDocumentsRoute({
   }
 
   const documents = listDocuments()
+    // THE CONTROL CHANNEL IS NOT A CANVAS. `maude.files` is the file-plane poke
+    // channel (files-ctl.mjs) — no Y content, never persisted, and files-ctl's
+    // own header says it must not show up in an operator's canvas count. It did:
+    // the admin console listed it under Synced canvases and counted it (6 rows
+    // for 5 canvases), and a peer's boot line read "pulling 2 canvases down from
+    // the project (maude.files, ui-home)".
+    //
+    // A peer never materialised it — `slugFromDocName` (remote-docs.ts) rejects
+    // dots, which is what the dotted name was for — so this is an accounting and
+    // reporting fix, not a containment one. Names only: filtering it out here
+    // costs a peer nothing it can use.
+    .filter((d) => !isFilesCtlDoc(d.name))
     .filter((d) => matchesScope(match.scope, d.name))
     .map((d) => ({ name: d.name, bytes: d.bytes }));
   const tombstones = (listTombstones ? listTombstones() : [])

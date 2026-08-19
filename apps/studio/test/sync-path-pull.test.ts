@@ -115,7 +115,7 @@ function makeCtx(canvasGroups?: DevServerConfig['canvasGroups']): Context {
  * from the listing.
  */
 function hubDocProviderFactory(
-  seed: Record<string, { body: string; path?: string; css?: string }>,
+  seed: Record<string, { body: string; path?: string; css?: string; movedTo?: string }>,
   docs?: Map<string, Y.Doc>
 ) {
   return (args: { documentName: string; document?: Y.Doc }): SyncProvider => {
@@ -126,6 +126,7 @@ function hubDocProviderFactory(
       doc.transact(() => {
         doc.getText('html').insert(0, entry.body);
         if (entry.path) doc.getMap('syncMeta').set('path', entry.path);
+        if (entry.movedTo) doc.getMap('syncMeta').set('movedTo', entry.movedTo);
         if (entry.css) doc.getText('css').insert(0, entry.css);
       }, 'hub');
     }
@@ -230,6 +231,71 @@ describe('a peer with an empty design root pulls the project down whole', () => 
     // The undeclared group is refused, so the canvas falls back — still arriving.
     expect(existsSync(join(ctx.paths.designRoot, 'screens', 'home.tsx'))).toBe(false);
     expect(existsSync(join(ctx.paths.designRoot, 'screens-home.tsx'))).toBe(true);
+  });
+});
+
+describe('a refused path ends the pull — it does not redirect it', () => {
+  // `canvasSlugFromRel` is lossy: `ui/Desk A.tsx` flattens to `ui-desk_a`, and
+  // the provisional target derived back from that slug is `ui/desk_a.tsx` — a
+  // DIFFERENT file. So when the document's own path was refused (here: the file
+  // is already on this disk, which is what `admitPullTarget` protects), falling
+  // through left the descriptor on the provisional target and the reconcile
+  // wrote the canvas there. The peer then held the canvas twice, both copies
+  // flattening to one slug — a collision, which takes the canvas out of sync on
+  // that machine entirely. Observed on a live cell for every canvas whose name
+  // contains a space.
+  test('a document whose path already exists locally writes no slug-shaped ghost', async () => {
+    const SPACED_REL = 'ui/Desk A.tsx';
+    const SPACED_SLUG = 'ui-desk_a';
+    const LOCAL = 'export default () => <main>the copy already here</main>;\n';
+    hubListing([{ name: `ws/acme/main/${SPACED_SLUG}`, bytes: BODY.length }]);
+    const ctx = makeCtx();
+    mkdirSync(join(ctx.paths.designRoot, 'ui'), { recursive: true });
+    // Present, but out of the sync set — a `syncable: false` sidecar, the TSX
+    // sandbox gate, or (on a cell) a file the hub's own workspace agent wrote.
+    writeFileSync(join(ctx.paths.designRoot, SPACED_REL), LOCAL);
+    writeFileSync(
+      join(ctx.paths.designRoot, 'ui', 'Desk A.meta.json'),
+      JSON.stringify({ syncable: false })
+    );
+    const runtime = createSyncRuntime(ctx, {
+      providerFactory: hubDocProviderFactory({
+        [SPACED_SLUG]: { body: BODY, path: SPACED_REL },
+      }),
+    });
+    await runtime?.start();
+    await runtime?.stop();
+
+    expect(existsSync(join(ctx.paths.designRoot, 'ui', 'desk_a.tsx'))).toBe(false);
+    // And the file that WAS there is kept, byte for byte.
+    expect(readFileSync(join(ctx.paths.designRoot, SPACED_REL), 'utf8')).toBe(LOCAL);
+  });
+});
+
+describe('a PULLED document may not talk itself out of being retired', () => {
+  // THE FINDING (attacker seat, 2026-08-19, HIGH). The self-stamp repair exists
+  // for the machine that performed a move, whose canvas descriptor came from its
+  // own disk scan. A PULLED canvas has no such descriptor: its path is the
+  // provisional one derived from the document NAME — which the hub chose. Since
+  // the hub also writes `movedTo`, it would control both sides of the "it moved
+  // to where it already is" comparison, and a repair would become a write to a
+  // path `resolvePulledTarget` and `admitPullTarget` never approved. That is the
+  // resurrection primitive the retirement release exists to deny.
+  test('a hub-named document whose movedTo equals its own provisional path is NOT written', async () => {
+    const SLUG = 'ui-evil';
+    hubListing([{ name: SLUG, bytes: BODY.length }]);
+    const ctx = makeCtx();
+    const runtime = createSyncRuntime(ctx, {
+      providerFactory: hubDocProviderFactory({
+        // Both halves chosen by the hub: the name fixes the provisional target
+        // `ui/evil.tsx`, and the stamp claims the canvas moved exactly there.
+        [SLUG]: { body: BODY, movedTo: 'ui/evil.tsx' },
+      }),
+    });
+    await runtime?.start();
+    await runtime?.stop();
+
+    expect(existsSync(join(ctx.paths.designRoot, 'ui', 'evil.tsx'))).toBe(false);
   });
 });
 

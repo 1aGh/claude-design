@@ -43,6 +43,24 @@ describe('GET /api/documents', () => {
     assert.deepEqual(sent[0].payload.documents[0], { name: 'ui-welcome', bytes: 2931 });
   });
 
+  // `maude.files` is the file-plane CONTROL channel, not a canvas: no Y
+  // content, never persisted. Listing it made every peer open a provider on it
+  // each boot ("pulling 2 canvases down … (maude.files, ui-home)") and made an
+  // operator's SYNCED CANVASES count one too many.
+  it('omits the file-plane control document', () => {
+    const { sent } = call({
+      listDocuments: () => [
+        { name: 'maude.files', bytes: 0 },
+        { name: 'ui-home', bytes: 10 },
+      ],
+    });
+    assert.equal(sent[0].payload.count, 1);
+    assert.deepEqual(
+      sent[0].payload.documents.map((d) => d.name),
+      ['ui-home']
+    );
+  });
+
   it('never leaks document CONTENT — names and sizes only', () => {
     const { sent } = call({
       listDocuments: () => [{ name: 'ui-home', bytes: 10, data: 'SECRET', extra: 1 }],

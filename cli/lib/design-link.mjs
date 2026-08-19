@@ -15,8 +15,17 @@ import { dirname, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 
 import { parseArgs } from './argv.mjs';
+import { adoptToHub, detachToRepo, ownershipState } from './design-ownership.mjs';
 import { BEGIN_MARKER, writeGitignoreBlock } from './gitignore-block.mjs';
-import { addHub, getHub, isHubTrusted, normalizeUrl, removeHub, trustHub } from './hubs-config.mjs';
+import {
+  addHub,
+  getHub,
+  isHubTrusted,
+  normalizeUrl,
+  removeHub,
+  setHubCodeModules,
+  trustHub,
+} from './hubs-config.mjs';
 
 const DESIGN_CONFIG_PATH = '.design/config.json';
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
@@ -164,6 +173,25 @@ export async function runLink({ args, cwd = process.cwd(), forceAdopt = false })
     await maybeWriteGitignoreBlock(cwd, !!flags.yes);
   }
 
+  // The code-module consent (DDR-226 §9 / review finding A5). This is the
+  // ONLY writer: the receiver reads `codeModulesAllowed` from the stored hub
+  // record and nothing else may set it — least of all a sign-in response,
+  // which is the hub telling you what your own role is.
+  //
+  // Without a writer the field could never be true, so `code-module` had no
+  // transport at all in hub-owned mode: an owner could push one through the
+  // door and no peer would ever accept it. Closed harder than intended is
+  // still closed wrong.
+  await askCodeModuleConsent(normUrl, { assumeYes: !!flags.yes, loopback });
+
+  // DDR-228 — a link must land in ONE of the two ownership modes.
+  //
+  // Linked-and-committed is not a lighter version of hub-owned; it is two
+  // systems owning the same bytes with different merge rules, where a `git
+  // pull` and a sync pass can each undo the other and which wins is timing.
+  // It also reads as extra safety right up until they disagree.
+  await settleOwnership(cwd, { assumeYes: !!flags.yes, adopt });
+
   const tsxSyncLine =
     syncTsx === false
       ? 'off (opted out — linkedHub.syncTsx: false)'
@@ -208,6 +236,148 @@ export async function runUnlink({ args, cwd = process.cwd() }) {
 
   process.stdout.write(
     `[design unlink] dropped link to ${url}.\n  config:  removed .design/config.json.linkedHub\n  token:   ${tokenRemoved ? 'cleared from ~/.config/maude/hubs.json' : flags['keep-token'] ? 'kept (--keep-token)' : '(none to clear)'}\n  files:   .design/*.html etc. untouched — repo is now in solo mode.\n`
+  );
+}
+
+/**
+ * Ask, once per hub, whether it may deliver executable modules.
+ *
+ * `.ts`/`.mjs` outside a canvas body are read by the AGENT and by every
+ * `maude design *` helper — a different blast radius from a `.tsx` rendering
+ * in the sandboxed canvas origin. Default NO on every non-answer (non-TTY,
+ * declined, anything unparsed): the pessimistic branch, same as every other
+ * default in this lane.
+ */
+async function askCodeModuleConsent(normUrl, { assumeYes = false, loopback = false } = {}) {
+  // A loopback pairing is this machine talking to itself; there is no remote
+  // party to consent about.
+  if (loopback) return;
+  const existing = getHub(normUrl);
+  if (existing && typeof existing.codeModulesAllowed === 'boolean') return;
+
+  let allow = false;
+  if (assumeYes) {
+    allow = false; // --yes accepts DEFAULTS, and this default is no.
+  } else if (process.stdin.isTTY) {
+    process.stdout.write(
+      '\n  Shared code (.ts / .mjs outside a canvas) is read by Claude and by the\n' +
+        '  maude helpers on this machine, not just rendered in a preview.\n'
+    );
+    allow = await promptYesNo(`  Let ${normUrl} deliver those to this machine? [y/N] `, false);
+  }
+  setHubCodeModules(normUrl, allow);
+  process.stdout.write(
+    allow
+      ? '[design link] this hub may deliver shared code modules to this machine.\n'
+      : `[design link] shared code modules from ${normUrl} will NOT be written here (design files still sync). Re-link and answer yes to change it.\n`
+  );
+}
+
+// ------------------------------------------------------- ownership (DDR-228)
+
+/**
+ * Put this repo in exactly one ownership mode, asking once if it is unclear.
+ *
+ * Called at the END of a link, so the hub already has the credential and the
+ * push is about to happen — the folder is not orphaned for a moment in
+ * between. Non-TTY takes the safe branch (leave it committed, say so) rather
+ * than untracking a person's files with nobody watching.
+ */
+async function settleOwnership(cwd, { assumeYes = false, adopt = false } = {}) {
+  const st = ownershipState(cwd, { linked: true });
+  // No repo ⇒ no second owner ⇒ nothing to settle.
+  if (!st.git || st.mode === 'hub-owned') return;
+  if (st.trackedCount === 0 && !st.ignored) {
+    // A fresh clone of a Mode-B repo: nothing tracked because there is nothing
+    // here yet. Declare the mode now so the first pull lands ignored.
+    adoptToHub(cwd);
+    process.stdout.write(
+      '[design link] this project is hub-owned — .design/ is gitignored and mirrored by the hub.\n'
+    );
+    warnSyncthing(st);
+    return;
+  }
+
+  process.stdout.write(
+    `\n  This repo currently commits .design/ (${st.trackedCount} file${st.trackedCount === 1 ? '' : 's'}) AND is now linked to a hub.\n` +
+      '  Those are two owners for the same files, which is the one state Maude does not support:\n' +
+      '  a git pull and a sync pass can each undo the other.\n\n' +
+      '  Hub-owned  — stop committing .design/, let the hub mirror it (nothing is deleted).\n' +
+      '  Repo-owned — keep committing it, and unlink the hub.\n\n'
+  );
+
+  const goHub =
+    assumeYes || !process.stdin.isTTY
+      ? assumeYes
+      : await promptYesNo('  Make this project hub-owned? [Y/n] ', true);
+
+  if (!goHub) {
+    process.stdout.write(
+      '[design link] left as-is. Run `maude design adopt` to hand .design/ to the hub, or `maude design unlink` to keep it in git.\n'
+    );
+    return;
+  }
+
+  const res = adoptToHub(cwd);
+  process.stdout.write(
+    `[design link] hub-owned: .gitignore ${res.action}, ${res.untracked} file(s) untracked (still on disk, staged as deletions — commit when ready).\n`
+  );
+  warnSyncthing(st);
+}
+
+/**
+ * Syncthing does not read `.gitignore`.
+ *
+ * So a hub-owned project inside a synced tree rides two transports with
+ * different conflict rules — the same double-ownership one layer down, through
+ * a door the ignore cannot close.
+ */
+function warnSyncthing(st) {
+  if (!st.syncthingRoot) return;
+  process.stdout.write(
+    `\n  NOTE: this repo is inside a Syncthing folder (${st.syncthingRoot}).\n` +
+      '  Syncthing ignores .gitignore, so it will keep syncing .design/ alongside the hub.\n' +
+      `  Add this line to ${st.syncthingRoot}/.stignore to stop that:\n\n      ${st.stignoreLine}\n\n`
+  );
+}
+
+/** `maude design detach` — B back to A. */
+export async function runDetach({ args, cwd = process.cwd() }) {
+  const tail = args.slice(args.indexOf('detach') + 1);
+  const { flags } = parseArgs(tail, { booleans: ['yes', 'keep-token'] });
+  const designConfigPath = resolve(cwd, DESIGN_CONFIG_PATH);
+
+  if (!existsSync(designConfigPath)) {
+    process.stderr.write(`maude design detach: no ${DESIGN_CONFIG_PATH} in ${cwd}.\n`);
+    process.exit(1);
+  }
+  const cfg = readDesignConfig(designConfigPath);
+  const linked = !!cfg.linkedHub;
+  const st = ownershipState(cwd, { linked });
+
+  if (!linked && st.mode === 'repo-owned' && !st.ignored) {
+    process.stdout.write('[design detach] already repo-owned — nothing to do.\n');
+    return;
+  }
+
+  const ok =
+    flags.yes || !process.stdin.isTTY
+      ? true
+      : await promptYesNo('  Take .design/ back into this repo and stop syncing it? [Y/n] ', true);
+  if (!ok) return;
+
+  // Unlink first: the mirror is a FULL copy, so there is nothing to fetch and
+  // no window where the folder belongs to neither owner.
+  if (linked) {
+    const url = cfg.linkedHub.url;
+    cfg.linkedHub = undefined;
+    writeDesignConfig(designConfigPath, cfg);
+    if (!flags['keep-token']) removeHub(url);
+    process.stdout.write(`[design detach] unlinked from ${url}.\n`);
+  }
+  const res = detachToRepo(cwd);
+  process.stdout.write(
+    `[design detach] repo-owned: .gitignore ${res.action}. Every file is already on disk — commit .design/ when you are ready:\n\n      git add .design && git commit -m "take the design folder back into the repo"\n\n`
   );
 }
 
@@ -264,11 +434,26 @@ export async function runStatus({ args, cwd = process.cwd() }) {
     // Task 8 — the running sync agent writes `.design/_sync.json` with the live
     // offline/online state, queued-op count, last sync, and conflict log.
     sync: sync ?? { agent: 'idle', detail: 'no _sync.json — sync agent not running' },
+    // DDR-228 — which of the two ownership modes this project is in, or
+    // `hybrid` for a project linked before the model existed.
+    ownership: ownershipState(cwd, { linked: true }),
   };
 
   if (flags.json) {
     process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
     return;
+  }
+
+  // The legacy-hybrid notice. Persistent rather than one-shot on purpose: it
+  // describes a state that is still true every time you look, and the answer
+  // is a decision only the person can make.
+  if (payload.ownership.mode === 'hybrid') {
+    process.stdout.write(
+      `\n  ⚠ legacy hybrid — this project is linked to a hub AND still commits .design/ (${payload.ownership.trackedCount} file(s)).\n` +
+        '    Two owners, different merge rules: a git pull and a sync pass can each undo the other.\n' +
+        '    Pick one:  `maude design adopt <url> --token <hex>`  (hub-owned, nothing deleted)\n' +
+        '               `maude design detach`                     (repo-owned, stops syncing)\n\n'
+    );
   }
 
   const uptimeS = Math.round((probe.uptimeMs ?? 0) / 1000);

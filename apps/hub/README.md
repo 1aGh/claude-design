@@ -9,15 +9,25 @@ Self-hostable Yjs sync hub for Maude cross-machine canvas collaboration.
 > for the trust model and the four architectural items that must land before
 > linked mode is supported for general use.
 
-> **Status — Phase 9 (2026-05-28).** Boots; persists Y.Doc state via SQLite;
-> authenticates against a SQLite token store (HMAC-SHA256 at rest, Task 6) with
-> `HUB_SECRET` as a fallback. Admin UI (Task 2.5) + peer pairing (Task 3) +
-> bidirectional file-sync agent (Task 4) + awareness over WSS (Task 5) shipped.
-> Deploy templates (Task 7) land in a subsequent slice.
+**Two shapes, one image.**
 
-See `.ai/plans/phase-9-self-hosted-hub-file-sync.md` for the full plan,
-`.ai/archive/decisions/DDR-052-hocuspocus-over-partykit-for-hub.md` for the
-framework choice, and `.ai/docs/research-collab.md` for the design analysis.
+A **plain hub** relays documents between peers who each own their own clone.
+A **workspace** (`HUB_WORKSPACE_MODE=1`) owns the project: it holds the
+authoritative checkout, turns autosave into append-only git commits, keeps
+media in object storage, serves the studio in a browser, and gives people
+accounts instead of tokens to paste.
+
+Start at **[Self-hosting](https://maude.sh/docs/hub/self-host)**; this file is
+a map, not a second copy of the docs.
+
+| Page | What it answers |
+| --- | --- |
+| [Deploy a hub](https://maude.sh/docs/hub/deploy) | Fly, Docker, any VPS |
+| [Workspace mode](https://maude.sh/docs/hub/workspace) | one command, and what it verifies |
+| [On AWS](https://maude.sh/docs/hub/aws) | EC2 + EBS + S3, and what NOT to use |
+| [Durability](https://maude.sh/docs/hub/durability) | what survives what, and how to prove it |
+| [People](https://maude.sh/docs/hub/people) | accounts, invites, offboarding |
+| [Identity](https://maude.sh/docs/hub/identity) | built-in sign-in, or your own Auth0 / Google |
 
 ## Run locally
 
@@ -50,6 +60,17 @@ the raw token value is never written to disk).
 | `HUB_PUBLIC_URL` | `https://localhost:$PORT` | Base URL printed in admin / bootstrap logs and embedded in invite commands. Must be `https://` for any non-loopback host (see transport hardening). May include a **path prefix** (e.g. `https://example.com/hub`) to mount the hub under a sub-path behind a path-stripping proxy — see [Reverse proxy & sub-path](#reverse-proxy--sub-path). |
 | `HUB_INSECURE_HTTP` | _(unset)_ | If `1`, allows the hub to boot with a plaintext `http://` `HUB_PUBLIC_URL` to a non-loopback host. **Local testing only.** |
 | `HUB_ADMIN_RATE_LIMIT` | _(on)_ | `off` disables the per-IP admin-API rate limiter (dev only). |
+| `HUB_WORKSPACE_MODE` | _(unset)_ | `1` turns a relay hub into a **workspace**: it owns the checkout at `MAUDE_REPO_DIR`, commits autosaves, and requires accounts. |
+| `MAUDE_REPO_DIR` | `/repo` | The server-side checkout. A SEPARATE volume from `DATA_DIR`, so an operator can reset one without the other. |
+| `MAUDE_BACKUP_TARGET` / `MAUDE_S3_*` | _(unset)_ | Where backup generations go. Configuring object storage arms the schedule automatically. |
+| `MAUDE_BACKUP_PREFIX` | _(unset)_ | This hub's keyspace inside the bucket. Unset means the bare root — safe now (a generation names its owner and a second hub is refused), but a prefix is what makes automatic recovery decidable. **Never point two hubs at one prefix.** |
+| `MAUDE_ALLOW_EMPTY_START` | _(unset)_ | `1` overrides the boot refusal. For a genuinely fresh deployment, never as a way past an unexplained one. |
+| `MAUDE_SEED_REPO` | _(unset)_ | Cloned on FIRST boot only. Remove it once the workspace has real history — see [Durability](https://maude.sh/docs/hub/durability). |
+| `HUB_OIDC_MODE` | _(unset)_ | `hybrid` (password + OIDC) or `strict` (OIDC only). Explicit — naming an issuer is not consent to a mode. |
+| `HUB_OIDC_ISSUER` / `HUB_OIDC_CLIENT_ID` / `HUB_OIDC_CLIENT_SECRET` | — | Required once a mode is set. |
+| `HUB_OIDC_ALLOWED_DOMAINS` | — | Required once a mode is set. A filter, never a grant: a permitted domain with no account still waits for an admin. |
+| `HUB_OIDC_LABEL` | issuer hostname | What the sign-in button says.
+
 
 ## Transport hardening (Task 6)
 

@@ -43,19 +43,12 @@ docker compose logs hub      # copy the single-use /admin bootstrap link
 
 Point a DNS A/AAAA record at the box first, then `docker compose up -d`. The image is `ghcr.io/1agh/maude-hub` (multi-arch amd64 + arm64, published on every release tag).
 
-### AWS Lightsail
+### AWS
 
-`t4g.nano` (arm) + a 10 GB block-storage disk + Lightsail's static IP. ~$4–6/mo.
-
-- Attach the static IP, point your DNS at it.
-- Install Docker, drop the emitted `docker-compose.yml` + `Caddyfile`, `docker compose up -d`.
-- Route 53 (or any DNS) for `PUBLIC_DOMAIN`.
-
-### AWS EC2 + ALB
-
-For teams already on AWS. `t4g.nano` EC2 + a **gp3 EBS** volume mounted at `/data` + an ALB with an ACM cert (ALB upgrades WebSockets natively, so you can skip Caddy and let the ALB terminate TLS). ~$15–20/mo.
-
-> Avoid EFS for `/data` — Yjs persistence is small-write-heavy and EFS per-op latency hurts. Use gp3 EBS unless you genuinely need multi-AZ HA.
+AWS has its own page — [On AWS](/docs/hub/aws) — because two of its defaults
+(Fargate's ephemeral storage, EFS for the data volume) quietly break a
+workspace, and the fix is specific enough to be worth spelling out once rather
+than half-explaining here.
 
 ### Hetzner / DigitalOcean / Vultr / Linode
 

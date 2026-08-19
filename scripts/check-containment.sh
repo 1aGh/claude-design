@@ -38,9 +38,18 @@ fi
 # — but only while the out-of-process build sandbox is armed. Both lists are
 # asserted here, and so is the arming, because "moved to the other list" must
 # never be a way to quietly stop checking something.
+#
+# NOT `/_api/photo-edit`. It was on this list, and it never fit the rationale:
+# the route validates and STORES a JSON sidecar (`assets/<sha8>.photo.json`) —
+# the decoding it was blamed for happens in the member's own browser
+# (PhotoPreviewBridge), the same division of labour that makes `/_canvas-shell`
+# servable at all. Withholding it meant photo edits could not be saved in the
+# cloud, reported as "photo editing doesn't work". Reclassified deliberately in
+# `98a4c5ad`, which updated `workspace-mode.ts` and the hub manifest but not
+# this script — so the gate was red on the branch until the v1.0.0 A7 sweep.
+# Removing an entry here is a DDR-shaped decision, not a way to quiet a failure.
 REQUIRED_PREFIXES=(
   "/_api/export"
-  "/_api/photo-edit"
   "/_api/generate"
   "/_api/shell-shot"
   "/_ws/acp"

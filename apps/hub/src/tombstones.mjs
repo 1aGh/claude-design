@@ -40,6 +40,7 @@
 
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { stampSchemaVersion } from './schema-version.mjs';
 
 const require = createRequire(import.meta.url);
 // better-sqlite3 is a runtime-external native binding (see build.ts). Loading
@@ -90,6 +91,8 @@ function db(dataDir) {
        deleted_at INTEGER NOT NULL
      )`
   );
+  // A2 — record the shape while we know it (see schema-version.mjs).
+  stampSchemaVersion(handle);
   dbCache.set(dataDir, handle);
   return handle;
 }

@@ -27,6 +27,7 @@ import {
   parseAssetPath,
   parseCheckoutAssetPath,
 } from '../src/assets.mjs';
+import { handleFileDoor, resetQuotas } from '../src/file-door.mjs';
 import { checkConnRateLimit } from '../src/server.mjs';
 import { addToken } from '../src/tokens.mjs';
 
@@ -36,6 +37,7 @@ let s3server;
 let s3;
 
 beforeEach(async () => {
+  resetQuotas(); // the door's per-label quota map is process-global by design
   dataDir = mkdtempSync(join(tmpdir(), 'maude-hub-assets-'));
   store = new Map();
   s3server = createServer((req, res) => {
@@ -66,9 +68,62 @@ afterEach(async () => {
   if (dataDir) rmSync(dataDir, { recursive: true, force: true });
 });
 
-/** Drive the route handler directly with a fake req/res pair. `body` (a Buffer
- *  or an array of Buffers) makes the request async-iterable, the way the PUT
- *  branch consumes a real IncomingMessage. */
+/**
+ * Mirror the server's ONE-DOOR dispatch (Sync v2 Increment 5): a PUT whose
+ * legacy URL parses is rewritten to `PUT /api/file/<rel>` and handled by the
+ * file door, exactly as `server.mjs` does; everything else drives the legacy
+ * handler directly. `body` (a Buffer or an array of Buffers) makes the request
+ * async-iterable, the way the door consumes a real IncomingMessage.
+ */
+async function doorPut({
+  rel,
+  token,
+  designRoot = null,
+  body = null,
+  onWritten,
+  maxPutBytes,
+  putBudget,
+  checkRateLimit,
+  checkWriteRateLimit,
+}) {
+  const captured = { status: 0, headers: {}, body: null };
+  const response = {
+    writeHead(status, headers) {
+      captured.status = status;
+      captured.headers = headers ?? {};
+      return this;
+    },
+    end(body) {
+      captured.body = body ?? null;
+      return this;
+    },
+  };
+  const chunks = body === null ? [] : Array.isArray(body) ? body : [body];
+  const handled = await handleFileDoor({
+    request: {
+      headers: token ? { authorization: `Bearer ${token}` } : {},
+      async *[Symbol.asyncIterator]() {
+        yield* chunks;
+      },
+    },
+    response,
+    pathname: `/api/file/${rel.split('/').map(encodeURIComponent).join('/')}`,
+    method: 'PUT',
+    dataDir,
+    secret: '',
+    designRoot,
+    journal: null,
+    onWritten,
+    // The server passes no overrides; tests map the legacy knobs onto the
+    // door's equivalents so the caps stay pinned.
+    ...(maxPutBytes !== undefined ? { maxFileBytes: maxPutBytes } : {}),
+    ...(putBudget !== undefined ? { budget: putBudget } : {}),
+    checkRateLimit,
+    checkWriteRateLimit,
+  });
+  return { handled, ...captured };
+}
+
 async function call({
   pathname,
   method = 'GET',
@@ -82,6 +137,24 @@ async function call({
   checkRateLimit,
   checkWriteRateLimit,
 }) {
+  if (method === 'PUT') {
+    const key = parseAssetPath(pathname);
+    if (key !== null) {
+      return doorPut({
+        rel: `assets/${key}`,
+        token,
+        designRoot,
+        body,
+        onWritten,
+        maxPutBytes,
+        putBudget,
+        checkRateLimit,
+        checkWriteRateLimit,
+      });
+    }
+    // An unparseable key never reaches the door — same as the server, where
+    // the legacy handler then refuses to match it at all.
+  }
   const captured = { status: 0, headers: {}, body: null };
   const response = {
     writeHead(status, headers) {
@@ -335,7 +408,12 @@ test('an authenticated PUT streams into the checkout and fires the mirror hook',
       },
     });
     assert.equal(res.status, 200, res.body);
-    assert.deepEqual(JSON.parse(res.body), { ok: true, key: 'graphics/camo-bg.png', bytes: 10 });
+    // The door's receipt: `path` (not the legacy `key`), plus the sha256 and
+    // seq the plane clients read. Legacy clients never parse a PUT body.
+    const receipt = JSON.parse(res.body);
+    assert.equal(receipt.ok, true);
+    assert.equal(receipt.path, 'assets/graphics/camo-bg.png');
+    assert.equal(receipt.bytes, 10);
     assert.equal(
       readFileSync(join(designRoot, 'assets/graphics/camo-bg.png'), 'utf8'),
       'camo-bytes'
@@ -499,6 +577,12 @@ async function callCheckout({
   checkRateLimit,
   checkWriteRateLimit,
 }) {
+  if (method === 'PUT') {
+    const rel = parseCheckoutAssetPath(pathname);
+    if (rel !== null) {
+      return doorPut({ rel, token, designRoot, body, checkRateLimit, checkWriteRateLimit });
+    }
+  }
   const captured = { status: 0, headers: {}, body: null };
   const response = {
     writeHead(status, headers) {
@@ -572,7 +656,9 @@ test('parseCheckoutAssetPath is the SHAPE gate — class admission moved to the 
 });
 
 test('the route refuses never + canvas-owned with 400, and admits the flowing classes', async () => {
-  const minted = addToken(dataDir, { label: 'peer-a', scope: '*' });
+  // `role: 'owner'` — the door gates code-module writes on the owner role
+  // (Increment 4 closed the half-gate), and `_brand-css.ts` below is one.
+  const minted = addToken(dataDir, { label: 'peer-a', scope: '*', role: 'owner' });
   const designRoot = mkdtempSync(join(tmpdir(), 'maude-hub-ck-'));
   try {
     mkdirSync(join(designRoot, 'system/ds/preview'), { recursive: true });
@@ -631,11 +717,10 @@ test('an authenticated PUT writes a DS asset to the checkout at its real path', 
       body: [Buffer.from('<svg'), Buffer.from('/>')],
     });
     assert.equal(res.status, 200, res.body);
-    assert.deepEqual(JSON.parse(res.body), {
-      ok: true,
-      path: 'system/alligators/assets/logos/horizontal-green.svg',
-      bytes: 6,
-    });
+    const receipt = JSON.parse(res.body);
+    assert.equal(receipt.ok, true);
+    assert.equal(receipt.path, 'system/alligators/assets/logos/horizontal-green.svg');
+    assert.equal(receipt.bytes, 6);
     assert.equal(
       readFileSync(join(designRoot, 'system/alligators/assets/logos/horizontal-green.svg'), 'utf8'),
       '<svg/>'

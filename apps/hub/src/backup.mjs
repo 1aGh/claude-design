@@ -35,11 +35,31 @@ import { gunzipSync, gzipSync } from 'node:zlib';
 
 import { bundleRepo, REPO_BUNDLE, restoreRepo } from './repo-checkpoint.mjs';
 import { deleteObject, getObject, listObjects, putObject, s3ConfigFromEnv } from './s3.mjs';
+import {
+  decideBackupWrite,
+  decideRestoreOwnership,
+  ensureWorkspaceId,
+  manifestOwner,
+} from './workspace-identity.mjs';
 
 const require = createRequire(import.meta.url);
 
-/** The databases a hub must be able to come back from. */
-export const BACKUP_DATABASES = ['hub.db', 'tokens.db', 'users.db'];
+/**
+ * The databases a hub must be able to come back from.
+ *
+ * `journal.db` joined the set with Sync v2 (DDR-226): unlike `tombstones.db`
+ * — which is deliberately NOT here, because its failure mode is a resurrected
+ * canvas and it expires in 30 days anyway — a lost file journal silently
+ * rewinds every peer's cursor. It therefore rides the SAME generation as the
+ * documents and the checkout, which is the DDR-199 rule that mixing generations
+ * is corruption. The tail in object storage covers the ≤6 h gap between
+ * generations; this covers everything older.
+ *
+ * `snapshotDatabase` returns null for a database that does not exist and the
+ * restore only restores what a generation's manifest lists, so adding a name
+ * here is backwards-compatible in both directions.
+ */
+export const BACKUP_DATABASES = ['hub.db', 'tokens.db', 'users.db', 'journal.db'];
 
 /** Default retention: keep this many snapshot generations. */
 const DEFAULT_KEEP = 14;
@@ -152,11 +172,64 @@ export function targetFromEnv(env = process.env) {
  * refreshed by `s3-creds.mjs`, so the scheduler resolves its target per tick
  * through this instead of pinning boot-time values.
  */
-export function targetFromConfig(env = process.env, s3 = null) {
+export function targetFromConfig(env = process.env, s3 = null, { prefixed = true } = {}) {
   const explicit = env.MAUDE_BACKUP_TARGET;
   const base = explicit?.startsWith('file://') ? fileTarget(explicit) : s3 ? s3Target(s3) : null;
   if (!base) return null;
+  // `prefixed: false` hands back the BARE target — the only way to ask "is
+  // there anything at the bucket root?" once a prefix is configured. Phase 0
+  // F3's orphan net needs exactly that, and asking the prefixed target twice
+  // would look in `<prefix>/backups/` both times and always answer zero: a
+  // check that passes review and does nothing.
+  if (!prefixed) return base;
   return env.MAUDE_BACKUP_PREFIX ? prefixedTarget(base, env.MAUDE_BACKUP_PREFIX) : base;
+}
+
+/** The bare target, ignoring any configured prefix. See `targetFromConfig`. */
+export function baseTargetFromEnv(env = process.env) {
+  return targetFromConfig(env, s3ConfigFromEnv(env), { prefixed: false });
+}
+
+/**
+ * Who owns the generations in this keyspace? — Phase 0 F6, ADVISORY ONLY.
+ *
+ * Identity (F1) is forward-only: it makes every NEW generation say whose it is
+ * and stops the destruction from here on. It says nothing about a bucket whose
+ * generations are already interleaved from before the upgrade — those are all
+ * version 1, indistinguishable, and still being pruned across. This reports
+ * that state so a human can act on it.
+ *
+ * It NEVER gates a boot or a restore. Owner counts and timestamp spacing are
+ * evidence, not a condition: a merged series that happens to look evenly spaced
+ * would pass, and a single-owner series whose hub was down for a day would
+ * fail. Conditions gate machines; heuristics inform humans.
+ */
+export async function inspectKeyspace(target, { workspace = null } = {}) {
+  const generations = await listBackups(target);
+  const owners = new Map();
+  for (const gen of generations) owners.set(gen, manifestOwner(await readManifest(target, gen)));
+
+  const distinct = new Set([...owners.values()].filter(Boolean));
+  const unidentified = [...owners.values()].filter((o) => !o).length;
+  const foreign = [...distinct].filter((o) => o !== workspace);
+
+  return {
+    describe: target.describe,
+    generations: generations.length,
+    unidentified,
+    owners: [...distinct],
+    foreign,
+    // `shared` is what a human should look at, and it is deliberately
+    // conservative about the unidentified ones: they are only suspicious when
+    // something foreign is also present.
+    shared: foreign.length > 0,
+    verdict:
+      foreign.length > 0
+        ? 'SHARED — generations from another workspace are present in this keyspace'
+        : unidentified > 0
+          ? 'unidentified generations present (written before workspace identity existed)'
+          : 'single owner',
+  };
 }
 
 // ------------------------------------------------------------------ snapshot
@@ -216,8 +289,34 @@ export async function runBackup({
   keep = DEFAULT_KEEP,
   repoDir = null,
   run = null,
+  workspace = null,
 }) {
   if (!target) throw new Error('runBackup: no target configured');
+
+  // WHOSE KEYSPACE IS THIS? (Phase 0 F1.) Asked BEFORE a single object is
+  // written, because the destruction this guards is on the write path: two
+  // hubs sharing one bucket interleave into one time-sorted keyspace and
+  // `pruneOldBackups` then deletes across the merge. Refusing here costs hub B
+  // its backups and costs hub A nothing; the previous behaviour cost hub A its
+  // history. The refusal is a typed error so the caller can render it as STATE
+  // rather than leaving it as a log line nobody tails (F5).
+  const workspaceId = workspace ?? ensureWorkspaceId(dataDir);
+  const existing = await listBackups(target);
+  // Every owner, not just the newest — a single future-dated key must not be
+  // able to hide a real conflict beneath it, nor pin a false one on top.
+  const owners = [];
+  for (const gen of existing) owners.push(manifestOwner(await readManifest(target, gen)));
+  const allowed = decideBackupWrite({ localId: workspaceId, owners });
+  if (!allowed.ok) {
+    const err = new Error(
+      `runBackup: ${allowed.reason} (owner ${allowed.conflictWith}, this workspace ${workspaceId}). ` +
+        'Give this hub its own MAUDE_BACKUP_PREFIX, or point it at its own bucket.'
+    );
+    err.code = IDENTITY_CONFLICT;
+    err.conflictWith = allowed.conflictWith;
+    throw err;
+  }
+
   const prefix = snapshotPrefix(now);
   const files = [];
   for (const name of BACKUP_DATABASES) {
@@ -248,16 +347,37 @@ export async function runBackup({
     }
   }
 
+  // version 2 — the generation now names its owner. Additive, so a reader that
+  // predates this still finds every field it knows.
   const manifest = {
-    version: 1,
+    version: 2,
+    workspace: workspaceId,
     createdAt: now.toISOString(),
     files,
     ...(repo ? { repo } : {}),
   };
   await target.put(`${prefix}/manifest.json`, Buffer.from(JSON.stringify(manifest, null, 2)));
 
-  const pruned = await pruneOldBackups({ target, keep });
+  const pruned = await pruneOldBackups({ target, keep, workspace: workspaceId });
   return { prefix, files, manifest, repo, pruned };
+}
+
+/** The error a write refusal raises, so callers can surface it as STATE. */
+export const IDENTITY_CONFLICT = 'IDENTITY_CONFLICT';
+
+/**
+ * Read one generation's manifest, or null when it is unreadable.
+ *
+ * A generation whose manifest cannot be parsed is treated as ownerless rather
+ * than as ours — the conservative direction everywhere in this module.
+ */
+export async function readManifest(target, generation) {
+  try {
+    const raw = await target.get(`${generation}/manifest.json`);
+    return raw ? JSON.parse(raw.toString('utf8')) : null;
+  } catch {
+    return null;
+  }
 }
 
 /** List complete generations (those that have a manifest), oldest first. */
@@ -269,10 +389,39 @@ export async function listBackups(target) {
   return complete.sort();
 }
 
-export async function pruneOldBackups({ target, keep = DEFAULT_KEEP }) {
+/**
+ * Delete generations past `keep` — OURS ONLY (Phase 0 F1).
+ *
+ * This is the operation that actually destroys data, so it is the one that has
+ * to be owner-aware. Before identity existed, two hubs at the bare bucket root
+ * interleaved into one time-sorted keyspace and this function's count-only
+ * `slice(0, length - keep)` deleted across the merge: hub A's history erased by
+ * hub B's ticks, on a healthy day, with nothing failing. A boot-time guard
+ * cannot reach that — it happens every six hours, nowhere near a boot.
+ *
+ * A generation is prunable only when it is provably ours. Anything else is
+ * ORPHANED rather than deleted, which is the right direction to fail: an
+ * orphan costs storage, a wrong delete costs the history.
+ *
+ * Legacy (version 1) generations name no owner. They are ours only when
+ * nothing foreign is present anywhere in the keyspace — if another workspace
+ * has stamped a generation here, the unstamped ones may equally be theirs.
+ */
+export async function pruneOldBackups({ target, keep = DEFAULT_KEEP, workspace = null }) {
   const generations = await listBackups(target);
   if (generations.length <= keep) return [];
-  const doomed = generations.slice(0, generations.length - keep);
+
+  const owners = new Map();
+  for (const gen of generations) owners.set(gen, manifestOwner(await readManifest(target, gen)));
+  const foreignPresent = [...owners.values()].some((o) => o && o !== workspace);
+
+  const doomed = generations.slice(0, generations.length - keep).filter((gen) => {
+    const owner = owners.get(gen);
+    if (owner) return owner === workspace;
+    return !foreignPresent && workspace !== null;
+  });
+  if (doomed.length === 0) return [];
+
   const objects = await target.list('backups/');
   for (const gen of doomed) {
     for (const o of objects) {
@@ -296,6 +445,7 @@ export async function restoreLatest({
   which,
   repoDir = null,
   run = null,
+  ownership = null,
 }) {
   const generations = await listBackups(target);
   const latest = which ?? generations[generations.length - 1];
@@ -305,9 +455,41 @@ export async function restoreLatest({
   if (!manifestRaw) throw new Error(`restoreLatest: manifest missing for ${latest}`);
   const manifest = JSON.parse(manifestRaw.toString('utf8'));
 
+  // Phase 0 F2 — read-side ownership, when the caller asked for it. Opt-in on
+  // purpose: `restore-drill` restores into a throwaway directory to prove the
+  // bytes are intact, which is a question about the archive rather than about
+  // who owns it. The boot path (`rehydrate.mjs`) always passes this.
+  let adopt = null;
+  if (ownership) {
+    const verdict = decideRestoreOwnership({
+      localId: ownership.localId ?? null,
+      generationManifest: manifest,
+      prefixSet: Boolean(ownership.prefixSet),
+    });
+    if (verdict.action === 'refuse') {
+      const err = new Error(
+        `restoreLatest: refusing ${latest} — ${verdict.reason} (owner ${verdict.conflictWith}).`
+      );
+      err.code = IDENTITY_CONFLICT;
+      err.conflictWith = verdict.conflictWith;
+      throw err;
+    }
+    if (verdict.action === 'adopt-and-restore') adopt = verdict.adopt;
+  }
+
   mkdirSync(destDir, { recursive: true });
   const restored = [];
   for (const file of manifest.files) {
+    // CONTAINMENT (F1). `file.name` comes from a manifest in object storage,
+    // which is attacker-writable in any shared bucket. A legitimate generation
+    // only ever lists the closed set of databases, so allowlist against it
+    // rather than trying to sanitise a path: `../repo/.git/hooks/post-checkout`
+    // would otherwise be written and then run by the very next autosave.
+    if (!BACKUP_DATABASES.includes(file.name)) {
+      throw new Error(
+        `restoreLatest: refusing ${latest} — manifest lists "${file.name}", not a known database`
+      );
+    }
     const dest = join(destDir, file.name);
     if (existsSync(dest) && !force) {
       throw new Error(
@@ -326,6 +508,13 @@ export async function restoreLatest({
   // that must restore the databases rather than fail.
   let repo = null;
   if (repoDir && run && manifest.repo) {
+    // Same containment as the databases: the bundle name is fixed, so a
+    // manifest that names anything else is refused rather than fetched.
+    if (manifest.repo.name !== REPO_BUNDLE) {
+      throw new Error(
+        `restoreLatest: refusing ${latest} — repo bundle named "${manifest.repo.name}", not ${REPO_BUNDLE}`
+      );
+    }
     const bytes = await target.get(`${latest}/${manifest.repo.name}`);
     if (!bytes) throw new Error(`restoreLatest: ${latest}/${manifest.repo.name} missing`);
     repo = await restoreRepo(repoDir, bytes, run, { force });
@@ -333,7 +522,10 @@ export async function restoreLatest({
       throw new Error(`restoreLatest: the checkout could not be restored — ${repo.reason}`);
     }
   }
-  return { generation: latest, restored, manifest, repo };
+  // `adopt` is how a hub that lost `/data` keeps writing as itself: the caller
+  // persists it, so the next backup tick is recognised as this workspace's own
+  // rather than as a second hub arriving in its keyspace.
+  return { generation: latest, restored, manifest, repo, adopt };
 }
 
 // --------------------------------------------------------------- the drill
@@ -422,6 +614,31 @@ export function scheduleBackups({
   log = console,
   repoDir = null,
   run = null,
+  /**
+   * Fired after a generation completes. Sync v2 uses it to rotate the journal
+   * tail: the generation's `journal.db` now carries every row up to this point,
+   * so the tail no longer has to. Best-effort by construction — replay is
+   * seq-guarded, so a missed rotation costs a slightly long tail and never a
+   * wrong journal.
+   */
+  onGeneration = null,
+  /**
+   * Fired after EVERY tick with the durability state — Phase 0 F5.
+   *
+   * This exists because the refusal above trades one silent failure for
+   * another unless somebody sees it. `runBackup` refusing an identity conflict
+   * means this hub is not destroying a peer's history AND is not protecting
+   * its own; the catch below logs and the interval keeps running (correctly —
+   * see the docstring), so without a state hook the whole event is one line
+   * every six hours in a stream nobody tails. That is the shape of the bug
+   * this track exists to end, inverted.
+   *
+   * Deliberately NOT wired to `/health`: that endpoint is liveness, it is
+   * unauthenticated, and under compose restart policies or ECS health-based
+   * replacement a degraded-but-serving hub would be killed or cycled.
+   * Degradation is a report, not a liveness signal.
+   */
+  onStatus = null,
 }) {
   if (!target || !intervalMs || intervalMs <= 0) return () => {};
   const timer = setInterval(async () => {
@@ -437,12 +654,26 @@ export function scheduleBackups({
     }
     if (!resolved) return;
     runBackup({ dataDir, target: resolved, keep, repoDir, run })
-      .then((r) =>
+      .then(async (r) => {
         log.log?.(
           `[hub] backup ${r.prefix} (${r.files.length} file(s)${r.repo ? ' + checkout' : ''})`
-        )
-      )
-      .catch((err) => log.error?.(`[hub] backup FAILED: ${err.message}`));
+        );
+        onStatus?.({ state: 'ok', generation: r.prefix, at: Date.now() });
+        try {
+          await onGeneration?.(r);
+        } catch (err) {
+          log.error?.(`[hub] post-generation hook failed: ${err.message}`);
+        }
+      })
+      .catch((err) => {
+        log.error?.(`[hub] backup FAILED: ${err.message}`);
+        onStatus?.({
+          state: err.code === IDENTITY_CONFLICT ? 'identity-conflict' : 'failed',
+          conflictWith: err.conflictWith ?? null,
+          message: err.message,
+          at: Date.now(),
+        });
+      });
   }, intervalMs);
   timer.unref?.();
   return () => clearInterval(timer);

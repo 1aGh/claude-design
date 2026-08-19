@@ -131,6 +131,13 @@ export function classifyProjectFile(rel, opts = {}) {
     }
   }
 
+  // The annotations sidecar's REAL shape: flat at the design root, keyed by
+  // the slug (`ui-2.annotations.svg`). The in-group rule above never fires for
+  // it, so it fell through to `inert-media` and the FILE plane carried a file
+  // the DOC lane already owns — the two-lane erase described in the studio
+  // classifier (sync/file-membership.ts), which this file must mirror.
+  if (parts.length === 1 && lowerLast.endsWith('.annotations.svg')) return 'canvas-owned';
+
   if (COMPANION_SIDECAR_SUFFIXES.some((s) => lowerLast.endsWith(s))) return 'companion-text';
 
   const dot = lowerLast.lastIndexOf('.');
@@ -156,11 +163,29 @@ export function isProjectFileShape(rel) {
 
 /** The segment shape rules alone — split parts, or null on refusal.
  *  @param {unknown} rel @returns {string[]|null} */
+
+/**
+ * Another program's conflict artifact. Never ours to carry.
+ *
+ * `~/git` is a real Syncthing tree, and Syncthing writes
+ * `hero.sync-conflict-20260818-101500-ABCDEF.png` beside the original. Nothing
+ * excluded those, so `scanLocalFiles` saw one as `create-up`, pushed it to the
+ * hub, journalled it, and delivered it to every peer — where Syncthing could
+ * in turn make conflict copies OF the conflict copies. A noise-amplification
+ * loop in the one environment the maintainer actually runs, and it makes
+ * conflict provenance exactly as unattributable as `conflictCopyName`'s own
+ * comment says it must not be.
+ */
+export function isForeignConflictArtifact(rel) {
+  return /\.sync-conflict-/i.test(rel);
+}
+
 function relShape(rel) {
   if (typeof rel !== 'string' || rel.length === 0 || rel.length > MAX_REL_LEN) return null;
   // biome-ignore lint/suspicious/noControlCharactersInRegex: refusing them is the point.
   if (/[\u0000-\u001f\u007f]/.test(rel)) return null;
   if (rel.startsWith('/') || rel.includes('\\') || /^[A-Za-z]:/.test(rel)) return null;
+  if (isForeignConflictArtifact(rel)) return null;
   const parts = rel.split('/');
   if (parts.length > MAX_SEGMENTS) return null;
   for (let i = 0; i < parts.length; i++) {

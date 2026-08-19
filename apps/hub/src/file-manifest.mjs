@@ -304,7 +304,12 @@ export function checkoutFileClass(rel, designRoot) {
  * them. This replaces the old assets-parent rule, which enforced the same
  * idea for the narrower assets-only surface.
  *
- * @returns {{ ok: true, abs: string } | { ok: false }}
+ * `realRel` comes back with the caller, not just `abs`. Admission is decided on
+ * the symlink-resolved path, so every LATER decision about those bytes — the
+ * owner-role gate, the CAS lookup, the journal row — has to be asked on the
+ * same path, or the two disagree exactly where the symlink threat lives.
+ *
+ * @returns {{ ok: true, abs: string, realRel: string } | { ok: false }}
  */
 export function resolveCheckoutFileWrite(designRoot, rel) {
   if (!designRoot || !isProjectFileShape(rel)) return { ok: false };
@@ -313,7 +318,7 @@ export function resolveCheckoutFileWrite(designRoot, rel) {
   // `classifyProjectFile` shape-gates internally, so a realRel landing in a
   // `_*` directory (or any malformed shape) classifies `never` right here.
   if (!isFilePlaneClass(checkoutFileClass(target.realRel, designRoot))) return { ok: false };
-  return { ok: true, abs: target.abs };
+  return { ok: true, abs: target.abs, realRel: target.realRel };
 }
 
 /**

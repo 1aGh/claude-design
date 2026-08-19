@@ -1,0 +1,52 @@
+---
+title: Identity
+description: Keep the hub's own sign-in, or bring your own — Auth0, Google, or anything that speaks OIDC. One adapter, and one rule that surprises people.
+---
+
+Out of the box the hub has its own accounts: an address, a password hashed with scrypt, and a session that expires. For a small team that is the whole answer and you can stop reading.
+
+Bring your own identity provider when the people involved already have company accounts and you would rather not run a second set.
+
+## One adapter
+
+Auth0 and Google are both OIDC providers, so there is no Auth0 integration and no Google integration — there is **OIDC**, and they are two configurations of it. Anything else that speaks OIDC works the same way.
+
+```
+HUB_OIDC_MODE=hybrid
+HUB_OIDC_ISSUER=https://acme.eu.auth0.com
+HUB_OIDC_CLIENT_ID=…
+HUB_OIDC_CLIENT_SECRET=…
+HUB_OIDC_ALLOWED_DOMAINS=acme.com
+```
+
+`hybrid` keeps password sign-in working alongside. `strict` turns it off — and refuses to start if nobody is linked yet, because that combination locks you out of your own box with no way back but editing env on the host.
+
+The mode is **explicit**. Naming an issuer does not switch anything on; you have to say `HUB_OIDC_MODE`. That is not ceremony — an env var that names a dependency once doubled as consent to a behavioural mode here, and a live deployment ended up in a mode with no working sign-in.
+
+Register `https://<your-domain>/auth/oidc/callback` as the redirect URI with your provider.
+
+### Auth0
+
+Application type **Regular Web Application**. The issuer is your tenant domain with `https://` and a trailing slash removed. Set the allowed callback URL to the address above.
+
+### Google
+
+Issuer `https://accounts.google.com`. Create an OAuth client of type **Web application** and add the same callback URL.
+
+## The rule that surprises people
+
+**Signing in successfully grants nothing.**
+
+A verified identity with no account here lands in a pending queue. An admin links it to an account, or creates one. Until then: no session, no access.
+
+That includes — *especially* includes — an identity whose email matches an existing account. The hub will not connect the two for you. It looks like helpfulness and it is an account takeover: accounts are keyed by email, plenty of provider configurations let a user assert an arbitrary address, and anyone who could assert `admin@yourcompany.com` would own the admin account in one request. So the address your provider sends is treated as **display data** — enough for you to recognise who is waiting, never enough to decide anything.
+
+The allowed-domain list is required, and it is a filter rather than a grant: it keeps strangers out of the pending queue, it never lets anyone in.
+
+Identity is the provider's stable subject, not the address. An address can be reassigned; a subject cannot.
+
+## What we verify, and what we do ourselves
+
+Signature verification uses [`jose`](https://github.com/panva/jose), pinned, with `RS256` named explicitly at the call site. That is deliberate: a bug in a signing routine fails loudly with a rejected request, and a bug in a *verifier* fails by accepting a forged token. That asymmetry is worth one audited dependency.
+
+The rest is ours: the authorization-code flow with PKCE, state and nonce, the subject-to-account mapping — and the network. A library fetches whatever URL you hand it, so the hub pins the key-set URL to the issuer's own origin, re-checks it after redirects, and resolves-then-connects to the address it validated rather than to a name that could resolve somewhere else a moment later. Private and link-local addresses are refused outright. On AWS, also [require IMDSv2](/docs/hub/aws#require-imdsv2).

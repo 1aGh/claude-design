@@ -39,7 +39,7 @@ import {
   strokeCenter,
   strokeRotation,
 } from './annotations-layer.tsx';
-import { useViewportControllerContext } from './canvas-lib.tsx';
+import { getLiveViewport, useViewportControllerContext } from './canvas-lib.tsx';
 import { useAnnotationSelection } from './use-annotation-selection.tsx';
 
 const RESIZE_CSS = `
@@ -583,9 +583,12 @@ export function AnnotationResizeOverlay({ store }: { store: StrokesStoreValue | 
     return store.strokes.find((s) => s.id === selectedId) ?? null;
   }, [selectedId, store]);
 
+  // Live for the same reason the rAF loop is: a trackpad pinch mid-drag moves
+  // the camera without republishing, and unprojecting the pointer through a
+  // stale viewport would resize the stroke to the wrong world size.
   const screenToWorld = useCallback(
     (cx: number, cy: number): [number, number] => {
-      const v = vp ?? { x: 0, y: 0, zoom: 1 };
+      const v = getLiveViewport() ?? vp ?? { x: 0, y: 0, zoom: 1 };
       const z = v.zoom || 1;
       return [(cx - v.x) / z, (cy - v.y) / z];
     },
@@ -595,6 +598,14 @@ export function AnnotationResizeOverlay({ store }: { store: StrokesStoreValue | 
   // rAF loop — repositions handles on every frame while a single resizable
   // stroke is selected. Cheaper than wiring pan/zoom observers because the
   // halo overlays already follow the same pattern.
+  //
+  // It MUST read `getLiveViewport()` per tick, not the `vp` captured in this
+  // effect's closure: the published viewport is settle-cadence (SETTLE_MS), so
+  // through a pan/zoom the closure holds one frozen value and the loop spends
+  // the whole gesture recomputing the SAME stale screen positions. The handles
+  // sat where the selection used to be and only snapped onto it ~half a second
+  // after the gesture ended. `liveViewport` is written on every applyViewport
+  // with no publish lag, and equals `vp` once settled.
   useEffect(() => {
     if (!selectedStroke || !isResizable(selectedStroke)) {
       const c = containerRef.current;
@@ -609,7 +620,7 @@ export function AnnotationResizeOverlay({ store }: { store: StrokesStoreValue | 
       rafRef.current = null;
       const c = containerRef.current;
       if (!c) return;
-      const v = vp ?? { x: 0, y: 0, zoom: 1 };
+      const v = getLiveViewport() ?? vp ?? { x: 0, y: 0, zoom: 1 };
       const z = v.zoom || 1;
       // Wave H — screen-constant halo offset (HALO_PAD_PX at any zoom).
       const positions = handlePositions(selectedStroke, HALO_PAD_PX / z);

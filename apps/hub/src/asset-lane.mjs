@@ -1,31 +1,44 @@
-// Server-side asset lane — Cloud Phase 16 Task 3.
+// Server-side object-storage lane — Sync v2 Increment 5.
 //
-// THE GAP. The read side has existed since Phase 3: `assets.mjs` proxies
-// `assets/<sha8>` out of the bucket for any peer holding a token. The WRITE
-// side was client-only — `apps/studio/assets-s3.ts` reads its S3 config from
-// the client's environment. So the bytes reached the bucket only if a desktop
-// happened to be running with credentials configured. For a browser-only or
-// phone-only tenant, every asset reference in their canvases resolved to a 404
-// from their own project.
+// TWO jobs, one file:
 //
-// The cell closes that: it is a peer that HAS the bytes (they arrive in the
-// checkout, by seed clone or by a desktop's push) and it has the credentials.
+//   1. `createWriteBehind` — checkout → bucket, JOURNAL-DRIVEN. Every accepted
+//      file-plane write lands a journal row (`file_journal`), and this lane
+//      subscribes to the append: whatever the row names is read back off disk
+//      and mirrored to object storage, then the row is stamped
+//      `mirrored_at_ms`. The unstamped rows ARE the work queue, so a crash
+//      loses nothing — the next boot's flush picks up exactly where the last
+//      one died. This replaces the old directory-walking sweeper
+//      (`sweepAssets`/`createAssetSweeper`), which watched ONLY
+//      `<designRoot>/assets/` — `companion-text`, `code-module` and every
+//      nested `system/**/assets/*` file was durable solely through the hub's
+//      git history (the F-6/B2 durability hole the burn-down closes).
 //
-// WHY NOT MAKE THE HUB AN UPLOAD ENDPOINT. assets.mjs refuses writes on
-// purpose — an authenticated upload route is an authenticated disk-fill
-// surface, and R2 bills for what lands in it. Sweeping from a checkout keeps
-// the write path bounded by what git already accepted.
+//   2. `hydrateAssets` / `hydrateFiles` — bucket → checkout, at boot. A cell's
+//      checkout is EPHEMERAL: the platform migrates instances whenever it
+//      likes and `rehydrate.mjs` restores the newest backup GENERATION, so
+//      bytes that reached the bucket after that generation exist in exactly
+//      one place the cell can serve nothing from. Measured on Brno Alligators
+//      2026-08-13: 53–58 of ~95 assets 404 in the checkout, 200 in the bucket,
+//      three times in one afternoon.
+//
+// KEY LAYOUT. Top-level content-addressed assets keep the legacy
+// `<scope>/assets/<name>` keys — the `/assets/` read proxy and every existing
+// bucket object speak that layout. Everything else in the plane lands under
+// `<scope>/files/<designRoot-rel>`, keyed by PATH: the journal's CAS is the
+// concurrency authority, the bucket is a durable shadow of the checkout, and a
+// deleted file's blob is left unreferenced rather than removed (quarantine
+// semantics, same as `_trash/`).
 //
 // NOTHING HERE MAY EXPIRE. A canvas in git history can reference media no
 // current canvas does, so "unreferenced" never means "unreachable" and a
-// lifecycle rule on this prefix is a permanently broken canvas. The
+// lifecycle rule on these prefixes is a permanently broken canvas. The
 // `s3-no-expiry` verification check asserts it.
 //
-// Cloud Phase 15 widened what counts as an asset: content-addressed names are
-// what `maude design fetch-asset` mints for DOWNLOADED media, but a design
-// system's own fonts and graphics are authored, committed, and referenced by
-// path (`graphics/camo-bg.png`). Mirroring only hashes left a hosted project
-// rendering without its own brand.
+// LOUD AND RETRIED, never best-effort-and-silent (the 2026-08-15
+// annotations-assets RCA): a mirror failure means those bytes live only in the
+// checkout until a retry lands them — one container teardown from gone — so it
+// is an error in the log and a delayed retry, not a dropped promise.
 
 import {
   existsSync,
@@ -40,122 +53,170 @@ import { dirname, join, resolve, sep } from 'node:path';
 
 import { assetObjectKey, assetPrefixFromEnv } from './asset-key.mjs';
 import { parseAssetPath } from './assets.mjs';
-import { getObject, headObject, listObjects, putObject } from './s3.mjs';
+import { resolveCheckoutFileWrite } from './file-manifest.mjs';
+import { getObject, listObjects, putObject } from './s3.mjs';
 
 /**
- * Eligibility is decided by the PROXY, not by a second regex here.
- *
- * These two rules must agree exactly: a file this uploads but the proxy will
- * not serve is spend with no reader, and a file the proxy would serve but this
- * skips is a broken image in a hosted project. They did not agree — the sweep
- * required content-addressed names while real projects also carry
- * `graphics/camo-bg.png` and `gator_badge_roundel.svg` — so the rule now has
- * one home and this asks it.
+ * Eligibility for the LEGACY `assets/` key layout is decided by the read
+ * PROXY, not by a second regex here: a key this lane writes that the proxy
+ * will not serve is spend with no reader.
  */
 function servable(relPath) {
   return parseAssetPath(`/assets/${relPath}`) !== null;
 }
 
-/** Skip anything implausible for a design asset. A 2 GB file in the assets dir
- *  is a mistake, and paying R2 to store it silently is the wrong response. */
+/** Skip anything implausible for a design file. A 2 GB file in the plane is a
+ *  mistake, and paying R2 to store it silently is the wrong response. */
 const MAX_ASSET_BYTES = 512 * 1024 * 1024;
 
-/** Delay before the one post-failure mirror retry (sweepNew). Long enough for
- *  a transient bucket blip to pass, short enough that the bytes stop being
- *  checkout-only within a session, not at the next boot. */
+/** Delay before the one post-failure retry pass. Long enough for a transient
+ *  bucket blip to pass, short enough that the bytes stop being checkout-only
+ *  within a session, not at the next boot. */
 const RETRY_DELAY_MS = 60_000;
 
-/**
- * Which files in an assets directory are eligible, given what the bucket has.
- * Pure — the caller supplies the listing and the existence check.
- *
- * @param {string[]} names       filenames in `<designRoot>/assets/`
- * @param {Set<string>} present  keys already in the bucket (without the `assets/` prefix)
- */
-export function pendingAssets(names, present = new Set()) {
-  return [...new Set(names.filter((n) => servable(n) && !present.has(n)))].sort();
+/** Rows one flush reads per iteration. The loop drains until empty; this only
+ *  bounds a single query, not the pass. */
+const WRITE_BEHIND_BATCH = 500;
+
+/** Iteration backstop per flush — a runaway guard, not a product limit. */
+const MAX_FLUSH_ITERATIONS = 100;
+
+/** The bucket key for a journal path. */
+export function writeBehindKey(rel, prefix = '') {
+  if (rel.startsWith('assets/')) {
+    const name = rel.slice('assets/'.length);
+    // The legacy layout, exactly where the read proxy and hydrate look.
+    if (servable(name)) return assetObjectKey(name, prefix);
+  }
+  return prefix ? `${prefix}/files/${rel}` : `files/${rel}`;
 }
 
-/** Every file under `dir`, as paths relative to it. Missing dir → []. */
-function listRecursive(dir, prefix = '', out = []) {
-  let entries;
-  try {
-    entries = readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return out;
-  }
-  for (const entry of entries) {
-    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
-    if (entry.isDirectory()) listRecursive(join(dir, entry.name), rel, out);
-    else if (entry.isFile()) out.push(rel);
-  }
-  return out;
+/** Strip the `files/` layout back to a designRoot-relative path, or null. */
+export function fileRelFromKey(key, prefix = '') {
+  const scope = prefix ? `${prefix}/files/` : 'files/';
+  const k = String(key ?? '');
+  return k.startsWith(scope) ? k.slice(scope.length) : null;
 }
 
 /**
- * Mirror the checkout's assets into the bucket. Idempotent and skip-first:
- * a HEAD is far cheaper than re-uploading a video on every boot.
+ * The journal-driven write-behind: checkout → bucket, for EVERY file-plane
+ * class. Subscribe `note()` to `journal.onAppend` and call `flush()` once at
+ * boot; the unstamped `mirrored_at_ms` rows are the entire work queue.
  *
- * Never throws. An asset that fails to upload leaves the canvas referencing it
- * broken, which is bad — but a cell that refuses to serve because one upload
- * 502'd is worse, and the next sweep retries it for free.
- *
- * @returns {Promise<{ uploaded: string[], skipped: number, failed: {key:string,reason:string}[] }>}
+ * Never throws into a caller. A failed upload stays unstamped, gets ONE
+ * delayed retry per pass, and is loud in the log either way.
  */
-export async function sweepAssets({ designRoot, s3, log = console, deps = {}, prefix, only }) {
-  // Tenant scope. Resolved ONCE here and passed down, so the reader and the
-  // writer cannot end up computing it differently.
+export function createWriteBehind({ designRoot, s3, journal, prefix, log = console, deps = {} }) {
   const scope = prefix ?? assetPrefixFromEnv();
-  const head = deps.headObject ?? headObject;
   const put = deps.putObject ?? putObject;
-  const result = { uploaded: [], skipped: 0, failed: [] };
-  if (!s3) return result;
+  let running = null;
+  let again = false;
+  let retryTimer = null;
+  let mirroredTotal = 0;
 
-  const dir = join(designRoot, 'assets');
-  const all = listRecursive(dir);
-  if (all.length === 0) return result; // no assets — the common case for a fresh project
-
-  // `only` narrows a sweep to a named set (the B3 incremental lane). Absent =
-  // everything, which is the boot sweep and every pre-existing caller.
-  const eligible = pendingAssets(all).filter((n) => !only || only.has(n));
-  const skipped = all.filter((n) => !servable(n));
-  if (skipped.length > 0) {
-    // Named loudly rather than dropped. A silently skipped asset is a broken
-    // image in a hosted project with nothing anywhere to explain it.
-    log.warn?.(
-      `[assets] ${skipped.length} file(s) cannot be served and were NOT mirrored ` +
-        `(name or depth outside the servable shape): ${skipped.slice(0, 5).join(', ')}` +
-        (skipped.length > 5 ? ` …+${skipped.length - 5}` : '')
-    );
-  }
-
-  for (const name of eligible) {
-    const key = assetObjectKey(name, scope);
-    try {
-      const existing = await head(s3, key);
-      if (existing) {
-        result.skipped += 1;
-        continue;
+  async function flushOnce() {
+    const failedPaths = new Set();
+    let mirrored = 0;
+    for (let i = 0; i < MAX_FLUSH_ITERATIONS; i += 1) {
+      const rows = journal.unmirrored(WRITE_BEHIND_BATCH);
+      const work = rows.filter((r) => !failedPaths.has(r.path));
+      if (work.length === 0) break;
+      // Latest row per path wins — the key is the path, so one upload of the
+      // disk's newest bytes satisfies every older row for it too.
+      const byPath = new Map();
+      for (const row of work) byPath.set(row.path, row); // seq ASC ⇒ last wins
+      for (const [rel, row] of byPath) {
+        const seqs = work.filter((r) => r.path === rel).map((r) => r.seq);
+        if (row.deleted) {
+          // A tombstone mirrors NOTHING: the blob stays, unreferenced —
+          // quarantine semantics, and the reason a delete is recoverable.
+          for (const seq of seqs) journal.markMirrored(seq);
+          continue;
+        }
+        try {
+          const abs = join(designRoot, rel);
+          // Realpath containment at the READ site, not only at the write door.
+          // Every journal producer excludes symlinks today, so this is
+          // defense-in-depth — but the write-behind reads bytes and ships them
+          // to durable, potentially peer-readable storage, so a committed
+          // symlink that ever slipped a producer must not become an exfil of a
+          // file outside the design root (defender finding L-2, 2026-08-18).
+          if (!containedReal(abs, designRoot)) {
+            log.warn?.(`[assets] ${rel} resolves outside the design root — NOT mirrored.`);
+            for (const seq of seqs) journal.markMirrored(seq); // deliberate refusal, not a retry
+            continue;
+          }
+          const body = readFileSync(abs);
+          if (body.length > MAX_ASSET_BYTES) {
+            log.warn?.(`[assets] ${rel} is over ${MAX_ASSET_BYTES} bytes — NOT mirrored.`);
+            for (const seq of seqs) journal.markMirrored(seq); // deliberate refusal, not a retry
+            continue;
+          }
+          await put(s3, writeBehindKey(rel, scope), body);
+          mirrored += 1;
+          for (const seq of seqs) journal.markMirrored(seq);
+        } catch (err) {
+          if (!existsSync(join(designRoot, rel))) {
+            // The file is gone from disk. If a tombstone follows, its row will
+            // settle these; until then the row stays unstamped so a reappearing
+            // file (a raced rename) is retried rather than forgotten.
+            failedPaths.add(rel);
+            continue;
+          }
+          failedPaths.add(rel);
+          log.error?.(
+            `[assets] bucket mirror FAILED for ${rel}: ${err.message} — these bytes live ` +
+              'only in the checkout until a retry lands them.'
+          );
+        }
       }
-      const body = readFileSync(join(dir, name));
-      if (body.length > MAX_ASSET_BYTES) {
-        result.failed.push({ key: name, reason: `over ${MAX_ASSET_BYTES} bytes` });
-        continue;
-      }
-      await put(s3, key, body);
-      result.uploaded.push(name);
-    } catch (err) {
-      result.failed.push({ key: name, reason: err.message });
     }
+    mirroredTotal += mirrored;
+    if (mirrored > 0) log.log?.(`[assets] write-behind mirrored ${mirrored} file(s) to the bucket`);
+    if (failedPaths.size > 0 && retryTimer === null) {
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        void flush();
+      }, RETRY_DELAY_MS);
+      retryTimer.unref?.();
+    }
+    return { mirrored, failed: failedPaths.size };
   }
 
-  if (result.uploaded.length || result.failed.length) {
-    log.log?.(
-      `[assets] mirrored ${result.uploaded.length}, skipped ${result.skipped}` +
-        (result.failed.length ? `, ${result.failed.length} failed` : '')
-    );
+  /** Single-flight with a trailing re-run — a row appended DURING a pass is
+   *  the next pass's work, never a lost upload. */
+  function flush() {
+    if (!s3) return Promise.resolve({ mirrored: 0, failed: 0, skipped: 'no-target' });
+    if (running) {
+      again = true;
+      return running;
+    }
+    running = (async () => {
+      try {
+        return await flushOnce();
+      } finally {
+        running = null;
+        if (again) {
+          again = false;
+          void flush();
+        }
+      }
+    })();
+    return running;
   }
-  return result;
+
+  return {
+    /** Wire to `journal.onAppend` — fire-and-forget per row. */
+    note() {
+      void flush().catch(() => {});
+    },
+    flush,
+    mirroredCount: () => mirroredTotal,
+    stop() {
+      if (retryTimer !== null) clearTimeout(retryTimer);
+      retryTimer = null;
+    },
+  };
 }
 
 /**
@@ -191,6 +252,22 @@ function containedReal(abs, root) {
   }
 }
 
+/** Every file under `dir`, as paths relative to it. Missing dir → []. */
+function listRecursive(dir, prefix = '', out = []) {
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const entry of entries) {
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) listRecursive(join(dir, entry.name), rel, out);
+    else if (entry.isFile()) out.push(rel);
+  }
+  return out;
+}
+
 /**
  * The names a bucket listing offers this checkout, given what is already on disk.
  *
@@ -220,27 +297,13 @@ export function assetNameFromKey(key, prefix = '') {
 }
 
 /**
- * Refill the checkout from the bucket — the direction that did not exist.
- *
- * THE FAILURE. A cell's checkout is EPHEMERAL: the platform migrates instances
- * whenever it likes, and `rehydrate.mjs` restores the working set from the
- * newest backup generation. Assets that reached the bucket AFTER that
- * generation are not in it. `sweepAssets` above mirrors checkout → bucket and
- * there was no reverse, so those bytes existed in exactly one place the cell
- * could not read. The studio serves the CHECKOUT, so every canvas photograph
- * became a grey box.
- *
- * Measured on Brno Alligators, 2026-08-13: immediately after a fleet rollout,
- * 53–58 of ~95 bucket-class assets were 404 in the checkout and 200 in the
- * bucket. Three times in one afternoon. The only repair anyone had was
- * re-uploading ~388 MB from a laptop — a client fixing a server's disk, for
- * bytes the server already had.
+ * Refill the checkout's `assets/` from the bucket — the restore half.
  *
  * IT NEVER OVERWRITES. Only files ABSENT from the checkout are written. The
  * bucket is a backup of this checkout, not an authority over it: a
  * content-addressed name means identical bytes either way, and a
  * path-addressed one (`graphics/camo-bg.png`) could legitimately be NEWER on
- * disk — a local edit that has not been swept up yet. Filling gaps is the whole
+ * disk — a local edit that has not been mirrored yet. Filling gaps is the whole
  * job; anything more is a way to lose work.
  *
  * NEVER THROWS. A cell that refuses to boot because one GET 502'd is worse than
@@ -248,7 +311,25 @@ export function assetNameFromKey(key, prefix = '') {
  *
  * @returns {Promise<{ restored: string[], present: number, failed: {key:string,reason:string}[], listed: number }>}
  */
-export async function hydrateAssets({ designRoot, s3, log = console, deps = {}, prefix }) {
+export async function hydrateAssets({
+  designRoot,
+  s3,
+  log = console,
+  deps = {},
+  prefix,
+  /**
+   * Sync v2 (DDR-226 §2) — fired with the designRoot-relative path of every
+   * file this restore lands.
+   *
+   * This lane WRITES CHECKOUT FILES, so it is a write door like any other and
+   * needs a journal row: a rehydrated cell that refilled 58 assets from the
+   * bucket has 58 files peers cannot see the arrival of, and — because "no
+   * row" is a meaningful statement in this protocol — 58 files the doručenka
+   * would report as never delivered. Found by the write-door tripwire, not by
+   * a reader; that is what the tripwire is for.
+   */
+  onWritten = null,
+}) {
   const scope = prefix ?? assetPrefixFromEnv();
   const list = deps.listObjects ?? listObjects;
   const get = deps.getObject ?? getObject;
@@ -294,8 +375,6 @@ export async function hydrateAssets({ designRoot, s3, log = console, deps = {}, 
     // committed symlink under `.design/assets/` is a write-outside primitive
     // inside this cell — the exact hazard `sync/remote-docs.ts` documents and
     // injects a realpath for, on a receiver that is otherwise this one's twin.
-    // Bounded (the `existsSync` re-check below still refuses to overwrite), and
-    // still the one guard this codebase already knows it needs.
     if (!containedReal(abs, root)) {
       result.failed.push({
         key: name,
@@ -306,7 +385,6 @@ export async function hydrateAssets({ designRoot, s3, log = console, deps = {}, 
     try {
       const body = await get(s3, assetObjectKey(name, scope));
       if (!body) {
-        // Listed a moment ago, gone now. Not an error worth shouting about.
         result.failed.push({ key: name, reason: 'not found in the bucket' });
         continue;
       }
@@ -314,7 +392,7 @@ export async function hydrateAssets({ designRoot, s3, log = console, deps = {}, 
         result.failed.push({ key: name, reason: `over ${MAX_ASSET_BYTES} bytes` });
         continue;
       }
-      // Re-check under the write, not only under the plan: a concurrent sweep,
+      // Re-check under the write, not only under the plan: a concurrent restore,
       // a git checkout or a desktop push may have landed the real file while
       // this loop was awaiting an earlier GET.
       if (existsSync(abs)) {
@@ -328,6 +406,13 @@ export async function hydrateAssets({ designRoot, s3, log = console, deps = {}, 
       writeFileSync(tmp, body);
       renameSync(tmp, abs);
       result.restored.push(name);
+      // The path is all this says; the journal re-stats and re-hashes the disk.
+      // Never allowed to fail the restore that already landed.
+      try {
+        onWritten?.({ path: `assets/${name}` });
+      } catch (err) {
+        log.error?.(`[assets] hydrate journal hook failed for ${name}: ${err.message}`);
+      }
     } catch (err) {
       result.failed.push({ key: name, reason: err.message });
     }
@@ -343,116 +428,90 @@ export async function hydrateAssets({ designRoot, s3, log = console, deps = {}, 
 }
 
 /**
- * The lane a BROWSER upload takes — Cloud Phase 27 B3.
+ * Refill the checkout's OTHER file-plane classes from the `files/` prefix —
+ * the restore half of the write-behind, and what makes the F-6/B2 fix whole:
+ * durability without a way back is a receipt, not a backup.
  *
- * The boot sweep above rests on "assets arrive with a commit, and a cell wakes
- * on every migration". A browser upload breaks both halves of that: it lands on
- * the working tree through `POST /_api/asset` in the studio, with no commit and
- * no boot, so the bytes sat in `/repo` and reached object storage only whenever
- * the cell next restarted. Until then the asset served fine from the checkout
- * and was one teardown away from being gone.
+ * Same posture as `hydrateAssets`: only-if-absent, never throws, every landed
+ * file gets a journal row via `onWritten`. Admission is
+ * `resolveCheckoutFileWrite` — the SAME classifier + symlink containment the
+ * write door uses, so a listing (remote input, DDR-054) can never land a path
+ * the door would refuse.
  *
- * WHY THE HUB AND NOT THE STUDIO. The studio has its own S3 mirror
- * (`assets-s3.ts`) and in a cell it is deliberately unconfigured: `childEnv()`
- * is an allowlist and the tenant's storage credentials are not on it. Handing
- * them over to close this gap would undo a boundary that exists for better
- * reasons than this one. The hub already holds the credentials and already sees
- * the request, so the trigger belongs here.
- *
- * WHY NOT RE-SWEEP. A full sweep is one HEAD per file — 793 of them on a real
- * project — for an upload that added exactly one. This keeps the names it has
- * already mirrored and looks only at what is new, so the steady-state cost of
- * an upload is one HEAD and one PUT.
+ * @returns {Promise<{ restored: string[], present: number, failed: {key:string,reason:string}[], listed: number }>}
  */
-export function createAssetSweeper({ designRoot, s3, prefix, log = console, deps = {} }) {
-  /** Names this process has already put (or found) in the bucket. */
-  const mirrored = new Set();
-  let running = null;
-  let again = false;
-  /** Armed after a pass with failures — one delayed retry, never a storm. */
-  let retryTimer = null;
+export async function hydrateFiles({
+  designRoot,
+  s3,
+  log = console,
+  deps = {},
+  prefix,
+  onWritten = null,
+}) {
+  const scope = prefix ?? assetPrefixFromEnv();
+  const list = deps.listObjects ?? listObjects;
+  const get = deps.getObject ?? getObject;
+  const result = { restored: [], present: 0, failed: [], listed: 0 };
+  if (!s3) return result;
 
-  function remember(result) {
-    for (const name of result.uploaded) mirrored.add(name);
+  let objects;
+  try {
+    objects = await list(s3, scope ? `${scope}/files/` : 'files/');
+  } catch (err) {
+    log.warn?.(`[assets] could not list the bucket to hydrate files: ${err.message}`);
     return result;
   }
+  result.listed = objects.length;
 
-  /** The boot sweep — everything, and remember what was there. */
-  async function sweepAll() {
-    const result = await sweepAssets({ designRoot, s3, log, deps, prefix });
-    // `skipped` counts files already in the bucket; they are equally "done", but
-    // sweepAssets does not name them. Re-listing is cheap and local, and it
-    // means a second boot does not re-HEAD them.
-    for (const name of listRecursive(join(designRoot, 'assets'))) mirrored.add(name);
-    return remember(result);
-  }
-
-  /**
-   * The incremental sweep — only what this process has not mirrored yet.
-   *
-   * Single-flight with a trailing re-run: a burst of uploads (dragging six
-   * images onto a canvas) collapses into one pass, and an upload that lands
-   * DURING a pass is not dropped — it triggers exactly one more.
-   */
-  function sweepNew() {
-    if (running) {
-      again = true;
-      return running;
+  for (const obj of objects) {
+    const rel = fileRelFromKey(obj.key, scope);
+    if (rel === null) continue; // not ours — refused, never trimmed
+    // The one admission gate: classifier membership + containment through
+    // symlinks, judged exactly as the write door judges a peer's PUT.
+    const target = resolveCheckoutFileWrite(designRoot, rel);
+    if (!target.ok) {
+      result.failed.push({ key: rel, reason: 'refused by the write-door admission' });
+      continue;
     }
-    running = (async () => {
-      try {
-        const dir = join(designRoot, 'assets');
-        const fresh = listRecursive(dir).filter((n) => !mirrored.has(n));
-        if (fresh.length === 0) return { uploaded: [], skipped: 0, failed: [] };
-        const result = await sweepAssets({
-          designRoot,
-          s3,
-          log,
-          deps,
-          prefix,
-          only: new Set(fresh),
-        });
-        // LOUD, both ways (2026-08-15 annotations-assets RCA). This pass's
-        // per-file failures land in `result.failed` and nothing above ever
-        // read it: `onAssetWritten` catches only a rejected promise and this
-        // function never rejects, so a broken bucket write was invisible —
-        // an upload answered 201, the mirror silently didn't happen, and the
-        // asset survived exactly until the next container teardown.
-        if (result.uploaded.length > 0) {
-          log.log?.(`[assets] mirrored ${result.uploaded.length} new asset(s) to the bucket`);
-        }
-        if (result.failed.length > 0) {
-          log.error?.(
-            `[assets] bucket mirror FAILED for ${result.failed.length} asset(s): ` +
-              result.failed
-                .slice(0, 5)
-                .map((f) => `${f.key} (${f.reason})`)
-                .join(', ') +
-              (result.failed.length > 5 ? ` …+${result.failed.length - 5}` : '') +
-              ' — these bytes live only in the checkout until a retry lands them.'
-          );
-          // One retry per failed pass, off the hot path. `mirrored` never
-          // learned the failed names, so the retry pass re-lists them as
-          // fresh; single-flight + the trailing-run latch already serialize.
-          if (retryTimer === null) {
-            retryTimer = setTimeout(() => {
-              retryTimer = null;
-              void sweepNew();
-            }, RETRY_DELAY_MS);
-            retryTimer.unref?.();
-          }
-        }
-        return remember(result);
-      } finally {
-        running = null;
-        if (again) {
-          again = false;
-          void sweepNew();
-        }
+    if (existsSync(target.abs)) {
+      result.present += 1;
+      continue;
+    }
+    try {
+      const body = await get(s3, obj.key);
+      if (!body) {
+        result.failed.push({ key: rel, reason: 'not found in the bucket' });
+        continue;
       }
-    })();
-    return running;
+      if (body.length > MAX_ASSET_BYTES) {
+        result.failed.push({ key: rel, reason: `over ${MAX_ASSET_BYTES} bytes` });
+        continue;
+      }
+      if (existsSync(target.abs)) {
+        result.present += 1;
+        continue;
+      }
+      mkdirSync(dirname(target.abs), { recursive: true });
+      const tmp = `${target.abs}.hydrating-${process.pid}`;
+      writeFileSync(tmp, body);
+      renameSync(tmp, target.abs);
+      result.restored.push(rel);
+      try {
+        onWritten?.({ path: rel });
+      } catch (err) {
+        log.error?.(`[assets] file hydrate journal hook failed for ${rel}: ${err.message}`);
+      }
+    } catch (err) {
+      result.failed.push({ key: rel, reason: err.message });
+    }
   }
 
-  return { sweepAll, sweepNew, mirroredCount: () => mirrored.size };
+  if (result.restored.length || result.failed.length) {
+    log.log?.(
+      `[assets] restored ${result.restored.length} plane file(s) from the bucket, ` +
+        `${result.present} already present` +
+        (result.failed.length ? `, ${result.failed.length} failed` : '')
+    );
+  }
+  return result;
 }

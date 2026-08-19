@@ -469,7 +469,16 @@ export function createStudioProxy({
     if (unsafeMethod) {
       const origin = request.headers?.origin ?? null;
       if (origin) {
-        const allowed = [env.MAUDE_PUBLIC_CANVAS_ORIGIN, publicUrl].filter(Boolean).map(originOf);
+        const allowed = [
+          env.MAUDE_PUBLIC_CANVAS_ORIGIN,
+          publicUrl,
+          // A cell may have MORE than one legit shell name (the local rig's
+          // same-site `studio.cell.localhost` beside 127.0.0.1) — same list
+          // the studio's frame-ancestors accepts.
+          ...String(env.MAUDE_EXTRA_SHELL_ORIGINS ?? '').split(/[\s,]+/),
+        ]
+          .filter(Boolean)
+          .map(originOf);
         if (!allowed.includes(originOf(origin))) {
           refuse(response, 403, { error: 'cross-origin canvas write refused' });
           return true;
@@ -496,7 +505,7 @@ export function createStudioProxy({
     //
     // The same `decide()` the shell door runs, at the role the capability
     // vouches — so a viewer's capability gets the same 403 sentence at both
-    // doors, `/_api/photo-edit` stays refused at both, and a write path the
+    // doors, `/_api/export` stays refused at both, and a write path the
     // manifest never classified fails closed here before it reaches the
     // studio. The studio's own gates (readOnlyRefusal + the canvas-origin
     // allowlist) still run behind this; two enforcement points that share one

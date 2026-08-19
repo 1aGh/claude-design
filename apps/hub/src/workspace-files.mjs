@@ -164,12 +164,17 @@ export function readDocContent(doc) {
   // here rather than read inline so the one place that reads a doc stays the
   // one place that reads a doc.
   const path = doc.getMap(DOC_TYPES.syncMeta).get('path');
+  // The move protocol (studio codec stampMovedTo): a non-null `movedTo` means
+  // this document is RETIRED — its canvas lives on at that path in a DIFFERENT
+  // document. UNTRUSTED like `path`; consumers only need the null/non-null fact.
+  const movedTo = doc.getMap(DOC_TYPES.syncMeta).get('movedTo');
   return {
     body: text(DOC_TYPES.html),
     css: text(DOC_TYPES.css),
     meta: text(DOC_TYPES.meta),
     annotations: typeof svg === 'string' && svg.length > 0 ? svg : null,
     path: typeof path === 'string' && path.length > 0 ? path : null,
+    movedTo: typeof movedTo === 'string' && movedTo.length > 0 ? movedTo : null,
   };
 }
 

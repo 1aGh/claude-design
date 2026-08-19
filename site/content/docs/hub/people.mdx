@@ -1,0 +1,42 @@
+---
+title: People
+description: Accounts, invite links, and what "removed" actually means — measured in hours, not in clicks.
+---
+
+A workspace has accounts. **People → Add someone**, or send an invite link.
+
+## Adding someone
+
+Two ways, both in the console's People view:
+
+- **Add someone** — you set the address, an initial password and a role. They sign in immediately.
+- **Invite by link** — you set the address and a role, and the hub gives you a single-use link that expires. They pick their own password.
+
+**The hub does not send email.** There is no SMTP configuration to find: it hands you the link and you deliver it however you already talk to that person. That is a deliberate omission — mail is a dependency, a deliverability problem and a new failure mode, in an image every self-hoster pulls. A link you can see is more honest than a "sent!" you cannot verify.
+
+## Roles
+
+`admin` and `member`. Admins manage people; members work on the project. There is no third role, and adding one is a bigger change than it looks — the role vocabulary is shared with the session layer, and a role the matrix does not recognise gets nothing.
+
+Read-only access is a property of a session, not a role.
+
+## Peer tokens are a different thing
+
+The Tokens view mints **peer tokens** — a credential for a teammate with a git clone, pasted into their terminal by `maude design link`. It is not an account and it does not belong to a person.
+
+If you want someone to sign in and work in the browser, you want People.
+
+## Offboarding, and what it actually does
+
+Disabling an account:
+
+- revokes every credential it holds
+- **kicks live sessions immediately** — "disabled" means out now, not "cannot log in again"
+
+The Sessions column shows how many live credentials an account holds, which is the number that answers *did the offboard take effect*.
+
+One caveat worth knowing before you rely on it: a session token is verified offline, so a hub that is up keeps honouring an already-issued token until it expires. Disable revokes and kicks, which closes it in practice — but if you are removing someone under pressure, rotate `HUB_SECRET` too.
+
+## When People is not there
+
+If the console shows no People view, this project takes its members from Maude Cloud and the dashboard owns them. That is the hosted product; nothing here applies.

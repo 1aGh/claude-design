@@ -237,7 +237,10 @@ describe('the vocabulary itself', () => {
       '/_api/generate',
       '/_api/github',
       '/_api/hub',
-      '/_api/photo-edit',
+      // `/_api/photo-edit` left this list on purpose: it stores a validated
+      // JSON sidecar and evaluates nothing — the decode happens in the
+      // member's browser. Withholding it made photo edits unsavable in the
+      // cloud. See workspace-mode.ts's header for the fuller account.
       // Spawns a headless browser against the studio — same evaluation as
       // `/_api/export`, and there is no browser in a cell image.
       '/_api/shell-shot',
@@ -282,14 +285,12 @@ describe('pruneForWorkspace — how a cell can boot at all', () => {
       '/_api/asset',
       '/_api/comments',
       '/_api/git-committers',
+      // Kept since the unwithhold — a photo edit is a stored sidecar, and a
+      // cell that cannot store it cannot save photo edits at all.
+      '/_api/photo-edit',
       '/_health',
     ]);
-    expect(removed).toEqual([
-      '/_api/export',
-      '/_api/export-jobs',
-      '/_api/generate/keys',
-      '/_api/photo-edit',
-    ]);
+    expect(removed).toEqual(['/_api/export', '/_api/export-jobs', '/_api/generate/keys']);
     // Handlers are carried through by reference — pruning must not rebuild them.
     expect(routes['/_api/asset']).toBe('a');
   });

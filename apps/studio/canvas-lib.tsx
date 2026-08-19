@@ -77,6 +77,7 @@
  * deprecation log at dev-server boot.
  */
 
+import type { Easing } from 'motion/react';
 import {
   AnimatePresence as _MotionAnimatePresence,
   motion as _motionImpl,
@@ -226,7 +227,7 @@ const ZOOM_MIN = 0.02;
 const ZOOM_MAX = 4.0;
 const ZOOM_STEP_IN = 1.2;
 const ZOOM_STEP_OUT = 1 / 1.2;
-const WHEEL_ZOOM_K = 0.0015; // larger = more sensitive wheel
+const WHEEL_ZOOM_K = 0.0035; // larger = more sensitive wheel — tuned to match Figma/FigJam's zoom-per-notch feel
 const SETTLE_MS = 500;
 const PUBLISH_MS = 50;
 
@@ -257,7 +258,12 @@ type DcPerfCounters = {
   instrumented?: boolean;
 };
 
-export function countRender(key: keyof DcPerfCounters): void {
+/** The numeric counters only — `instrumented` is a flag, not something to add 1 to. */
+type DcPerfCounterKey = {
+  [K in keyof DcPerfCounters]-?: DcPerfCounters[K] extends number | undefined ? K : never;
+}[keyof DcPerfCounters];
+
+export function countRender(key: DcPerfCounterKey): void {
   if (typeof window === 'undefined') return;
   const perf = (window as unknown as { __dcPerf?: DcPerfCounters }).__dcPerf;
   if (!perf) return;
@@ -2618,7 +2624,14 @@ function buildCanvasRectsManifest(): CanvasRectsManifest {
     if (rect.width <= 0 || rect.height <= 0) continue;
     const id = el.getAttribute('data-dc-screen');
     if (!id) continue;
-    artboards.push({ id, ...toWorld(rect) });
+    // `kind` is part of ArtboardRect and the manifest's consumers (canvas-rects
+    // → the whiteboard toolkit, DDR-151) read it. It was being dropped here —
+    // invisible until A2 put this file under a checker. Same element carries
+    // `data-dc-kind`, always stamped by DCArtboard; 'digital' is its own default.
+    const kindAttr = el.getAttribute('data-dc-kind');
+    const kind: ArtboardKind =
+      kindAttr === 'print' || kindAttr === 'web' || kindAttr === 'video' ? kindAttr : 'digital';
+    artboards.push({ id, kind, ...toWorld(rect) });
   }
 
   const elements: CanvasRectsElement[] = [];
@@ -3020,6 +3033,39 @@ export function PhotoPreviewBridge() {
       for (const t of timers.values()) clearTimeout(t);
     };
   }, []);
+
+  // A peer's photo edit arrived: the sidecar changed on disk, the shell heard
+  // it on the HMR socket and re-dispatched it here. Re-fetch and re-apply —
+  // deliberately OUTSIDE the hydration scan's once-per-asset `attempted` set,
+  // which exists to stop mutation-driven fetch amplification and which is
+  // exactly why a synced edit used to appear only after Cmd+R (the scan had
+  // already spent this asset's one attempt on mount).
+  useEffect(() => {
+    const onRefreshed = (e: Event) => {
+      const sha8 = (e as CustomEvent<{ sha8?: unknown }>).detail?.sha8;
+      if (typeof sha8 !== 'string' || !/^[0-9a-f]{8}$/i.test(sha8)) return;
+      // Resolve the full `assets/<sha8>.<ext>` ref from the live DOM — the
+      // event carries only the hash (the sidecar name has no extension).
+      let asset: string | null = null;
+      for (const n of document.querySelectorAll('img, image')) {
+        const ref = extractAssetRef(n);
+        if (ref?.includes(`assets/${sha8}.`)) {
+          asset = ref;
+          break;
+        }
+      }
+      if (!asset) return; // no photo on this canvas uses that asset
+      fetch(`/_api/photo-edit?asset=${encodeURIComponent(asset)}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((edit) => {
+          // A deleted/reset edit applies as null → restores the original src.
+          apply(asset as string, edit && !isDefaultEdit(edit) ? (edit as PhotoEdit) : null);
+        })
+        .catch(() => {});
+    };
+    document.addEventListener('maude:photo-edit-refreshed', onRefreshed);
+    return () => document.removeEventListener('maude:photo-edit-refreshed', onRefreshed);
+  }, [apply]);
 
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
@@ -4019,6 +4065,49 @@ export function easingFromToken(
   return undefined;
 }
 
+/**
+ * The same token, in the shape MOTION accepts.
+ *
+ * `easingFromToken` returns CSS (`cubic-bezier(a, b, c, d)`), which is right for
+ * a stylesheet and wrong for motion: its `Easing` is a named curve or a
+ * four-number BezierDefinition, never a CSS string. Both MotionDemo call sites
+ * were handing it the CSS form, so motion silently fell back to its own default
+ * — a DS motion specimen was not demonstrating the DS's easing at all. Invisible
+ * until A2 put this file under a checker.
+ *
+ * Named curves pass through; anything unparseable returns undefined, which is
+ * the same "let motion decide" the bug produced, only deliberately.
+ */
+function motionEaseFromToken(token: string, easings: Record<string, string>): Easing | undefined {
+  const css = easingFromToken(token, easings);
+  if (!css) return undefined;
+  const named = css.trim();
+  if (
+    named === 'linear' ||
+    named === 'easeIn' ||
+    named === 'easeOut' ||
+    named === 'easeInOut' ||
+    named === 'circIn' ||
+    named === 'circOut' ||
+    named === 'circInOut' ||
+    named === 'backIn' ||
+    named === 'backOut' ||
+    named === 'backInOut' ||
+    named === 'anticipate'
+  ) {
+    return named;
+  }
+  // CSS keywords motion spells differently.
+  if (named === 'ease-in') return 'easeIn';
+  if (named === 'ease-out') return 'easeOut';
+  if (named === 'ease-in-out') return 'easeInOut';
+  const m = /^cubic-bezier\(([^)]*)\)$/.exec(named);
+  if (!m || !m[1]) return undefined;
+  const nums = m[1].split(',').map((n) => Number(n.trim()));
+  if (nums.length !== 4 || nums.some((n) => !Number.isFinite(n))) return undefined;
+  return [nums[0], nums[1], nums[2], nums[3]] as [number, number, number, number];
+}
+
 interface MotionDemoProps {
   role: MotionRole;
   loop?: MotionLoop;
@@ -4048,7 +4137,7 @@ export function MotionDemo({
   const reduced = _useReducedMotion();
   const durationMs = tokens.durations[cfg.durationToken] ?? cfg.fallbackMs;
   const isSpring = cfg.easingToken === 'spring';
-  const ease = isSpring ? undefined : easingFromToken(cfg.easingToken, tokens.easings);
+  const ease = isSpring ? undefined : motionEaseFromToken(cfg.easingToken, tokens.easings);
   const repeat = reduced || loop === 'once' ? 0 : Number.POSITIVE_INFINITY;
   const repeatType: 'reverse' | 'loop' = loop === 'always' ? 'reverse' : 'loop';
   const animate = reduced ? undefined : cfg.keyframes;
@@ -4131,7 +4220,7 @@ export function TokenPlayback({
   const tokens = useMotionTokens();
   const reduced = _useReducedMotion();
   const durationMs = tokens.durations[duration] ?? 220;
-  const ease = easing === 'spring' ? undefined : easingFromToken(easing, tokens.easings);
+  const ease = easing === 'spring' ? undefined : motionEaseFromToken(easing, tokens.easings);
   const [tick, setTick] = useState(0);
   const fire = useCallback(() => {
     if (!reduced) setTick((n) => n + 1);

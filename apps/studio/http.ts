@@ -105,6 +105,7 @@ import { createPhotoStore, PHOTO_EDIT_MAX_BYTES } from './photo-store.ts';
 import { probeReadiness } from './readiness.ts';
 import { getRuntimeBundle, packageForSlug } from './runtime-bundle.ts';
 import { currentSession } from './session-scope.ts';
+import { sanitizeForLog } from './sync/cell-pairing.ts';
 import { linkHub } from './sync/hub-link.ts';
 import { isHubReadOnly } from './sync/hubs-config.ts';
 import { signInToWorkspace, workspaceDisclosure } from './sync/workspace-signin.ts';
@@ -742,6 +743,49 @@ const HIST_WINDOW_MS = 10_000;
 const HIST_MAX_BUILDS = 24;
 let histWindowStart = Date.now();
 let histBuilds = 0;
+
+// Shas neither git NOR the linked cell could resolve (feature-cloud-managed-git-
+// posture). Without it, every re-request of a bad sha costs a git lookup AND a
+// network round trip to the hub — and the sha is attacker-influenceable from the
+// untrusted canvas origin (DDR-054), so "it will fail again" must be cheap to
+// say. Bounded like the positive cache; a miss is only ever a wasted retry.
+const historicalMissCache = new Set<string>();
+const HIST_MISS_MAX = 256;
+
+/**
+ * The linked cell's blob reader, or null when this project is not
+ * cloud-managed.
+ *
+ * `createCloudEndpoints` is a pure closure factory (it touches disk only when a
+ * method is CALLED), and `historyFile` already answers null unless the folder
+ * is linked AND credentialed — which is exactly the cloud-managed condition.
+ * So the posture is not re-derived here; it is asked of the module that owns
+ * it. Memoized per repo root because a process serves one.
+ */
+let cloudHistoryFor: { root: string; api: ReturnType<typeof createCloudEndpoints> } | null = null;
+
+/**
+ * Forget every historical build and every remembered absence.
+ *
+ * Called when the project's LINK changes (Connect / Disconnect). Both caches
+ * are keyed by `(path, sha)` and neither mentions which repo answered, so a
+ * cloud-sourced entry — and, more importantly, an absence the CELL was
+ * authoritative about — would otherwise outlive the link and be served to a
+ * now-local project that may well have the object. (Security re-review of
+ * 8134ca8f, finding F5.)
+ */
+export function clearHistoricalCaches(): void {
+  historicalCanvasCache.clear();
+  historicalMissCache.clear();
+  cloudHistoryFor = null;
+}
+function cloudHistoryApi(ctx: Context): ReturnType<typeof createCloudEndpoints> {
+  if (cloudHistoryFor?.root !== ctx.paths.repoRoot) {
+    cloudHistoryFor = { root: ctx.paths.repoRoot, api: createCloudEndpoints(ctx) };
+  }
+  return cloudHistoryFor.api;
+}
+
 function historicalBuildAllowed(): boolean {
   const now = Date.now();
   if (now - histWindowStart >= HIST_WINDOW_MS) {
@@ -772,7 +816,51 @@ async function serveHistoricalCanvas(
         headers: { 'Retry-After': '10', 'Cache-Control': 'no-store' },
       });
     }
-    const source = await gitShowFile(ctx.paths.repoRoot, sha, repoRel);
+    // LOCAL FIRST, THEN THE CLOUD. In cloud-managed posture the History rows
+    // come from the cell, so the sha the user clicked may exist ONLY there —
+    // the local repo has no commits at all. Local still goes first: it is a
+    // disk read against a repo that may well have the object (a folder that was
+    // committed to before it was linked), and it costs nothing to try.
+    //
+    // Everything downstream is unchanged — same build, same CSP, same LRU, same
+    // DiffView. Historical content is immutable, so a cloud-sourced build
+    // caches under the identical `(path, sha)` key.
+    //
+    // The sha is validated on BOTH sides: `/^[0-9a-f]{7,40}$/` here (via
+    // `historyFile`) and again on the hub. It arrives from the untrusted canvas
+    // origin, and "the other end checks it" is how a guard ends up on neither.
+    // A sha that already failed AUTHORITATIVELY fails again — say so without
+    // spending the git process or the round trip.
+    if (historicalMissCache.has(key)) {
+      return new Response('No saved version of this canvas', { status: 404 });
+    }
+    let source = await gitShowFile(ctx.paths.repoRoot, sha, repoRel);
+    if (source == null) {
+      const fromCloud = await cloudHistoryApi(ctx).historyFile(sha, repoRel);
+      source = fromCloud.ok ? fromCloud.source : null;
+      // ONLY AN AUTHORITATIVE ABSENCE IS REMEMBERED (security re-review of
+      // 8134ca8f, finding F1). Two things must never be cached here:
+      //
+      //   1. A TRANSIENT failure. `unreachable` / `not-linked` mean the cell
+      //      could not answer, not that the version is absent — remembering
+      //      that outlives the outage and makes a real version permanently
+      //      unpreviewable, with no way to clear it but a restart.
+      //   2. A MUTABLE ref. The local engine's positional guard admits `HEAD`,
+      //      branch and tag names, and DiffView's own "compare with saved"
+      //      opens `?sha=HEAD`. Caching a miss for a moving name is a bug by
+      //      construction: diff an as-yet-uncommitted canvas, commit it, and
+      //      `HEAD` now resolves — but the cached miss short-circuits before
+      //      `gitShowFile` is ever asked again. That is exactly the "read
+      //      failure rendered as absence" this feature exists to delete.
+      const authoritative = !fromCloud.ok && fromCloud.reason === 'not-found';
+      if (source == null && authoritative && /^[0-9a-f]{7,40}$/.test(sha)) {
+        historicalMissCache.add(key);
+        if (historicalMissCache.size > HIST_MISS_MAX) {
+          const oldest = historicalMissCache.values().next().value;
+          if (oldest !== undefined) historicalMissCache.delete(oldest);
+        }
+      }
+    }
     if (source == null) return new Response('No saved version of this canvas', { status: 404 });
     try {
       const result = await buildCanvasModule(absPath, source, {
@@ -1122,7 +1210,11 @@ export function createHttp(
   // GitHub routes: MAIN-ORIGIN ONLY (absent from CANVAS_SAFE_API +
   // startCanvasServer) and loopback-Host gated — every route either bears or
   // stores the cloud credential.
-  const cloudApi = createCloudEndpoints(ctx);
+  const cloudApi = createCloudEndpoints({
+    ...ctx,
+    // Connect and Disconnect both change WHO can answer for a past version.
+    onLinkChanged: clearHistoricalCaches,
+  });
   // Figma import (DDR-216). Same dual-allowlist rule as the GitHub + cloud
   // routes: MAIN-ORIGIN ONLY, plus loopback-Host and same-origin gating on
   // every one of them — each either stores or spends the user's Figma PAT.
@@ -1979,7 +2071,10 @@ export function createHttp(
             { status: result.status, headers: { 'Cache-Control': 'no-store' } }
           );
         }
-        return Response.json({ ok: true, ...result }, { headers: { 'Cache-Control': 'no-store' } });
+        // Spread FIRST: `result` carries its own `ok`, so the old ordering made
+        // the literal dead. Same value either way (this branch is past the
+        // `!result.ok` return), but the guarantee now reads as one.
+        return Response.json({ ...result, ok: true }, { headers: { 'Cache-Control': 'no-store' } });
       }
       return new Response('Method not allowed', { status: 405 });
     },
@@ -2233,6 +2328,22 @@ export function createHttp(
           { status: result.status, headers: { 'Cache-Control': 'no-store' } }
         );
       }
+      // WHO moved this file. A move is the one file-tree op that can make a
+      // canvas seem to vanish, and the receiving side's log only ever names the
+      // retirement — never the request that caused it. The caller (browser
+      // webview vs. a script) is the fact that separates "the sync runtime did
+      // something" from "someone asked for this".
+      // SCRUBBED, ALL THREE VALUES. The User-Agent is caller-controlled and this
+      // line's whole job is answering "who moved this canvas" — an unscrubbed
+      // one lets a caller forge a second, convincing `[fs-move]` line and defeat
+      // the record at exactly its own purpose (ANSI/ESC survives even where a
+      // header parser rejects CR/LF). `fromRel`/`toRel` are CONTAINED but not
+      // renderable: `moveCanvas` checks traversal and group membership, never
+      // control characters.
+      console.log(
+        `[fs-move] ${sanitizeForLog(result.fromRel)} → ${sanitizeForLog(result.toRel)} ` +
+          `(ua=${sanitizeForLog(req.headers.get('user-agent') || 'none').slice(0, 60)})`
+      );
       return Response.json(
         {
           ok: true,
@@ -2454,6 +2565,25 @@ export function createHttp(
       if (!isTrustedRequestHost(req))
         return new Response('local request required', { status: 403 });
       return gitJson(cloudApi.signout());
+    },
+    // feature-cloud-managed-git-posture — the history the cell is actually
+    // writing. MAIN-ORIGIN ONLY (absent from CANVAS_SAFE_API + startCanvasServer
+    // routes, DDR-088): the request is proxied onward under the stored hub
+    // credential, which is exactly the shape the untrusted canvas origin must
+    // never reach. `sameOriginRead` is the CSRF guard, `isTrustedRequestHost`
+    // the DNS-rebind one — both mandatory on a token-bearing route.
+    //
+    // A hub 401 here is a plain read failure. It must NOT take the
+    // `/_api/cloud/status` path that deletes the stored credential (F6): a cell
+    // restarting mid-renewal would otherwise silently unlink a working project
+    // because History polled at the wrong second.
+    '/_api/cloud/history': async (req: Request) => {
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginRead(req)) return new Response('cross-origin rejected', { status: 403 });
+      if (!isTrustedRequestHost(req))
+        return new Response('local request required', { status: 403 });
+      const u = new URL(req.url).searchParams;
+      return gitJson(await cloudApi.history(u.get('path'), u.get('limit')));
     },
     '/_api/cloud/projects': async (req: Request) => {
       if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });

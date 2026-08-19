@@ -489,17 +489,19 @@ test('an asset landing through the canvas door is mirrored like the shell door',
 });
 
 test('a write the manifest refuses outright is 404 at this door too', async () => {
-  // `/_api/photo-edit` is REFUSED at the shell door; the canvas door must not
-  // become the weaker one.
+  // `/_api/export` is REFUSED at the shell door; the canvas door must not
+  // become the weaker one. (This exemplar used to be `/_api/photo-edit`,
+  // until that route was reclassified `edit` — it stores a validated JSON
+  // sidecar and never evaluates anything; see studio-manifest.mjs.)
   const { proxy, forwarded } = makeWriteProxy();
   const r = fakeResponse();
   await proxy.handleCanvas({
     request: {
       headers: { origin: CANVAS_ORIGIN, cookie: 'maude_canvas=own' },
-      url: '/_api/photo-edit',
+      url: '/_api/export',
     },
     response: r,
-    pathname: '/_api/photo-edit',
+    pathname: '/_api/export',
     method: 'PUT',
     verifyToken: writeVerify,
   });

@@ -131,3 +131,23 @@ describe('the Resync control', () => {
     expect(PANEL).toMatch(/cloud = null,/);
   });
 });
+
+describe('a held breaker is visible, because a log line is not a surface', () => {
+  // The finding: `deleteHeld` / `firstAnchorHeld` / `reanchorHeld` shipped
+  // with no consumer at all — declared, assigned, and read by nothing. So the
+  // breakers the release leans on had their entire output in a dev-server
+  // console, on a product whose premise (DDR-177) is that the user never opens
+  // a terminal. A hold that nobody can see is a stall, not a safety control.
+  test('the panel renders every hold the status carries', () => {
+    expect(PANEL).toContain('files.held');
+    expect(PANEL).toMatch(/data-testid=\{`sync-held-\$\{h\.kind\}`\}/);
+  });
+
+  test('it says nothing was removed — the reassurance IS the message', () => {
+    expect(PANEL).toContain('nothing was removed');
+  });
+
+  test('it names the files, so a person can judge whether it was deliberate', () => {
+    expect(PANEL).toMatch(/h\.paths/);
+  });
+});

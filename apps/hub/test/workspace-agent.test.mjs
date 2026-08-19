@@ -7,15 +7,24 @@
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 
 import * as Y from 'yjs';
 
-import { createAssetSweeper, pendingAssets, sweepAssets } from '../src/asset-lane.mjs';
+import { createWriteBehind, writeBehindKey } from '../src/asset-lane.mjs';
 import { createGitRunner } from '../src/git-runner.mjs';
+import { closeJournal, openJournal } from '../src/journal.mjs';
 import { mergeSharedMetaIntoLocal } from '../src/meta-merge.mjs';
 import { safeUrl, seedRepo } from '../src/seed-repo.mjs';
 import { createWorkspaceAgent, slugFromDocName } from '../src/workspace-agent.mjs';
@@ -216,6 +225,8 @@ describe('workspace-files (pure)', () => {
       // The sync-internal path lane. Absent here — an older peer omits it, and
       // that is the normal case, not a degraded one.
       path: null,
+      // The move-retirement lane (studio codec stampMovedTo) — same posture.
+      movedTo: null,
     });
   });
 
@@ -311,154 +322,151 @@ describe('seedRepo', () => {
   });
 });
 
-/* ------------------------------------------------------------ asset lane */
+/* ------------------------------------------- the journal-driven write-behind */
 
-describe('asset lane', () => {
-  it("mirrors exactly what the proxy will serve — including a DS's own named files", () => {
-    // Real projects are not all hashes. alligators references
-    // `graphics/camo-bg.png` and `gator_badge_roundel.svg`; requiring
-    // content-addressed names left a hosted project rendering without its own
-    // brand, silently.
-    assert.deepEqual(
-      pendingAssets([
-        'a1b2c3d4.png',
-        'gator_badge_roundel.svg',
-        'graphics/camo-bg.png',
-        'fonts/Gators-Bold.woff2',
-        '../escape',
-        'a/b/c/d/e/f/too-deep.png',
-        '.hidden',
-        'a1b2c3d4.png',
-      ]),
-      ['a1b2c3d4.png', 'fonts/Gators-Bold.woff2', 'gator_badge_roundel.svg', 'graphics/camo-bg.png']
-    );
-  });
+describe('write-behind (Sync v2 Increment 5)', () => {
+  /** A journal + designRoot pair with real files, so recordWrite can hash them. */
+  function scene() {
+    const dataDir = tmp();
+    const designRoot = tmp();
+    const journal = openJournal(dataDir);
+    const record = (rel, content = 'x') => {
+      mkdirSync(join(designRoot, rel, '..'), { recursive: true });
+      writeFileSync(join(designRoot, rel), content);
+      return journal.recordWrite({ designRoot, path: rel, source: 'peer-put' });
+    };
+    return { dataDir, designRoot, journal, record };
+  }
 
-  it('never mirrors a path that could escape the assets prefix', () => {
-    for (const bad of ['../secret', 'a/../../etc/passwd', '/abs.png', 'a//b.png']) {
-      assert.deepEqual(pendingAssets([bad]), [], bad);
+  it('mirrors EVERY file-plane class the journal names — not only assets/', async () => {
+    // The old sweeper walked `<designRoot>/assets/` and nothing else, so
+    // `companion-text`, `code-module` and nested `system/**/assets/*` files
+    // were durable only through git history (the F-6/B2 hole). The journal is
+    // the classifier's own record of the plane, so driving the mirror from it
+    // covers the whole plane by construction.
+    const { dataDir, designRoot, journal, record } = scene();
+    try {
+      record('assets/aaaaaaaa.png', 'cas-bytes');
+      record('system/ds/brand.css', '.brand{}');
+      record('system/ds/assets/wordmark.svg', '<svg/>');
+      const put = [];
+      const wb = createWriteBehind({
+        designRoot,
+        s3: { bucket: 'x' },
+        journal,
+        prefix: '',
+        log: silent(),
+        deps: { putObject: async (_c, key) => put.push(key) },
+      });
+      await wb.flush();
+      assert.deepEqual(put.sort(), [
+        // Top-level content-addressed assets keep the legacy layout the read
+        // proxy serves; everything else is keyed by path under files/.
+        'assets/aaaaaaaa.png',
+        'files/system/ds/assets/wordmark.svg',
+        'files/system/ds/brand.css',
+      ]);
+      // Every row is stamped — the queue is empty, so a second flush is free.
+      assert.deepEqual(journal.unmirrored(), []);
+      await wb.flush();
+      assert.equal(put.length, 3);
+      wb.stop();
+    } finally {
+      closeJournal(dataDir);
     }
   });
 
-  it('skips what the bucket already holds instead of re-uploading it', async () => {
-    const dir = tmp();
-    const assets = join(dir, 'assets');
-    mkdirSync(assets);
-    writeFileSync(join(assets, 'aaaaaaaa.png'), 'one');
-    writeFileSync(join(assets, 'bbbbbbbb.png'), 'two');
-    const put = [];
-    const r = await sweepAssets({
-      designRoot: dir,
-      s3: { bucket: 'x' },
-      log: silent(),
-      deps: {
-        headObject: async (_c, key) => (key === 'assets/aaaaaaaa.png' ? { size: 3 } : null),
-        putObject: async (_c, key) => put.push(key),
-      },
-    });
-    assert.deepEqual(r.uploaded, ['bbbbbbbb.png']);
-    assert.equal(r.skipped, 1);
-    assert.deepEqual(put, ['assets/bbbbbbbb.png']);
-  });
-
-  it('a failed upload does not abort the sweep', async () => {
-    const dir = tmp();
-    mkdirSync(join(dir, 'assets'));
-    writeFileSync(join(dir, 'assets', 'aaaaaaaa.png'), 'one');
-    writeFileSync(join(dir, 'assets', 'bbbbbbbb.png'), 'two');
-    const r = await sweepAssets({
-      designRoot: dir,
-      s3: { bucket: 'x' },
-      log: silent(),
-      deps: {
-        headObject: async () => null,
-        putObject: async (_c, key) => {
-          if (key.includes('aaaa')) throw new Error('502');
-          return null;
-        },
-      },
-    });
-    assert.deepEqual(r.uploaded, ['bbbbbbbb.png']);
-    assert.equal(r.failed.length, 1);
-  });
-
-  it('a browser upload is mirrored without waiting for the next boot', async () => {
-    // Cloud Phase 27 B3. The boot sweep rests on "assets arrive with a commit,
-    // and a cell wakes on every migration" — a browser upload arrives with
-    // neither, so those bytes lived only in /repo until the cell restarted:
-    // served fine from the checkout the whole time, and one teardown from gone.
-    const dir = tmp();
-    const assets = join(dir, 'assets');
-    mkdirSync(assets);
-    writeFileSync(join(assets, 'aaaaaaaa.png'), 'committed');
-    const put = [];
-    const heads = [];
-    const sweeper = createAssetSweeper({
-      designRoot: dir,
-      s3: { bucket: 'x' },
-      log: silent(),
-      deps: {
-        headObject: async (_c, key) => {
-          heads.push(key);
-          return null;
-        },
-        putObject: async (_c, key) => put.push(key),
-      },
-    });
-
-    await sweeper.sweepAll();
-    assert.deepEqual(put, ['assets/aaaaaaaa.png']);
-
-    // The upload lands on the tree the way `POST /_api/asset` leaves it.
-    writeFileSync(join(assets, 'bbbbbbbb.png'), 'uploaded in a browser');
-    const headsBefore = heads.length;
-    await sweeper.sweepNew();
-
-    assert.deepEqual(put, ['assets/aaaaaaaa.png', 'assets/bbbbbbbb.png']);
-    // ONE head, not one per file in the project. A full re-sweep would be 793
-    // HEADs on a real project for an upload that added exactly one.
-    assert.equal(heads.length - headsBefore, 1);
-  });
-
-  it('a burst of uploads collapses into one pass, and none is dropped', async () => {
-    const dir = tmp();
-    const assets = join(dir, 'assets');
-    mkdirSync(assets);
-    const put = [];
-    let inFlight = 0;
-    let maxInFlight = 0;
-    const sweeper = createAssetSweeper({
-      designRoot: dir,
-      s3: { bucket: 'x' },
-      log: silent(),
-      deps: {
-        headObject: async () => null,
-        putObject: async (_c, key) => {
-          inFlight += 1;
-          maxInFlight = Math.max(maxInFlight, inFlight);
-          await new Promise((r) => setTimeout(r, 5));
-          put.push(key);
-          inFlight -= 1;
-        },
-      },
-    });
-    await sweeper.sweepAll();
-
-    // Six images dragged onto a canvas: each POST fires the hook, and one of
-    // them lands mid-pass — the case a naive single-flight guard drops.
-    for (let i = 0; i < 6; i++) {
-      writeFileSync(join(assets, `${'abcdef'[i].repeat(8)}.png`), `n${i}`);
-      void sweeper.sweepNew();
+  it('a tombstone mirrors nothing and settles its own row', async () => {
+    // The blob stays in the bucket, unreferenced — quarantine semantics, the
+    // reason a propagated delete is recoverable. The ROW still has to settle,
+    // or the queue never drains.
+    const { dataDir, designRoot, journal, record } = scene();
+    try {
+      record('assets/aaaaaaaa.png');
+      journal.recordWrite({
+        designRoot,
+        path: 'assets/aaaaaaaa.png',
+        source: 'peer-put',
+        deleted: true,
+      });
+      const put = [];
+      const wb = createWriteBehind({
+        designRoot,
+        s3: { bucket: 'x' },
+        journal,
+        prefix: '',
+        log: silent(),
+        deps: { putObject: async (_c, key) => put.push(key) },
+      });
+      await wb.flush();
+      // The write row and the tombstone share the path; the newest row (the
+      // tombstone) decides, so nothing uploads and both rows settle.
+      assert.deepEqual(put, []);
+      assert.deepEqual(journal.unmirrored(), []);
+      wb.stop();
+    } finally {
+      closeJournal(dataDir);
     }
-    await new Promise((r) => setTimeout(r, 300));
-
-    assert.equal(put.length, 6, `every upload reached the bucket: ${put.join(', ')}`);
-    assert.equal(new Set(put).size, 6, 'and none of them twice');
   });
 
-  it('does nothing when the hub has no bucket', async () => {
-    const r = await sweepAssets({ designRoot: tmp(), s3: null, log: silent() });
-    assert.deepEqual(r, { uploaded: [], skipped: 0, failed: [] });
+  it('a failed put stays queued — the crash-safety property, LOUD (the sweepNew lesson)', async () => {
+    const { dataDir, designRoot, journal, record } = scene();
+    try {
+      record('assets/aaaaaaaa.png');
+      let fail = true;
+      const put = [];
+      const errors = [];
+      const wb = createWriteBehind({
+        designRoot,
+        s3: { bucket: 'x' },
+        journal,
+        prefix: '',
+        log: { log() {}, warn() {}, error: (m) => errors.push(m) },
+        deps: {
+          putObject: async (_c, key) => {
+            if (fail) throw new Error('502');
+            put.push(key);
+          },
+        },
+      });
+      await wb.flush();
+      // Unstamped ⇒ still the queue's work; and the failure was named.
+      assert.equal(journal.unmirrored().length, 1);
+      assert.match(errors.join('\n'), /only in the checkout/);
+      fail = false;
+      await wb.flush();
+      assert.deepEqual(put, ['assets/aaaaaaaa.png']);
+      assert.deepEqual(journal.unmirrored(), []);
+      wb.stop();
+    } finally {
+      closeJournal(dataDir);
+    }
+  });
+
+  it('no object storage ⇒ a clean no-op, exactly like the journal tail', async () => {
+    const { dataDir, journal, record, designRoot } = scene();
+    try {
+      record('assets/aaaaaaaa.png');
+      const wb = createWriteBehind({
+        designRoot,
+        s3: null,
+        journal,
+        prefix: '',
+        log: silent(),
+      });
+      const r = await wb.flush();
+      assert.equal(r.skipped, 'no-target');
+      wb.stop();
+    } finally {
+      closeJournal(dataDir);
+    }
+  });
+
+  it('writeBehindKey — the two layouts, and a tenant scope prefixes both', () => {
+    assert.equal(writeBehindKey('assets/aaaaaaaa.png'), 'assets/aaaaaaaa.png');
+    assert.equal(writeBehindKey('system/ds/brand.css'), 'files/system/ds/brand.css');
+    assert.equal(writeBehindKey('assets/aaaaaaaa.png', 't1'), 't1/assets/aaaaaaaa.png');
+    assert.equal(writeBehindKey('system/ds/brand.css', 't1'), 't1/files/system/ds/brand.css');
   });
 });
 
@@ -880,5 +888,306 @@ describe('the seed never leaves a credential on disk', () => {
       { url: 'https://x-access-token:ghs_secret@github.com/acme/design.git', log: silent() }
     );
     assert.ok(calls.some((a) => a[0] === 'remote' && a[1] === 'remove'));
+  });
+});
+
+/* -------------------------------------------------- the move protocol */
+
+describe('a retired document (the move protocol, studio codec stampMovedTo)', () => {
+  const gitOk = gitAvailable();
+
+  it('quarantines the checkout copy and commits the deletion', {
+    skip: gitOk ? false : 'git not available',
+  }, async () => {
+    // The user-visible bug this pins: move a canvas into a folder on the
+    // desktop and the cloud tree kept BOTH paths — the new one from the new
+    // document, and the old one because nothing ever told the checkout the
+    // old document was done. The ghost file is exactly what their screenshot
+    // showed ("je tam navíc tralal-Threads").
+    const repo = tmp();
+    const agent = createWorkspaceAgent({
+      repoDir: repo,
+      designRel: '.design',
+      debounceMs: 5,
+      log: silent(),
+    });
+    await agent.start();
+
+    const doc = new Y.Doc();
+    doc.getText('html').insert(0, 'export default function Home() { return <main/>; }\n');
+    doc.getText('meta').insert(0, '{"title":"Home"}');
+    await agent.onDocumentStored({
+      documentName: 'ws/acme/main/home',
+      document: doc,
+      user: { name: 'Alice Novak', email: 'alice@example.com' },
+    });
+    await agent.flush();
+    assert.ok(existsSync(join(repo, '.design/home.tsx')), 'materialised before the move');
+
+    // The mover stamps the doc retired; the hub sees the next store. The NEW
+    // path does not exist yet — the mover's rename (or the new document's
+    // materialisation) is still in flight — so the hub must HOLD: quarantining
+    // now is the exact race that killed a live move with ENOENT (the hub and
+    // the cell's studio child share one disk).
+    doc.getMap('syncMeta').set('movedTo', 'ui/folder/home.tsx');
+    const out = await agent.onDocumentStored({
+      documentName: 'ws/acme/main/home',
+      document: doc,
+      user: { name: 'Alice Novak', email: 'alice@example.com' },
+    });
+    assert.equal(out, null, 'a retired doc materialises nothing');
+    assert.ok(
+      existsSync(join(repo, '.design/home.tsx')),
+      'HOLD while the new path is absent — the move is still in flight'
+    );
+
+    // The canvas lands at its new home — and it lands as a DOCUMENT, which is
+    // what a move actually is. A file appearing at the named path is not
+    // enough: `movedTo` is peer-written, and "something exists there" answers
+    // yes for `config.json` too.
+    const moved = new Y.Doc();
+    moved.getText('html').insert(0, 'moved body');
+    moved.getMap('syncMeta').set('path', 'ui/folder/home.tsx');
+    await agent.onDocumentStored({
+      documentName: 'ws/acme/main/ui-folder-home',
+      document: moved,
+      user: null,
+    });
+    // Any later store sweeps pending retirements — here, the new doc's own.
+    const other = new Y.Doc();
+    other.getText('html').insert(0, 'x');
+    await agent.onDocumentStored({
+      documentName: 'ws/acme/main/other',
+      document: other,
+      user: null,
+    });
+
+    assert.ok(!existsSync(join(repo, '.design/home.tsx')), 'the ghost file is gone');
+    const trash = join(repo, '.design/_trash');
+    assert.ok(existsSync(trash), 'quarantined, not unlinked');
+    const parked = readdirSync(trash, { recursive: true }).map(String);
+    assert.ok(
+      parked.some((p) => p.endsWith('home.tsx')),
+      `the body is recoverable from _trash/: ${parked.join(', ')}`
+    );
+
+    const commit = await agent.flush();
+    assert.equal(commit.ok, true, `the deletion commits: ${JSON.stringify(commit)}`);
+    const tracked = execFileSync('git', ['ls-files'], { cwd: repo, encoding: 'utf8' });
+    assert.ok(!tracked.includes('.design/home.tsx'), 'git agrees the canvas moved on');
+
+    // And a LATER store of the same retired doc is a quiet no-op — the doc
+    // can arrive again forever (reconnects, replays) without churning.
+    const again = await agent.onDocumentStored({
+      documentName: 'ws/acme/main/home',
+      document: doc,
+      user: null,
+    });
+    assert.equal(again, null);
+
+    await agent.stop();
+  });
+
+  it('records the deletion even when somebody else removed the file first', {
+    skip: gitAvailable() ? false : 'git not available',
+  }, async () => {
+    // On a CELL the studio child shares this disk and its own retirement
+    // watcher usually parks the ghost before the hub's sweep looks. Finding
+    // the path already gone must still reach git: the file is tracked, and a
+    // silent skip leaves the checkout and its history divergent forever — the
+    // canvas moved and `git show HEAD` still lists it at the old path.
+    const repo = tmp();
+    const agent = createWorkspaceAgent({
+      repoDir: repo,
+      designRel: '.design',
+      debounceMs: 5,
+      log: silent(),
+    });
+    await agent.start();
+
+    const doc = new Y.Doc();
+    doc.getText('html').insert(0, 'export default () => null;\n');
+    await agent.onDocumentStored({ documentName: 'ws/acme/main/home', document: doc, user: null });
+    await agent.flush();
+    assert.ok(
+      execFileSync('git', ['ls-files'], { cwd: repo, encoding: 'utf8' }).includes('home.tsx'),
+      'tracked before the move'
+    );
+
+    // Somebody else (the studio child) parks it, THEN the stamp is seen.
+    rmSync(join(repo, '.design/home.tsx'));
+    doc.getMap('syncMeta').set('movedTo', 'ui/folder/home.tsx');
+    await agent.onDocumentStored({ documentName: 'ws/acme/main/home', document: doc, user: null });
+
+    const commit = await agent.flush();
+    assert.equal(commit.ok, true, `the deletion commits: ${JSON.stringify(commit)}`);
+    assert.ok(
+      !execFileSync('git', ['ls-files'], { cwd: repo, encoding: 'utf8' }).includes('home.tsx'),
+      'git agrees the canvas is gone from the old path'
+    );
+    await agent.stop();
+  });
+
+  it('refuses a move that names a file rather than a canvas', async () => {
+    // `movedTo` is peer-written CRDT content, and acting on it quarantines the
+    // canvas and stages a git deletion. An existence probe answers yes for
+    // `config.json`, so a peer could retire every slug in a project by naming
+    // a path that certainly exists. A move ends at a CANVAS; anything else
+    // HOLDs, which costs a ghost and never a deletion.
+    const repo = tmp();
+    const agent = createWorkspaceAgent({
+      repoDir: repo,
+      designRel: '.design',
+      debounceMs: 5,
+      log: silent(),
+    });
+    await agent.start();
+
+    const doc = new Y.Doc();
+    doc.getText('html').insert(0, 'export default function Home() { return <main/>; }\n');
+    await agent.onDocumentStored({ documentName: 'ws/acme/main/home', document: doc, user: null });
+    await agent.flush();
+    assert.ok(existsSync(join(repo, '.design/home.tsx')));
+
+    writeFileSync(join(repo, '.design/config.json'), '{}');
+    doc.getMap('syncMeta').set('movedTo', 'config.json');
+    await agent.onDocumentStored({ documentName: 'ws/acme/main/home', document: doc, user: null });
+
+    const other = new Y.Doc();
+    other.getText('html').insert(0, 'x');
+    await agent.onDocumentStored({
+      documentName: 'ws/acme/main/other',
+      document: other,
+      user: null,
+    });
+
+    assert.ok(existsSync(join(repo, '.design/home.tsx')), 'the canvas is still there');
+    assert.ok(!existsSync(join(repo, '.design/_trash')), 'nothing was quarantined');
+  });
+
+  it('stops quarantining once a burst looks like a project being emptied', async () => {
+    const repo = tmp();
+    const warned = [];
+    const agent = createWorkspaceAgent({
+      repoDir: repo,
+      designRel: '.design',
+      debounceMs: 5,
+      log: { log() {}, error() {}, warn: (m) => warned.push(String(m)) },
+    });
+    await agent.start();
+
+    // One canvas that stays put, and 20 that all claim to have moved into it.
+    // Every retirement is individually well-formed and the target never goes
+    // away, so nothing HOLDs for an ordinary reason — only the breaker can
+    // stop the drain.
+    const home = new Y.Doc();
+    home.getText('html').insert(0, 'export default () => <main/>;\n');
+    home.getMap('syncMeta').set('path', 'ui/home.tsx');
+    await agent.onDocumentStored({
+      documentName: 'ws/acme/main/ui-home',
+      document: home,
+      user: null,
+    });
+
+    const N = 20;
+    const docs = [];
+    for (let i = 0; i < N; i++) {
+      const d = new Y.Doc();
+      d.getText('html').insert(0, `export default () => <i>${i}</i>;\n`);
+      d.getMap('syncMeta').set('path', `ui/c${i}.tsx`);
+      await agent.onDocumentStored({
+        documentName: `ws/acme/main/ui-c${i}`,
+        document: d,
+        user: null,
+      });
+      docs.push(d);
+    }
+    await agent.flush();
+
+    for (let i = 0; i < N; i++) {
+      docs[i].getMap('syncMeta').set('movedTo', 'ui/home.tsx');
+      await agent.onDocumentStored({
+        documentName: `ws/acme/main/ui-c${i}`,
+        document: docs[i],
+        user: null,
+      });
+    }
+
+    const gone = Array.from({ length: N }, (_, i) =>
+      existsSync(join(repo, `.design/ui/c${i}.tsx`))
+    ).filter((present) => !present).length;
+    assert.ok(gone > 0, 'the ordinary move protocol still works');
+    assert.ok(gone <= 10, `the breaker capped the burst — ${gone} of ${N} were quarantined`);
+    assert.ok(
+      warned.some((m) => m.includes('move-retirement breaker')),
+      `the pause is announced, not silent: ${warned.join(' | ')}`
+    );
+    assert.ok(existsSync(join(repo, '.design/ui/home.tsx')), 'the target is untouched');
+  });
+
+  it('a retired doc the checkout never materialised is simply ignored', async () => {
+    const repo = tmp();
+    const agent = createWorkspaceAgent({
+      repoDir: repo,
+      designRel: '.design',
+      debounceMs: 5,
+      log: silent(),
+    });
+    await agent.start();
+    const doc = new Y.Doc();
+    doc.getText('html').insert(0, 'ghost body');
+    doc.getMap('syncMeta').set('movedTo', 'ui/elsewhere.tsx');
+    const out = await agent.onDocumentStored({
+      documentName: 'ws/acme/main/never-here',
+      document: doc,
+      user: null,
+    });
+    assert.equal(out, null);
+    assert.ok(!existsSync(join(repo, '.design/never-here.tsx')), 'nothing materialised');
+    await agent.stop();
+  });
+});
+
+describe('the hub keeps history even when the project gitignores the design root', () => {
+  // DDR-228 makes a hub-owned project gitignore `/.design/`. This checkout is
+  // seeded from that repo, so it inherits the rule — and the hub would stop
+  // committing the one thing it exists to hold. That matters because the
+  // generation backup is `git bundle --all` (committed objects only) and
+  // object storage mirrors `assets/` alone: without this, a hub-owned design
+  // system has no durable copy anywhere, and a deletion is unrecoverable
+  // rather than merely annoying.
+  it('commits a canvas the .gitignore excludes', {
+    skip: gitAvailable() ? false : 'git not available',
+  }, async () => {
+    const repo = tmp();
+    execFileSync('git', ['init', '-q'], { cwd: repo, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 't@t.test'], { cwd: repo, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.name', 'T'], { cwd: repo, stdio: 'ignore' });
+    writeFileSync(
+      join(repo, '.gitignore'),
+      '# maude:hub-owned:begin\n/.design/\n# maude:hub-owned:end\n'
+    );
+    execFileSync('git', ['add', '-A'], { cwd: repo, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-qm', 'seed'], { cwd: repo, stdio: 'ignore' });
+
+    const agent = createWorkspaceAgent({
+      repoDir: repo,
+      designRel: '.design',
+      debounceMs: 5,
+      log: silent(),
+    });
+    await agent.start();
+
+    const doc = new Y.Doc();
+    doc.getText('html').insert(0, 'export default function Home() { return <main/>; }\n');
+    await agent.onDocumentStored({ documentName: 'ws/acme/main/home', document: doc, user: null });
+    const res = await agent.flush();
+
+    assert.equal(res.ok, true, `the commit landed: ${JSON.stringify(res)}`);
+    const tracked = execFileSync('git', ['ls-files', '--', '.design'], {
+      cwd: repo,
+      encoding: 'utf8',
+    });
+    assert.match(tracked, /\.design\/home\.tsx/, 'the canvas is in history despite the ignore');
   });
 });

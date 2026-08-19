@@ -131,21 +131,25 @@ describe('a session with no role is refused, not guessed at', () => {
 });
 
 describe('the door stores what it vouched for', () => {
-  it('both mint sites translate the account role and store the project one', () => {
+  it('EVERY door mints with the translated project role, never the account role', () => {
+    // Count-agnostic on purpose: there are now three doors (password,
+    // platform, OIDC), and the invariant is per-mint, not "exactly two". A new
+    // door that forgets the translation is the vantage incident again — an
+    // `admin` that reads as an unknown role and lands read-only.
     const mints = [...BROWSER_AUTH_SRC.matchAll(/addToken\(dataDir, \{[\s\S]*?\}\);/g)].map(
       (m) => m[0]
     );
-    assert.equal(mints.length, 2, 'expected the self-hosted door and the platform door');
+    assert.ok(mints.length >= 2, 'expected at least the self-hosted and platform doors');
     for (const mint of mints) {
       assert.match(mint, /role: projectRole,/);
       assert.match(mint, /readOnly: isReadOnlyRole\(projectRole\),/);
     }
-    // …and `projectRole` is the TRANSLATED one in both cases. Passing
-    // `user.role` straight through is what made an `admin` read-only.
+    // Each mint is preceded by a translation — `projectRoleForAccount(...)`,
+    // never a raw account role passed through. One translation per door.
     assert.equal(
-      [...BROWSER_AUTH_SRC.matchAll(/const projectRole = projectRoleForAccount\(user\.role\);/g)]
-        .length,
-      2
+      [...BROWSER_AUTH_SRC.matchAll(/const projectRole = projectRoleForAccount\(/g)].length,
+      mints.length,
+      'every mint site must translate the account role first'
     );
   });
 });

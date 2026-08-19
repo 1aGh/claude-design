@@ -66,7 +66,7 @@ function Fixture() {
 export default function Canvas() {
   return (
     <DesignCanvas>
-      <DCSection title="Video-comp fixture">
+      <DCSection id="video-comp-fixture" title="Video-comp fixture">
         <DCArtboard id="fixture" label="Fixture" width={640} height={360}>
           <VideoComp
             component={Fixture}

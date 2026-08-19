@@ -69,6 +69,43 @@ export interface FilePlaneStatus {
   pulled: number;
   /** Cumulative conflicts this boot (either winner); losers are in _trash/. */
   conflicts: number;
+  /** Sync v2 — cumulative files sent UP this boot. The v1 lane had no push
+   *  half of its own, so this is absent on a journal-less hub. */
+  pushed?: number;
+  /**
+   * A BREAKER IS HOLDING, and this is how anyone finds out.
+   *
+   * The breakers shipped with their state living only in a `console.warn` and
+   * a return field nothing read — so a hold was permanent, invisible, and had
+   * no exit. That is worse than DDR-214's "a status surface that lies": the
+   * surface was simply absent, while the release leaned on these controls as
+   * its justification for shipping deletion without a soak.
+   *
+   * `kind` says which one, `paths` says what is waiting, and `answer` names
+   * the config key that releases it — a hold a person cannot resolve is not a
+   * safety control, it is a stall.
+   */
+  held?: {
+    kind: 'delete-out' | 'delete-in' | 'first-anchor' | 'reanchor';
+    count: number;
+    paths: string[];
+    /** One sentence, in the user's terms, about what is waiting and why. */
+    detail: string;
+  }[];
+  /**
+   * THE DORUČENKA (DDR-226 §7) — per-path delivery state.
+   *
+   * The counts above are what the old lane reported, and they are exactly
+   * what could not answer the question three days of dogfood kept asking:
+   * "where is THIS file". A total says how many are fine; it cannot point at
+   * the one that is not.
+   *
+   * The counts stay beside it deliberately. A panel derived from the same
+   * source it displays cannot be cross-checked, and DDR-214's whole lesson is
+   * that a status surface has to be falsifiable — so the raw counters remain
+   * as the thing to disagree with.
+   */
+  delivery?: Record<string, string>;
 }
 
 export interface SyncStatusStoreOptions {

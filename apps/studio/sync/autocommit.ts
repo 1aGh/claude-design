@@ -25,9 +25,11 @@
 // commit a precondition of the save would turn a transient git error into
 // data loss, which is precisely backwards.
 
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 import { withRepoLock } from '../git/repo-lock.ts';
+import { partitionSafeGitRels } from '../git/safe-rel.ts';
 
 /** How long the tree must be quiet before a commit fires. */
 const DEFAULT_DEBOUNCE_MS = 3000;
@@ -72,6 +74,23 @@ export interface AutoCommitOptions {
   /** Committer identity — the machine, never the human. */
   bot?: EditAttribution;
   log?: Pick<Console, 'warn' | 'error' | 'log'>;
+  /**
+   * Stage paths git is ignoring (`git add -f`). **Hub only.**
+   *
+   * On a desktop this must stay off: the ignore file is the user's, and
+   * force-adding would commit what they told git to skip. On the HUB it is the
+   * opposite — the design root IS the product there, not a mirror of it.
+   *
+   * This exists because of a real hole. Once a project goes hub-owned
+   * (DDR-228) its `.gitignore` carries `/.design/`, the hub's checkout is
+   * seeded from that repo and inherits it, and the hub quietly stops
+   * committing the design root. Generation backups are `git bundle --all`, so
+   * they carry committed objects only — meaning the design system had no copy
+   * in any backup, on top of having none in object storage (only `assets/` is
+   * mirrored). A deletion would then have been unrecoverable everywhere except
+   * a per-machine `_trash/` nothing prunes or indexes.
+   */
+  stageIgnored?: boolean;
 }
 
 export interface AutoCommit {
@@ -173,6 +192,7 @@ export function createAutoCommit(opts: AutoCommitOptions): AutoCommit {
     maxDebounceMs = DEFAULT_MAX_DEBOUNCE_MS,
     bot = DEFAULT_BOT,
     log = console,
+    stageIgnored = false,
   } = opts;
 
   const touched = new Set<string>();
@@ -272,22 +292,103 @@ export function createAutoCommit(opts: AutoCommitOptions): AutoCommit {
     return inFlight;
   }
 
+  /**
+   * Split a batch into what git can stage and what it cannot.
+   *
+   * `stage` — on disk, or gone but TRACKED (a real deletion to record).
+   * `drop`  — gone and never tracked: git has nothing to say about it, and
+   *           retrying it forever is what wedged the whole agent.
+   *
+   * One `ls-files` call for the whole batch, not one per path: this runs inside
+   * the repo lock and a per-file probe would put a fork on the critical section
+   * for every canvas in a busy window.
+   */
+  async function partitionForStaging(
+    input: string[]
+  ): Promise<{ stage: string[]; drop: string[] }> {
+    // SHAPE GATE FIRST (F-13/B12). These rels are built from `designRel` plus a
+    // path the file plane delivered, and they end up in `git add -- <paths>`.
+    // The `--` defuses a leading `-`, but nothing defuses `..`: a rel escaping
+    // the design root is a well-formed pathspec that stages a file the sync
+    // lane has no business touching — `../../.github/workflows/*` reached from
+    // a lane scoped to `.design/`. Refused paths are DROPPED, not thrown on:
+    // one poisoned rel must not wedge the queue for everybody else's work
+    // (the failure mode this whole function was written to avoid).
+    const { safe: files, refused } = partitionSafeGitRels(input);
+    if (refused.length > 0) {
+      console.warn(
+        `[autocommit] refusing ${refused.length} path(s) that are not safe repo-relative: ${refused
+          .slice(0, 5)
+          .map((r) => JSON.stringify(r))
+          .join(', ')}`
+      );
+    }
+    const missing = files.filter((f) => !existsSync(path.join(repoRoot, f)));
+    if (missing.length === 0) return { stage: files, drop: refused };
+
+    const known = await run(['ls-files', '--', ...missing], { cwd: repoRoot });
+    // If the probe itself fails, keep every path: guessing "untracked" here
+    // would DROP a real deletion, and a missed deletion is worse than a retry.
+    const tracked =
+      known.code === 0
+        ? new Set(
+            known.stdout
+              .split('\n')
+              .map((l) => l.trim())
+              .filter(Boolean)
+          )
+        : new Set(missing);
+    const drop = [...refused, ...missing.filter((f) => !tracked.has(f))];
+    if (drop.length === 0) return { stage: files, drop: [] };
+    const dropSet = new Set(drop);
+    return { stage: files.filter((f) => !dropSet.has(f)), drop };
+  }
+
   /** The critical section: stage exactly these files, commit them, report. */
   async function commitCycle(files: string[], who: EditAttribution): Promise<CommitOutcome> {
     // Stage ONLY what changed. `git add -A` in a workspace would sweep in
     // whatever else is in the tree — including files a future feature drops
     // there — and the cell must never commit something it wasn't told about.
-    const add = await run(['add', '--', ...files], { cwd: repoRoot });
+    // A PATH THAT VANISHED AND WAS NEVER TRACKED IS NOT AN ERROR TO RETRY.
+    //
+    // `git add -- <path that never existed in the index and is gone from disk>`
+    // exits 128 with "did not match any files". The batch then failed, re-queued
+    // ITSELF INCLUDING THAT PATH, and failed again the same way forever — so the
+    // first canvas anybody deleted stopped the cell committing ANYTHING, for the
+    // life of the process. Observed on a local cell: five commits, then
+    // twenty-plus identical `git add failed` lines and thirty canvases sitting
+    // untracked while `/health` answered 200 throughout.
+    //
+    // Paths are noted on the strength of a read taken up to `debounceMs`
+    // earlier, for files whose lifetime this process does not own, so a path
+    // disappearing mid-window is ROUTINE. The question is which kind of gone it
+    // is, and git already knows: a path in the index must be staged as a
+    // deletion (or the checkout and its history diverge permanently); a path
+    // git never heard of has nothing to record and is simply dropped.
+    const staging = await partitionForStaging(files);
+    if (staging.drop.length > 0) {
+      log.warn?.(
+        `[autocommit] ${staging.drop.length} path(s) vanished before staging and were never tracked; nothing to record: ${staging.drop.slice(0, 3).join(', ')}${staging.drop.length > 3 ? '…' : ''}`
+      );
+    }
+    if (staging.stage.length === 0) return { ok: false, reason: 'nothing-to-commit', files };
+    files = staging.stage;
+
+    // `-A` so a tracked path that is gone stages as a DELETION rather than
+    // erroring. It does not widen the scope: the pathspec is still this exact
+    // file list, so the "never commit something it wasn't told about" rule the
+    // comment above states is intact.
+    // `-A` so a tracked path that is gone stages as a DELETION rather than
+    // erroring; `-f` only where the caller asked for it — see `stageIgnored`.
+    const add = await run(['add', '-A', ...(stageIgnored ? ['-f'] : []), '--', ...files], {
+      cwd: repoRoot,
+    });
     if (add.code !== 0) {
       log.warn?.(`[autocommit] git add failed: ${add.stderr.trim()}`);
       // RE-QUEUE, exactly as the `commit` branch below does. `touched` was
       // cleared by `flush()` before we got here, so returning without this
       // drops the whole coalesced batch — including other people's edits in
       // the same window — from history, permanently and silently.
-      // One bad pathspec is enough: `git add -- <path that vanished>` exits
-      // 128, and paths are now noted on the strength of a read taken up to
-      // `debounceMs` earlier, for files whose lifetime this process does not
-      // own (a canvas deleted inside the quiescence window).
       for (const f of files) touched.add(f);
       return { ok: false, reason: 'git-failed', detail: add.stderr.trim(), files };
     }

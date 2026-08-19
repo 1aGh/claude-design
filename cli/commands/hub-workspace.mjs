@@ -103,9 +103,28 @@ export async function run({ args, pkgRoot }) {
           },
         }
       : {}),
+    // BYO identity travels via --config only: a client secret does not belong
+    // on a command line (argv is visible in `ps` and shell history — see
+    // _credentials.md). The config block is passed straight through to
+    // validateWorkspaceConfig, which renders and forwards the HUB_OIDC_* vars.
+    ...(raw.oidc ? { oidc: raw.oidc } : {}),
   };
 
-  const { ok, errors, config } = validateWorkspaceConfig(merged);
+  // Read the existing .env BEFORE validating, because whether this deployment
+  // already exists decides the backup namespace (Phase 0 F3).
+  const envPath = resolve(outDir, '.env');
+  const envExists = existsSync(envPath);
+  const existing = readExistingEnv(envPath);
+
+  // NEVER force a namespace onto a deployment that has been running without
+  // one. A prefixed target lists a DISJOINT keyspace, so adding one makes every
+  // existing generation invisible to `listBackups` — orphaned, unprunable, and
+  // the next lost volume would see zero generations and seed over the loss. The
+  // write-side identity refusal already protects the bare root, so the prefix
+  // is a remedy here rather than the safety mechanism.
+  const backupPrefix = envExists ? existing.MAUDE_BACKUP_PREFIX || null : undefined;
+
+  const { ok, errors, config } = validateWorkspaceConfig({ ...merged, backupPrefix });
   if (!ok) {
     if (flags.json) {
       process.stdout.write(`${JSON.stringify({ ok: false, errors }, null, 2)}\n`);
@@ -119,8 +138,7 @@ export async function run({ args, pkgRoot }) {
 
   // Reuse existing secrets — re-minting on a re-run would lock out every peer
   // that already holds a token, and re-running is exactly what someone does
-  // after a failed attempt.
-  const existing = readExistingEnv(resolve(outDir, '.env'));
+  // after a failed attempt. (`existing` was read above, before validation.)
   const hubSecret = existing.HUB_SECRET || randomBytes(32).toString('hex');
   const adminPassword = config.adminPassword || existing.MAUDE_ADMIN_PASSWORD || generatePassword();
   const reusedSecret = Boolean(existing.HUB_SECRET);
@@ -255,12 +273,23 @@ function readExistingEnv(path) {
   try {
     for (const line of readFileSync(path, 'utf8').split('\n')) {
       const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
-      if (m) out[m[1]] = m[2];
+      // Values are single-quoted by renderEnv (F8), so unquote on the way back
+      // in — otherwise a re-run reads `'secret'` (with quotes) and re-quotes it,
+      // and every peer holding the old HUB_SECRET is locked out.
+      if (m) out[m[1]] = unquoteEnvValue(m[2]);
     }
   } catch {
     /* unreadable → treat as absent */
   }
   return out;
+}
+
+/** Reverse of `renderEnvValue`: strip the single quotes and unescape. */
+function unquoteEnvValue(v) {
+  if (v.length >= 2 && v.startsWith("'") && v.endsWith("'")) {
+    return v.slice(1, -1).replace(/'\\''/g, "'");
+  }
+  return v;
 }
 
 /** Readable, high-entropy, and safe to paste — no ambiguous glyphs. */
@@ -343,7 +372,7 @@ async function runVerification(step, { config, hubSecret, adminPassword, outDir,
     case 's3-no-expiry':
       return verifyNoLifecycle(config, pkgRoot);
     case 'restore-drill':
-      return verifyRestoreDrill(config);
+      return verifyRestoreDrill(config, { outDir, pkgRoot });
     default:
       return {
         ok: false,
@@ -548,19 +577,43 @@ async function verifyNoLifecycle(config, pkgRoot) {
   }
 }
 
-/** A backup nobody has restored is a hypothesis. Runs the real drill. */
-async function verifyRestoreDrill(config) {
+/**
+ * A backup nobody has restored is a hypothesis. Runs the real drill.
+ *
+ * This used to report `skipped` unconditionally, on the grounds that "the
+ * drill needs the hub's own data dir, which lives inside the container". That
+ * was never true of the drill: `runRestoreDrill` restores into a SCRATCH
+ * directory from a target resolved off flags and env — it never touches the
+ * hub's data dir. And the credentials it needs are the ones we just rendered
+ * into `.env` on this machine.
+ *
+ * What the old note WAS right about is the claim it makes. Running it at
+ * provisioning time proves the code path works against this bucket with these
+ * credentials; it does not prove the deployment is restorable next month. So
+ * it is labelled a PROVISIONING drill and the recurring duty stays uncrossed
+ * in `operatorDuties()`.
+ */
+async function verifyRestoreDrill(config, { pkgRoot }) {
   if (!config.s3) return { ok: false, skipped: true, note: 'no backup target configured' };
-  // The drill needs the hub's own data dir, which lives inside the container.
-  // Deliberately left to the operator's `maude hub restore-drill` rather than
-  // reaching into a volume from out here: a half-run drill that reports
-  // success is worse than an honest skip, and this is the one check whose
-  // whole point is that somebody actually did it.
-  return {
-    ok: false,
-    skipped: true,
-    note: 'run `maude hub restore-drill` against this deployment — it needs the hub data dir',
-  };
+
+  const drill = await sh(process.execPath, [
+    resolve(pkgRoot, 'cli/bin/maude.mjs'),
+    'hub',
+    'restore-drill',
+    '--json',
+  ]);
+  if (drill.code !== 0) {
+    const text = `${drill.stdout}${drill.stderr}`;
+    if (/no complete backup generation/i.test(text)) {
+      return {
+        ok: false,
+        skipped: true,
+        note: 'no generation exists yet (the first one lands within 6h) — run `maude hub restore-drill` then',
+      };
+    }
+    return { ok: false, note: `provisioning drill failed: ${text.trim().slice(0, 160)}` };
+  }
+  return { ok: true, note: 'provisioning drill passed — schedule it, this proves today only' };
 }
 
 /** Retry a flaky-at-startup operation. Rethrows the LAST error, so the

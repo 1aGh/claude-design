@@ -22,17 +22,7 @@
 // network call, so a hostile key can neither traverse the bucket nor probe for
 // unrelated objects.
 
-import { randomBytes } from 'node:crypto';
-import { once } from 'node:events';
-import {
-  createWriteStream,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  statSync,
-} from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 
 import { assetObjectKey, assetPrefixFromEnv } from './asset-key.mjs';
@@ -111,6 +101,26 @@ export function parseAssetPath(pathname) {
   return key;
 }
 
+/** Keys the drift alert has already named — one line per key per boot. */
+const bucketFallbackSeen = new Set();
+const MAX_DRIFT_KEYS = 500;
+
+/**
+ * STORE-DRIFT ALERT (Sync v2 Increment 5). On a hub WITH a checkout, the
+ * checkout is the serving truth and the bucket is its durable shadow: the boot
+ * hydrate refills any gap, so steady-state bucket serving should be zero.
+ * A bucket-served key after boot therefore means the checkout has drifted —
+ * an alarm someone can act on, not a fallback quietly working.
+ */
+function noteBucketFallback(key) {
+  if (bucketFallbackSeen.has(key) || bucketFallbackSeen.size >= MAX_DRIFT_KEYS) return;
+  bucketFallbackSeen.add(key);
+  console.warn(
+    `[assets] STORE DRIFT: serving ${key} from the bucket — the checkout does not hold it. ` +
+      'The boot hydrate should have restored this; a cell doing this in steady state needs looking at.'
+  );
+}
+
 /**
  * Handle `GET /assets/<sha8>[.ext]`. Returns true when handled.
  *
@@ -130,12 +140,13 @@ export async function handleAssetRoute(ctx) {
   const key = parseAssetPath(pathname);
   if (key === null) return false;
 
-  if (method !== 'GET' && method !== 'HEAD' && method !== 'PUT') {
-    // GET/HEAD proxy + the DDR-217 desktop push — nothing else. (The original
-    // "the hub does not accept asset WRITES" posture guarded against an
-    // unauthenticated-ish disk-fill surface; the PUT branch below is neither —
-    // token-gated, shape-validated, size-capped, workspace-only.)
-    respond(response, 405, 'method not allowed');
+  if (method !== 'GET' && method !== 'HEAD') {
+    // GET/HEAD proxy only. The DDR-217 desktop PUT still answers on this URL,
+    // but it is intercepted in server.mjs and delegated to the file door
+    // (`PUT /api/file/<rel>`) — Sync v2 Increment 5's "one door" rule — so a
+    // PUT reaching THIS handler means the dispatch order broke. Refuse loudly
+    // rather than keep a second write path alive by accident.
+    respond(response, 405, 'method not allowed (writes go through the file door)');
     return true;
   }
 
@@ -149,47 +160,6 @@ export async function handleAssetRoute(ctx) {
     }
     respond(response, 401, 'unauthorized');
     return true;
-  }
-
-  if (method === 'PUT') {
-    // DDR-217 (fix 6, sync RCA 2026-08-10) — the desktop→cell asset push. The
-    // sync lanes are text-only, so a desktop-linked project's `assets/` never
-    // reached the cell and its `/assets/` route served bytes it did not have
-    // (the grey boxes). The desktop is the one peer that HAS the bytes; it
-    // streams them here, into the checkout the studio child already serves,
-    // and `onWritten` mirrors them to the bucket — byte-for-byte the path a
-    // browser upload takes (studio `POST /_api/asset` → checkout → sweepNew).
-    if (!ctx.designRoot) {
-      // A hub with no checkout has nowhere durable to put bytes — the
-      // pre-DDR-217 refusal stands there.
-      respond(response, 405, 'this hub does not accept asset writes');
-      return true;
-    }
-    // Rate-limit the AUTHENTICATED write too (security review 2026-08-10, F2):
-    // a write is the expensive, disk-touching verb, so a valid token must not
-    // stream at line rate unthrottled.
-    //
-    // But in its OWN bucket, not the 401 path's (RCA 2026-08-11). Reusing the
-    // tight per-IP admin bucket (5/min, DDR-053 §6) made a legitimate 182-asset
-    // push 429 after its first ~5 writes — the DDR-102 mistake, reintroduced on
-    // the asset lane. The split is the same one DDR-102 settled: valid
-    // credentials get a generous per-LABEL ceiling (a peer cannot starve its own
-    // sync), brute force stays a per-IP control on the INVALID path above.
-    // Bytes were never this bucket's job — MAX_PUT_BYTES + PUT_SESSION_BUDGET
-    // are the disk-fill defence.
-    if (ctx.checkWriteRateLimit && !ctx.checkWriteRateLimit(match.label)) {
-      respondRateLimited(response);
-      return true;
-    }
-    return handleAssetPut({
-      request,
-      response,
-      key,
-      designRoot: ctx.designRoot,
-      onWritten: ctx.onWritten,
-      maxPutBytes: ctx.maxPutBytes,
-      putBudget: ctx.putBudget,
-    });
   }
 
   // ---- CHECKOUT FIRST, bucket second (the 2026-08-15 annotations-assets RCA).
@@ -254,6 +224,13 @@ export async function handleAssetRoute(ctx) {
     return true;
   }
 
+  // STORE-DRIFT ALERT (Sync v2 Increment 5). With a checkout present, the
+  // bucket is the durable SHADOW — serving from it means the checkout is
+  // missing a file the hydrate pass should have restored at boot. That is an
+  // alarm about checkout drift, not a fallback working as intended, and it
+  // must be visible long before it is visible as a grey box.
+  if (ctx.designRoot) noteBucketFallback(key);
+
   try {
     if (method === 'HEAD') {
       const meta = await headObject(
@@ -292,144 +269,6 @@ export async function handleAssetRoute(ctx) {
     respond(response, 502, 'asset store unavailable');
     return true;
   }
-}
-
-/**
- * Per-file ceiling for a pushed asset — mirrors the studio's
- * `ASSET_MAX_VIDEO_BYTES` (the largest thing a canvas legitimately references),
- * same env override so a power user raises both ends together.
- */
-const MAX_PUT_BYTES = (() => {
-  const env = Number(process.env.MAUDE_ASSET_MAX_VIDEO_BYTES);
-  return Number.isFinite(env) && env > 0 ? env : 100 * 1024 * 1024;
-})();
-
-/**
- * Aggregate per-hub-process write budget for the PUT lane, mirroring the
- * studio's `ASSET_SESSION_BUDGET` (DDR-088 security review). A single valid
- * peer token would otherwise write `MAX_PUT_BYTES` across unlimited keys with
- * no ceiling — content-addressing does not dedupe a one-byte mutation, so the
- * per-file cap is not a disk-fill defence. This bounds total bytes one process
- * will ever accept over the wire. Overridable for a large legitimate import.
- */
-const PUT_SESSION_BUDGET = (() => {
-  const env = Number(process.env.MAUDE_ASSET_PUT_SESSION_BUDGET);
-  return Number.isFinite(env) && env > 0 ? env : 2 * 1024 * 1024 * 1024;
-})();
-// The budget is a per-hub-PROCESS aggregate: one mutable `{ cap, used }` the
-// route closure carries for the process's life. A ctx-injected one lets a test
-// isolate its own budget (module-level `used` would leak across cases).
-const defaultPutBudget = { cap: PUT_SESSION_BUDGET, used: 0 };
-
-/**
- * Stream one pushed asset into the checkout: temp file + rename (a reader
- * never observes a half-written asset), hard byte cap enforced mid-stream
- * (an over-cap upload aborts and removes the partial — never buffered whole).
- *
- * CONTAINMENT IS SYMLINK-AWARE (security review 2026-08-10, both passes agreed
- * on this as the one blocker). `key` already passed `ASSET_KEY` (no `..`), but
- * that plus `resolve()` is purely LEXICAL — and a peer can COMMIT a symlink
- * under `assets/` into the shared repo (DDR-054), so `assets/x -> ../../ui`
- * plus `PUT assets/x/welcome.tsx` would follow the link and overwrite a served
- * canvas the studio child then compiles (a data→code crossing, DDR-193 §2).
- * `isContainedReal` resolves every symlink on disk before the write, exactly
- * as the sibling relocation writer (workspace-agent) already does — one guard,
- * one home (path-contain.mjs).
- */
-/**
- * Stream a request body to `abs` via temp + rename, with a hard mid-stream cap
- * (over-cap aborts and removes the partial — never buffered whole) and a
- * per-request temp nonce (concurrent writes to one path must not share a temp).
- * The CALLER owns containment: `abs` must already be proven inside its allowed
- * root (the streaming knows nothing about where it is allowed to write).
- * Returns `{ok:true,total}` or `{ok:false,status,message}` — the caller responds.
- */
-async function streamToFile(request, abs, { maxPutBytes, putBudget }) {
-  if (putBudget.used >= putBudget.cap) {
-    return { ok: false, status: 507, message: 'asset write budget for this session is exhausted' };
-  }
-  const tmp = `${abs}.tmp-${process.pid}-${randomBytes(6).toString('hex')}`;
-  let total = 0;
-  try {
-    mkdirSync(dirname(abs), { recursive: true });
-    const ws = createWriteStream(tmp);
-    ws.on('error', () => {});
-    const effectiveCap = Math.min(maxPutBytes, putBudget.cap - putBudget.used);
-    try {
-      for await (const chunk of request) {
-        total += chunk.length;
-        if (total > effectiveCap) {
-          const err = new Error('too large');
-          err.tooLarge = true;
-          throw err;
-        }
-        if (!ws.write(chunk)) await once(ws, 'drain');
-      }
-      await new Promise((res, rej) => {
-        ws.end((err) => (err ? rej(err) : res()));
-      });
-    } catch (err) {
-      ws.destroy();
-      await once(ws, 'close');
-      rmSync(tmp, { force: true });
-      return err.tooLarge
-        ? {
-            ok: false,
-            status: 413,
-            message: `asset exceeds the ${Math.round(maxPutBytes / (1024 * 1024))} MB cap`,
-          }
-        : { ok: false, status: 500, message: 'write failed' };
-    }
-    renameSync(tmp, abs);
-    putBudget.used += total;
-    return { ok: true, total };
-  } catch (err) {
-    rmSync(tmp, { force: true });
-    return { ok: false, status: 500, message: 'write failed', detail: err.message };
-  }
-}
-
-async function handleAssetPut({
-  request,
-  response,
-  key,
-  designRoot,
-  onWritten,
-  maxPutBytes = MAX_PUT_BYTES,
-  putBudget = defaultPutBudget,
-}) {
-  const assetsRoot = resolve(designRoot, 'assets');
-  const abs = resolve(assetsRoot, key);
-  // Lexical first (cheap), then the on-disk symlink resolution against the
-  // realpath of assets/. The parent dir is what `mkdirSync`/`createWriteStream`
-  // traverse, so it is what must be contained.
-  mkdirSync(assetsRoot, { recursive: true });
-  if (
-    (abs !== assetsRoot && !abs.startsWith(assetsRoot + sep)) ||
-    !isContainedReal(assetsRoot, abs)
-  ) {
-    respond(response, 400, 'invalid key');
-    return true;
-  }
-  const r = await streamToFile(request, abs, { maxPutBytes, putBudget });
-  if (!r.ok) {
-    if (r.detail) console.error(`[hub] asset put ${key} failed: ${r.detail}`);
-    respond(response, r.status, r.message);
-    return true;
-  }
-  // Mirror to the bucket now, not at the next boot — fire-and-forget, the
-  // bytes are already durable in the checkout (the browser-upload precedent).
-  onWritten?.();
-  const body = JSON.stringify({ ok: true, key, bytes: r.total });
-  response
-    .writeHead(200, {
-      'Content-Type': 'application/json',
-      'Cache-Control': 'no-store',
-      'Content-Length': Buffer.byteLength(body),
-      'X-Content-Type-Options': 'nosniff',
-    })
-    .end(body);
-  return true;
 }
 
 /**
@@ -543,7 +382,7 @@ export function checkoutRelShape(rel) {
  *      yet leaves the assets semantic this route is scoped to.
  *
  * Every filesystem op then uses `realParent/<basename>` — never the lexical
- * path (F1, attacker review 2026-08-11). `streamToFile`'s mkdir/create/rename
+ * path (F1, attacker review 2026-08-11). A writer's mkdir/create/rename
  * would otherwise re-traverse the lexical path and follow whatever symlink sits
  * there at WRITE time, reopening the TOCTOU the realpath check just closed.
  */
@@ -654,32 +493,11 @@ export async function handleCheckoutAssetRoute(ctx) {
     return true;
   }
 
-  const r = await streamToFile(request, writeAbs, {
-    maxPutBytes: ctx.maxPutBytes ?? MAX_PUT_BYTES,
-    putBudget: ctx.putBudget ?? defaultPutBudget,
-  });
-  if (!r.ok) {
-    if (r.detail) console.error(`[hub] checkout asset ${rel} failed: ${r.detail}`);
-    respond(response, r.status, r.message);
-    return true;
-  }
-  // Mirror to the bucket now, exactly like the bucket-route PUT and the
-  // browser-upload door (B3). This route was the one write surface WITHOUT the
-  // hook ("no bucket mirror"), so a human-named `assets/…` file pushed here
-  // lived checkout-only until the next boot — one container teardown from
-  // gone, and a 404 on the `/assets/` proxy meanwhile (2026-08-15 RCA). The
-  // sweep lists only `<designRoot>/assets/`, so a `system/**` write is a
-  // cheap no-op pass, not a mis-mirror.
-  ctx.onWritten?.();
-  const body = JSON.stringify({ ok: true, path: rel, bytes: r.total });
-  response
-    .writeHead(200, {
-      'Content-Type': 'application/json',
-      'Cache-Control': 'no-store',
-      'Content-Length': Buffer.byteLength(body),
-      'X-Content-Type-Options': 'nosniff',
-    })
-    .end(body);
+  // PUT is intercepted in server.mjs and delegated to the file door
+  // (`PUT /api/file/<rel>`) — Sync v2 Increment 5's "one door" rule. A PUT
+  // reaching this handler means the dispatch order broke; refuse rather than
+  // keep a second write path alive by accident.
+  respond(response, 405, 'method not allowed (writes go through the file door)');
   return true;
 }
 
@@ -692,11 +510,6 @@ const MAX_PROBE_PATHS = 1000;
  *  JSON overhead, rounded up. Read incrementally and abandoned the moment it is
  *  exceeded, so an oversized body is never buffered whole. */
 const MAX_PROBE_BODY_BYTES = 768 * 1024;
-
-/** Concurrent bucket lookups inside one probe. The point of the batch is to
- *  spend ONE round trip from the desktop; answering it must not become a
- *  thundering herd against the object store. */
-const PROBE_CONCURRENCY = 8;
 
 async function readBoundedJson(request, cap) {
   let total = 0;
@@ -777,62 +590,30 @@ export async function handleAssetProbeRoute(ctx) {
     return true;
   }
 
-  const s3 = ctx.s3;
-  const prefix = ctx.assetPrefix ?? assetPrefixFromEnv();
+  // CHECKOUT-ONLY COMPAT SHIM (Sync v2 Increment 5). The probe used to answer
+  // from both stores — checkout AND bucket — because the checkout could lag
+  // the bucket after a wake. The boot hydrate now refills the checkout for
+  // every plane class, so the checkout IS "what this cell can serve" and the
+  // bucket half's object-store reads bought nothing but latency. Callers are
+  // the legacy client window only (a plane-speaking desktop never probes);
+  // answering "absent" for a file the bucket alone holds costs one idempotent
+  // re-upload, which is the safe direction.
   const present = [];
-  const holds = async (rel) => {
-    if (typeof rel !== 'string') return false;
+  const holds = (rel) => {
+    if (typeof rel !== 'string' || !ctx.designRoot) return false;
     if (rel.startsWith('assets/')) {
-      // Class 1 — TWO STORES, AND THE ANSWER NEEDS BOTH.
-      //
-      // `handleAssetPut` writes the checkout first and mirrors to the bucket,
-      // because a canvas can reference the same file EITHER way: `/assets/<key>`
-      // (this hub's bucket proxy) or `/.design/assets/<key>` (the studio child's
-      // static serve, off the checkout). A canvas that hardcodes the second form
-      // — which is what the whiteboard/poster canvases emit — renders from the
-      // checkout and from nothing else.
-      //
-      // The checkout is CONTAINER-LOCAL and does not survive a cell restart; the
-      // bucket does. So "the bucket has it" is not the same claim as "this cell
-      // can serve it", and answering only the durable half is how a project ends
-      // up with photographs that are provably uploaded and visibly missing.
-      //
-      // Reported live 2026-08-13 on alligators: every `assets/*` was in the
-      // bucket, none was in the restarted cell's checkout, and the sweep skipped
-      // all 90 of them. Before the batch probe the sweep's per-file HEAD could
-      // never say "present" on a cell (a HEAD never arrives as one), so every
-      // boot re-uploaded everything and silently rebuilt the checkout — the
-      // repair was an accident of a broken skip, and fixing the skip removed it.
       const key = rel.slice('assets/'.length);
       if (!ASSET_KEY.test(key)) return false;
-      // A hub with no checkout of its own (bucket-only deployment) can only
-      // answer for the store it has; requiring a mirror it never writes would
-      // make it re-upload the world on every boot.
-      if (ctx.designRoot) {
-        const mirror = resolveCheckoutAssetTarget(ctx.designRoot, rel);
-        if (!mirror.ok || !existsSync(mirror.writeAbs)) return false;
-      }
-      if (!s3) return !!ctx.designRoot;
-      try {
-        return (await headObject(s3, assetObjectKey(key, prefix))) !== null;
-      } catch {
-        // A bucket that cannot answer is not the same as "absent", but the only
-        // safe report is the conservative one: re-uploading is idempotent,
-        // wrongly skipping leaves a grey box no one ever retries.
-        return false;
-      }
+      const mirror = resolveCheckoutAssetTarget(ctx.designRoot, rel);
+      return mirror.ok && existsSync(mirror.writeAbs);
     }
-    // Class 2 — checkout-resident project files. Judged by the SAME decision
-    // the write route uses (`resolveCheckoutFileWrite`), so the probe can
-    // never answer about a path the writer would refuse.
+    // Checkout-resident project files — judged by the SAME decision the write
+    // door uses, so the probe can never answer about a path a writer would
+    // refuse.
     const target = resolveCheckoutFileWrite(ctx.designRoot, rel);
     return target.ok && existsSync(target.abs);
   };
-  for (let i = 0; i < paths.length; i += PROBE_CONCURRENCY) {
-    const slice = paths.slice(i, i + PROBE_CONCURRENCY);
-    const answers = await Promise.all(slice.map(holds));
-    for (let j = 0; j < slice.length; j++) if (answers[j]) present.push(slice[j]);
-  }
+  for (const rel of paths) if (holds(rel)) present.push(rel);
 
   const payload = JSON.stringify({ present });
   response

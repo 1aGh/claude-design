@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-17T06:07:41.240Z",
+  "generated": "2026-08-19T12:16:06.527Z",
   "currentPhase": null,
   "phases": [
     {
@@ -685,6 +685,17 @@
       "phaseKey": null
     },
     {
+      "id": "feature-cloud-managed-git-posture",
+      "title": "Feature: Cloud-managed git posture — the desktop stops running local git and shows the cloud's history",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-cloud-managed-git-posture.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
       "id": "feature-desktop-cloud-live-pairing",
       "title": "Feature: desktop ↔ cloud live pairing",
       "status": "done",
@@ -1070,6 +1081,17 @@
       "phaseKey": null
     },
     {
+      "id": "feature-self-hosted-workspace-readiness",
+      "title": "Feature: Self-hosted workspace readiness — durability, people, BYO identity, and a guided setup",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-self-hosted-workspace-readiness.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
       "id": "feature-showcase-grounded-canvas-generation",
       "title": "Feature: Showcase-grounded canvas generation (`/design:new` + `/design:edit` reuse platform showcase layouts)",
       "status": "done",
@@ -1136,6 +1158,17 @@
       "phaseKey": null
     },
     {
+      "id": "feature-sync-burn-down-and-shared-doc",
+      "title": "Feature: Sync v2 burn-down + the shared-doc epilogue",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-sync-burn-down-and-shared-doc.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
       "id": "feature-sync-carries-the-path",
       "title": "Feature: sync carries the path, so a project arrives whole",
       "status": "done",
@@ -1165,6 +1198,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/archive/feature-sync-file-plane.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-sync-journal-file-plane",
+      "title": "Feature: Sync v2 — journal file plane (7 lanes → 2, one reconciler, doručenka)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-sync-journal-file-plane.md",
       "archived": true,
       "phaseKey": null
     },
@@ -2083,23 +2127,12 @@
     },
     {
       "id": "feature-production-grade-hardening",
-      "title": "Feature: Production-grade hardening & decomposition (the stack stays)",
+      "title": "Feature: v1.0.0 gate-set — production-grade hardening, re-scoped to what gates the tag",
       "status": "planned",
       "shipTarget": null,
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-production-grade-hardening.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-sync-journal-file-plane",
-      "title": "Feature: Sync v2 — journal file plane (7 lanes → 2, one reconciler, doručenka)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-sync-journal-file-plane.md",
       "archived": false,
       "phaseKey": null
     },
@@ -2111,6 +2144,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-video-tracking-and-stabilization.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-post-1.0-hardening-backlog",
+      "title": "Feature: post-1.0 hardening backlog (deferred 4-0 from the v1.0.0 gate)",
+      "status": "icebox",
+      "shipTarget": "ICEBOX",
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-post-1.0-hardening-backlog.md",
       "archived": false,
       "phaseKey": null
     }

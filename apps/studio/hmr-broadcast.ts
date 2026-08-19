@@ -165,6 +165,16 @@ export function classifyChange(
     }
     return { type: 'canvas-hmr', mode: 'css', file: rel, version, scope: 'canvas' };
   }
+  // The PhotoEdit sidecar (`assets/<sha8>.photo.json`) — a peer's photo
+  // adjustment arriving over the file plane. Ride the existing `asset` mode:
+  // the shell recognises the `.photo.json` shape and, instead of re-pointing
+  // an <img> (nothing references the sidecar), tells the canvas to re-fetch
+  // the edit and re-bake (`maude:photo-edit-refreshed`). Without this the
+  // sidecar changed on disk and no open canvas ever heard — a photo edit from
+  // another machine appeared only after a manual reload.
+  if (rel.endsWith('.photo.json') && /(^|\/)assets\//.test(rel)) {
+    return { type: 'canvas-hmr', mode: 'asset', file: rel, version, scope: 'canvas' };
+  }
   // Phase 8 — canvas-meta sidecar (`<base>.meta.json`) carries the
   // artboard layout / viewport. Emit a `meta` mode so foreign tabs can
   // re-fetch + re-apply the layout WITHOUT a full reload (which would

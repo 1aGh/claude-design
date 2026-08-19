@@ -174,8 +174,20 @@ export default function GitPanel({
   // PRESENTATION, NOT A CONTROL — `.git` is untouched, a terminal `git` works
   // exactly as before, and Disconnect (CloudBar) restores the panel live.
   cloudManaged = false,
+  // WHOSE HISTORY THESE ROWS ARE (feature-cloud-managed-git-posture).
+  //
+  // Decided by App, at the one place the posture is named, and handed down —
+  // the panel must NOT re-derive it from `cloudManaged`, because the whole
+  // point of the constant is that this rule has exactly one spelling. `loadLog`
+  // is swapped at the same call site; this prop is only how the panel knows
+  // which repo the rows it just received describe, so it can name it.
+  historySource = 'local',
+  // `{ branch, project, hubHost }` — what the cell reported alongside the log.
+  // Null until the first successful cloud load.
+  cloudHistory = null,
 }) {
   const withdrawn = historyOnly || cloudManaged;
+  const cloudHistorySource = historySource === 'cloud';
   const [tab, setTab] = useState(withdrawn ? 'history' : 'changes');
   // `cloudManaged` flips at runtime (connect/disconnect) — the initial tab
   // state alone would leave a freshly-linked panel sitting on Changes.
@@ -193,6 +205,13 @@ export default function GitPanel({
   // versions are click-to-preview), '' → repo-wide read-only list. `undefined`
   // = nothing loaded yet. (phase-27.1)
   const [logScope, setLogScope] = useState(undefined);
+  // A FAILED LOAD IS NOT AN EMPTY HISTORY. The local reader could only ever
+  // succeed (it reads a repo on this disk), so `log === []` meant one thing.
+  // The cloud reader can fail, and reporting that as "No saved versions yet"
+  // would reproduce — over the network this time — the exact false reassurance
+  // this feature exists to delete. `loadLog` answers `null` for "could not
+  // reach", `[]` for "nothing saved yet".
+  const [logFailed, setLogFailed] = useState(false);
   const selectAllRef = useRef(null);
 
   // History is scoped to the open canvas/specimen so each row previews THAT
@@ -417,9 +436,10 @@ export default function GitPanel({
     let cancelled = false;
     setLogLoading(true);
     (async () => {
-      const entries = (await loadLog(historyScope || undefined)) || [];
+      const entries = await loadLog(historyScope || undefined);
       if (cancelled) return;
-      setLog(entries);
+      setLogFailed(entries == null);
+      setLog(entries ?? []);
       setLogScope(historyScope);
       setLogLoading(false);
     })();
@@ -428,12 +448,38 @@ export default function GitPanel({
     };
   }, [tab, historyScope, logScope, loadLog]);
 
+  // Retry, and re-read on a posture flip. Dropping the cached scope is the
+  // panel's existing "reload History" gesture (`run()` already uses it), so
+  // Retry needs no second mechanism — and Connect/Disconnect swaps `loadLog`
+  // under us, which must re-ask rather than keep showing the other repo's rows.
+  const reloadHistory = () => {
+    setLogFailed(false);
+    setLogScope(undefined);
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setLogFailed(false);
+    setLogScope(undefined);
+  }, [historySource]);
+
   function toggleAll() {
     setUnchecked((prev) => (prev.size === 0 ? new Set(files.map((f) => f.path)) : new Set()));
   }
 
   const count = files.length;
-  const branch = status?.branch || 'main';
+  // WHICH REPO THE HEADER NAMES. `status` is LOCAL git, and in cloud-managed
+  // posture the app stops fetching it entirely — so a header built from it
+  // would name the desktop folder and the desktop's branch while the rows
+  // underneath list the cell's commits. That mismatch (`desktop-side / main`
+  // over the cloud's versions) is half of the reported confusion.
+  //
+  // The cell reports its own project and branch with the log. The hub host is
+  // the fallback: it names SOMETHING true about where these versions live,
+  // which the local folder name does not.
+  const headerProject = cloudHistorySource
+    ? (cloudHistory?.project ?? cloudHistory?.hubHost ?? null)
+    : project;
+  const branch = cloudHistorySource ? (cloudHistory?.branch ?? '') : status?.branch || 'main';
   const unpushed = status?.unpushed || 0;
   const canSave = message.trim().length > 0 && checkedPaths.length > 0 && !busy;
   const notRepo = status && status.repo === false;
@@ -476,12 +522,20 @@ export default function GitPanel({
           <span className="gp-panel-title">{withdrawn ? 'History' : 'Changes'}</span>
           {!withdrawn && count > 0 && <span className="gp-count">{count} unsaved</span>}
           <span className="gp-spacer" />
-          <span className="gp-draft" title="Your project and shared draft">
+          <span
+            className="gp-draft"
+            data-testid="git-panel-repo"
+            title={
+              cloudHistorySource
+                ? 'The cloud project these versions belong to'
+                : 'Your project and shared draft'
+            }
+          >
             <Icon name="folder" size={12} />
-            {project ? (
+            {headerProject ? (
               <>
-                <b>{project}</b>
-                <span className="gp-sep">/</span>
+                <b>{headerProject}</b>
+                {branch ? <span className="gp-sep">/</span> : null}
               </>
             ) : null}
             {branch}
@@ -756,17 +810,71 @@ export default function GitPanel({
             <div className="gp-empty">
               <p>Loading history…</p>
             </div>
+          ) : logFailed ? (
+            // A READ FAILURE, SAID AS ONE. Reuses the `callout--warning`
+            // vocabulary the banner above already uses, so this is copy and a
+            // Retry action rather than a new component.
+            <div className="gp-pad">
+              <div
+                className="callout callout--warning"
+                role="status"
+                aria-live="polite"
+                data-testid="git-history-unreachable"
+              >
+                <div className="gp-callout-col">
+                  <span>
+                    <strong
+                      style={{
+                        display: 'block',
+                        marginBottom: 'var(--space-1)',
+                        color: 'var(--fg-0)',
+                      }}
+                    >
+                      Couldn’t reach the cloud history.
+                    </strong>
+                    Your work is still being saved — this is only the list of versions.
+                  </span>
+                  <div className="gp-callout-actions">
+                    <button
+                      type="button"
+                      className="btn btn--sm"
+                      data-testid="git-history-retry"
+                      onClick={reloadHistory}
+                    >
+                      Retry
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           ) : !log || log.length === 0 ? (
             <div className="gp-empty">
               <span className="gp-empty-glyph">
                 <Icon name="history" size={24} />
               </span>
-              <h3>No saved versions yet</h3>
-              <p>
-                {previewable
-                  ? `Save a version of ${activeName} and it'll show up here.`
-                  : "Save a version and it'll show up here."}
-              </p>
+              {cloudHistorySource ? (
+                // NEVER OFFER THE SAVE THIS POSTURE HAS WITHDRAWN. The old copy
+                // ("Save a version and it'll show up here") sat directly under a
+                // "Cloud is saving" note and told the reader to do a thing the
+                // panel had just removed the button for — which is how "No saved
+                // versions yet" came to read as "nothing is being saved".
+                <>
+                  <h3>No versions yet</h3>
+                  <p>
+                    The cloud is saving this project
+                    {previewable ? `. Versions of ${activeName} appear here as you work.` : '. Versions appear here as you work.'}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h3>No saved versions yet</h3>
+                  <p>
+                    {previewable
+                      ? `Save a version of ${activeName} and it'll show up here.`
+                      : "Save a version and it'll show up here."}
+                  </p>
+                </>
+              )}
             </div>
           ) : (
             log.map((c) => {

@@ -18,6 +18,7 @@
 
 import * as decoding from 'lib0/decoding';
 import * as encoding from 'lib0/encoding';
+import type { JSX } from 'react';
 import {
   createContext,
   type ReactNode,
@@ -602,7 +603,8 @@ function createSession(slug: string): CollabSession {
 
   function sendFrame(ws: WebSocket, payload: Uint8Array) {
     try {
-      ws.send(payload);
+      // Uint8Array<ArrayBufferLike> vs BufferSource — see saveAsset in api.ts.
+      ws.send(payload as Uint8Array<ArrayBuffer>);
     } catch {
       /* dead socket — close handler will reconnect */
     }

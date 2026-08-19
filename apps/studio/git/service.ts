@@ -27,11 +27,14 @@
 import { spawn } from 'node:child_process';
 import fs, { existsSync } from 'node:fs';
 import { isAbsolute, join, relative, sep } from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 
 import git from 'isomorphic-git';
 import http from 'isomorphic-git/http/node';
 
+import { gitLogArgs, gitLogEnv, parseGitLog } from './log-format.ts';
 import { withRepoLock } from './repo-lock.ts';
+import { safeGitPrefix } from './safe-rel.ts';
 
 // Read LIVE, not as a module-load const — the same reason `noSystemGit()` below
 // is a function, and a sharper one since Cloud Phase 27 D2: a CELL now runs with
@@ -220,9 +223,27 @@ function isRepo(dir: string): boolean {
 }
 
 /** Normalize a status-matrix prefix: strip leading/trailing slashes, forward-slash. */
+/**
+ * The design-root containment prefix, normalised and VALIDATED (F-13/B12).
+ *
+ * This used to strip slashes and nothing else, so a `designRoot` of
+ * `../../..` normalised to `../../..` and `underPrefix` then matched nothing —
+ * or, on the staging side, named files outside the design root entirely. The
+ * rules live in `safe-rel.ts`; see its docblock for why containment (not argv)
+ * is the risk here.
+ *
+ * A REFUSED prefix falls back to `'.design'`, never to `''`. Empty means "no
+ * containment filter at all", so treating a hostile value as absent would
+ * WIDEN the scope to the whole repository — the opposite of what refusing it
+ * is for.
+ */
 function normPrefix(p?: string): string {
-  if (!p) return '';
-  return p.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  const safe = safeGitPrefix(p);
+  if (safe !== null) return safe;
+  console.warn(
+    `[git] refusing an unsafe design-root prefix (${JSON.stringify(p)}) — falling back to '.design'`
+  );
+  return '.design';
 }
 
 function underPrefix(filepath: string, prefix: string): boolean {
@@ -345,11 +366,20 @@ function runGit(
         child.kill('SIGKILL');
       }, timeoutMs);
     }
+    // StringDecoder, NOT `d.toString()` per chunk — a pipe splits at arbitrary
+    // BYTE boundaries, so a multi-byte sequence straddling two chunks decodes
+    // to U+FFFD on each side and `git show` of a canvas with non-ASCII copy
+    // comes back silently corrupted. The hub's runner carries the identical
+    // fix: this commit's whole premise is that a cloud row and a local row
+    // cannot differ in shape, and "one of the two mangles diacritics" is
+    // exactly that kind of difference.
+    const outDec = new StringDecoder('utf8');
+    const errDec = new StringDecoder('utf8');
     child.stdout.on('data', (d) => {
-      stdout += d.toString();
+      stdout += outDec.write(d);
     });
     child.stderr.on('data', (d) => {
-      stderr += d.toString();
+      stderr += errDec.write(d);
     });
     child.on('error', (e) => {
       if (timer) clearTimeout(timer);
@@ -357,6 +387,8 @@ function runGit(
     });
     child.on('close', (code) => {
       if (timer) clearTimeout(timer);
+      stdout += outDec.end();
+      stderr += errDec.end();
       resolveRun({ code: timedOut ? 124 : (code ?? 1), stdout, stderr, timedOut });
     });
   });
@@ -884,7 +916,9 @@ async function checkoutLocked(dir: string, name: string): Promise<GitBranchResul
       } else {
         const remoteNames = await git
           .listBranches({ fs, dir, remote: DEFAULT_REMOTE })
-          .catch(() => []);
+          // Annotated: a bare `[]` infers never[], which made the `.includes`
+          // below take a `never` and rejected any real branch name.
+          .catch((): string[] => []);
         if (!remoteNames.includes(name))
           return { ok: false, error: "Couldn't find that draft — try Refresh." };
         await git.checkout({ fs, dir, ref: name, remote: DEFAULT_REMOTE, track: true });
@@ -1712,29 +1746,14 @@ async function logIso(dir: string, limit: number, filepath?: string): Promise<Gi
 }
 
 async function logSystem(dir: string, limit: number, filepath?: string): Promise<GitLogEntry[]> {
-  // Unit-separator field delimiter, record-separator line delimiter — survives
-  // any message punctuation.
-  const fmt = '%H%x1f%s%x1f%an%x1f%ae%x1f%aI%x1e';
-  const args = ['log', `-n${limit}`, `--pretty=format:${fmt}`];
-  // `--` makes `filepath` strictly positional — git can't read it as an option
-  // (no argument injection even if it began with a dash, which containment
-  // validation already rejects upstream).
-  if (filepath) args.push('--', filepath);
-  // GIT_LITERAL_PATHSPECS — match `filepath` VERBATIM, never as pathspec magic
-  // (`:(top)`, `:(exclude)`, globs). The endpoint already restricts it to the
-  // design tree; this makes the system-git engine treat it as a plain path
-  // regardless, closing the pathspec-magic surface the `--` terminator alone
-  // doesn't (security re-review, phase-27.1).
-  const r = await runGit(dir, args, filepath ? { GIT_LITERAL_PATHSPECS: '1' } : undefined);
+  // The format, the argv (including the `--` terminator) and the parser all
+  // live in `log-format.ts` — the cloud cell's `/api/history` reads its own
+  // repo through the SAME three, so a cloud row and a local row cannot drift
+  // into different shapes behind one renderer. `gitLogEnv` carries the
+  // GIT_LITERAL_PATHSPECS hardening that must travel with a scoped argv.
+  const r = await runGit(dir, gitLogArgs(limit, filepath), gitLogEnv(filepath));
   if (r.code !== 0) return [];
-  return r.stdout
-    .split('\x1e')
-    .map((rec) => rec.replace(/^\n/, '').trim())
-    .filter(Boolean)
-    .map((rec) => {
-      const [sha, message, author, email, date] = rec.split('\x1f');
-      return { sha, message, author, email, date };
-    });
+  return parseGitLog(r.stdout);
 }
 
 // ── diff (visual before/after) ─────────────────────────────────────────────

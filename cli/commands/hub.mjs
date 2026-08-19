@@ -26,6 +26,7 @@ const SUBCOMMANDS = new Set([
   'backup',
   'restore-drill',
   'asset-check',
+  'backup-owners',
   'workspace-up',
   'help',
 ]);
@@ -50,6 +51,7 @@ export async function run({ args, pkgRoot }) {
   if (sub === 'backup') return runBackupNow({ args, pkgRoot });
   if (sub === 'restore-drill') return runRestoreDrill({ args, pkgRoot });
   if (sub === 'asset-check') return runAssetCheck({ args, pkgRoot });
+  if (sub === 'backup-owners') return runBackupOwners({ args, pkgRoot });
   if (sub === 'workspace-up') {
     const mod = await import('./hub-workspace.mjs');
     return mod.run({ args, pkgRoot });
@@ -57,7 +59,7 @@ export async function run({ args, pkgRoot }) {
 }
 
 function usage() {
-  return `maude hub <serve|token|status|deploy|backup|restore-drill|asset-check|workspace-up> [options]
+  return `maude hub <serve|token|status|deploy|backup|restore-drill|asset-check|backup-owners|workspace-up> [options]
 
   serve [--port N] [--data PATH] [--secret HEX] [--insecure-http] [--dev]
         Start the self-hostable Yjs sync hub in the current process tree.
@@ -656,6 +658,67 @@ async function runRestoreDrill({ args, pkgRoot }) {
  * and no amount of syncing fixes it. Content addressing means we can check it
  * cheaply — the reference IS the identity.
  */
+/**
+ * `maude hub backup-owners` — who owns the generations in this keyspace.
+ *
+ * ADVISORY, and deliberately so. Workspace identity (Phase 0 F1) is
+ * forward-only: from the upgrade on, every new generation names its owner and
+ * the write refusal stops two hubs destroying each other. It says nothing
+ * about a bucket whose generations are ALREADY interleaved — those predate the
+ * field, are indistinguishable from each other, and are still being pruned
+ * across. This reports that so a person can act on it.
+ *
+ * It never gates anything. Spacing and counts are evidence, not conditions:
+ * a merged series that happens to look evenly spaced would pass, and a
+ * single-owner series whose hub was down a day would fail.
+ */
+async function runBackupOwners({ args, pkgRoot }) {
+  const { flags } = parseArgs(args);
+  const engine = await loadBackupEngine(pkgRoot);
+  const target = resolveTarget(engine, flags);
+  const identity = await loadWorkspaceIdentity(pkgRoot);
+  const dataDir = flags['data-dir'] ?? process.env.DATA_DIR ?? null;
+  const workspace = dataDir && identity ? identity.readWorkspaceId(dataDir) : null;
+
+  let report;
+  try {
+    report = await engine.inspectKeyspace(target, { workspace });
+  } catch (err) {
+    if (flags.json) process.stdout.write(`${JSON.stringify({ ok: false, error: err.message })}\n`);
+    else process.stderr.write(`maude hub backup-owners: ${err.message}\n`);
+    process.exit(1);
+  }
+
+  if (flags.json) {
+    process.stdout.write(`${JSON.stringify({ ok: true, ...report }, null, 2)}\n`);
+    return;
+  }
+  process.stdout.write(
+    `[backup-owners] ${report.describe}\n` +
+      `  generations   ${report.generations}\n` +
+      `  owners        ${report.owners.length ? report.owners.join(', ') : '(none recorded)'}\n` +
+      `  unidentified  ${report.unidentified}\n` +
+      `  verdict       ${report.verdict}\n`
+  );
+  if (report.shared) {
+    process.stdout.write(
+      '\nTwo hubs sharing one keyspace prune each other\u2019s history. Give each its own\n' +
+        'MAUDE_BACKUP_PREFIX, or its own bucket. Nothing here has changed anything.\n'
+    );
+  }
+}
+
+/** The identity helpers live beside the backup engine; same resolution rule. */
+async function loadWorkspaceIdentity(pkgRoot) {
+  for (const candidate of [
+    resolve(pkgRoot, 'apps/hub/src/workspace-identity.mjs'),
+    resolve(pkgRoot, '../apps/hub/src/workspace-identity.mjs'),
+  ]) {
+    if (existsSync(candidate)) return import(`file://${candidate}`);
+  }
+  return null;
+}
+
 async function runAssetCheck({ args, pkgRoot }) {
   const { flags } = parseArgs(args);
   const root = resolve(flags.root ?? process.env.CLAUDE_PROJECT_DIR ?? process.cwd());

@@ -4,6 +4,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { type Context, createBus } from '../context.ts';
 import {
+  classifyChange,
   createContainerWriteBridge,
   createHmrBroadcaster,
   HMR_DEBOUNCE_MS,
@@ -206,5 +207,30 @@ describe('container write bridge — synthesises fs:any the container fs.watch m
     bridge.stop();
     await new Promise((r) => setTimeout(r, SYNTHETIC_FS_DELAY_MS + 30));
     expect(got).toHaveLength(0);
+  });
+});
+
+describe('the PhotoEdit sidecar reaches open canvases', () => {
+  // `assets/<sha8>.photo.json` changing on disk is a peer's photo adjustment
+  // arriving. It used to classify as null — no message, no re-bake, and the
+  // edit appeared only after a manual reload.
+  const noSibling = () => false;
+
+  test('a photo sidecar classifies as an asset heal', () => {
+    const msg = classifyChange('assets/3631ac58.photo.json', noSibling);
+    expect(msg?.mode).toBe('asset');
+    expect(msg?.file).toBe('assets/3631ac58.photo.json');
+  });
+
+  test('a DS-tree photo sidecar too', () => {
+    expect(classifyChange('system/brand/assets/aabbccdd.photo.json', noSibling)?.mode).toBe(
+      'asset'
+    );
+  });
+
+  test('an ordinary json outside assets/ still classifies as before', () => {
+    // .meta.json keeps its dedicated lane; other json (module-ish) unchanged.
+    expect(classifyChange('ui/home.meta.json', noSibling)?.mode).toBe('meta');
+    expect(classifyChange('notes/data.photo.json', noSibling)).toBe(null);
   });
 });

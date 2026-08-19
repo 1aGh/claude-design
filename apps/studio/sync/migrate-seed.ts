@@ -48,7 +48,9 @@ import {
   stampBodyEdit,
   Y_SYNC_TYPES,
 } from './codec.ts';
+import type { ColdStartAction } from './cold-start.ts';
 import { decideAnnotationsColdStart, decideColdStart, unionCommentsById } from './cold-start.ts';
+import { applyColdStart } from './cold-start-apply.ts';
 import { hashBytes } from './echo-guard.ts';
 import type { SyncJournal } from './journal.ts';
 import { ORIGINS } from './origins.ts';
@@ -73,6 +75,23 @@ export interface MigrateSeedOptions {
   journal?: SyncJournal;
   /** DDR-102 — body snapshot writer (history.ts), same contract as the agent's. */
   snapshot?: (content: string, reason: 'pre-sync-local' | 'pre-sync-hub') => Promise<string | null>;
+  /**
+   * Does the HUB hold state for this slug, per its last document listing?
+   *
+   * `docIsEmpty` asks the local replica, and an empty replica has two
+   * completely different meanings: "the hub has never seen this canvas" (adopt
+   * — the local file is the only copy) and "the hub's state has not landed in
+   * this replica YET" (do nothing — it is on its way). Adopting in the second
+   * case is the DDR-102 F1 concurrent cold-seed collision: both peers
+   * clear-and-rebuild their own replica from a file with the same bytes, and
+   * because the two runs carry different client ids the CRDT merge
+   * CONCATENATES them — the canvas ends up with its body twice on every peer.
+   *
+   * The listing is the only enumeration a peer has, so it is also the only way
+   * to tell the two cases apart before writing. Absent ⇒ treated as "the hub
+   * does not have it", which is the pre-existing behaviour.
+   */
+  hubHasState?: (slug: string) => boolean;
   /** DDR-102 — divergence notification, same contract as the agent's. */
   onConflict?: (info: {
     slug: string;
@@ -90,9 +109,19 @@ export type MigrateSeedResult =
   | 'empty'
   /** DDR-102 — doc held state but no body; local body seeded up in-place. */
   | 'body-seed-up'
+  /** DDR-102 F1 — the hub body was our local body repeated N≥2 times (a
+   *  concurrent cold-seed collision); local was re-applied so the codec's diff
+   *  deletes the duplicate. Before Increment 0 this decision had NO case in
+   *  this module's switch and fell through to `hub-wins`, keeping (and
+   *  materializing) the doubled body. */
+  | 'recover-seed-dup'
   /** DDR-102 — divergence resolved newest-wins. */
   | 'conflict-local-wins'
-  | 'conflict-hub-wins';
+  | 'conflict-hub-wins'
+  /** The replica is empty but the HUB is not — its state is still in flight.
+   *  Seeding here is the F1 collision (see `hubHasState`), so this seed does
+   *  nothing and lets the document arrive. */
+  | 'defer-hub-state';
 
 /** True when the shared doc holds no synced content for any of the five types. */
 export function docIsEmpty(doc: Y.Doc): boolean {
@@ -122,6 +151,26 @@ export async function migrateSeed(opts: MigrateSeedOptions): Promise<MigrateSeed
   // a single MIGRATION transaction. The apply* codecs delete-then-insert, so
   // this is a clear+rebuild (re-running is a no-op once content matches).
   if (docIsEmpty(doc)) {
+    // AN EMPTY REPLICA IS NOT AN EMPTY HUB. See `hubHasState` — on a cell the
+    // hub's workspace agent writes every document onto the checkout, so the
+    // studio child scans up a file whose document the hub already owns. Seeding
+    // from it doubles the body on every peer.
+    if (opts.hubHasState?.(slug)) {
+      // SNAPSHOT BEFORE STANDING ASIDE. Deferring means the local body never
+      // enters the doc — so when the hub's state does arrive, the projection
+      // writes it over this file with no `pre-sync-local` copy behind it and no
+      // conflict recorded, because both live in the non-empty branch this
+      // return skips. The adopt path it replaced could not lose the local body:
+      // it was inside the merge. One snapshot buys back the recoverability.
+      if (localHtml && opts.snapshot) {
+        try {
+          await opts.snapshot(localHtml, 'pre-sync-local');
+        } catch {
+          /* best-effort — history is a safety net, never a gate on syncing */
+        }
+      }
+      return 'defer-hub-state';
+    }
     const hasLocal =
       !!localHtml || !!localComments || !!localAnnotations || !!localMeta || !!localCss;
     if (!hasLocal) return 'empty';
@@ -175,8 +224,6 @@ export async function migrateSeed(opts: MigrateSeedOptions): Promise<MigrateSeed
     docBodyEditAtMs: bodyEditAtFromDoc(doc),
   });
 
-  let result: MigrateSeedResult = 'hub-wins';
-
   /** Rebuild body (+ visually-coupled css) from local, in ONE MIGRATION
    *  transaction — one source per type, never a two-history merge.
    *  Annotations are deliberately NOT here any more: they resolve per-lane
@@ -194,69 +241,29 @@ export async function migrateSeed(opts: MigrateSeedOptions): Promise<MigrateSeed
     });
   };
 
-  switch (decision.action) {
-    case 'noop':
-      // Identical (or both empty) — checkpoint identity so the next boot
-      // fast-forwards even if the hub then moves ahead.
-      if (localHtml !== null && localHtml === docHtml && docHtml !== '') {
-        opts.journal?.record(slug, { bodyHash: hashBytes(docHtml) });
-      }
-      break;
-    case 'materialize-hub':
-    case 'fast-forward-hub':
-      // Keep the doc; the projection materializes it to disk (and records the
-      // journal checkpoint on its write).
-      break;
-    case 'seed-local-up':
-      // Doc holds state for OTHER types but no body — seed the local body up.
-      rebuildBodyFromLocal();
-      result = 'body-seed-up';
-      break;
-    case 'conflict': {
-      const snapshots: { local?: string; hub?: string } = {};
-      let snapshotAttempted = false;
-      if (opts.snapshot) {
-        snapshotAttempted = true;
-        try {
-          const localTs = await opts.snapshot(localHtml as string, 'pre-sync-local');
-          if (localTs) snapshots.local = localTs;
-          const hubTs = await opts.snapshot(docHtml, 'pre-sync-hub');
-          if (hubTs) snapshots.hub = hubTs;
-        } catch {
-          /* swallowed below — the missing snapshot ref drives the fail-closed guard */
-        }
-      }
-      // DDR-102 fail-closed (security F1): a hub-wins resolution keeps the doc
-      // (hub) state, which projection.reconcile() then materializes to disk —
-      // OVERWRITING local. If the local snapshot didn't land, rebuild the body
-      // from local instead so the projection writes local back (a no-op on
-      // disk) and nothing is lost. Gated on `snapshotAttempted` so a
-      // snapshot-less standalone call keeps plain newest-wins.
-      const localSnapshotMissing = snapshotAttempted && !snapshots.local;
-      let winner = decision.winner;
-      if (winner === 'hub' && localSnapshotMissing) {
-        winner = 'local';
-        console.error(
-          `[sync/${slug}] shared-doc cold-start divergence: hub won newest-wins but the local snapshot FAILED — REFUSING to overwrite local (DDR-102 fail-closed). Rebuilding the doc from local; resolve the _history/ write failure to restore newest-wins.`
-        );
-      }
-      if (winner === 'local') {
-        rebuildBodyFromLocal();
-        result = 'conflict-local-wins';
-      } else {
-        result = 'conflict-hub-wins';
-      }
-      console.warn(`[sync/${slug}] shared-doc cold-start divergence — ${decision.reason}`);
-      opts.onConflict?.({
-        slug,
-        kind: 'cold-start-diverged',
-        winner,
-        ...(snapshots.local || snapshots.hub ? { snapshots } : {}),
-        ...(localSnapshotMissing ? { snapshotFailed: true } : {}),
-      });
-      break;
-    }
-  }
+  // ONE application body, shared with agent.ts reconcile (DDR-226 Increment 0).
+  // `takeHub` is a genuine no-op here: under shared-doc the doc KEEPS its state
+  // and `projection.reconcile()` materializes it to disk (recording the journal
+  // checkpoint on its own write). Everything else — the dual snapshot, the
+  // fail-closed refusal, the conflict report, and crucially the
+  // `recover-seed-dup` row this switch used to be missing — now lives in
+  // exactly one place.
+  const applied = await applyColdStart({
+    slug,
+    decision,
+    localBody: localHtml,
+    docBody: docHtml,
+    takeHub: () => {
+      /* the projection materializes the doc; nothing to do here */
+    },
+    takeLocal: rebuildBodyFromLocal,
+    checkpointIdentity: (body) => opts.journal?.record(slug, { bodyHash: hashBytes(body) }),
+    logLabel: 'shared-doc',
+    ...(opts.snapshot ? { snapshot: opts.snapshot } : {}),
+    ...(opts.onConflict ? { onConflict: opts.onConflict } : {}),
+  });
+
+  const result: MigrateSeedResult = resultFor(applied.action, applied.bodyWinner);
 
   // ---- annotations: PER-LANE newest-wins (the 2026-08-14 eraser fix; the
   // same table as agent.ts reconcile). Under sharedDoc the collab room's
@@ -273,7 +280,7 @@ export async function migrateSeed(opts: MigrateSeedOptions): Promise<MigrateSeed
       isEmpty: isEmptyAnnotationsSvg,
       localMtimeMs: localMtimeMs(paths.annotations),
       docEditAtMs: annotationsEditAtFromDoc(doc),
-      bodyWinner: result === 'body-seed-up' || result === 'conflict-local-wins' ? 'local' : 'hub',
+      bodyWinner: applied.bodyWinner,
     });
     if (annDecision.winner === 'local' && localAnnotations !== null) {
       console.warn(`[sync/${slug}] shared-doc cold-start annotations: ${annDecision.reason}`);
@@ -311,6 +318,31 @@ export async function migrateSeed(opts: MigrateSeedOptions): Promise<MigrateSeed
 }
 
 /* ---------------------------------------------------------------- helpers */
+
+/**
+ * Map the shared applier's verdict onto this module's public result string.
+ * Total over `ColdStartAction`, so a new row in the table surfaces here as a
+ * type error instead of silently reading as `hub-wins` (the exact shape of the
+ * `recover-seed-dup` bug this refactor fixed).
+ */
+function resultFor(action: ColdStartAction, bodyWinner: 'local' | 'hub'): MigrateSeedResult {
+  switch (action) {
+    case 'noop':
+    case 'materialize-hub':
+    case 'fast-forward-hub':
+      return 'hub-wins';
+    case 'seed-local-up':
+      return 'body-seed-up';
+    case 'recover-seed-dup':
+      return 'recover-seed-dup';
+    case 'conflict':
+      return bodyWinner === 'local' ? 'conflict-local-wins' : 'conflict-hub-wins';
+    default: {
+      const never: never = action;
+      throw new Error(`migrate-seed: unhandled cold-start action ${String(never)}`);
+    }
+  }
+}
 
 function snapshotLocal(opts: MigrateSeedOptions): void {
   if (!opts.historyDir) return;

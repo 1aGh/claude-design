@@ -371,7 +371,11 @@ export function ContextMenuView({
           el.querySelectorAll<HTMLButtonElement>('button.dc-menu-item:not([disabled])')
         );
         if (items.length === 0) return;
-        const idx = items.indexOf(document.activeElement);
+        // `document.activeElement` is Element | null; anything that is not one
+        // of these buttons behaves as "no current item" (-1), which is what
+        // indexOf returned before and what the wrap-around arithmetic expects.
+        const active = document.activeElement;
+        const idx = active instanceof HTMLButtonElement ? items.indexOf(active) : -1;
         const nextIdx =
           e.key === 'ArrowDown'
             ? (idx + 1) % items.length
@@ -526,32 +530,41 @@ function MenuItemRow({
           onMouseEnter={cancelClose}
           onMouseLeave={scheduleClose}
         >
-          {submenuItems.map((sub) => (
-            <button
-              key={sub.id}
-              type="button"
-              role="menuitem"
-              disabled={sub.disabled}
-              title={sub.disabled ? sub.disabledHint : undefined}
-              className={`dc-menu-item${sub.destructive ? ' is-destructive' : ''}`}
-              onClick={() => {
-                if (sub.disabled) return;
-                sub.onSelect(target);
-                onClose();
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'ArrowLeft' || e.key === 'Escape') {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setSubOpen(false);
-                  btnRef.current?.focus();
-                }
-              }}
-            >
-              <span>{sub.label}</span>
-              {sub.shortcut ? <span className="dc-menu-shortcut">{sub.shortcut}</span> : null}
-            </button>
-          ))}
+          {submenuItems.map((sub) => {
+            // Same per-click resolution the leaf branch does at `disabled`
+            // above. Passing the raw value here meant a FUNCTION-form
+            // `disabled` — always truthy — greyed the item out permanently and
+            // swallowed every click, whatever the predicate said about this
+            // target. Submenus simply never got the resolution leaves had.
+            const subDisabled =
+              typeof sub.disabled === 'function' ? sub.disabled(target) : sub.disabled;
+            return (
+              <button
+                key={sub.id}
+                type="button"
+                role="menuitem"
+                disabled={subDisabled}
+                title={subDisabled ? sub.disabledHint : undefined}
+                className={`dc-menu-item${sub.destructive ? ' is-destructive' : ''}`}
+                onClick={() => {
+                  if (subDisabled) return;
+                  sub.onSelect(target);
+                  onClose();
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowLeft' || e.key === 'Escape') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSubOpen(false);
+                    btnRef.current?.focus();
+                  }
+                }}
+              >
+                <span>{sub.label}</span>
+                {sub.shortcut ? <span className="dc-menu-shortcut">{sub.shortcut}</span> : null}
+              </button>
+            );
+          })}
         </div>
       ) : null}
     </div>

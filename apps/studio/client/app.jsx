@@ -2612,6 +2612,10 @@ function Sidebar({
   // Passed through to CloudBar only — lifts linkedHub changes to the app shell
   // so the GitPanel's cloud-managed posture (DDR-218) reacts live.
   onLinkedHub,
+  // feature-cloud-managed-git-posture — the widened DDR-218 gate, resolved once
+  // in App and handed down. Withdraws the drafts switcher: a local branch
+  // switch moves a HEAD the cell knows nothing about.
+  savingIsManaged = false,
 }) {
   const filteredGroups = useMemo(() => {
     if (!search) return groups;
@@ -2977,8 +2981,19 @@ function Sidebar({
       />
       {/* Phase 29 (E4) — the project + draft switcher: a compact one-line dock that
           opens UPWARD, sitting directly above the GitHub identity avatar so the two
-          form one bottom dock. Renders nothing until the project is a git repo. */}
-      <RepoBranchSwitcher project={project} liveBranch={gitBranch} remoteSync={remoteSync} onGetLatest={onGetLatest} />
+          form one bottom dock. Renders nothing until the project is a git repo.
+
+          WITHDRAWN while somebody else is committing (feature-cloud-managed-git-
+          posture). A draft is a local branch, and switching one moves a HEAD the
+          cell knows nothing about — it would rewrite the working tree under a
+          project whose history is being written elsewhere. Same
+          presentation-not-a-control rule as the rest of DDR-218: `/_api/git/branch`
+          and `/_api/git/checkout` keep exactly their old gates, and a terminal
+          `git checkout` still works (and still flushes into Yjs via DDR-051's
+          watcher). Absent, not disabled — there is nothing to explain here. */}
+      {!savingIsManaged && (
+        <RepoBranchSwitcher project={project} liveBranch={gitBranch} remoteSync={remoteSync} onGetLatest={onGetLatest} />
+      )}
       {/* Cloud Phase 23 C3 — Maude Cloud sign-in + remote-project attach, docked
           above the GitHub identity. Dev-server-backed, so it works in the desktop
           shell AND a plain browser. */}
@@ -9617,6 +9632,43 @@ function App() {
   // for one frame, each fired the request its shell exists to refuse, and then
   // unmounted. Nothing was broken and everything looked broken.
   const [cfg, setCfg] = useState({ designRel: '.design', cloud: undefined });
+  // WHO IS SAVING THIS PROJECT — one expression, read by every surface that
+  // would otherwise offer to save it, poll for it, or badge it (DDR-218, widened
+  // by feature-cloud-managed-git-posture).
+  //
+  // These two flags were previously derived at the GitPanel call site alone, so
+  // the panel withdrew correctly while the toolbar menu and the status-bar chip
+  // kept rendering a raw dirty count from `gitStatus.files.length` — the very
+  // "lie about work that is already saved" the withdrawal exists to delete. The
+  // count is the claim, wherever it is drawn; hoisting the rule here is what
+  // keeps a third surface from re-introducing it.
+  //
+  // DECLARED HERE, AT THE TOP, ON PURPOSE. Every local-git POLL below is gated
+  // on it, and a dependency array evaluates during render — a `const` further
+  // down would be in its temporal dead zone at the first `useEffect` that names
+  // it. The same hazard the remote-sync effect's own comment records.
+  //
+  // PRESENTATION, NOT A CONTROL — unchanged from DDR-218. `.git` is untouched:
+  // no hook is installed, no config is written, a terminal `git status` /
+  // `git commit` behaves exactly as before, the local `/_api/git/*` routes keep
+  // exactly their old gates, and `git/watch.ts` still flushes a terminal
+  // `git checkout` into Yjs (DDR-051). What stops is MAUDE's own local git
+  // activity — the polls and the surfaces that describe a repo nobody is
+  // editing through. Disconnect restores every one of them live.
+  const cellManaged = !!cfg.cloud;
+  const cloudManaged = !cfg.cloud && !!cloudLinkedHub?.credentialed;
+  const savingIsManaged = cellManaged || cloudManaged;
+  // The raw truth stays available for surfaces that legitimately need it (the
+  // panel's own file list); only the COUNT — the thing that reads as a to-do —
+  // is withheld when this project's saving is somebody else's job.
+  const unsavedCount = savingIsManaged ? 0 : gitStatus?.files?.length || 0;
+  // The posture, readable from callbacks that must NOT re-subscribe when it
+  // flips: the WS handler is installed once for the socket's lifetime, and the
+  // two git-status refreshers are `useCallback([])`s a dozen call sites depend
+  // on being stable. A ref is how they read a live value without becoming a
+  // reason to tear the socket down.
+  const savingIsManagedRef = useRef(savingIsManaged);
+  savingIsManagedRef.current = savingIsManaged;
   // Cloud Phase 25 C2 — viewer role, known at boot from /_config. Every
   // editing affordance in the shell gates on this (absent, not hidden).
   const viewerMode = !!cfg.readOnly;
@@ -9693,7 +9745,20 @@ function App() {
   }, []);
   // Phase 27 (E2) — seed the git dirty-state on mount; live updates arrive over
   // the `git-status` WS broadcast (Task 5). Solo/non-git projects → repo:false.
+  //
+  // NOT WHILE SOMEBODY ELSE IS COMMITTING. In cloud-managed posture this asks
+  // about a repo the user is not editing through, and every answer it brings
+  // back is drawn somewhere as a claim about their work. Reactive on
+  // `savingIsManaged`, not mount-only, so Disconnect resumes it live and
+  // Connect stops it live — the requirement `git-cloud-posture.test.ts`
+  // already pins for the panel.
   useEffect(() => {
+    if (savingIsManaged) {
+      // Drop what the local repo last said, too. A stale `gitStatus` left
+      // standing keeps the tree's M/A/D badges lit after the posture changed.
+      setGitStatus(null);
+      return undefined;
+    }
     let cancelled = false;
     fetch('/_api/git/status')
       .then((r) => r.json())
@@ -9704,7 +9769,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [savingIsManaged]);
   const [commentsByFile, setCommentsByFile] = useState({}); // { file: [Comment] }
   // Phase 6 — the in-iframe composer owns drafting; the shell no longer holds
   // a `draft` state. Mutations route through postMessage → WS instead.
@@ -11245,7 +11310,13 @@ function App() {
           } else if (m.type === 'git-status' && m.payload) {
             // Phase 27 (E2) Task 5 — live dirty-state. Updates the Changes-panel
             // count + tree M/A/D badges reactively, no polling.
-            setGitStatus(m.payload);
+            //
+            // The server PUSHES this, so gating the fetches alone would not be
+            // enough: the broadcast would quietly re-populate everything the
+            // polls stopped asking for. Read through a ref because this handler
+            // is installed once, by an effect that must not re-subscribe the
+            // socket every time the posture flips.
+            if (!savingIsManagedRef.current) setGitStatus(m.payload);
           } else if (m.type === 'git-lifecycle' && m.payload) {
             // Phase 8 Task 7 — branch switch / pull mid-session. Server has
             // already flushed every dirty Y.Doc to JSON; just prompt the user.
@@ -11283,6 +11354,7 @@ function App() {
   // dual-allowlist gate them main-origin only). After a mutation we refresh
   // status optimistically; the `git-status` WS broadcast also lands shortly.
   const refreshGitStatus = useCallback(async () => {
+    if (savingIsManagedRef.current) return; // cloud-managed — nobody polls a repo they don't commit to
     try {
       const r = await fetch('/_api/git/status');
       if (r.ok) setGitStatus(await r.json());
@@ -11295,6 +11367,11 @@ function App() {
   // without it the status is local-only and the nudge never fires. Network call —
   // call sparingly (mount / interval / post-action), never on the WS hot path.
   const refreshRemoteSync = useCallback(async () => {
+    // The ahead/behind probe is a real network `git fetch` against the LOCAL
+    // repo's remote — the one remote a cloud-managed project has nothing to do
+    // with. Gated here as well as at the interval, so a post-action call site
+    // cannot reintroduce it.
+    if (savingIsManagedRef.current) return;
     try {
       const r = await fetch('/_api/git/status?remote=1');
       if (!r.ok) return;
@@ -11392,35 +11469,49 @@ function App() {
     }
   }, []);
 
+  // THE HISTORY THAT IS ACTUALLY BEING WRITTEN (feature-cloud-managed-git-
+  // posture). Same signature and same row shape as `gitLoadLog` — the two are
+  // interchangeable at the call site precisely because the format, the argv and
+  // the parser behind them are ONE module (`git/log-format.ts`), imported by
+  // both the local service and the cell.
+  //
+  // Failure is REPORTED, never mistaken for emptiness: `null` means "we could
+  // not reach the cloud" (the panel shows a Retry callout), `[]` means "the
+  // cloud has no versions yet" (the panel shows the empty state). Collapsing
+  // the two is what produced the original bug in the first place.
+  const [cloudHistory, setCloudHistory] = useState(null); // { branch, project, hubHost } | null
+  const gitLoadCloudLog = useCallback(async (path) => {
+    try {
+      const qs =
+        '/_api/cloud/history?limit=40' + (path ? `&path=${encodeURIComponent(path)}` : '');
+      const r = await fetch(qs);
+      if (!r.ok) return null;
+      const data = await r.json();
+      if (!data?.ok) return null;
+      setCloudHistory({
+        branch: data.branch ?? null,
+        project: data.project ?? null,
+        hubHost: data.hubHost ?? null,
+      });
+      return data.entries || [];
+    } catch {
+      return null;
+    }
+  }, []);
+
   // Repo-relative path → M/A/D/U badge for the tree (paths match: both the tree
   // and gitStatus use `.design/ui/Foo.tsx`). Keyed off gitStatus so it updates
   // live with the WS broadcast.
   const dirtyByPath = useMemo(() => {
     const KIND = { modified: 'M', added: 'A', deleted: 'D', untracked: 'U' };
     const m = new Map();
+    // A tree badge is the SAME claim as the withdrawn count, drawn one row at a
+    // time: "this file is unsaved". In cloud-managed posture it is not — the
+    // cell committed it seconds ago. Empty, so the tree simply says nothing.
+    if (savingIsManaged) return m;
     for (const f of gitStatus?.files || []) m.set(f.path, KIND[f.status]);
     return m;
-  }, [gitStatus]);
-  // WHO IS SAVING THIS PROJECT — one expression, read by every surface that
-  // would otherwise offer to save it (DDR-218 + the cell's `historyOnly`).
-  //
-  // These two flags were previously derived at the GitPanel call site alone, so
-  // the panel withdrew correctly while the toolbar menu and the status-bar chip
-  // kept rendering a raw dirty count from `gitStatus.files.length` — the very
-  // "lie about work that is already saved" the withdrawal exists to delete. The
-  // count is the claim, wherever it is drawn; hoisting the rule here is what
-  // keeps a third surface from re-introducing it.
-  //
-  // PRESENTATION, NOT A CONTROL — unchanged from DDR-218. `.git` is untouched,
-  // a terminal `git` behaves exactly as before, the server routes keep their own
-  // gates, and Disconnect restores every surface live.
-  const cellManaged = !!cfg.cloud;
-  const cloudManaged = !cfg.cloud && !!cloudLinkedHub?.credentialed;
-  const savingIsManaged = cellManaged || cloudManaged;
-  // The raw truth stays available for surfaces that legitimately need it (the
-  // panel's own file list, `dirtyByPath`); only the COUNT — the thing that reads
-  // as a to-do — is withheld when this project's saving is somebody else's job.
-  const unsavedCount = savingIsManaged ? 0 : gitStatus?.files?.length || 0;
+  }, [gitStatus, savingIsManaged]);
 
   // Phase 28 (E3) — keep remote ahead/behind fresh so the "Get latest" nudge
   // surfaces on its own: probe once a repo is known, again whenever the Changes
@@ -11428,6 +11519,13 @@ function App() {
   // publish then shows up without the user first attempting their own publish).
   // Declared after `refreshRemoteSync` to avoid a temporal-dead-zone on the dep.
   useEffect(() => {
+    if (savingIsManaged) {
+      // Nothing to nudge about: Publish is withdrawn in this posture, so a
+      // probe could only produce a count nobody may act on. Clear the last
+      // answer as well — a stale ahead/behind would outlive the link.
+      setRemoteSync(null);
+      return undefined;
+    }
     if (gitStatus?.repo === false) return; // solo / non-git project — no remote
     refreshRemoteSync();
     // Poll in the background too — not only while Changes is open — so the dock's
@@ -11436,7 +11534,7 @@ function App() {
     // TTL-cached server-side, so a missed tick is cheap to re-issue).
     const id = setInterval(refreshRemoteSync, changesOpen ? 60000 : 120000);
     return () => clearInterval(id);
-  }, [gitStatus?.repo, changesOpen, refreshRemoteSync]);
+  }, [savingIsManaged, gitStatus?.repo, changesOpen, refreshRemoteSync]);
 
   // ----- Tab management (single-canvas) -----
   // Single-canvas model: opening a file REPLACES the active one (no tab strip).
@@ -14462,6 +14560,7 @@ function App() {
           canvasKinds={cfg?.canvasKinds}
           syncStatus={syncStatus}
           onLinkedHub={setCloudLinkedHub}
+          savingIsManaged={savingIsManaged}
         />
       );
     if (id === 'changes')
@@ -14498,7 +14597,16 @@ function App() {
           onDiscard={gitDiscard}
           onPublish={gitPublish}
           onGetLatest={gitGetLatest}
-          loadLog={gitLoadLog}
+          // WHICH HISTORY, decided at the ONE place the posture is named — not
+          // inside the panel, which would be a second derivation of the rule
+          // `cloud-managed-save-surfaces.test.ts` exists to keep singular.
+          loadLog={cloudManaged ? gitLoadCloudLog : gitLoadLog}
+          historySource={cloudManaged ? 'cloud' : 'local'}
+          // What the cloud half of the header names. The cell reports its own
+          // project and branch with the log; the hub host is the fallback,
+          // because a header that names the LOCAL folder while listing the
+          // CLOUD's commits is the confusion this feature exists to end.
+          cloudHistory={cloudHistory}
           onOpenCanvas={(p) => openTab(p)}
           onOpenDiff={(file) => setDiffTarget({ file, beforeSha: 'HEAD', conflict: false })}
           activeCanvas={activeCanvasFile}

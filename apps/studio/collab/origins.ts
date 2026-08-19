@@ -129,7 +129,9 @@ export const SYNC_AGENT_ORIGIN: object = markTrustedOrigin(
 export function rootTypesTouched(transaction: Y.Transaction): Set<string> {
   const roots = new Set<string>();
   for (const type of transaction.changed.keys()) {
-    let t: Y.AbstractType<unknown> = type;
+    // `transaction.changed` keys are AbstractType<YEvent<any>>; the parent walk
+    // below is event-type agnostic, so widen once here rather than at each step.
+    let t: Y.AbstractType<unknown> = type as unknown as Y.AbstractType<unknown>;
     // biome-ignore lint/suspicious/noExplicitAny: `_item` is yjs-internal but stable API surface for parent walks.
     while ((t as any)._item != null) t = (t as any)._item.parent;
     try {

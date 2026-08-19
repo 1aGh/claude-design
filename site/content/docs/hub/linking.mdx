@@ -128,6 +128,69 @@ The sync agent tolerates the hub disappearing — your laptop on a plane, a Fly 
 - On reconnect, the agent runs Yjs sync v2, the banner flashes green *"Synced"* for 3s, then disappears. Queued edits land within ~2s.
 - If you stay offline for **> 24h**, the banner escalates to red: *"Long offline — your changes may conflict. Consider `git commit && git push` as backup."*
 
+## How fast a change crosses
+
+Text edits ride the live document lanes and arrive in milliseconds. Files — pictures, fonts, design-system stylesheets, docs — used to arrive on a schedule: the receiving side asked "anything new?" every 20 seconds, and inside the cloud there was a further gap where the bytes had already landed but nothing told the open page, so a picture stayed a broken frame until you reloaded.
+
+A hub that carries the file journal now **says so** the moment it accepts a write, over the same connection your canvases already use. Peers fetch straight away instead of waiting for the next tick, and an open cloud tab repairs itself in place — no reload.
+
+The frame is deliberately empty of content: it says "something moved", never *what*. Everything a peer then downloads goes through the same authenticated, re-validated route it always did. A lost notification therefore costs a few seconds, never correctness — the 20-second poll is still there underneath, and it stays there until the notification path has proven itself in real use.
+
+Older hubs simply don't advertise the feature and every peer keeps today's behaviour unchanged. To turn it off against a hub that does, set `linkedHub.fileEvents: false` in `.design/config.json`; that project falls back to the poll cadence and nothing else changes.
+
+## Who owns the folder
+
+A linked project has exactly two shapes, and Maude will ask you to pick one:
+
+**Repo-owned** — `.design/` is committed, your git is the truth, and collaboration is `git pull`. No hub involved.
+
+**Hub-owned** — `.design/` is gitignored and the hub mirrors it. The hub's own history plus its object storage is the truth, collaboration is live, and the copy on your disk is a complete working mirror rather than the original.
+
+There is deliberately nothing in between. Linked *and* committed looks like extra safety — it's in git **and** in the cloud — and it is the opposite: two systems own the same bytes with different rules for merging them, so a `git pull` and a sync pass can each undo the other, and which one wins comes down to timing.
+
+Switching is a one-off, and both directions are safe:
+
+```sh
+maude design adopt <url> --token <hex>   # repo-owned → hub-owned
+maude design detach                      # hub-owned → repo-owned
+```
+
+`adopt` adds one line to `.gitignore` and runs `git rm -r --cached .design` — the index entry goes, **every byte stays on disk**. It stages the removals and the `.gitignore` edit and nothing else, so whatever else you had in flight is untouched. `detach` removes the line again; the files are already local and complete, so there is nothing to download, and what to commit is left to you.
+
+A project linked before this existed keeps working and shows a `legacy hybrid` note in `maude design status` until you answer. Nothing is decided for you.
+
+<Callout type="note" title="Inside a Syncthing folder?">
+
+Syncthing doesn't read `.gitignore`, so a hub-owned project inside a synced tree would still ride two transports. `adopt` notices and prints the exact `.stignore` line to add.
+
+</Callout>
+
+## What crosses, and what stays home
+
+A linked project mirrors the **whole** `.design/` folder both ways, not just the canvases: design-system stylesheets, READMEs, fonts, images, shared modules. Which files those are is decided by one classifier on each side, and each side asks its own copy — the hub's answer is a hint, never permission.
+
+Three things never travel, in either direction:
+
+- **`.design/config.json`** — it names the hub and the canvas groups. A synced config would be a hub rewriting its own trust anchors.
+- **Per-machine runtime state** — your camera position, local history, trash, drafts. Yours, not the project's.
+- **Another program's conflict copies** (`*.sync-conflict-*`, Syncthing's) — carrying those would make it impossible to tell which program parked a file.
+
+**Executable modules** (`.ts`, `.mjs` outside a canvas body) are the one class with a gate on both ends. The hub refuses them from anyone but an owner, and your machine only accepts them from a hub you have explicitly said may deliver them — a local answer, recorded when you link, that no sign-in response can change.
+
+When two people change the same file between syncs, neither copy is merged and neither is thrown away: the loser is renamed to `<name>.maude-conflict-<when>-<who>.<ext>` beside the winner and travels too, so both people see it. If a whole batch of files differs at once — the usual case the first time an existing project is linked — sync pauses and the Sync panel says so, rather than filling the folder with conflict copies you did not ask for. Set `linkedHub.resolveFirstAnchor` to `"keep-local"` or `"keep-cloud"` to settle the whole batch in one go.
+
+## When sync pauses
+
+Three things make sync stop and wait rather than act, and all three report into the Sync panel with the files they are holding:
+
+- **Too many deletions.** More than ten at once, more than a quarter of what the project tracks, or more than twenty-five in an hour. That last one is a budget rather than a per-check limit — it counts what has already gone and survives a restart, because a slow drain adds up the same as a fast one.
+- **A first link where both sides have content**, described above.
+- **A hub that keeps asking to start over**, which is what a broken or misconfigured hub looks like from the outside.
+
+In every case nothing has been removed or overwritten. `linkedHub.propagateDeletes: false` stops deletions travelling at all.
+
+To turn the file mirror off for a project, set `linkedHub.syncFiles: false` in `.design/config.json`. Canvases keep syncing; only the surrounding files stop.
+
 ## Rate limits
 
 The hub authenticates each canvas document separately, so a big project produces a burst of valid auths at boot (one per canvas — even though all of them ride **one** multiplexed WebSocket per peer). The hub's limiter is sized for that: valid tokens get 600 auths/min per label (override with `HUB_CONN_RATE_LIMIT` on the hub), while *invalid* token attempts — the actual brute-force surface — are capped tightly at 100/min per IP. If a peer ever does hit the limit, the rejection says so explicitly (with a retry hint) instead of a generic `permission-denied`, and sync settles by itself as providers back off.

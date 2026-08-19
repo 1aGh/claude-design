@@ -17,10 +17,18 @@
 // the provider lib didn't install for some reason) prints a useful error
 // instead of crashing the dev-server boot.
 
-import { existsSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  writeFileSync,
+} from 'node:fs';
 import { readdir } from 'node:fs/promises';
+import { hostname } from 'node:os';
 import path from 'node:path';
-
 import type { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { renewHubCredential } from '../cloud/renew.ts';
@@ -29,25 +37,33 @@ import type { Context, LinkedHub } from '../context.ts';
 import { createHistory } from '../history.ts';
 import { SYNTHETIC_FS_DELAY_MS } from '../hmr-broadcast.ts';
 import { type CanvasSyncAgent, createCanvasSyncAgent } from './agent.ts';
-import { pullAssets } from './asset-pull.ts';
-import { isPushableAssetRel, pushOneAsset } from './asset-push.ts';
-import { type AssetSweepHandle, runAssetSweep } from './asset-sweep.ts';
+import { isPushableAssetRel, pushAssets } from './asset-push.ts';
 import { atomicWrite } from './atomic-write.ts';
-import { createAutoCommit } from './autocommit.ts';
 import { type CellPairing, resolveCellPairing, sanitizeForLog } from './cell-pairing.ts';
-import { canvasPathFromDoc, stampCanvasPath } from './codec.ts';
+import {
+  canvasPathFromDoc,
+  clearMovedTo,
+  movedToFromDoc,
+  stampCanvasPath,
+  stampMovedTo,
+} from './codec.ts';
 import {
   type ConnectionMonitor,
   createConnectionMonitor,
   type ProviderStatus,
 } from './connection-state.ts';
+import { createCtlProvider } from './ctl-provider.ts';
 import { createRescanScheduler, diffCanvasSet, type RescanScheduler } from './discovery.ts';
 import { createDocNameResolver } from './doc-name.ts';
 import { createEchoGuard } from './echo-guard.ts';
+import { createFileLedger } from './file-ledger.ts';
+import { createFilePlane } from './file-plane.ts';
 import { type FilePullResult, pullFiles } from './file-pull.ts';
 import { createFsReader, type FsReader } from './fs-mirror.ts';
+import { type HubDocRow, hubHolds, indexHubDocs } from './hub-listing.ts';
 import { getHubRecord } from './hubs-config.ts';
 import { loadJournal, type SyncJournal } from './journal.ts';
+import { hasLedger, hubCapabilities } from './journal-client.ts';
 import { isLoopbackHost } from './loopback.ts';
 import { migrateFlatFallback } from './migrate-flat-fallback.ts';
 import { migrateSeed } from './migrate-seed.ts';
@@ -152,6 +168,15 @@ export const DISCOVERY_DEBOUNCE_MS = 400;
 export const REMOTE_POLL_MS = 20_000;
 
 /**
+ * Settle window before a local write triggers a file-plane pass.
+ *
+ * Long enough that saving a file (which many editors do as several writes)
+ * costs one pass, short enough that "I dropped a picture in" still feels
+ * immediate.
+ */
+export const FILE_PASS_DEBOUNCE_MS = 400;
+
+/**
  * Settling delay for an OFF-SCHEDULE poll (reconnect).
  *
  * Not zero: a reconnect is a burst — every provider re-handshakes — and asking
@@ -159,6 +184,22 @@ export const REMOTE_POLL_MS = 20_000;
  * needless second one. Short enough that a person does not experience it.
  */
 export const REMOTE_POLL_SOON_MS = 1_500;
+
+/**
+ * The floor between two POKE-DRIVEN passes — DDR-226 §9's promised cooldown.
+ *
+ * `pollRemoteSoon` coalesces a burst, which is a debounce, not a cooldown: it
+ * caps how many passes a burst collapses into and says nothing about sustained
+ * rate. A hub emitting a poke every 1.5 s therefore drove a full document poll
+ * + asset pass + `.design/` tree walk at roughly 13x the intended cadence,
+ * indefinitely, with no counter that tripped — sustained CPU, disk and battery
+ * on the victim, from the component DDR-054 calls untrusted, and the multiplier
+ * that made the conflict-copy amplification practical.
+ *
+ * Half the scheduled poll: fast enough that a poke is still the reason cloud
+ * edits arrive in seconds, bounded enough that spam buys almost nothing.
+ */
+export const POKE_COOLDOWN_MS = REMOTE_POLL_MS / 2;
 
 /**
  * How many previously-unknown canvases one listing may land.
@@ -294,6 +335,17 @@ export interface SyncRuntime {
    * meaningful gesture, killing a multi-hundred-megabyte upload is.
    */
   cancelAssetSweep(): boolean;
+  /**
+   * The MOVE protocol's first half (codec `stampMovedTo`): stamp this slug's
+   * document retired-by-move to `toRel`, push the stamp to the hub, then
+   * release the canvas. Called by `moveCanvas` BEFORE it renames the file —
+   * which is also why this must not quarantine anything: the file at the old
+   * path is about to be renamed by the caller, not thrown away.
+   *
+   * Returns false when this runtime does not carry the slug (not synced, or
+   * flag-off) — the caller then proceeds with the plain local move.
+   */
+  retireForMove(fromSlug: string, toRel: string): Promise<boolean>;
 }
 
 export interface CreateSyncRuntimeOptions {
@@ -317,8 +369,6 @@ export interface CreateSyncRuntimeOptions {
   connectionMonitor?: ConnectionMonitor;
   /** Override the status store (Task 8 test injection). */
   statusStore?: SyncStatusStore;
-  /** Override the asset-sweep runner (test injection — no child process). */
-  assetSweepRunner?: typeof runAssetSweep;
   /**
    * DDR-102 — auth-failure + boot-settle knobs (test injection, mirrors the
    * connection-state injectable-timer pattern).
@@ -469,33 +519,27 @@ export function createSyncRuntime(
     return null;
   }
 
-  // Cloud Phase 3 Task 1 — in a workspace cell, a disk write is only half the
-  // save: nobody is at a keyboard to commit, so the cell does it. Off entirely
-  // outside workspace mode, where the developer's own git IS the history and
-  // committing under them would be an intrusion (DDR-119).
+  // NO autocommit lives in this runtime (Sync v2 Increment 0, DDR-226).
   //
-  // AND OFF UNDER CELL PAIRING, which is the guard DDR-209's core fear asks for.
-  // The hub's `afterStoreDocument` already commits every stored document; a
-  // second committer inside the studio child would race it over one working
-  // tree and one `.git/index`. This is structural rather than conditional on
-  // purpose — under pairing the object is never CONSTRUCTED, so there is no
-  // later branch that could accidentally reach a commit. `cell-pairing.ts`
-  // refuses to pair at all unless MAUDE_SYNC_NO_AUTOCOMMIT says so out loud, so
-  // the two halves of this invariant can never disagree.
-  const autoCommit =
-    workspaceMode && !cellPairing
-      ? createAutoCommit({
-          repoRoot: ctx.paths.repoRoot,
-          run: async (args, { cwd }) => {
-            const proc = Bun.spawn(['git', ...args], { cwd, stdout: 'pipe', stderr: 'pipe' });
-            const [stdout, stderr] = await Promise.all([
-              new Response(proc.stdout).text(),
-              new Response(proc.stderr).text(),
-            ]);
-            return { code: await proc.exited, stdout, stderr };
-          },
-        })
-      : null;
+  // Cloud Phase 3 Task 1 built one here for workspace cells, gated
+  // `workspaceMode && !cellPairing` — but that condition is UNREACHABLE: the
+  // gate at the top of this function already returns null for exactly
+  // `workspaceMode && !cellPairing`, so the object was always null and the
+  // writer-wrap / editorOf / stop-flush that depended on it never ran. Two
+  // independent readers confirmed it before the wiring was removed.
+  //
+  // It is not coming back on either side of the split:
+  //   - In a CELL the hub is the sole committer (`afterStoreDocument` →
+  //     workspace-agent), and `cell-pairing.ts` refuses to pair at all without
+  //     MAUDE_SYNC_NO_AUTOCOMMIT=1 — DDR-198/209/213.
+  //   - On a DESKTOP the developer's own git IS the history and committing
+  //     under them would be an intrusion — DDR-119.
+  //
+  // The ENGINE itself (`./autocommit.ts`) is very much alive: the hub imports
+  // it (`apps/hub/src/workspace-agent.mjs`, copied into the image by
+  // `apps/hub/Dockerfile`) so there is exactly ONE copy of the append-only
+  // commit rules — DDR-198's single-engine rule. Do not delete that module
+  // when removing wiring from this file.
 
   // Under pairing the credential is the hub's own derived cell token, handed to
   // this process in its environment. `~/.config/maude/hubs.json` is a PERSON's
@@ -520,12 +564,32 @@ export function createSyncRuntime(
   // feature-sync-file-plane — Plane B, behind its flag. The flag gates ONLY
   // the new plane (the downward file pull here + the widened sweep inside
   // `listPushableAssets`); with it off, behavior is today's, byte-for-byte.
-  const syncFilesOn = linkedHub.syncFiles === true || process.env.MAUDE_SYNC_FILES === '1';
-  // The owner-hub gate for `code-module` entries, decided from LOCAL state
-  // only: the role this machine's credential store vouched for at sign-in
-  // (never a hub-supplied claim), or the hub being this cell's own loopback
-  // pairing — where the hub and the checkout are the same trust domain.
-  const allowCodeModules = cellPairing !== null || storedRecord?.role === 'owner';
+  // DEFAULT ON (Increment 4). The plane ships enabled once its security gate
+  // closed: the whole set of findings from the two-seat review is fixed, the
+  // door gates scope + role on the real landing path, the receiver defends its
+  // own root, budgets charge real bytes, and the storms — poke, re-anchor,
+  // first-anchor, mass-delete — all have breakers that hold rather than act.
+  //
+  // `linkedHub.syncFiles: false` is the per-project opt-out and stays the
+  // documented rollback: a config key, not a terminal command (DDR-177).
+  const syncFilesOn =
+    linkedHub.syncFiles !== false &&
+    (process.env.MAUDE_SYNC_FILES !== '0' || linkedHub.syncFiles === true);
+  // The gate for `code-module` entries — genuinely local state, at last.
+  //
+  // This used to read `storedRecord?.role === 'owner'`, described in the
+  // receiving lane as "never anything the hub said". It was exactly what the
+  // hub said: `role` is copied from the sign-in response on every login, so a
+  // hostile hub answering `user.role: "owner"` once set its own receive gate
+  // forever after. That matters more than the canvas case it resembles — a
+  // `.tsx` renders in the sandboxed canvas origin, but a `.ts`/`.mjs` landing
+  // outside the canvas-owned lane is read by the AGENT and by every
+  // `maude design *` helper.
+  //
+  // Now: an explicit per-hub consent recorded at link time and never rewritten
+  // by a login response, or this cell's own loopback pairing — where the hub
+  // and the checkout are one trust domain and there is no remote party.
+  const allowCodeModules = cellPairing !== null || storedRecord?.codeModulesAllowed === true;
 
   // DDR-102 — the default factory multiplexes every provider over ONE shared
   // WebSocket per hub URL; the runtime owns its disposal (stop(), after the
@@ -576,124 +640,113 @@ export function createSyncRuntime(
   let busUnsub: (() => void) | null = null;
   let started = false;
   let stopped = false;
-  /** The live asset sweep, so `stop()` can end it and the panel can cancel it. */
-  let assetSweep: AssetSweepHandle | null = null;
-  /** Debounce for the on-change sweep — see `scheduleAssetSweep`. */
-  let assetSweepTimer: ReturnType<typeof setTimeout> | null = null;
-  /** A change that arrived while a sweep was running: sweep once more after. */
-  let assetSweepAgain = false;
-
+  // ---- THE LEGACY PUSH CLIENT (journal-less hubs only) --------------------
+  //
+  // Sync v2 Increment 5 deleted the transfer engines: the out-of-process asset
+  // sweep, its worker child, the per-file fast push and the reference-derived
+  // pull. Their replacement is the journal file plane — one lane, both
+  // directions, one decision function (`file-plane.ts`). What remains HERE is
+  // the compat client for hubs that carry NO journal (self-hosted, not yet
+  // upgraded): the same bounded, sequential `pushAssets` pass the pre-v2
+  // desktop ran, retained at least two releases after the burn-down (Open
+  // decision 4) and gated on the SAME capability probe that builds the plane —
+  // a journal hub never sees it, so the two lanes cannot overlap.
+  //
+  // IN-PROCESS is safe now. The 2026-08-11 crash the out-of-process boundary
+  // was built for was an HTTP/1.1 keep-alive desync after a refused PUT, fixed
+  // at the transport (UPLOAD_CONNECTION_HEADERS in `asset-push.ts`), and the
+  // pass is sequential with a per-request time budget — the same class of work
+  // every poll already does in-process.
+  let legacyPushTimer: ReturnType<typeof setTimeout> | null = null;
+  let legacyPushRunning = false;
+  let legacyPushAgain = false;
+  /** Set by the panel's cancel (a multi-hundred-MB upload must be killable). */
+  let legacyPushCancel = false;
   /**
-   * Run the asset sweep now, unless one is already running.
-   *
-   * OUT OF PROCESS since feature-sync-resync-and-out-of-process-sweep: the
-   * sweep segfaults Bun when it runs alongside the dev server (proven by
-   * isolation — the identical sweep against the same hub completes standalone).
-   * A dead child is a reported failed sweep, not a dead editor.
+   * The push-lane verdict, decided ONCE per boot (compat matrix §10):
+   * `null` = the capability probe is still in flight (pushes wait);
+   * `false` = the hub carries a journal and the plane owns pushes;
+   * `true` = journal-less hub ⇒ this legacy client carries the upward lane.
    */
-  function startAssetSweep(hubUrl: string): void {
-    if (stopped || assetSweep) return;
-    const handle = (opts.assetSweepRunner ?? runAssetSweep)({
+  let legacyLane: boolean | null = null;
+  /** A pass was owed before the lane was decided — run it on the verdict. */
+  let legacyBootPush: string | null = null;
+
+  /** Run the legacy push now — single-flight with a trailing re-run. */
+  function runLegacyPush(hubUrl: string): void {
+    if (stopped || cellPairing || legacyLane !== true) return; // the cell never pushes
+    if (legacyPushRunning) {
+      legacyPushAgain = true;
+      return;
+    }
+    legacyPushRunning = true;
+    legacyPushCancel = false;
+    pushAssets({
       designRoot: ctx.paths.designRoot,
       hubUrl,
-      // Read at call time — a silent renewal mid-sweep must reach the child
-      // (the parent re-writes its credential file when this changes).
+      // Read at call time — silent renewal swaps the credential in place.
       token: () => token,
-      // feature-sync-progress-modal — ride the same `sync:status` payload the
-      // doc counts use, so the Sync panel has one source. `statusStore`, not
-      // start()'s local `store` alias: this helper is runtime-scoped so it can
-      // also be called from the fs watcher, and the alias does not exist here.
-      // Guarded on `stopped`: a late emit must not write `_sync.json`
-      // post-teardown.
+      canvasGroups: ctx.cfg.canvasGroups,
+      cancelled: () => legacyPushCancel || stopped,
+      // feature-sync-progress-modal — same `sync:status` payload as ever, so
+      // the Sync panel needs no idea which lane fed it. Guarded on `stopped`:
+      // a late emit must not write `_sync.json` post-teardown.
       onProgress: (p) => {
         if (!stopped) statusStore?.updateAssets?.(p);
       },
-    });
-    assetSweep = handle;
-    handle.done.finally(() => {
-      if (assetSweep === handle) assetSweep = null;
-      // A file that changed WHILE this sweep ran was not in its list — the
-      // trailing re-run is what keeps "I pasted two images quickly" from
-      // uploading only the first. Same single-flight-with-trailing-run shape
-      // the hub's own sweeper uses.
-      if (assetSweepAgain && !stopped) {
-        assetSweepAgain = false;
-        scheduleAssetSweep(hubUrl);
-      }
-    });
+    })
+      .catch(() => {
+        /* pushAssets never throws; this is a belt for the promise chain */
+      })
+      .finally(() => {
+        legacyPushRunning = false;
+        // A file that changed WHILE this pass ran was not in its list — the
+        // trailing re-run keeps "I pasted two images quickly" from uploading
+        // only the first.
+        if (legacyPushAgain && !stopped) {
+          legacyPushAgain = false;
+          scheduleLegacyPush(hubUrl);
+        }
+      });
   }
 
   /**
-   * Coalesce a burst of asset writes into one sweep.
+   * Coalesce a burst of asset writes into one pass.
    *
    * Dragging six images onto a canvas is six `fs:any` events inside a second,
-   * and each sweep costs one presence probe over the wire. The debounce makes
-   * that one probe; `assetSweepAgain` makes a change during a sweep a second
+   * and each pass costs one presence probe over the wire. The debounce makes
+   * that one probe; the trailing re-run makes a change during a pass a second
    * pass rather than a lost upload.
    */
-  function scheduleAssetSweep(hubUrl: string): void {
+  function scheduleLegacyPush(hubUrl: string): void {
     if (stopped || cellPairing) return;
-    if (assetSweep) {
-      assetSweepAgain = true;
+    if (legacyLane === null) {
+      // Undecided — remember that a pass is owed; the verdict honours it.
+      legacyBootPush = hubUrl;
       return;
     }
-    if (assetSweepTimer !== null) clearTimeout(assetSweepTimer);
-    assetSweepTimer = setTimeout(() => {
-      assetSweepTimer = null;
-      startAssetSweep(hubUrl);
+    if (legacyLane === false) return; // the plane owns pushes on this hub
+    if (legacyPushRunning) {
+      legacyPushAgain = true;
+      return;
+    }
+    if (legacyPushTimer !== null) clearTimeout(legacyPushTimer);
+    legacyPushTimer = setTimeout(() => {
+      legacyPushTimer = null;
+      runLegacyPush(hubUrl);
     }, ASSET_SWEEP_DEBOUNCE_MS);
-    assetSweepTimer.unref?.();
+    legacyPushTimer.unref?.();
   }
 
-  // ---- FAST LANES (2026-08-16 latency fix) --------------------------------
-  // The sweep reconciles; these make the COMMON case instant. A sticker
-  // dropped on a canvas syncs its stroke over the doc lane in milliseconds,
-  // while its bytes waited for a debounced, spawned, walk-everything sweep
-  // (minutes) — and the other direction waited for the next 20 s poll. The
-  // fast push sends the ONE just-written file now; the fast pull runs the
-  // (missing-only, idempotent) asset pull the moment a reference-bearing
-  // file lands, instead of at the next tick.
-  const fastPushTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  /** Serialize fast pushes — assets run to videos; two at once starve sync. */
-  let fastPushChain: Promise<void> = Promise.resolve();
-  /** Let the write settle (atomic tmp+rename bursts) before reading it. */
-  const FAST_PUSH_DEBOUNCE_MS = 400;
-  /** Debounced trigger for an off-schedule pullAssetsOnce — set in start(). */
-  let requestFastPull: (() => void) | null = null;
-  /** Files whose annotations/tsx/css/meta content can reference assets —
-   *  mirrors asset-pull's SCANNED_EXT. */
-  const REFERENCE_FILE_RE = /\.(?:annotations\.svg|tsx|jsx|css|meta\.json)$/i;
-
-  function queueFastPush(rel: string, hubUrl: string): void {
-    if (stopped || cellPairing) return; // the cell never pushes (same as the sweep)
-    const prev = fastPushTimers.get(rel);
-    if (prev) clearTimeout(prev);
-    const timer = setTimeout(() => {
-      fastPushTimers.delete(rel);
-      if (stopped) return;
-      fastPushChain = fastPushChain.then(async () => {
-        if (stopped) return;
-        try {
-          const r = await pushOneAsset({
-            designRoot: ctx.paths.designRoot,
-            rel,
-            hubUrl,
-            token: () => token,
-            canvasGroups: ctx.cfg.canvasGroups,
-          });
-          if (r.ok && !r.skipped) {
-            console.log(`[sync/assets] fast-pushed ${rel}`);
-          } else if (!r.ok) {
-            // Not an error surface — the sweep is the reconciler and retries.
-            console.warn(`[sync/assets] fast push ${rel}: ${r.reason} — the sweep will retry.`);
-          }
-        } catch {
-          /* the sweep reconciles */
-        }
-      });
-    }, FAST_PUSH_DEBOUNCE_MS);
-    timer.unref?.();
-    fastPushTimers.set(rel, timer);
+  /** The capability probe settled (or could not run): decide the push lane. */
+  function decidePushLane(legacy: boolean): void {
+    if (legacyLane !== null) return; // first verdict wins — one lane per boot
+    legacyLane = legacy;
+    if (legacy && legacyBootPush !== null && !stopped) {
+      const url = legacyBootPush;
+      legacyBootPush = null;
+      runLegacyPush(url);
+    }
   }
 
   // Task 8 — offline-mode status surface, initialized in start() once the
@@ -778,8 +831,67 @@ export function createSyncRuntime(
   let createdUnsub: (() => void) | null = null;
   /** Periodic remote-document poll — the hub-side half of discovery. */
   let remotePollTimer: ReturnType<typeof setInterval> | null = null;
+  /**
+   * The file-event control channel (Sync v2 Increment 2), when the hub
+   * advertises one. Null on a journal-less hub, in a cell (the child holds it
+   * there), and whenever `linkedHub.fileEvents` is false.
+   */
+  let fileEventsCtl: import('./ctl-provider.ts').CtlProvider | null = null;
+  /**
+   * Cancels the boot-time capability probe. A `stop()` that leaves a `/health`
+   * fetch in flight is a timer keeping a dying process alive and a promise
+   * landing in torn-down state — the class of thing that shows up as a flaky
+   * suite long before it shows up as a bug.
+   */
+  let fileEventsProbe: AbortController | null = null;
+  /**
+   * The Sync v2 file plane — ONE lane, both directions, one decision table.
+   *
+   * Null on a journal-less hub (the compat matrix keeps the v1 manifest pull
+   * for those), and null when `linkedHub.syncFiles` is off. Built once the
+   * capability probe answers, so a hub that cannot support it never sees a
+   * request it does not understand.
+   */
+  let filePlane: import('./file-plane.ts').FilePlane | null = null;
+  let fileLedger: import('./file-ledger.ts').FileLedger | null = null;
+  /** Cumulative files sent up this boot — the doručenka's push half. */
+  let filePushed = 0;
+  /** Debounce for a plane pass triggered by a local write. */
+  let filePassTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * The HONESTY COUNTER. Pokes received this run, beside the polls that found
+   * work anyway. Relaxing the 20 s poll to 60 s is gated on this proving the
+   * channel is not silently missing events in dogfood (DDR-226 §10) — a
+   * number, not a feeling, and deliberately reported rather than assumed.
+   */
+  let pokesSeen = 0;
   /** Assigned by `start()`; the seam `pullRemoteNow()` and tests reach. */
   let remotePull: (() => Promise<void>) | null = null;
+  /**
+   * Run a file-plane pass shortly, coalesced.
+   *
+   * THE PUSH HALF'S TRIGGER. A local write does not upload anything by itself
+   * any more: it invalidates the stat cache for that path and asks for a pass,
+   * and the pass decides — push, pull, conflict or nothing — through the same
+   * table every other trigger uses. That is the difference from the fast lane
+   * it replaces, which had its own idea of what a change meant and needed a
+   * probe-guard to keep from re-uploading what the pull had just written.
+   */
+  function schedulePlanePass(): void {
+    if (stopped || filePassTimer !== null) return;
+    filePassTimer = setTimeout(() => {
+      filePassTimer = null;
+      if (stopped || !filePlane) return;
+      void filePlane
+        .reconcile()
+        .then((r) => planeResultSink?.(r))
+        .catch((err) => console.error('[sync/files] pass failed:', err));
+    }, FILE_PASS_DEBOUNCE_MS);
+    filePassTimer.unref?.();
+  }
+  /** Assigned by `start()` so a pass reports into the same status the poll does. */
+  let planeResultSink: ((r: import('./file-plane.ts').FilePlaneResult) => void) | null = null;
+
   /**
    * Ask for an off-schedule remote poll, coalesced.
    *
@@ -788,11 +900,40 @@ export function createSyncRuntime(
    * something to call — the boot pull has just run at that point anyway.
    */
   let remotePollSoonTimer: ReturnType<typeof setTimeout> | null = null;
-  function pollRemoteSoon(): void {
+  /** When the last poke-driven pass actually started. */
+  let lastPokePassAt = 0;
+  /** Pokes refused by the cooldown since the last one that ran. */
+  let pokesThrottled = 0;
+
+  /**
+   * @param opts.cooled  apply the anti-spam floor. True for hub-driven pokes;
+   *                     false for our own reconnects and boot, which are
+   *                     locally caused and must stay immediate.
+   */
+  function pollRemoteSoon(opts: { cooled?: boolean } = {}): void {
     if (stopped || remotePollSoonTimer !== null) return;
+    if (opts.cooled) {
+      const since = Date.now() - lastPokePassAt;
+      if (since < POKE_COOLDOWN_MS) {
+        // Folded into the scheduled tick rather than dropped: the poll
+        // underneath is still the reconciler, so a throttled poke costs
+        // latency and never correctness.
+        pokesThrottled += 1;
+        return;
+      }
+    }
     remotePollSoonTimer = setTimeout(() => {
       remotePollSoonTimer = null;
       if (stopped) return;
+      if (opts.cooled) {
+        lastPokePassAt = Date.now();
+        if (pokesThrottled > 0) {
+          console.warn(
+            `[sync/ctl] ${pokesThrottled} poke(s) folded into this pass — the hub is poking faster than once per ${POKE_COOLDOWN_MS / 1000}s.`
+          );
+          pokesThrottled = 0;
+        }
+      }
       void remotePull?.().catch(() => {
         /* the scheduled poll retries — a missed opportunistic one is not news */
       });
@@ -878,6 +1019,199 @@ export function createSyncRuntime(
    * The shared WebSocket is deliberately untouched: it belongs to the runtime,
    * not to a canvas, and the next adopt will need it. Only `stop()` disposes it.
    */
+  /**
+   * Slugs THIS process is retiring via `retireForMove` right now. The
+   * retirement watcher below fires on every doc update — including our own
+   * stamp — and its job on a PASSIVE peer (quarantine the stale local file)
+   * would destroy the very file `moveCanvas` is about to rename here.
+   */
+  const movingLocally = new Set<string>();
+  /** Retirements already being handled, so the per-update watcher fires once. */
+  const retiring = new Set<string>();
+  /**
+   * Documents this runtime has SEEN retired. The hub goes on listing a retired
+   * document (nothing deletes docs until Increment 6), so without this memory
+   * the remote pull re-fetched the same retired docs every poll — connect,
+   * learn the fact, release, repeat — an infinite churn that saturated the
+   * membership queue, held every LIVE document in `pending` forever, and
+   * showed up to the user as "HUB SYNC stalled" with annotations not crossing.
+   */
+  const retiredDocs = new Set<string>();
+
+  /**
+   * What the hub's last listing said each document HOLDS, in bytes.
+   *
+   * The one fact that separates "this canvas is mine and the hub has never
+   * heard of it" from "this canvas is the hub's, already written to my disk by
+   * something else". On a cell BOTH are true of a brand-new file: the hub's
+   * workspace agent projects every document onto the checkout, and the studio
+   * child then scans that checkout and finds a canvas it has no descriptor for.
+   * Seeding the doc from it is the DDR-102 F1 collision — two machines each
+   * clear-and-rebuild their own replica, and the merge CONCATENATES the two
+   * runs, so the body arrives doubled (two `export default`s, `0 ARTBOARDS`)
+   * on every peer. Consulted by the adopt guard in `migrateSeed`.
+   */
+  let hubDocIndex: ReadonlyMap<string, number> = new Map<string, number>();
+
+  /**
+   * Slugs whose refusal has already asked for a rescan. Once per slug per
+   * process — see `nudgeRescanFor`, which fires on a REPEATING poll.
+   */
+  const rescanNudged = new Set<string>();
+
+  /**
+   * Slugs whose pull this runtime has refused. `retiredDocs` exists to stop a
+   * hub-listed document being re-fetched forever; a REFUSED one needs the same
+   * memo. Without it `releaseOne` drops the descriptor, the next poll sees the
+   * document as hub-only again, and every 20 s buys a full handshake plus a Y
+   * state transfer that ends in the same refusal — the churn shape that named
+   * `retiredDocs` in the first place, on a lane whose own comment says volume
+   * is a security property. Bounded like the sets beside it.
+   *
+   * Keyed slug → the path that blocked it, because the refusal is not forever:
+   * `admitPullTarget` refuses on a file that EXISTS, and a user may delete it.
+   * Re-checking that one path costs a `statSync`; re-checking by handshake costs
+   * a document transfer. So the memo is dropped the moment its reason is gone.
+   */
+  const refusedPulls = new Map<string, string>();
+
+  /** Distinct hub-invented names are not a budget this process pays forever. */
+  const NUDGE_MEMO_CAP = 512;
+
+  /**
+   * The hub is advertising a document we are not syncing, and there is a file
+   * in the way. Ask the scan.
+   *
+   * On a cell this is the ordinary case, not an edge one: the hub's workspace
+   * agent projects every document onto the checkout, so a canvas created on
+   * another machine arrives as a FILE this process never wrote. The chain that
+   * is supposed to notice — `fs:any` → `canvas-list-watch` → rescan — is driven
+   * by `fs.watch` on a desktop and by the ctl healer in a container, and the
+   * healer announces JOURNAL rows. A canvas body is not journaled (it is Plane
+   * A), so in a container nothing announced it and the child never adopted it:
+   * the canvas showed up in the tree, and an edit made to it in the cloud was
+   * silently reverted by the hub's next projection, because no provider on this
+   * side was carrying the change up.
+   *
+   * The refusal itself is the signal — it means "a file is already there" — and
+   * `scanCanvases` is the authority on whether that file belongs in the sync
+   * set (`syncable: false` and the sandbox gate are ITS rules, so a genuinely
+   * opted-out canvas stays out and simply refuses again next poll).
+   */
+  const nudgeRescanFor = (slug: string): void => {
+    if (rescanNudged.has(slug) || rescanNudged.size >= NUDGE_MEMO_CAP) return;
+    rescanNudged.add(slug);
+    discoveryRescan?.schedule();
+  };
+
+  /**
+   * Record one listing's byte counts, keyed by the FULL document name.
+   *
+   * NOT by slug. `slugFromDocName` strips `ws/<workspace>/<branch>/`, and this
+   * map answers "does the hub hold MY document" — so a flattened key makes a
+   * `hero` on `main` answer for a DIFFERENT peer's `hero` on `feat/x`, which
+   * defers that peer's seed forever while logging that state is on its way.
+   * Nothing would be coming. A peer token is commonly `scope: '*'`, so one
+   * listing spans every namespace on the hub and no hostile hub is required —
+   * one member creating a same-named canvas on another branch is enough.
+   * `diffRemoteDocs`, twelve lines below, compares namespaced names for exactly
+   * this reason; one input must not have two key spaces.
+   *
+   * A FAILED listing leaves the previous answer standing rather than clearing
+   * it: an empty map means "the hub holds nothing", which re-opens the DDR-102
+   * F1 doubling this guard exists to close — and it would be re-opened by the
+   * party the guard defends against simply refusing to answer.
+   */
+  const noteHubListing = (docs: readonly HubDocRow[] | null): void => {
+    if (docs === null) return;
+    hubDocIndex = indexHubDocs(docs);
+  };
+
+  /**
+   * A retired document arrived (another machine moved this canvas): release
+   * the canvas and QUARANTINE the stale local copy into `_trash/` — never
+   * unlink, the DDR-102 recoverability spine. Safe against a plain deletion
+   * ambiguity because `movedTo` is an explicit statement that the content
+   * lives on at the new path (see codec stampMovedTo).
+   */
+  async function onRetirementSeen(slug: string): Promise<void> {
+    const desc = descriptors.get(slug);
+    const provider = providers.get(slug);
+    const movedTo = provider ? movedToFromDoc(provider.document) : null;
+    await releaseOne(slug);
+    if (!desc) return;
+    // HOLD until the canvas provably lives at its new path — parking the old
+    // copy while the new document is still materialising would leave a window
+    // with NO visible copy at all, and on a cell (where this process shares
+    // the checkout with the hub) it can even race the mover's own rename.
+    // The doc guards already made the old file write-inert, so waiting costs
+    // nothing but tidiness. If the new path never shows up, the stale file
+    // stays — a recoverable ghost beats a lost canvas.
+    if (movedTo) {
+      const norm = movedTo.replace(/\\/g, '/');
+      const newAbs = path.resolve(ctx.paths.designRoot, norm);
+      const contained =
+        newAbs === ctx.paths.designRoot || newAbs.startsWith(ctx.paths.designRoot + path.sep);
+      if (!contained) return; // hostile path — never act on it
+      // A DOCUMENT THAT MOVED TO WHERE IT ALREADY IS DID NOT MOVE.
+      //
+      // `retireForMove` stamps the OLD slug's doc, and the moved file is then
+      // adopted under the NEW slug — whose doc carries the same `movedTo`, now
+      // pointing at its own path. Without this guard the receiver reads that as
+      // "this canvas moved elsewhere", waits for the destination (it exists —
+      // it IS the destination), and parks the file it just created. The canvas
+      // vanishes from the UI on the very machine that moved it, on both sides,
+      // and the trash entry is named after the NEW slug — which is what makes
+      // the logs read as a delivery failure rather than as self-deletion.
+      if (desc.html && path.resolve(desc.html) === newAbs) return;
+      const deadline = Date.now() + 60_000;
+      while (!existsSync(newAbs) && Date.now() < deadline && !stopped) {
+        await new Promise((r) => setTimeout(r, 1_000));
+      }
+      if (!existsSync(newAbs)) {
+        console.warn(
+          `[sync/${slug}] retired document's new path never appeared (${norm}) — keeping the old copy in place.`
+        );
+        return;
+      }
+    }
+    try {
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const trashDir = path.join(ctx.paths.designRoot, '_trash', `${stamp}__moved-${slug}`);
+      let any = false;
+      for (const abs of [desc.html, desc.meta, desc.css, desc.annotations]) {
+        if (!abs || !existsSync(abs)) continue;
+        if (!any) mkdirSync(trashDir, { recursive: true });
+        any = true;
+        renameSync(abs, path.join(trashDir, path.basename(abs)));
+      }
+      if (any) {
+        console.log(
+          `[sync/${slug}] canvas was moved on another machine — stale local copy parked in _trash/ (recoverable).`
+        );
+        ctx.bus.emit('canvas-list-update');
+      }
+    } catch (err) {
+      // Quarantine is best-effort: the doc guards already made the file
+      // write-inert, so a failed park costs tidiness, not correctness.
+      console.warn(`[sync/${slug}] could not park the pre-move copy:`, err);
+    }
+  }
+
+  /** Watch one provider's doc for a retirement stamp arriving off the wire. */
+  function watchForRetirement(slug: string, doc: Y.Doc): void {
+    const onUpdate = () => {
+      if (retiring.has(slug) || movingLocally.has(slug)) return;
+      if (movedToFromDoc(doc) === null) return;
+      retiredDocs.add(slug);
+      retiring.add(slug);
+      doc.off('update', onUpdate);
+      void onRetirementSeen(slug).finally(() => retiring.delete(slug));
+    };
+    doc.on('update', onUpdate);
+    noteDetach(statusDetaches, slug, () => doc.off('update', onUpdate));
+  }
+
   async function releaseOne(slug: string): Promise<boolean> {
     const known = agents.has(slug) || projections.has(slug) || providers.has(slug);
     if (!known) return false;
@@ -926,6 +1260,43 @@ export function createSyncRuntime(
     rejectedPermanent.delete(slug);
     rejectedReasons.delete(slug);
     return true;
+  }
+
+  /**
+   * The move protocol's sending half — see the SyncRuntime interface doc.
+   *
+   * Ordering is the whole design: stamp FIRST (through the live provider, so
+   * the hub and every peer receive the statement), give the socket a moment to
+   * actually send it, THEN release. Releasing first would destroy the provider
+   * with the stamp still in its outbox, and the old document would live on as
+   * if the move never happened — which is exactly the resurrection bug.
+   */
+  async function retireForMove(fromSlug: string, toRel: string): Promise<boolean> {
+    const provider = providers.get(fromSlug);
+    if (!provider) return false;
+    movingLocally.add(fromSlug);
+    try {
+      stampMovedTo(provider.document, toRel, ORIGINS.DISK_PROJECTION);
+      // Best-effort delivery wait. Hocuspocus exposes no per-update ack; an
+      // unsynced-changes probe where available, a short grace where not. A
+      // stamp that misses this window still lands via the hub's own store of
+      // the doc IF any other peer holds it — and if none does, the old doc
+      // has no audience to resurrect for.
+      const p = provider as unknown as { hasUnsyncedChanges?: boolean };
+      const deadline = Date.now() + 1_500;
+      while (p.hasUnsyncedChanges === true && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      if (typeof p.hasUnsyncedChanges !== 'boolean') {
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      retiredDocs.add(fromSlug);
+      await releaseOne(fromSlug);
+      console.log(`[sync/${fromSlug}] retired for move → ${toRel}`);
+      return true;
+    } finally {
+      movingLocally.delete(fromSlug);
+    }
   }
 
   async function start(): Promise<void> {
@@ -978,7 +1349,11 @@ export function createSyncRuntime(
     // design root — see `pullTargets` for why flat); local-only canvases go up
     // as they always did. Best-effort: an older hub without the listing route,
     // or an unreachable one, syncs exactly as before.
-    const remoteListing = await fetchRemoteListing(linkedHub.url, resolvedToken);
+    // `token`, not the boot-time `resolvedToken`: silent renewal swaps the live
+    // credential in place, so reading it at call time is what every other hub
+    // call here does. Identical at boot; correct if start() ever re-runs after
+    // a renewal (and it types, which `resolvedToken`'s `string | null` did not).
+    const remoteListing = await fetchRemoteListing(linkedHub.url, token);
     // BOOT LEARNS THE DELETIONS BEFORE IT PULLS ANYTHING. The peer-side apply
     // lives further down (it needs the live descriptor map), so this boot pass
     // only has to make sure the pull does not fetch a canvas the project has
@@ -989,6 +1364,7 @@ export function createSyncRuntime(
       const slug = slugFromDocName(stone.name);
       if (slug) tombstoned.add(slug);
     }
+    noteHubListing(remoteListing?.documents ?? null);
     const remoteDiff = diffRemoteDocs(
       localCanvases.map((c) => docNameFor(c.slug)),
       remoteListing?.documents ?? null
@@ -1163,7 +1539,17 @@ export function createSyncRuntime(
     // is built) and once after the pulls settle, from the final descriptors.
     // Reads the LIVE set, not the boot array — see `descriptors`.
     const markUntrusted = (): void => {
-      if (!cellPairing) writeUntrustedMarkers(ctx, [...descriptors.values()], linkedHub.url);
+      if (cellPairing) return;
+      // Plane B's landed set comes from the ledger, which is the only place
+      // that knows what the hub actually delivered here. A path that never
+      // arrived is not marked (the markers pointing at a phantom is the exact
+      // failure the two-write dance above exists to avoid).
+      const planeFiles = fileLedger
+        ? Object.entries(fileLedger.rows())
+            .filter(([, row]) => row.syncedHash !== null)
+            .map(([rel]) => rel)
+        : [];
+      writeUntrustedMarkers(ctx, [...descriptors.values()], linkedHub.url, planeFiles);
     };
     markUntrusted();
     if (canvases.length === 0) {
@@ -1266,24 +1652,27 @@ export function createSyncRuntime(
       reader.notify(rel);
       // AN ASSET THAT APPEARS AFTER BOOT HAS TO GO UP NOW, NOT NEXT LAUNCH.
       //
-      // The sweep used to fire from exactly one place — `start()` — so a picture
+      // The push used to fire from exactly one place — `start()` — so a picture
       // pasted into an annotation reached the cloud only on the next boot or
       // Resync. Meanwhile the annotation itself syncs through the doc in
       // milliseconds, so the other side rendered an `<image>` pointing at bytes
       // nobody had sent: a permanent empty frame that looked like a broken path.
       // Reported three times in one day on alligators, each time with a
       // different asset, which is what finally named it.
+      //
+      // On a Sync v2 hub the plane's own trigger below carries this moment;
+      // the legacy schedule is a no-op there (`legacyLane === false`).
       if (isPushableAssetRel(rel, ctx.cfg.canvasGroups)) {
-        // Fast lane first (this ONE file, now — seconds, not minutes), sweep
-        // second (the reconciler that catches anything the fast lane missed).
-        queueFastPush(rel.split('\\').join('/'), linkedHub.url);
-        scheduleAssetSweep(linkedHub.url);
+        scheduleLegacyPush(linkedHub.url);
       }
-      // The DOWNWARD fast lane: a reference-bearing file just landed (a peer's
-      // annotation/body materialized through the doc lane, or a local edit).
-      // Run the missing-only asset pull now instead of at the next 20 s tick,
-      // so the other side's freshly dropped image renders in seconds.
-      if (REFERENCE_FILE_RE.test(rel)) requestFastPull?.();
+      // Sync v2 — the file plane's own trigger. Invalidating the stat cache
+      // first is the exact, cheap version of the mtime-granularity guard: the
+      // watcher KNOWS this path moved, so the next scan must read it rather
+      // than trust a timestamp that a same-length edit could have left alone.
+      if (fileLedger) {
+        fileLedger.noteChanged(rel.split('\\').join('/'));
+        schedulePlanePass();
+      }
     });
 
     /**
@@ -1552,6 +1941,60 @@ export function createSyncRuntime(
       provider: SyncProvider
     ): Promise<void> => {
       if (stopped) return;
+      // A RETIRED document (codec stampMovedTo) has nothing to reconcile —
+      // its canvas moved to a new path in a new document. Seen here mostly by
+      // a machine that pulled the project down after the move: connect, learn
+      // the fact, let go. The watcher handles a stale local copy.
+      const movedTo = movedToFromDoc(provider.document);
+      if (movedTo !== null) {
+        // A DOCUMENT THAT SAYS IT MOVED TO WHERE IT ALREADY IS DID NOT MOVE.
+        //
+        // The stamp lives inside the document, and a move renames the canvas's
+        // `_state/<slug>.ydoc.bin` cache onto the new slug — so the NEW document
+        // opened with the OLD one's last word, "I have moved away". Every peer
+        // released it as retired, the destination path never appeared anywhere
+        // but on the machine that did the move, and the whole thing read as
+        // "folders don't sync": each side showed its own move and the other's
+        // canvas still at the root. `canvas-artifacts.ts` stops producing this
+        // (the cache is dropped, not carried); clearing the stamp is what
+        // REPAIRS the trees that already have it, and because it is a doc edit
+        // the correction reaches every peer that believed it.
+        const movedAbs = path.resolve(
+          ctx.paths.designRoot,
+          movedTo.replace(/\\/g, '/').replace(/^\/+/, '')
+        );
+        // ONLY A LOCAL DESCRIPTOR MAY BE REPAIRED. For a PULLED canvas
+        // `canvas.html` is the provisional slug-derived target, not a path this
+        // disk chose — and `relocatePulled` returns early for a retired document,
+        // so it never went through `resolvePulledTarget`, the `canvas-path.ts`
+        // rules, or the re-ask of `admitPullTarget`. A hub picks the document
+        // NAME (hence that provisional path) and writes `movedTo`, so it would
+        // control BOTH sides of this equality — turning a repair into a write to
+        // an unvalidated path, which is the resurrection primitive the retirement
+        // release exists to deny. The repair is for the machine that did the
+        // move, whose descriptor came from its own scan.
+        if (
+          !pulledSlugs.has(canvas.slug) &&
+          canvas.html &&
+          path.resolve(canvas.html) === movedAbs
+        ) {
+          if (clearMovedTo(provider.document, ORIGINS.MIGRATION)) {
+            console.log(
+              `[sync/${canvas.slug}] this document is stamped as moved to its OWN path — clearing the stale retirement and keeping the canvas.`
+            );
+          }
+        } else {
+          // Remembered, so the remote pull never fetches this document again —
+          // logging this line every 20 s forever was the symptom that found the
+          // churn.
+          retiredDocs.add(canvas.slug);
+          console.log(
+            `[sync/${canvas.slug}] document is retired (canvas moved to ${movedTo}) — releasing.`
+          );
+          void onRetirementSeen(canvas.slug);
+          return;
+        }
+      }
       clearRejection(canvas.slug);
       // Not `connected` yet — the reconcile below is what makes that true. But
       // no longer refused, and the difference is the whole point: `pending` says
@@ -1582,9 +2025,15 @@ export function createSyncRuntime(
             }
           },
           onConflict: (info) => store.addConflict(info),
+          hubHasState: (slug) => hubHolds(hubDocIndex, docNameFor(slug)),
         });
         if (result === 'local-adopt') {
           console.log(`[sync/${canvas.slug}] shared-doc: adopted local state (hub was empty).`);
+        } else if (result === 'defer-hub-state') {
+          console.log(
+            `[sync/${canvas.slug}] shared-doc: not seeding — the hub already holds this ` +
+              'document; waiting for its state to arrive.'
+          );
         } else if (result === 'conflict-local-wins' || result === 'conflict-hub-wins') {
           console.warn(
             `[sync/${canvas.slug}] shared-doc: diverged — kept the ${
@@ -1673,35 +2122,6 @@ export function createSyncRuntime(
      * agent/projection wiring — doc-scoped — survives the provider swap).
      */
     /**
-     * Who is editing this canvas right now, from hub awareness.
-     *
-     * Presence carries a display name and no address, so the address is
-     * synthesized and clearly marked as derived — inventing a plausible-looking
-     * real address would put an unverified identity into permanent git history.
-     * Absent a remote peer the answer is null, which `autocommit` turns into
-     * "Unknown editor" rather than attributing the work to the server.
-     */
-    const editorOf = (slug: string): { name: string; email: string } | null => {
-      const awareness = providers.get(slug)?.awareness;
-      if (!awareness) return null;
-      for (const [clientId, state] of awareness.getStates() as Map<
-        number,
-        { name?: string } | undefined
-      >) {
-        if (clientId === awareness.clientID) continue; // that's us, the cell
-        const name = state?.name?.trim();
-        if (name) {
-          const slugified = name
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/^-|-$/g, '');
-          return { name, email: `${slugified || 'peer'}@peers.maude.local` };
-        }
-      }
-      return null;
-    };
-
-    /**
      * Re-decide where a PULLED canvas goes, now that its document has synced.
      *
      * The listing (`GET /api/documents`) carries names and byte counts only —
@@ -1718,8 +2138,13 @@ export function createSyncRuntime(
       canvas: CanvasDescriptor,
       canvasPaths: import('./agent.ts').CanvasSyncPaths,
       doc: Y.Doc
-    ): void => {
-      if (!pulledSlugs.has(canvas.slug)) return;
+    ): boolean => {
+      if (!pulledSlugs.has(canvas.slug)) return true;
+      // A retired document (codec stampMovedTo) is not a canvas to place — its
+      // content lives at the new path in a different document. Deciding a
+      // location here would materialise a ghost on a machine pulling the
+      // project down fresh; handleSynced releases it a moment later.
+      if (movedToFromDoc(doc) !== null) return true;
       const resolved = resolvePulledTarget({
         slug: canvas.slug,
         path: canvasPathFromDoc(doc),
@@ -1735,7 +2160,17 @@ export function createSyncRuntime(
         allowUndeclaredGroup: pathOpts.allowUndeclaredGroup && !strictPullSlugs.has(canvas.slug),
         onRefused: (reason) => pathOpts.onRefused(canvas.slug, reason),
       });
-      if (!resolved) return;
+      // A DOCUMENT WHOSE PATH WAS REFUSED IS NOT A DOCUMENT TO WRITE SOMEWHERE
+      // ELSE. Falling through here left the descriptor on the PROVISIONAL
+      // target — `<group>/<rest-of-slug>.tsx` — and the reconcile below then
+      // materialised the document there. Since `canvasSlugFromRel` is lossy
+      // (`ui/Desk A.tsx` → `ui-desk_a`), that provisional name is a DIFFERENT
+      // file from the one the document names, so the peer ended up holding the
+      // canvas twice: `ui/Desk A.tsx` (correct) and `ui/desk_a.tsx` (a ghost).
+      // Both then flatten to one slug, which is a collision — and a collision
+      // takes the canvas OUT of sync on that machine entirely. The refusal has
+      // to end the pull, not redirect it.
+      if (!resolved) return false;
 
       // NEVER ONTO A FILE THAT ALREADY EXISTS.
       //
@@ -1749,7 +2184,7 @@ export function createSyncRuntime(
       // let a hub overwrite exactly the canvas the user opted OUT of syncing.
       // The same admission the provisional target already passed, re-asked of
       // the destination the document actually chose.
-      if (resolved.fromPath && !admitPullTarget(ctx, canvas.slug, resolved.bodyAbs)) return;
+      if (resolved.fromPath && !admitPullTarget(ctx, canvas.slug, resolved.bodyAbs)) return false;
       // The TOP-level component only — `canvasGroups` names a group, not every
       // folder inside it (`ui/2026/social/x.tsx` declares `ui`). A body that
       // landed at the design root has no group and teaches nothing.
@@ -1757,7 +2192,7 @@ export function createSyncRuntime(
         .relative(ctx.paths.designRoot, resolved.bodyAbs)
         .split(path.sep);
       if (group && rest.length > 0) noteLearnedGroup(group);
-      if (resolved.bodyAbs === canvas.html) return;
+      if (resolved.bodyAbs === canvas.html) return true;
       const next = descriptorFor(canvas.slug, resolved.bodyAbs);
       // Mutated in place: the descriptor and the paths object are already held
       // by the status surfaces and by the setup closure below, and handing them
@@ -1779,6 +2214,7 @@ export function createSyncRuntime(
       // One small write per relocation is the right price for a marker that is
       // never wrong.
       markUntrusted();
+      return true;
     };
 
     const connectCanvas = async (
@@ -1882,7 +2318,17 @@ export function createSyncRuntime(
       // Cold-start reconcile fires once the provider has hub state.
       const synced = provider.onceSynced().then(() => {
         if (deferSetup) {
-          relocatePulled(canvas, canvasPaths, provider.document);
+          // Abandon before `setup?.()`, so no projection and no agent is ever
+          // built for a canvas we are not going to place — nothing exists that
+          // could flush the document onto the provisional path on the way out.
+          if (!relocatePulled(canvas, canvasPaths, provider.document)) {
+            pulledSlugs.delete(canvas.slug);
+            if (canvas.html) refusedPulls.set(canvas.slug, canvas.html);
+            // The document names a path we would not write to — which on a cell
+            // usually means the file is already there. See `nudgeRescanFor`.
+            nudgeRescanFor(canvas.slug);
+            return releaseOne(canvas.slug).then(() => undefined);
+          }
           setup?.(provider);
         }
         return runHandleSynced(canvas, canvasPaths, provider);
@@ -1965,20 +2411,6 @@ export function createSyncRuntime(
                 echoGuard,
                 adopt: adoptOnce,
                 journal: journal ?? undefined,
-                // Wrap the writer rather than adding a new hook: every path the
-                // agent materializes to disk goes through it, so a future write
-                // surface is committed automatically instead of being forgotten.
-                ...(autoCommit
-                  ? {
-                      writer: (file: string, bytes: string | Uint8Array) => {
-                        atomicWrite(file, bytes);
-                        autoCommit.note(
-                          path.relative(ctx.paths.repoRoot, file),
-                          editorOf(canvas.slug)
-                        );
-                      },
-                    }
-                  : {}),
                 snapshot: async (content, reason) => {
                   try {
                     const snap = await history.writeSnapshot(relBody, content, reason);
@@ -1992,6 +2424,12 @@ export function createSyncRuntime(
               agent.start();
               agents.set(canvas.slug, agent);
             }
+            // The move protocol's receiving half — a `movedTo` stamp arriving
+            // on this doc means another machine moved the canvas; park the
+            // stale local copy and let go. (The write-inert guards in
+            // agent/projection are the belt; this is the braces that also
+            // cleans up.)
+            watchForRetirement(canvas.slug, provider.document);
 
             // Count local edits (agent-origin doc updates) toward queuedOps while
             // the hub is unreachable — the banner's "N edits queued" figure. Under
@@ -2117,9 +2555,10 @@ export function createSyncRuntime(
       // DDR-217 (fix 6) — mirror local assets up AFTER the handshakes settle
       // (they carry the canvases; assets ride behind, never in front). Not
       // under pairing: a cell's assets are already on the cell. Fire-and-forget
-      // — a miss is retried on the next boot for free.
+      // — a miss is retried on the next boot for free. Journal-less hubs only:
+      // on a Sync v2 hub the plane's first pass carries the same moment.
       if (!cellPairing && !stopped) {
-        startAssetSweep(linkedHub.url);
+        scheduleLegacyPush(linkedHub.url);
       }
     });
 
@@ -2291,6 +2730,7 @@ export function createSyncRuntime(
       // immediately pulled back — the resurrection this lane exists to end,
       // reintroduced inside one tick.
       await applyTombstones(listing.tombstones);
+      noteHubListing(listing.documents);
       const diff = diffRemoteDocs(
         [...descriptors.keys()].map((slug) => docNameFor(slug)),
         listing.documents
@@ -2313,11 +2753,27 @@ export function createSyncRuntime(
         // A canvas the project deleted is not a canvas to fetch, even while the
         // hub is still listing it — see `tombstoned`.
         .filter((t) => !tombstoned.has(t.slug))
-        .filter((t) => admitPullTarget(ctx, t.slug, t.bodyAbs))
+        .filter((t) => {
+          // The reason is gone ⇒ so is the memo. See `refusedPulls`.
+          const blocker = refusedPulls.get(t.slug);
+          if (blocker === undefined) return true;
+          if (existsSync(blocker)) return false;
+          refusedPulls.delete(t.slug);
+          return true;
+        })
+        .filter((t) => {
+          if (admitPullTarget(ctx, t.slug, t.bodyAbs)) return true;
+          refusedPulls.set(t.slug, t.bodyAbs);
+          nudgeRescanFor(t.slug);
+          return false;
+        })
         .filter((t) => admitPulledBody(t.slug, t.bodyAbs));
-      const fresh = admitted.filter(
-        (t) => !agents.has(t.slug) && !projections.has(t.slug) && !providers.has(t.slug)
-      );
+      const fresh = admitted
+        .filter((t) => !agents.has(t.slug) && !projections.has(t.slug) && !providers.has(t.slug))
+        // A document this runtime has seen retired is not a canvas to fetch —
+        // the hub keeps listing it, and re-pulling it every poll was the
+        // connect/release churn described at `retiredDocs`.
+        .filter((t) => !retiredDocs.has(t.slug));
       if (fresh.length === 0) return;
       // VOLUME IS A SECURITY PROPERTY HERE, NOT A PERFORMANCE ONE.
       //
@@ -2357,59 +2813,6 @@ export function createSyncRuntime(
       notePulledAll();
       markUntrusted();
     };
-    /**
-     * Fetch the referenced assets this machine is missing.
-     *
-     * RUNS ON EVERY PEER, cell included — unlike the PUSH sweep, which is a
-     * desktop job because the desktop is the side that has the bytes. Wanting an
-     * asset you can see referenced and do not hold is symmetric, and so is the
-     * fix; making this desktop-only would rebuild the same one-way street facing
-     * the other way.
-     *
-     * After the document poll, deliberately: a canvas that arrives in this tick
-     * brings its references with it, and this is the pass that resolves them.
-     */
-    const pullAssetsOnce = async (): Promise<void> => {
-      if (stopped) return;
-      await pullAssets({
-        designRoot: ctx.paths.designRoot,
-        hubUrl: linkedHub.url,
-        token: () => token,
-      });
-    };
-    // The downward fast lane's trigger (2026-08-16 latency fix): debounced,
-    // single-flight, and a no-op in the steady state (the pull is missing-only
-    // — every referenced asset present costs one directory scan and zero
-    // requests). Fired from the fs:any listener when a reference-bearing file
-    // lands; the 20 s poll stays as the schedule-driven reconciler.
-    {
-      let fastPullTimer: ReturnType<typeof setTimeout> | null = null;
-      let fastPullRunning = false;
-      let fastPullAgain = false;
-      const runFastPull = (): void => {
-        if (stopped) return;
-        if (fastPullRunning) {
-          fastPullAgain = true;
-          return;
-        }
-        fastPullRunning = true;
-        void pullAssetsOnce().finally(() => {
-          fastPullRunning = false;
-          if (fastPullAgain && !stopped) {
-            fastPullAgain = false;
-            runFastPull();
-          }
-        });
-      };
-      requestFastPull = () => {
-        if (stopped || fastPullTimer !== null) return;
-        fastPullTimer = setTimeout(() => {
-          fastPullTimer = null;
-          runFastPull();
-        }, 750);
-        fastPullTimer.unref?.();
-      };
-    }
     // Cumulative per boot — the Sync panel's one line. `synced` is the last
     // pass's converged count; `pulled`/`conflicts` accumulate.
     const fileTotals = { synced: 0, pulled: 0, conflicts: 0 };
@@ -2419,6 +2822,69 @@ export function createSyncRuntime(
       fileTotals.conflicts += result.conflicts.length;
       statusStore?.updateFiles?.({ ...fileTotals });
     };
+    /**
+     * The v2 pass's counts, PLUS the doručenka.
+     *
+     * The counts alone are what the old lane reported, and they are exactly
+     * what could not answer "where is file X" — the question three days of
+     * dogfood kept asking. The per-path states ride beside them so the panel
+     * can point at one file instead of a total, and the raw counters stay so a
+     * lying panel is cross-checkable against them (DDR-214).
+     */
+    const noteFilePlane = (result: import('./file-plane.ts').FilePlaneResult): void => {
+      fileTotals.synced = result.synced + result.pulled.length;
+      fileTotals.pulled += result.pulled.length;
+      fileTotals.conflicts += result.conflicts.length;
+      filePushed += result.pushed.length;
+      // EVERY HOLD REACHES THE PANEL. Without this the breakers were a
+      // `console.warn` in a process log, and DDR-177's premise is that the
+      // target user never opens a terminal — so a control whose only output
+      // is a log line is a control nobody can act on.
+      const held: NonNullable<import('./status.ts').FilePlaneStatus['held']> = [];
+      if (result.deleteHeld) {
+        held.push({
+          kind: result.deleteHeld.direction === 'out' ? 'delete-out' : 'delete-in',
+          count: result.deleteHeld.count,
+          paths: result.deleteHeld.paths,
+          detail:
+            result.deleteHeld.direction === 'out'
+              ? `${result.deleteHeld.count} files are gone from this machine — more than sync will remove from the project without you saying so. Nothing was deleted anywhere else. Set linkedHub.propagateDeletes: false to stop asking, or delete them again once you have confirmed this was deliberate.`
+              : `The project wants to remove ${result.deleteHeld.count} files here — more than sync will delete without you saying so. Nothing was removed. They stay until you accept or the project puts them back.`,
+        });
+      }
+      if (result.firstAnchorHeld) {
+        held.push({
+          kind: 'first-anchor',
+          count: result.firstAnchorHeld.count,
+          paths: result.firstAnchorHeld.paths,
+          detail: `${result.firstAnchorHeld.count} files differ between this machine and the project, and neither copy has been reconciled here yet. Set linkedHub.resolveFirstAnchor to "keep-local" or "keep-cloud" to settle the whole set at once.`,
+        });
+      }
+      if (result.reanchorHeld) {
+        held.push({
+          kind: 'reanchor',
+          count: 0,
+          paths: [],
+          detail:
+            'The project has asked to start over repeatedly, which is what a broken or hostile hub looks like. Nothing was overwritten. Sync retries by itself; if this persists, the hub needs looking at.',
+        });
+      }
+      statusStore?.updateFiles?.({
+        ...fileTotals,
+        pushed: filePushed,
+        ...(filePlane ? { delivery: filePlane.doruceka() } : {}),
+        ...(held.length > 0 ? { held } : {}),
+      });
+      for (const f of result.failed) {
+        console.warn(`[sync/files] ${f.rel}: ${f.reason}`);
+      }
+      // A pass that landed bytes widened the hub-written set, so the
+      // untrusted-context markers have to describe it. Cheap and idempotent —
+      // the writer rebuilds the whole set each call — but only when something
+      // actually arrived, so a converged pass costs nothing.
+      if (result.pulled.length > 0 || result.conflicts.length > 0) markUntrusted();
+    };
+    planeResultSink = noteFilePlane;
     /**
      * Plane B's downward pass — after the doc poll and the asset pull, so a
      * canvas that arrived this tick has its design system resolved in the
@@ -2431,6 +2897,16 @@ export function createSyncRuntime(
      */
     const pullFilesOnce = async (): Promise<void> => {
       if (stopped || !syncFilesOn) return;
+      // Sync v2 (DDR-226) — when the hub carries a journal, the file plane is
+      // the ONE lane: a cursor read, one decision per path, and both
+      // directions from the same pass. The v1 manifest pull stays for
+      // journal-less hubs, which the compat matrix keeps working through the
+      // burn-down window.
+      if (filePlane) {
+        const result = await filePlane.reconcile();
+        noteFilePlane(result);
+        return;
+      }
       const result = await pullFiles({
         designRoot: ctx.paths.designRoot,
         hubUrl: linkedHub.url,
@@ -2442,19 +2918,117 @@ export function createSyncRuntime(
     };
     const pollRemote = (): void => {
       void pullRemoteOnce()
-        .then(() => pullAssetsOnce())
         .then(() => pullFilesOnce())
         .catch((err) => console.error('[sync] remote poll failed:', err));
     };
     remotePull = async () => {
       await pullRemoteOnce();
-      await pullAssetsOnce();
       await pullFilesOnce();
     };
     remotePollTimer = setInterval(pollRemote, REMOTE_POLL_MS);
     // `setInterval` keeps a Bun process alive; a poll is not a reason for the
     // dev server to refuse to exit.
     remotePollTimer.unref?.();
+
+    // ── Sync v2 Increment 2 — the poke, desktop side (DDR-226 §4) ──────────
+    //
+    // CAPABILITY-GATED, and the gate is the compat matrix (§10, BINDING): a
+    // journal-less self-hosted hub must see exactly today's client. So we ask
+    // `/health` first and attach nothing unless it says `ledger`.
+    //
+    // THE POLL STAYS AT 20 s. The poke is additive this release — it makes the
+    // common case fast, and the honesty counter below is what earns the right
+    // to relax the poll later. Relaxing it now would trade a measured cadence
+    // for an unmeasured one.
+    //
+    // Not started in a cell: there the CHILD holds this channel (ws.ts), and
+    // its job is healing the UI rather than triggering pulls.
+    if (!cellPairing && ctx.cfg.linkedHub?.fileEvents !== false) {
+      fileEventsProbe = new AbortController();
+      void hubCapabilities({ hubUrl: linkedHub.url, signal: fileEventsProbe.signal })
+        .then((caps) => {
+          if (stopped) return;
+          if (!hasLedger(caps)) {
+            // No journal on this hub ⇒ the legacy client carries the upward
+            // lane, exactly as the pre-v2 desktop did (Open decision 4).
+            decidePushLane(true);
+            return;
+          }
+          // The hub carries a journal, so the file plane becomes the ONE lane
+          // for this project. Built here rather than at start(): a client must
+          // never send a journal request to a hub that would not understand
+          // it (compat matrix §10 — BINDING).
+          if (syncFilesOn && !filePlane) {
+            fileLedger = createFileLedger({
+              designRoot: ctx.paths.designRoot,
+              hubUrl: linkedHub.url,
+            });
+            filePlane = createFilePlane({
+              designRoot: ctx.paths.designRoot,
+              hubUrl: linkedHub.url,
+              token: () => token,
+              ledger: fileLedger,
+              canvasGroups: ctx.cfg.canvasGroups,
+              allowCodeModules,
+              // Increment 6, DEFAULT ON: a hub-owned mirror that ignores
+              // deletes contradicts the model it is selling — you delete a
+              // file and it comes back. `linkedHub.propagateDeletes: false`
+              // is the per-project opt-out; the breakers hold either way.
+              propagateDeletes: linkedHub.propagateDeletes !== false,
+              // The answer to a first-anchor hold. A config key rather than a
+              // prompt because the hold outlives the pass that raised it, and
+              // DDR-177's user has no terminal to answer in.
+              ...(linkedHub.resolveFirstAnchor === 'keep-local' ||
+              linkedHub.resolveFirstAnchor === 'keep-cloud'
+                ? { resolveFirstAnchor: linkedHub.resolveFirstAnchor }
+                : {}),
+              // Same exposure class as `syncMeta.by`, and the same reasoning:
+              // a conflict copy nobody can attribute is a conflict copy nobody
+              // resolves.
+              label: hostname().slice(0, 32),
+            });
+            console.log(
+              '[sync/files] journal file plane active — one lane, both directions, per-file delivery state in the Sync panel.'
+            );
+            // Anything the local disk already differs on goes now, rather than
+            // at the first 20 s tick.
+            schedulePlanePass();
+          }
+          // A ledger hub with the plane ON owns pushes; with the file-plane
+          // flag OFF the legacy client still carries the DDR-217 assets lane.
+          decidePushLane(filePlane === null);
+          fileEventsCtl = createCtlProvider({
+            url: linkedHub.url,
+            token,
+            onPoke: () => {
+              // Reuses `pollRemoteSoon` rather than calling the file lanes
+              // directly, for two reasons: it already coalesces a burst into
+              // one pass (a fresh link appends hundreds of rows), and it is
+              // the exact path a reconnect takes — one behaviour to reason
+              // about instead of two that can drift.
+              //
+              // The PULL itself is unchanged: missing-only, idempotent, and
+              // re-validating everything it accepts. So a poke can at worst
+              // cost one early pass, and the scheduled poll remains the
+              // reconciler underneath it.
+              pokesSeen += 1;
+              pollRemoteSoon({ cooled: true });
+            },
+          });
+          console.log(
+            '[sync/ctl] file-event channel attached — cloud changes now arrive in seconds instead of on the 20 s tick.'
+          );
+        })
+        .catch(() => {
+          // No capability probe ⇒ no channel ⇒ exactly today's behaviour —
+          // which, for pushes, is the legacy client.
+          decidePushLane(true);
+        });
+    } else if (!cellPairing) {
+      // The probe is opted out (`linkedHub.fileEvents: false`), so no verdict
+      // will ever arrive — the legacy client is the lane, as it always was.
+      decidePushLane(true);
+    }
 
     // Arm the pre-expiry renewal from the credential that just booted. Placed
     // last — the timer needs nothing from boot, and boot needs nothing from it
@@ -2466,10 +3040,26 @@ export function createSyncRuntime(
   async function stop(): Promise<void> {
     if (stopped) return;
     stopped = true;
-    // Fast lanes down first — no push/pull may fire into a dying runtime.
-    for (const t of fastPushTimers.values()) clearTimeout(t);
-    fastPushTimers.clear();
-    requestFastPull = null;
+    fileEventsProbe?.abort();
+    fileEventsProbe = null;
+    if (filePassTimer !== null) clearTimeout(filePassTimer);
+    filePassTimer = null;
+    planeResultSink = null;
+    // Persist the ledger on the way out. Losing it is safe (a re-anchor, never
+    // a loss) but paying for one on every restart would be needless noise.
+    fileLedger?.stop();
+    fileLedger = null;
+    filePlane = null;
+    // The control channel is a doorbell into this runtime; it goes with it.
+    // Reported on the way out so the poke-miss question is answerable from a
+    // session's log rather than from a hunch (DDR-226 §10).
+    if (fileEventsCtl) {
+      console.log(
+        `[sync/ctl] file-event channel closing — ${pokesSeen} poke(s) received, ${fileEventsCtl.malformed()} refused.`
+      );
+      fileEventsCtl.stop();
+      fileEventsCtl = null;
+    }
     // Nothing may be adopted into a runtime that is going away.
     attachOne = null;
     discoveryUnsub?.();
@@ -2485,26 +3075,17 @@ export function createSyncRuntime(
     if (remotePollSoonTimer !== null) clearTimeout(remotePollSoonTimer);
     remotePollSoonTimer = null;
     remotePull = null;
-    // A sweep that outlives its runtime keeps uploading a project the person
-    // just closed — and `restart()` (the Resync button) calls stop() on every
-    // press, so without this each press would leave another sweep running.
-    if (assetSweepTimer !== null) clearTimeout(assetSweepTimer);
-    assetSweepTimer = null;
-    assetSweepAgain = false;
-    assetSweep?.cancel();
-    assetSweep = null;
-    // Commit whatever is still inside the quiescence window BEFORE tearing
-    // anything down. Shutting down mid-window would leave the last edits on
-    // disk but out of history — the one state this whole mechanism exists to
-    // make impossible.
-    if (autoCommit) {
-      try {
-        await autoCommit.flush();
-      } catch (err) {
-        console.error('[sync] final autocommit failed:', err);
-      }
-      autoCommit.stop();
-    }
+    // A push pass that outlives its runtime keeps uploading a project the
+    // person just closed — and `restart()` (the Resync button) calls stop() on
+    // every press, so without this each press would leave another one running.
+    if (legacyPushTimer !== null) clearTimeout(legacyPushTimer);
+    legacyPushTimer = null;
+    legacyPushAgain = false;
+    legacyPushCancel = true;
+    legacyBootPush = null;
+    // (No autocommit flush here — this runtime constructs no committer; the
+    // hub's own `afterStoreDocument` engine owns the SIGTERM-ordered flush.
+    // See the note at the top of createSyncRuntime. DDR-226 Increment 0.)
     for (const slug of [...awarenessDetaches.keys()]) runDetaches(awarenessDetaches, slug);
     awarenessDetaches.clear();
     // Phase 9.2 (DDR-064) — release shared-doc pins so the rooms can be dropped
@@ -2621,10 +3202,11 @@ export function createSyncRuntime(
     agentFor: (slug) => agents.get(slug),
     status: () => statusStore?.get() ?? null,
     cancelAssetSweep: () => {
-      if (!assetSweep) return false;
-      assetSweep.cancel();
+      if (!legacyPushRunning) return false;
+      legacyPushCancel = true;
       return true;
     },
+    retireForMove: (fromSlug, toRel) => serializeMembership(() => retireForMove(fromSlug, toRel)),
   };
 }
 

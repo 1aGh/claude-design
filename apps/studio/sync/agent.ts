@@ -55,6 +55,8 @@ import {
   markSeeded,
   mergeSharedMetaIntoLocal,
   metaFromDoc,
+  movedToFromDoc,
+  repairSharedMeta,
   seededByFromDoc,
   stampAnnotationsEdit,
   stampBodyEdit,
@@ -66,6 +68,7 @@ import {
   isExactRepeat,
   unionCommentsById,
 } from './cold-start.ts';
+import { applyColdStart } from './cold-start-apply.ts';
 import { type EchoGuard, hashBytes } from './echo-guard.ts';
 import type { SyncJournal } from './journal.ts';
 
@@ -258,6 +261,13 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
 
   async function flush(): Promise<void> {
     if (!dirty || stopped) return;
+    // A RETIRED document is write-inert. Its canvas moved to a new path in a
+    // new document; landing another byte from THIS one is how a moved canvas
+    // resurrected itself at its old path on every machine (see stampMovedTo).
+    if (movedToFromDoc(doc) !== null) {
+      dirty = false;
+      return;
+    }
     dirty = false;
     if (flushTimer) {
       clearTimeout(flushTimer);
@@ -345,6 +355,9 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
 
   function applyFromFs(evt: { path: string; bytes: Uint8Array; hash: string }): boolean {
     if (stopped) return false;
+    // Write-inert both ways — a local edit to a stale pre-move file must not
+    // revive the retired document either (see stampMovedTo).
+    if (movedToFromDoc(doc) !== null) return false;
     // Echo of our own atomicWrite — drop.
     if (echoGuard.consume(evt.path, evt.hash)) return false;
 
@@ -404,6 +417,10 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
 
   async function reconcile(): Promise<void> {
     if (stopped) return;
+    // A retired doc reconciles NOTHING — materialising it is the resurrection
+    // this stamp exists to end. The runtime's retirement watcher owns what
+    // happens to the stale local file (quarantine to _trash/).
+    if (movedToFromDoc(doc) !== null) return;
     const localHtml = readLocal(paths.html);
     const localComments = readLocal(paths.comments);
     const localAnnotations = readLocal(paths.annotations);
@@ -472,9 +489,6 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
       docBodyEditAtMs: bodyEditAtFromDoc(doc),
     });
 
-    // Which side owns the visually-coupled lanes (annotations/css) below.
-    let bodyWinner: 'local' | 'hub' = 'hub';
-
     const writeBodyFromDoc = (): void => {
       const hash = hashBytes(docHtml);
       echoGuard.record(paths.html, hash);
@@ -497,84 +511,27 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
       opts.journal?.record(slug, { bodyHash: hashBytes(body) });
     };
 
-    switch (decision.action) {
-      case 'noop':
-        lastHtml = docHtml;
-        // Identical non-empty sides: checkpoint so the next boot fast-forwards.
-        if (localHtml !== null && localHtml === docHtml && docHtml !== '') {
-          opts.journal?.record(slug, { bodyHash: hashBytes(docHtml) });
-        }
-        break;
-      case 'materialize-hub':
-      case 'fast-forward-hub':
-        writeBodyFromDoc();
-        break;
-      case 'seed-local-up':
-        // The DDR-064 empty-hub guard as a named decision row: an empty hub doc
-        // means the hub holds no body for this slug yet — NOT an authoritative
-        // "this canvas is blank". Seed the doc FROM local so the body survives
-        // AND the hub gets our content.
-        seedBodyUp(localHtml as string);
-        bodyWinner = 'local';
-        break;
-      case 'recover-seed-dup':
-        // F1 — booting against a hub whose body is our local body repeated (a
-        // concurrent cold-seed that already duplicated). Re-apply local so the
-        // diff deletes the extra copy/copies; the content equals local, so the
-        // visually-coupled lanes follow local too. Idempotent across peers.
-        seedBodyUp(localHtml as string);
-        bodyWinner = 'local';
-        break;
-      case 'conflict': {
-        // Divergence: snapshot BOTH versions to `_history/<slug>/` BEFORE any
-        // write, then apply the newest-wins winner. Even a wrong pick costs
-        // one /design:rollback (the incident's class of loss is closed).
-        const snapshots: { local?: string; hub?: string } = {};
-        let snapshotAttempted = false;
-        if (opts.snapshot) {
-          snapshotAttempted = true;
-          try {
-            const localTs = await opts.snapshot(localHtml as string, 'pre-sync-local');
-            if (localTs) snapshots.local = localTs;
-            const hubTs = await opts.snapshot(docHtml, 'pre-sync-hub');
-            if (hubTs) snapshots.hub = hubTs;
-          } catch {
-            /* swallowed below — the missing snapshot ref drives the fail-closed guard */
-          }
-        }
-        // DDR-102 fail-closed (security F1): the whole guarantee is "the loser is
-        // recoverable from _history". A hub-wins resolution OVERWRITES local — so
-        // if we asked for a snapshot but the local one did NOT land (full disk,
-        // read-only `_history/`, a Bun.write error), refuse the destructive
-        // overwrite. Keep local on disk and seed it UP instead, so nothing is
-        // lost on either side (local survives; the hub still gets our content).
-        // `snapshotAttempted` gates this to production wiring — a test/standalone
-        // agent with no snapshot fn keeps the plain newest-wins behavior.
-        const localSnapshotMissing = snapshotAttempted && !snapshots.local;
-        let winner = decision.winner;
-        if (winner === 'hub' && localSnapshotMissing) {
-          winner = 'local';
-          console.error(
-            `[sync/${slug}] cold-start divergence: hub won newest-wins but the local snapshot FAILED — REFUSING to overwrite local (DDR-102 fail-closed). Keeping local + pushing it up; resolve the _history/ write failure (disk full / read-only?) to restore newest-wins.`
-          );
-        }
-        if (winner === 'local') {
-          seedBodyUp(localHtml as string);
-          bodyWinner = 'local';
-        } else {
-          writeBodyFromDoc();
-        }
-        console.warn(`[sync/${slug}] cold-start divergence — ${decision.reason}`);
-        opts.onConflict?.({
-          slug,
-          kind: 'cold-start-diverged',
-          winner,
-          ...(snapshots.local || snapshots.hub ? { snapshots } : {}),
-          ...(localSnapshotMissing ? { snapshotFailed: true } : {}),
-        });
-        break;
-      }
-    }
+    // ONE application body, shared with migrate-seed.ts (DDR-226 Increment 0):
+    // exhaustive over every action with a compile-time `never` default, so the
+    // fail-closed snapshot guard, the conflict report and the row set can never
+    // drift between the two architectures again. Only the three EFFECTS differ
+    // and they are injected here.
+    const applied = await applyColdStart({
+      slug,
+      decision,
+      localBody: localHtml,
+      docBody: docHtml,
+      takeHub: writeBodyFromDoc,
+      takeLocal: seedBodyUp,
+      checkpointIdentity: (body) => opts.journal?.record(slug, { bodyHash: hashBytes(body) }),
+      ...(opts.snapshot ? { snapshot: opts.snapshot } : {}),
+      ...(opts.onConflict ? { onConflict: opts.onConflict } : {}),
+    });
+    // `noop` leaves disk and doc alone; the local mirror still tracks the doc.
+    if (applied.action === 'noop') lastHtml = docHtml;
+
+    // Which side owns the visually-coupled lanes (annotations fallback / css).
+    const bodyWinner = applied.bodyWinner;
 
     // ---- comments: id-union merge (DDR-102 — union loses nothing) ----------
     const localParsedComments = localComments !== null ? tryParseJsonArray(localComments) : null;
@@ -656,7 +613,14 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
       }
     }
 
-    // ---- meta: shared-subset merge, unchanged in all cases -----------------
+    // ---- meta: hub wins where it has an opinion, local seeds where it does not
+    //
+    // Repair first. Two peers publishing the same meta into an empty lane leave
+    // two identical copies in the Y.Text, which every consumer's `JSON.parse`
+    // rejects — so the canvas reads as having no meta at all on any machine
+    // that syncs it afterwards. Collapsing it here, on a doc that has synced,
+    // is the only place the duplication is provable rather than suspected.
+    repairSharedMeta(doc, origin);
     lastMeta = docMeta;
     if (paths.meta && docMeta !== null) {
       const merged = mergeSharedMetaIntoLocal(localMeta, docMeta);
@@ -665,6 +629,30 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
         echoGuard.record(paths.meta, hash);
         writer(paths.meta, merged);
       }
+    } else if (paths.meta && localMeta !== null) {
+      // AN EMPTY DOC IS NOT A CANVAS WITH NO TITLE.
+      //
+      // This branch used to not exist, and the comment above it said meta was
+      // "unchanged in all cases". The consequence: a canvas created on a peer
+      // reached the hub as a body with NO meta — no title, no kind, no
+      // design-system binding — and stayed that way until somebody happened to
+      // move an artboard, because a meta EDIT was the only thing that ever
+      // pushed meta up.
+      //
+      // It looked fine from the cloud, which is what kept it hidden: a cell's
+      // studio child arms `activity:suppress` on create, the container write
+      // bridge turns that into an `fs:any` a quarter-second later, and by then
+      // the new canvas has an agent to receive it. A desktop has no bridge — its
+      // real `fs.watch` fires immediately, before the agent for a
+      // just-created canvas exists, and the event lands nowhere. So the race
+      // was won on one side and lost on the other, and the underlying gap
+      // (cold-start meta was doc→file only) was invisible from the winning end.
+      //
+      // Seeding here is safe by construction: it runs ONLY when the doc carries
+      // no shared meta at all, so it cannot overwrite another peer's opinion —
+      // the same "absence is never authority" rule the rest of the sync applies
+      // to files, applied to the one sidecar that was exempt from it.
+      if (applyMetaToDoc(doc, localMeta, origin)) lastMeta = metaFromDoc(doc);
     }
   }
 

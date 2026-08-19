@@ -20,6 +20,18 @@
 // for the role model to drift, which is exactly what Track C exists to stop.
 
 import { authenticateForMode } from './cloud-identity.mjs';
+import {
+  authorizeUrl,
+  createTransaction,
+  createVerifier,
+  encodeTransaction,
+  exchangeCode,
+  OIDC_TXN_COOKIE,
+  oidcConfig,
+  readTransaction,
+  resolveSubject,
+  TXN_TTL_MS,
+} from './oidc-routes.mjs';
 import { isRevoked } from './revocations.mjs';
 import { isReadOnlyRole, projectRoleForAccount } from './role-matrix.mjs';
 import { servicePage } from './studio-door.mjs';
@@ -55,6 +67,172 @@ function clearSessionCookie(response) {
 function redirect(response, location) {
   response.writeHead(302, { location, 'cache-control': 'no-store' });
   response.end();
+}
+
+/** The short-lived transaction cookie for an OIDC sign-in in flight. */
+function setTxnCookie(response, value, maxAgeSeconds) {
+  response.setHeader('set-cookie', [
+    `${OIDC_TXN_COOKIE}=${encodeURIComponent(value)}; Path=/auth/oidc; HttpOnly; Secure; SameSite=Lax; Max-Age=${Math.max(0, Math.floor(maxAgeSeconds))}`,
+  ]);
+}
+function clearTxnCookie(response, extra = []) {
+  response.setHeader('set-cookie', [
+    `${OIDC_TXN_COOKIE}=; Path=/auth/oidc; HttpOnly; Secure; SameSite=Lax; Max-Age=0`,
+    ...extra,
+  ]);
+}
+
+/**
+ * The OIDC door (Track C, B1) — sibling of `/studio/signin`, same ending.
+ *
+ * `/auth/oidc/start`    → discovery, a signed transaction cookie, redirect out.
+ * `/auth/oidc/callback` → state + PKCE + nonce, exchange, verify, and then the
+ *                         SAME `resolveSubject` decision the flow is built
+ *                         around: a linked subject signs in, everyone else
+ *                         waits in `oidc_pending`. The session it mints is the
+ *                         SAME peer token the password door mints, so
+ *                         revocation, expiry and the read-only capability are
+ *                         decided in one place for both.
+ *
+ * @returns {Promise<boolean>} true when handled.
+ */
+export async function handleOidc({
+  request,
+  response,
+  path,
+  method,
+  dataDir,
+  secret,
+  publicUrl,
+  env = process.env,
+  fetchImpl,
+}) {
+  const cfg = oidcConfig(env);
+  if (!cfg.enabled) {
+    // The button and the docs are gated on the same env, so reaching here means
+    // a stale link or a probe. Do not 500; say plainly it is off.
+    page(response, 404, 'Not enabled', 'This hub does not accept identity-provider sign-in.');
+    return true;
+  }
+  if (cfg.errors.length) {
+    page(response, 500, 'Misconfigured', `OIDC is not usable yet: ${cfg.errors[0]}`);
+    return true;
+  }
+  if (method !== 'GET') {
+    page(response, 405, 'Not here', 'Start sign-in from the project page.');
+    return true;
+  }
+
+  const redirectUri = `${String(publicUrl).replace(/\/+$/, '')}/auth/oidc/callback`;
+  const verifier = createVerifier({ issuer: cfg.issuer, audience: cfg.clientId, fetchImpl });
+  const url = new URL(request.url, 'http://cell.invalid');
+
+  if (path === '/auth/oidc/start') {
+    let doc;
+    try {
+      doc = await verifier.discovery.document();
+    } catch (err) {
+      page(
+        response,
+        502,
+        'Provider unreachable',
+        `Could not reach the identity provider: ${err.message}`
+      );
+      return true;
+    }
+    const txn = createTransaction();
+    let dest;
+    try {
+      dest = authorizeUrl(cfg, txn, redirectUri, doc.authorization_endpoint);
+    } catch (err) {
+      page(response, 502, 'Provider misconfigured', err.message);
+      return true;
+    }
+    setTxnCookie(response, encodeTransaction(txn, secret), TXN_TTL_MS / 1000);
+    redirect(response, dest);
+    return true;
+  }
+
+  if (path === '/auth/oidc/callback') {
+    const txn = readTransaction(cookieValue(request, OIDC_TXN_COOKIE), { secret });
+    if (!txn) {
+      page(
+        response,
+        400,
+        'Sign-in expired',
+        'That sign-in took too long or was interrupted. Start again.'
+      );
+      return true;
+    }
+    // The state parameter must match the cookie — the anti-CSRF binding.
+    if (url.searchParams.get('state') !== txn.state) {
+      clearTxnCookie(response);
+      page(response, 400, 'Sign-in could not be verified', 'Please start again.');
+      return true;
+    }
+    const code = url.searchParams.get('code');
+    if (!code) {
+      clearTxnCookie(response);
+      page(response, 400, 'Something is missing', 'Start sign-in from the project page.');
+      return true;
+    }
+
+    let verified;
+    try {
+      const doc = await verifier.discovery.document();
+      const idToken = await exchangeCode(
+        cfg,
+        { code, codeVerifier: txn.codeVerifier, redirectUri, tokenEndpoint: doc.token_endpoint },
+        fetchImpl ? { fetchImpl } : {}
+      );
+      verified = await verifier.verifyIdToken(idToken, { nonce: txn.nonce });
+    } catch (err) {
+      clearTxnCookie(response);
+      page(
+        response,
+        502,
+        'Sign-in failed',
+        `The identity provider's response could not be verified: ${err.message}`
+      );
+      return true;
+    }
+
+    const outcome = resolveSubject(dataDir, verified, cfg);
+    if (outcome.action === 'sign-in') {
+      const ttlMs = 12 * 3600_000;
+      const projectRole = projectRoleForAccount(outcome.user.role);
+      const minted = addToken(dataDir, {
+        label: `studio-${Math.random().toString(36).slice(2, 10)}`,
+        scope: outcome.user.scope ?? '*',
+        owner: outcome.user.email,
+        expiresAt: Date.now() + ttlMs,
+        role: projectRole,
+        readOnly: isReadOnlyRole(projectRole),
+      });
+      clearTxnCookie(response, [
+        `${BROWSER_SESSION_COOKIE}=${encodeURIComponent(minted.value)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${Math.floor(ttlMs / 1000)}`,
+      ]);
+      redirect(response, '/');
+      return true;
+    }
+    clearTxnCookie(response);
+    if (outcome.action === 'pending') {
+      page(
+        response,
+        403,
+        'Waiting for access',
+        'You signed in, but nobody here has given your account access yet. Ask whoever runs this hub to approve you.',
+        env.HUB_DASHBOARD_URL
+          ? { href: env.HUB_DASHBOARD_URL, label: 'Go to your dashboard' }
+          : null
+      );
+      return true;
+    }
+    page(response, 403, 'You do not have access', outcome.reason ?? 'This account cannot sign in.');
+    return true;
+  }
+
+  return false;
 }
 
 function page(response, status, title, message, action) {

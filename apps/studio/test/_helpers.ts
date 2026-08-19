@@ -66,6 +66,14 @@ export async function bootServer(
   // Wait up to 10 s for the server to bind — the first spawn cold-compiles the
   // whole studio TS, which under parallel test load regularly blows a 3 s
   // budget (the flaky "server did not start" class of failure).
+  //
+  // THIS BUDGET IS ONLY REACHABLE BECAUSE THE SUITE RAISES THE PER-TEST TIMEOUT.
+  // bun's default is 5 s, so the TEST was killed while this loop still had half
+  // its patience left, and the failure never named a boot at all — it named
+  // whichever test happened to be booting when the machine was busiest, at
+  // exactly 5000ms, a different one every run. `test:dev-server` therefore
+  // passes `--timeout 20000` (bunfig's `[test] timeout` is NOT honored on bun
+  // 1.3.3 — measured, not assumed). Change one, change the other.
   const start = Date.now();
   while (Date.now() - start < 10000) {
     try {

@@ -1,0 +1,52 @@
+---
+title: Self-hosting
+description: One project, your infrastructure, your identity provider. The hub is the self-hosted product — not a cut-down copy of the cloud, and not a lesser path.
+---
+
+Maude Cloud and self-hosting are two different products that share one image.
+
+The cloud is multi-tenant: it provisions a cell per project, bills you, and runs a control plane that owns accounts across all of them. **Self-hosting is the hub.** One project per hub, operated by you, with no account anywhere and nothing phoning home. That is a deliberate decision rather than a gap — a portable copy of the control plane would be a second thing to keep correct, and the half nobody on the cloud side ever runs is the half that rots.
+
+So the self-hosted story is smaller on purpose, and complete on its own terms.
+
+## Which shape do you want
+
+| | **Plain hub** | **Workspace** |
+| --- | --- | --- |
+| Who owns the project | each peer, in their own clone | the hub |
+| Autosave becomes | a message to other peers | an append-only git commit |
+| Media | in git | an S3-compatible bucket |
+| Signing in | a token pasted into a terminal | an email and a password — or your own IdP |
+| In a browser | no | yes, the real studio |
+
+If everyone on the team has a clone and is comfortable with git, a **plain hub** is smaller and there is less to operate — [Deploy a hub](/docs/hub/deploy). If somebody should never have to think about git, you want a **workspace** — [Workspace mode](/docs/hub/workspace).
+
+Everything below assumes a workspace.
+
+## The shortest honest path
+
+```sh
+maude hub workspace-up --local --dev-minio \
+  --domain localhost --admin-email you@example.com
+```
+
+That runs the whole stack on your laptop — no domain, no certificate, no account anywhere — and then runs the same verification a public deployment gets. It is the cheapest way to find out what you are signing up for. It is **testing only**: local mode serves plain HTTP, so a sign-in password would travel in the clear.
+
+When you are ready for something real, [`/design:hub-workspace`](/docs/commands-design) walks you through it and collects exactly the credentials your choices need.
+
+## What you are taking on
+
+The command scaffolds and verifies **once**. It does not operate the deployment, and it prints that list on every successful run rather than implying otherwise. In short:
+
+- **[Durability](/docs/hub/durability)** is the page to read before you rely on this. Not the backup — the *restore*.
+- **Rotate `HUB_SECRET`** when someone leaves. It is the operator credential.
+- **Pin the image tag.** `latest` means an unplanned upgrade on the next restart.
+- **Never expire the `assets/` prefix.** A canvas in git history can reference media no *current* canvas does, so "unreferenced" never means "unreachable".
+- **The bill is yours.** This runs on your infrastructure.
+
+## Read next
+
+- **[On AWS](/docs/hub/aws)** — EC2 + EBS + S3, the IAM policy, and the two AWS defaults that quietly break this.
+- **[Durability](/docs/hub/durability)** — what survives a restart, a lost volume, and a second hub.
+- **[People](/docs/hub/people)** — accounts, invite links, and what "removed" actually means.
+- **[Identity](/docs/hub/identity)** — keep the built-in sign-in, or bring Auth0 / Google.

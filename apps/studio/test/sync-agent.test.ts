@@ -580,3 +580,81 @@ describe('CanvasSyncAgent — fail-closed on snapshot failure (DDR-102 F1)', () 
     expect(conflicts[0].snapshotFailed).toBeUndefined();
   });
 });
+
+describe('cold-start meta — an empty doc is not a canvas with no title', () => {
+  // A canvas created on a PEER used to reach the hub as a body with no meta:
+  // no title, no kind, no design-system binding. It stayed that way until
+  // somebody moved an artboard, because a meta EDIT was the only thing that
+  // ever pushed meta into the doc.
+  //
+  // The cloud hid it. A cell's studio child arms `activity:suppress` on create
+  // and the container write bridge turns that into an `fs:any` a quarter-second
+  // later — by which time the new canvas has an agent to receive it. A desktop
+  // has no bridge: its real `fs.watch` fires immediately, before the agent
+  // exists, and the event lands nowhere. One side won the race, the other lost
+  // it, and the gap underneath (cold-start meta was doc→file only) was
+  // invisible from the winning end.
+
+  const metaPaths = () => ({ ...paths(), meta: join(dir, 'screen.meta.json') });
+
+  function metaAgent(extra: Record<string, unknown> = {}): CanvasSyncAgent {
+    const a = createCanvasSyncAgent({
+      slug: 'screen',
+      doc: docB,
+      paths: metaPaths(),
+      echoGuard: createEchoGuard(),
+      flushMs: 0,
+      ...extra,
+    });
+    a.start();
+    return a;
+  }
+
+  test('local meta seeds the doc when the doc has none', async () => {
+    writeFileSync(
+      metaPaths().meta,
+      JSON.stringify({ title: 'Kanban', kind: 'web', designSystem: 'project' })
+    );
+    agent = metaAgent();
+    await agent.reconcile();
+
+    // The other peer must be able to SEE it — that is the whole point.
+    const seen = JSON.parse(docA.getText('meta').toString());
+    expect(seen.title).toBe('Kanban');
+    expect(seen.kind).toBe('web');
+  });
+
+  test('it does NOT overwrite meta the doc already carries', async () => {
+    // The safety property. Seeding runs only into a vacuum, so it can never be
+    // a peer quietly winning a disagreement about a shared key.
+    docA.getText('meta').insert(0, JSON.stringify({ title: 'From the hub', kind: 'web' }));
+    writeFileSync(metaPaths().meta, JSON.stringify({ title: 'From my disk', kind: 'mobile' }));
+
+    agent = metaAgent();
+    await agent.reconcile();
+
+    expect(JSON.parse(docA.getText('meta').toString()).title).toBe('From the hub');
+    // …and the hub's opinion lands on disk, which is the pre-existing behaviour.
+    expect(JSON.parse(readFileSync(metaPaths().meta, 'utf8')).title).toBe('From the hub');
+  });
+
+  test('no local meta and no doc meta is simply nothing to do', async () => {
+    agent = metaAgent();
+    await agent.reconcile();
+    expect(docA.getText('meta').toString()).toBe('');
+  });
+
+  test('per-user keys never leave the machine', async () => {
+    // `viewport` is the per-user camera (DDR-115). Seeding must go through the
+    // same shared-subset filter as every other meta write, or the fix would
+    // start syncing somebody's scroll position.
+    writeFileSync(
+      metaPaths().meta,
+      JSON.stringify({ title: 'Kanban', viewport: { x: 12, y: 34, zoom: 2 } })
+    );
+    agent = metaAgent();
+    await agent.reconcile();
+
+    expect(docA.getText('meta').toString()).not.toContain('viewport');
+  });
+});

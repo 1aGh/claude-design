@@ -48,14 +48,59 @@ export interface LinkedHub {
    */
   workspaceId?: string;
   /**
-   * feature-sync-file-plane — opt-in for the manifest-driven file plane
-   * (Plane B): the downward project-file pull AND the widened upward sweep
-   * (stylesheets, docs, code modules — classifier membership, see
-   * sync/file-membership.ts). Default OFF this release; `MAUDE_SYNC_FILES=1`
-   * forces it on for a session. The flag gates ONLY the new plane — the
-   * canvas CRDT lanes and the DDR-217 asset lanes run regardless.
+   * Sync v2 — the journal-driven file plane (Plane B): the downward
+   * project-file pull AND the widened upward sweep (stylesheets, docs, code
+   * modules — classifier membership, see sync/file-membership.ts).
+   *
+   * **Default ON from Increment 4**, once its security gate closed. Set to
+   * `false` per project to fall back to the pre-Sync-v2 reach (binary media
+   * under `assets/` only) — a config key rather than a terminal command,
+   * because the target user has no terminal (DDR-177). `MAUDE_SYNC_FILES=0`
+   * forces it off for one session.
+   *
+   * The flag gates ONLY this plane — the canvas CRDT lanes and the DDR-217
+   * asset lanes run regardless.
    */
   syncFiles?: boolean;
+  /**
+   * Sync v2 Increment 6 — does a deletion here become a deletion everywhere?
+   *
+   * **Default ON.** A hub-owned mirror that ignores deletes is not a mirror:
+   * you remove a file, it comes back on the next pass, and the model the
+   * product describes stops being true.
+   *
+   * What makes that safe is not caution but the breakers: past ten files, or a
+   * quarter of what this machine tracks, in one pass, nothing is removed in
+   * EITHER direction and the pass says what it was about to do — a branch
+   * switch and a deliberate purge look identical until somebody confirms which
+   * one it was. Losers are quarantined into `_trash/`, never unlinked, on both
+   * ends. Set `false` per project to hold every absence instead.
+   */
+  propagateDeletes?: boolean;
+  /**
+   * How to settle a FIRST-ANCHOR hold, for the whole set at once.
+   *
+   * When a project is linked for the first time both sides usually have
+   * content and neither has been reconciled here, so sync holds rather than
+   * writing a conflict copy per file. `keep-local` pushes this machine's
+   * copies up; `keep-cloud` takes the project's and parks yours beside them.
+   * Absent means keep asking — the hold is not an error and waiting costs
+   * nothing but time.
+   */
+  resolveFirstAnchor?: 'keep-local' | 'keep-cloud';
+  /**
+   * Sync v2 Increment 2 (DDR-226 §4) — the file-event control channel.
+   *
+   * Default ON where the hub advertises `ledger`; set to `false` to fall back
+   * to exactly today's 20 s poll cadence. A CONFIG KEY rather than an env var
+   * on purpose: this is the documented rollback for the poke, and the target
+   * user has no terminal to set an env var in (DDR-177).
+   *
+   * Absence means ON. A committed `false` can only ever make sync SLOWER, so
+   * unlike `syncTsx` it carries no trust weight and needs no restore-proof
+   * absence-means-on gymnastics.
+   */
+  fileEvents?: boolean;
 }
 
 export interface DevServerConfig {
@@ -209,8 +254,12 @@ export interface Context {
     }>;
     /** A cycle is in flight — Resync refuses early rather than queueing. */
     busy?(): boolean;
-    /** The live runtime, for the sweep-scoped cancel. Null in solo mode. */
-    current?(): { cancelAssetSweep(): boolean } | null;
+    /** The live runtime, for the sweep-scoped cancel + the move protocol's
+     *  retire step. Null in solo mode. Structural on purpose — see above. */
+    current?(): {
+      cancelAssetSweep(): boolean;
+      retireForMove?(fromSlug: string, toRel: string): Promise<boolean>;
+    } | null;
   };
 }
 

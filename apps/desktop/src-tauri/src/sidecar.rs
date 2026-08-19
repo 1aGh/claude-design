@@ -780,7 +780,22 @@ fn terminate(child: CommandChild) {
         std::thread::sleep(Duration::from_millis(400));
     }
     let _ = child.kill();
-    eprintln!("[maude] dev-server sidecar terminated (pid {pid})");
+    log_shutdown(&format!("[maude] dev-server sidecar terminated (pid {pid})"));
+}
+
+/// Write a shutdown line WITHOUT the ability to panic.
+///
+/// `eprintln!` panics when stderr cannot be written — and "cannot be written"
+/// is the ordinary state of a GUI app on shutdown: the terminal that launched
+/// it has usually gone away, so the pipe is broken. A real crash report was
+/// filed by exactly this (`failed printing to stderr: Broken pipe`, unwinding
+/// out of the SIGTERM handler), which turns a clean quit into a recorded crash
+/// AND abandons the sidecars the handler was in the middle of killing.
+///
+/// A teardown path may not depend on anybody listening.
+pub fn log_shutdown(line: &str) {
+    use std::io::Write;
+    let _ = writeln!(std::io::stderr(), "{line}");
 }
 
 /// Kill EVERY sidecar (called on app quit). Flags shutdown first so no
@@ -802,7 +817,7 @@ pub fn kill_server(app: &AppHandle) {
                 .collect()
         };
         for (root, child) in children {
-            eprintln!("[maude] quitting — stopping dev-server for {root}");
+            log_shutdown(&format!("[maude] quitting — stopping dev-server for {root}"));
             terminate(child);
         }
     }

@@ -13,7 +13,7 @@ import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { parseArgs } from '../lib/argv.mjs';
-import { runAdopt, runLink, runStatus, runUnlink } from '../lib/design-link.mjs';
+import { runAdopt, runDetach, runLink, runStatus, runUnlink } from '../lib/design-link.mjs';
 import { writeGitignoreBlock } from '../lib/gitignore-block.mjs';
 import { isCompiledBinary } from '../lib/pkg-root.mjs';
 
@@ -23,6 +23,7 @@ const SUBCOMMANDS = new Set([
   'export',
   'link',
   'unlink',
+  'detach',
   'status',
   'adopt',
   'help',
@@ -171,6 +172,7 @@ export async function run({ args, pkgRoot }) {
   if (sub === 'export') return runExport({ args });
   if (sub === 'link') return runLink({ args });
   if (sub === 'unlink') return runUnlink({ args });
+  if (sub === 'detach') return runDetach({ args });
   if (sub === 'status') return runStatus({ args });
   if (sub === 'adopt') return runAdopt({ args });
 }
@@ -323,7 +325,7 @@ function usage() {
   return `maude design <verb> [options]
 
 Lifecycle:
-  serve · init · export · link · adopt · unlink · status
+  serve · init · export · link · adopt · detach · unlink · status
 
 Dev-tooling (dispatch to the dev-server bash helpers — DDR-062):
   screenshot · server-up · prep · slug · bootstrap-check · runtime-health
@@ -379,6 +381,12 @@ Dev-tooling (dispatch to the dev-server bash helpers — DDR-062):
   adopt <url> --token <hex>
         Alias of 'link --adopt'. Shipped as a discoverable subcommand so
         first-time bootstrap reads like 'git remote add' + 'git push -f'.
+
+  detach [--yes] [--keep-token]
+        Take .design/ back into this repo: unlink the hub and remove the
+        hub-owned ignore, so git sees the folder again. Nothing is
+        downloaded — the local mirror is already complete — and nothing
+        is committed for you. The reverse of 'adopt' (DDR-228).
 
   unlink [--keep-token]
         Drop linkedHub from .design/config.json + remove the per-machine

@@ -58,6 +58,14 @@ COPY apps/studio/git/repo-lock.ts /build/apps/studio/git/repo-lock.ts
 # at all while it calls the REAL slug function rather than a copy of it.
 COPY apps/studio/sync/canvas-path.ts /build/apps/studio/sync/canvas-path.ts
 COPY apps/studio/canvas-slug.ts /build/apps/studio/canvas-slug.ts
+# Same rule, third file: the `git log` format string, its argv (including the
+# GIT_LITERAL_PATHSPECS hardening that must travel WITH a scoped argv) and its
+# parser. `src/history.mjs` serves the cloud-managed desktop's History tab, and
+# the desktop's own `/_api/git/log` draws its rows through the same renderer —
+# a second spelling here is how a cloud row and a local row come to differ in a
+# field that renderer reads. Omitting it fails `bun run build.ts` below with
+# "Could not resolve".
+COPY apps/studio/git/log-format.ts /build/apps/studio/git/log-format.ts
 # The mirror argv + push classifier, imported (never re-typed) by the cell's
 # mirror lane. Its tests assert the ABSENCE of any force flag — absence being
 # exactly what a later edit adds with nothing noticing — so a second copy here
@@ -212,6 +220,11 @@ COPY --from=bundler /build/apps/hub/dist ./dist
 # studio manifest, which IS staged) beside `version: "0.0.0"` — the exact
 # ambiguity the release-version work exists to remove.
 COPY --from=bundler /build/apps/hub/package.json ./package.json
+# The boot entrypoint (Track A' A1). Staged from the build context rather than
+# the bundler stage because it is shell, not something Bun emits — and it is
+# named by CMD at the bottom of this file, so a missing COPY here is a
+# container that cannot start at all rather than one that starts unsafely.
+COPY --chmod=755 apps/hub/entrypoint.sh /app/entrypoint.sh
 
 # ---- the canvas build sandbox (Cloud Phase 25 A1) ----
 #
@@ -305,4 +318,9 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=8s --retries=3 \
   CMD wget -qO- http://localhost:1234/health > /dev/null 2>&1 || exit 1
 USER node
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["node", "dist/hub.bundle.mjs"]
+# Track A' A1 — resolve the boot state BEFORE serving, the way the cell has
+# since Phase 5. This image used to go straight to the server, so a lost /repo
+# was re-seeded from MAUDE_SEED_REPO and came up green over the loss. The
+# decision itself lives in `dist/rehydrate.mjs` (one table, both entrypoints),
+# never in this shell.
+CMD ["/app/entrypoint.sh"]

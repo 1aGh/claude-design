@@ -25,7 +25,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, relative, sep } from 'node:path';
 
 import { deleteHubCredential, saveHubCredential } from '../sync/hub-link.ts';
 import { getHubToken, normalizeUrl } from '../sync/hubs-config.ts';
@@ -47,6 +47,26 @@ export interface CloudEndpointResult {
   status: number;
   json: unknown;
 }
+
+/**
+ * Why a historical blob could not be produced — or the blob.
+ *
+ * `not-found` is the only AUTHORITATIVE negative: a commit's content never
+ * changes, so the answer is stable and a caller may cache it. `unreachable`,
+ * `not-linked` and the two argument refusals are all transient or caller-side,
+ * and caching any of them turns an outage into a permanent 404.
+ */
+export type HistoryFileResult =
+  | { ok: true; source: string }
+  | { ok: false; reason: 'not-found' | 'unreachable' | 'not-linked' | 'bad-sha' | 'bad-path' };
+
+/**
+ * Ceiling on ONE response from a linked cell.
+ *
+ * Comfortably above the hub's own 2 MiB blob cap, so a legitimate answer is
+ * never refused, and far below "buffer whatever arrives for eight seconds".
+ */
+const MAX_HUB_RESPONSE_BYTES = 8 * 1024 * 1024;
 
 /** Whatever the control plane answered. Read defensively at every use. */
 type CloudBody = Record<string, unknown> & {
@@ -123,6 +143,13 @@ interface Ctx {
    * missing supervisor degrades to exactly the old behaviour — linked on disk,
    * syncing after the next start.
    */
+  /**
+   * The link changed (attach / detach). Lets the server drop anything it
+   * cached about "what a past version of this file looked like" — those
+   * answers were produced under the OLD link and are keyed by nothing that
+   * would distinguish them.
+   */
+  onLinkChanged?: () => void;
   syncControl?: {
     /** `null` = unlink: clear the runtime's in-memory link, cycle to solo. */
     restart(
@@ -266,7 +293,10 @@ export function createCloudEndpoints(ctx: Ctx) {
         headers: { authorization: `Bearer ${file.token}`, 'content-type': 'application/json' },
         body: JSON.stringify({ project: projectId }),
       });
-      if (opened.status !== 200 || !opened.body?.token) {
+      // `url` is checked alongside `token`: linkToWorkspace requires a
+      // workspace URL, and a 200 body missing it would have linked against
+      // `undefined` rather than refusing.
+      if (opened.status !== 200 || !opened.body?.token || !opened.body.url) {
         return {
           status: 502,
           json: { ok: false, error: 'The project could not be opened with this account.' },
@@ -295,7 +325,7 @@ export function createCloudEndpoints(ctx: Ctx) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ code }),
       });
-      if (exchanged.status !== 200 || !exchanged.body?.token) {
+      if (exchanged.status !== 200 || !exchanged.body?.token || !exchanged.body.url) {
         return {
           status: 410,
           json: {
@@ -329,6 +359,93 @@ export function createCloudEndpoints(ctx: Ctx) {
         role: exchanged.body.role,
         project: exchanged.body.project,
       });
+    },
+
+    /**
+     * THE HISTORY THAT IS ACTUALLY BEING WRITTEN — feature-cloud-managed-git-
+     * posture.
+     *
+     * In cloud-managed posture the cell is the sole committer (DDR-198/209/213)
+     * and the local repo has no commits at all, so the desktop's History tab
+     * read a repo nobody writes and reported "No saved versions yet" directly
+     * under "Cloud is saving". This asks the cell instead.
+     *
+     * SERVER-SIDE, ALWAYS. The hub credential resolved here never reaches the
+     * browser — the client talks only to the loopback `/_api/cloud/history`,
+     * exactly as it does for every other call in this module.
+     */
+    async history(pathRaw?: string | null, limitRaw?: string | null): Promise<CloudEndpointResult> {
+      const hub = credentialedHub();
+      if (!hub) return { status: 200, json: { ok: false, reason: 'not-linked' } };
+
+      const qs = new URLSearchParams();
+      const rel = designRelative(pathRaw);
+      if (rel) qs.set('path', rel);
+      const limit = Number(limitRaw);
+      if (Number.isFinite(limit) && limit > 0)
+        qs.set('limit', String(Math.min(100, Math.trunc(limit))));
+
+      const r = await hubFetch(hub, `/api/history?${qs.toString()}`);
+      if (!r.ok) return { status: 200, json: { ok: false, reason: 'unreachable' } };
+      // Clamp what the cell says before it reaches a renderer. The hub caps its
+      // own page at 100 rows, but a compromised cell does not run that code.
+      const clamp = (v: unknown, n: number) => (typeof v === 'string' ? v.slice(0, n) : '');
+      const body = (r.body ?? {}) as { entries?: unknown; branch?: unknown; project?: unknown };
+      const rows = Array.isArray(body.entries) ? body.entries.slice(0, 100) : [];
+      return {
+        status: 200,
+        json: {
+          ok: true,
+          entries: rows.map((e) => {
+            const r0 = (e ?? {}) as Record<string, unknown>;
+            return {
+              sha: clamp(r0.sha, 40),
+              message: clamp(r0.message, 500),
+              author: clamp(r0.author, 120),
+              date: clamp(r0.date, 40),
+            };
+          }),
+          branch: typeof body.branch === 'string' ? body.branch.slice(0, 200) : null,
+          project: typeof body.project === 'string' ? body.project.slice(0, 200) : null,
+          hubHost: hubHost(hub.url),
+        },
+      };
+    },
+
+    /**
+     * One file's source at one cloud commit — what the version preview builds
+     * from when the sha exists only on the cell.
+     *
+     * `sha` is validated HERE as well as on the hub. It reaches the preview
+     * route from the UNTRUSTED canvas origin (DDR-054), and "the other side
+     * checks it" is how a guard ends up existing on neither side.
+     */
+    async historyFile(sha: string, pathRaw: string): Promise<HistoryFileResult> {
+      // WHY THIS REPORTS A REASON INSTEAD OF JUST `null`.
+      //
+      // The caller caches a miss so a repeated bad sha costs nothing. If every
+      // failure looked alike, an UNREACHABLE cell (or an unlinked project)
+      // would be remembered as "this version does not exist" — and the entry
+      // outlives the outage, so a version stays permanently unpreviewable. That
+      // is the same collapse of "could not reach" into "is not there" this
+      // whole feature exists to undo; the panel is careful about it one layer
+      // up, and it would be silly to re-introduce it one layer down.
+      //
+      // Only `not-found` is authoritative. Everything else is transient.
+      if (!/^[0-9a-f]{7,40}$/.test(String(sha ?? ''))) return { ok: false, reason: 'bad-sha' };
+      const rel = designRelative(pathRaw);
+      if (!rel) return { ok: false, reason: 'bad-path' };
+      const hub = credentialedHub();
+      if (!hub) return { ok: false, reason: 'not-linked' };
+
+      const qs = new URLSearchParams({ sha, path: rel });
+      const r = await hubFetch(hub, `/api/history/file?${qs.toString()}`, { text: true });
+      if (r.ok && typeof r.text === 'string') return { ok: true, source: r.text };
+      // A 404 is the cell's ONE indistinguishable refusal (out-of-scope,
+      // out-of-tree, wrong class, absent). Treating it as authoritative is
+      // correct for caching: none of those become true later for the same
+      // (sha, path), because a commit's content never changes.
+      return { ok: false, reason: r.status === 404 ? 'not-found' : 'unreachable' };
     },
 
     /**
@@ -372,6 +489,7 @@ export function createCloudEndpoints(ctx: Ctx) {
       } catch {
         /* best-effort — the link is gone on disk either way */
       }
+      ctx.onLinkChanged?.();
       return { status: 200, json: { ok: true, detached: !!linked } };
     },
   };
@@ -401,6 +519,148 @@ export function createCloudEndpoints(ctx: Ctx) {
       return { url, credentialed };
     } catch {
       return null; // absent/malformed → simply not linked
+    }
+  }
+
+  /**
+   * The linked hub AND its credential, or null.
+   *
+   * "Linked" alone is not enough to make a network call on: `config.json` is
+   * COMMITTED and travels with the repo, so a `linkedHub` in it is
+   * attacker-authorable (B2). A stored credential is the corroboration — and
+   * it is also the thing we would be sending, so resolving both together is
+   * what keeps a no-credential case from becoming an unauthenticated request
+   * to an address a repo named.
+   */
+  function credentialedHub(): { url: string; token: string } | null {
+    const linked = readLinkedHub();
+    if (!linked?.credentialed) return null;
+    try {
+      const url = normalizeUrl(linked.url);
+      const token = getHubToken(url);
+      return token ? { url, token } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * One authenticated GET against the linked cell.
+   *
+   * NEITHER THE TOKEN NOR THE HUB'S OWN ERROR BODY EVER LEAVES THIS FUNCTION.
+   * Callers get `{ ok }` plus the parsed payload on success, so a hub message
+   * cannot be relayed into the browser (or into a log) by accident.
+   *
+   * A 401 IS A PLAIN READ FAILURE HERE. `/_api/cloud/status`'s 401 path
+   * DELETES the stored credential (confused-deputy F6, and correct there: the
+   * control plane is the authority on whether this device is still trusted).
+   * A History poll is not that authority — a cell restarting mid-token-renewal
+   * would otherwise silently unlink a working project. Read fails; credential
+   * stands.
+   */
+  async function hubFetch(
+    hub: { url: string; token: string },
+    path: string,
+    { text = false, timeoutMs = 8_000, maxBytes = MAX_HUB_RESPONSE_BYTES } = {}
+  ): Promise<{ ok: boolean; status: number; body?: unknown; text?: string }> {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${hub.url}${path}`, {
+        headers: { authorization: `Bearer ${hub.token}` },
+        signal: ctl.signal,
+      });
+      if (!res.ok) return { ok: false, status: res.status };
+      // THE CELL IS NOT TRUSTED TO RESPECT ITS OWN LIMITS. The hub caps a blob
+      // at 2 MiB and checks `cat-file -s` before reading — but a compromised
+      // cell, or anything MITM-ing a self-hosted `http://` hub, simply does
+      // not run that code. Without a cap here the desktop buffers an endless
+      // stream into one JS string for the whole timeout, and the trigger is
+      // reachable from the UNTRUSTED canvas origin (a canvas picks the `?sha=`
+      // on the version-preview route). Read through a counted stream and abort
+      // past the cap. (Security re-review of 8134ca8f, finding F2.)
+      const body = await readCapped(res, ctl, maxBytes);
+      if (body == null) return { ok: false, status: 0 };
+      if (text) return { ok: true, status: res.status, text: body };
+      try {
+        return { ok: true, status: res.status, body: JSON.parse(body) };
+      } catch {
+        return { ok: true, status: res.status, body: {} };
+      }
+    } catch {
+      return { ok: false, status: 0 };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** Read a response body, aborting past `maxBytes`. Null = refused/failed. */
+  async function readCapped(
+    res: Response,
+    ctl: AbortController,
+    maxBytes: number
+  ): Promise<string | null> {
+    const declared = Number(res.headers.get('content-length'));
+    if (Number.isFinite(declared) && declared > maxBytes) {
+      ctl.abort();
+      return null;
+    }
+    if (!res.body) {
+      const t = await res.text();
+      return t.length > maxBytes ? null : t;
+    }
+    const reader = res.body.getReader();
+    const dec = new TextDecoder('utf8');
+    let out = '';
+    let seen = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      seen += value?.byteLength ?? 0;
+      if (seen > maxBytes) {
+        // Content-Length is a claim; this is the measurement.
+        try {
+          await reader.cancel();
+        } catch {
+          /* already gone */
+        }
+        return null;
+      }
+      out += dec.decode(value, { stream: true });
+    }
+    return out + dec.decode();
+  }
+
+  /**
+   * repo-relative (`.design/ui/Card.tsx`) → design-root-relative (`ui/Card.tsx`).
+   *
+   * The hub speaks design-root-relative on every file surface it has, and the
+   * cell's design root need not share this machine's folder name — so the
+   * translation belongs on this side, where both roots are known. A path
+   * outside the design tree returns null rather than being passed through: the
+   * cell would refuse it anyway, and sending it would make this a probe.
+   */
+  function designRelative(raw?: string | null): string | null {
+    if (typeof raw !== 'string' || raw === '') return null;
+    const p = raw.replace(/\\/g, '/');
+    if (p.split('/').includes('..')) return null;
+    const designRel = relative(ctx.paths.repoRoot, ctx.paths.designRoot).split(sep).join('/');
+    if (!designRel || designRel.startsWith('..')) return null;
+    if (p === designRel) return null;
+    if (p.startsWith(`${designRel}/`)) return p.slice(designRel.length + 1) || null;
+    // Already design-root-relative (the History scope the panel holds for a
+    // canvas opened from the cell) — accept it as-is rather than refusing a
+    // caller for using the hub's own vocabulary.
+    return p.startsWith('/') ? null : p;
+  }
+
+  /** The cell's host, for a header that must name SOMETHING when the project
+   *  name is unknown. Address only — already-public, and never the token. */
+  function hubHost(url: string): string | null {
+    try {
+      return new URL(url).host;
+    } catch {
+      return null;
     }
   }
 
@@ -498,6 +758,8 @@ export function createCloudEndpoints(ctx: Ctx) {
         detail: `Linked, but syncing could not start: ${(err as Error).message}`,
       };
     }
+
+    ctx.onLinkChanged?.();
 
     return {
       status: 200,

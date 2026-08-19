@@ -95,6 +95,14 @@ export const STUDIO_ROUTES = Object.freeze({
   // (`*.annotations.svg`, DDR-115), which is why the matrix files it with
   // `edit` and not with `comment`.
   '/_api/annotations': { safe: 'read', unsafe: 'annotate' },
+  // A photo edit is a validated JSON sidecar next to the asset
+  // (`assets/<sha8>.photo.json`) — the decode/compositing runs in the member's
+  // browser, the exact division of labour that makes `/_canvas-shell`
+  // servable. This was REFUSED for a while under a rationale that described
+  // the CLI photo-adjust helpers, and the real effect was that photo edits
+  // could not be saved in the cloud at all. Non-destructive adjustment of a
+  // versioned asset files with `edit`.
+  '/_api/photo-edit': { safe: 'read', unsafe: 'edit' },
 
   // ---- changing the project ----------------------------------------------
   '/_api/canvas': { safe: 'read', unsafe: 'edit' },
@@ -188,7 +196,6 @@ export const STUDIO_ROUTES = Object.freeze({
   '/_api/export': REFUSED,
   '/_api/export-jobs': REFUSED,
   '/_api/export-jobs/download': REFUSED,
-  '/_api/photo-edit': REFUSED,
   // Spawns a headless browser against the studio — the same evaluation
   // `/_api/export` is forbidden for, and there is no browser in a cell image.
   '/_api/shell-shot': REFUSED,

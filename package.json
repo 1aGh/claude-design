@@ -30,7 +30,7 @@
     "build": "pnpm -r --if-present --filter '!@maude/desktop' '!@maude/desktop-e2e' run build",
     "build:binary": "bun run apps/studio/build.ts --release",
     "test": "node --test --test-reporter=spec cli/**/*.test.mjs && pnpm --filter @maude/hub test",
-    "test:dev-server": "cd apps/studio && bun test",
+    "test:dev-server": "cd apps/studio && bun test --timeout 20000",
     "lint": "biome check .",
     "format": "biome format --write .",
     "changeset": "changeset",

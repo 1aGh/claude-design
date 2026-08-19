@@ -22,6 +22,23 @@ const BUCKET_RE = /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
+ * Normalize a backup namespace into a key-safe segment — Phase 0 F3.
+ *
+ * Deliberately narrow: this becomes an object-key prefix, so anything that
+ * could re-enter the keyspace elsewhere (`/`, `..`, whitespace) has to be gone
+ * rather than escaped. Mirrors the charset the cell validates its tenant id
+ * with, for the same reason.
+ */
+export function sanitizeBackupPrefix(raw) {
+  return String(raw ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^[-.]+|[-.]+$/g, '')
+    .slice(0, 64);
+}
+
+/**
  * @typedef {object} WorkspaceConfig
  * @property {string} domain          public hostname, e.g. design.acme.com
  * @property {string} acmeEmail       Let's Encrypt contact
@@ -136,6 +153,60 @@ export function validateWorkspaceConfig(raw = {}) {
     };
   }
 
+  // BYO identity — Track C C6. Threaded through validation, .env AND compose;
+  // a var written into one but not the other never reaches the container, which
+  // already shipped once with MAUDE_ADMIN_PASSWORD (see renderCompose).
+  if (raw.oidc) {
+    const o = { ...raw.oidc };
+    o.issuer = String(o.issuer ?? '')
+      .trim()
+      .replace(/\/+$/, '');
+    o.mode = o.mode === 'strict' ? 'strict' : 'hybrid';
+    o.domains = String(o.domains ?? '').trim();
+    if (!o.issuer) errors.push('oidc.issuer is required when oidc is configured');
+    else if (!/^https:\/\//.test(o.issuer)) errors.push('oidc.issuer must be https');
+    if (!o.clientId) errors.push('oidc.clientId is required when oidc is configured');
+    if (!o.clientSecret) errors.push('oidc.clientSecret is required when oidc is configured');
+    // A filter, never a grant — but required, because without it every subject
+    // at a public issuer can queue itself into the operator's pending list.
+    if (!o.domains) errors.push('oidc.domains is required when oidc is configured');
+    cfg.oidc = o;
+  }
+
+  // The backup namespace — Phase 0 F3.
+  //
+  // Until now nothing here mentioned MAUDE_BACKUP_PREFIX at all: the CELL
+  // entrypoint sets it (derived from the tenant id) and a self-hosted
+  // workspace therefore backed up to the bucket ROOT by construction. Two hubs
+  // on one bucket then shared a keyspace, which is how their generations
+  // interleaved and pruned across each other.
+  //
+  // NEW RENDERS ONLY — and that restriction is the point. Adding a prefix to a
+  // deployment that already has generations at the root moves it to a DISJOINT
+  // keyspace (`prefixedTarget` rewrites `list('backups/')` to
+  // `list('<prefix>/backups/')`), so every existing generation goes invisible
+  // in one config change: orphaned, unprunable, and — after the next volume
+  // loss — a cold start that sees zero generations and seeds instead. The fix
+  // would re-open the exact destruction it exists to close.
+  //
+  // Safe to leave off, because the WRITE-side identity refusal already stops
+  // the destruction at the bare root without any prefix. Here the prefix is a
+  // remedy, not the safety mechanism.
+  //
+  // `backupPrefix: null` is the caller saying "existing deployment, leave it
+  // alone"; a string is an explicit choice; undefined derives one.
+  if (raw.backupPrefix === null) {
+    cfg.backupPrefix = null;
+  } else if (raw.backupPrefix !== undefined && String(raw.backupPrefix).trim() !== '') {
+    const explicit = sanitizeBackupPrefix(raw.backupPrefix);
+    if (!explicit) errors.push(`backupPrefix "${raw.backupPrefix}" has no usable characters`);
+    cfg.backupPrefix = explicit || null;
+  } else {
+    // Derived from the address, which is the one identifier the operator has
+    // already had to make unique — DNS enforced it.
+    cfg.backupPrefix = sanitizeBackupPrefix(cfg.domain) || null;
+  }
+
   if (raw.seedRepo !== undefined && raw.seedRepo !== null && String(raw.seedRepo).trim() !== '') {
     const seed = String(raw.seedRepo).trim();
     if (!/^(https?:\/\/|git@|ssh:\/\/)/.test(seed)) {
@@ -234,6 +305,30 @@ export function envEntries(cfg, { hubSecret, adminPassword }) {
       { key: 'MAUDE_S3_SECRET_ACCESS_KEY', value: cfg.s3.secretAccessKey },
       { key: 'MAUDE_S3_REGION', value: cfg.s3.region }
     );
+    if (cfg.backupPrefix) {
+      entries.push({
+        key: 'MAUDE_BACKUP_PREFIX',
+        value: cfg.backupPrefix,
+        comment: 'this hub owns this keyspace; never point a second hub at it',
+      });
+    }
+  }
+  if (cfg.oidc) {
+    entries.push(
+      {
+        key: 'HUB_OIDC_MODE',
+        value: cfg.oidc.mode,
+        comment: 'hybrid = password login still works; strict = OIDC only',
+      },
+      { key: 'HUB_OIDC_ISSUER', value: cfg.oidc.issuer },
+      { key: 'HUB_OIDC_CLIENT_ID', value: cfg.oidc.clientId },
+      { key: 'HUB_OIDC_CLIENT_SECRET', value: cfg.oidc.clientSecret },
+      {
+        key: 'HUB_OIDC_ALLOWED_DOMAINS',
+        value: cfg.oidc.domains,
+        comment: 'a filter, never a grant — a permitted domain still needs an account',
+      }
+    );
   }
   if (cfg.seedRepo) {
     entries.push({ key: 'MAUDE_SEED_REPO', value: cfg.seedRepo, comment: 'cloned on first boot' });
@@ -255,10 +350,34 @@ export function renderEnv(entries) {
   ];
   for (const e of entries) {
     if (e.comment) lines.push(`# ${e.comment}`);
-    lines.push(`${e.key}=${e.value}`);
+    lines.push(`${e.key}=${renderEnvValue(e.value)}`);
     lines.push('');
   }
   return `${lines.join('\n').trimEnd()}\n`;
+}
+
+/**
+ * Render one `.env` value safely (F8).
+ *
+ * Two failure modes a raw `${value}` opens, both with operator-pasted material
+ * (an S3 secret, an OIDC client secret):
+ *   - a NEWLINE injects an arbitrary extra line, which `readExistingEnv`'s
+ *     `^KEY=…$` parser then accepts and PERSISTS across the "re-run is the
+ *     upgrade path" flow — `secret\nHUB_INSECURE_HTTP=1` becomes real config.
+ *   - a `$` is re-interpolated by `docker compose`, so the container silently
+ *     gets a different value than the file shows — an unexplained lockout.
+ * A control character is rejected outright (it cannot be meant); everything
+ * else is single-quoted, and an embedded single quote is escaped the POSIX way.
+ */
+function renderEnvValue(raw) {
+  const v = String(raw ?? '');
+  if (/[\n\r\0]/.test(v)) {
+    throw new Error('refusing to write a .env value containing a newline or control character');
+  }
+  if (v === '') return '';
+  // Single-quote: inside single quotes the shell and compose interpolate
+  // nothing. `'\''` is the POSIX way to embed a single quote.
+  return `'${v.replace(/'/g, `'\\''`)}'`;
 }
 
 /**
@@ -288,6 +407,19 @@ export function renderCompose(cfg) {
           'MAUDE_S3_ACCESS_KEY_ID',
           'MAUDE_S3_SECRET_ACCESS_KEY',
           'MAUDE_S3_REGION',
+          // Written into .env AND forwarded here. This list is hand-maintained,
+          // and a var present in one but not the other never reaches the
+          // container — which already shipped once, with MAUDE_ADMIN_PASSWORD.
+          ...(cfg.backupPrefix ? ['MAUDE_BACKUP_PREFIX'] : []),
+        ]
+      : []),
+    ...(cfg.oidc
+      ? [
+          'HUB_OIDC_MODE',
+          'HUB_OIDC_ISSUER',
+          'HUB_OIDC_CLIENT_ID',
+          'HUB_OIDC_CLIENT_SECRET',
+          'HUB_OIDC_ALLOWED_DOMAINS',
         ]
       : []),
     ...(cfg.seedRepo ? ['MAUDE_SEED_REPO'] : []),

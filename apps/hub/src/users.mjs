@@ -30,6 +30,7 @@ import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { chmodSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { stampSchemaVersion } from './schema-version.mjs';
 
 const require = createRequire(import.meta.url);
 const Database = require('better-sqlite3');
@@ -68,11 +69,37 @@ function db(dataDir) {
        disabled   INTEGER NOT NULL DEFAULT 0
      )`
   );
+  // OIDC pending — Track C C4. A SEPARATE TABLE, deliberately not a fourth
+  // role. `assertValidRole` throws outside 'admin' | 'member', role-matrix.mjs
+  // returns NOTHING for an unknown role, and its own comment warns that "the
+  // next role added on either side re-opens this" — referring to the
+  // dual-vocabulary bug that already shipped as readOnly on every session. A
+  // pending identity is the ABSENCE of a role, so modelling it as one would be
+  // paying that price to express "no access" in a system that already
+  // expresses it by having no row.
+  handle.exec(
+    `CREATE TABLE IF NOT EXISTS oidc_pending (
+       sub          TEXT PRIMARY KEY,
+       email        TEXT,
+       first_seen   INTEGER NOT NULL,
+       last_attempt INTEGER NOT NULL
+     )`
+  );
+  // The link between a verified subject and an account. Created ONLY by an
+  // explicit admin action (see linkOidcSub) — never by a sign-in.
+  const columns = handle
+    .prepare('PRAGMA table_info(users)')
+    .all()
+    .map((c) => c.name);
+  if (!columns.includes('oidc_sub')) handle.exec('ALTER TABLE users ADD COLUMN oidc_sub TEXT');
+  handle.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_oidc_sub ON users(oidc_sub)');
   try {
     chmodSync(path, 0o600);
   } catch {
     /* Windows / read-only fs — best effort. */
   }
+  // A2 — record the shape while we know it (see schema-version.mjs).
+  stampSchemaVersion(handle);
   dbCache.set(dataDir, handle);
   return handle;
 }
@@ -327,3 +354,110 @@ export function removeUser(dataDir, email) {
 // A fixed, valid scrypt record used only to burn equivalent CPU on an unknown
 // address. Its plaintext is irrelevant — nothing ever authenticates against it.
 const DUMMY_HASH = hashPassword('maude-dummy-password-not-a-secret');
+
+// ------------------------------------------------------- OIDC subjects (C4)
+
+/**
+ * Remember a verified subject that has no account yet.
+ *
+ * THE RULE THIS ENFORCES: authentication grants nothing. A subject arriving
+ * from the IdP lands here and nowhere else — no row in `users`, no session, no
+ * role — until an admin acts. `email` is the IdP's CLAIM, stored for display
+ * so an operator can recognise who is waiting; it is never matched against.
+ */
+/** The queue is an operator review surface, not a log — cap it (B6). */
+export const PENDING_OIDC_CAP = 500;
+
+export function recordPendingOidc(dataDir, { sub, email = null } = {}) {
+  const subject = String(sub ?? '').trim();
+  if (!subject) throw new Error('recordPendingOidc: a subject is required');
+  const handle = db(dataDir);
+  const now = Date.now();
+  // Updating an existing subject is always allowed (it is already in the
+  // queue); a NEW subject is refused once the queue is full, so a bulk-
+  // provisioning account at an allowlisted domain cannot bury the real
+  // entries. The caller (resolveSubject) only reaches here for an
+  // allowlisted, verified subject, which already bounds who can queue at all.
+  const known = handle.prepare('SELECT 1 FROM oidc_pending WHERE sub = ?').get(subject);
+  if (!known) {
+    const count = handle.prepare('SELECT COUNT(*) AS n FROM oidc_pending').get().n;
+    if (count >= PENDING_OIDC_CAP) {
+      const err = new Error('the pending sign-in queue is full; an admin must clear it');
+      err.code = 'PENDING_FULL';
+      throw err;
+    }
+  }
+  handle
+    .prepare(
+      `INSERT INTO oidc_pending (sub, email, first_seen, last_attempt) VALUES (?, ?, ?, ?)
+       ON CONFLICT(sub) DO UPDATE SET last_attempt = excluded.last_attempt,
+                                      email = COALESCE(excluded.email, oidc_pending.email)`
+    )
+    .run(subject, email ? String(email).trim().toLowerCase() : null, now, now);
+  return { sub: subject, email, firstSeen: now, lastAttempt: now };
+}
+
+/** How many accounts have an OIDC identity linked — the strict-mode boot gate. */
+export function countLinkedOidc(dataDir) {
+  try {
+    return db(dataDir).prepare('SELECT COUNT(*) AS n FROM users WHERE oidc_sub IS NOT NULL').get()
+      .n;
+  } catch {
+    return 0;
+  }
+}
+
+/** Everyone waiting for an admin to act. Rendered by the People view. */
+export function listPendingOidc(dataDir) {
+  return db(dataDir)
+    .prepare('SELECT sub, email, first_seen, last_attempt FROM oidc_pending ORDER BY first_seen')
+    .all()
+    .map((r) => ({
+      sub: r.sub,
+      email: r.email,
+      firstSeen: r.first_seen,
+      lastAttempt: r.last_attempt,
+    }));
+}
+
+export function removePendingOidc(dataDir, sub) {
+  return db(dataDir).prepare('DELETE FROM oidc_pending WHERE sub = ?').run(String(sub)).changes > 0;
+}
+
+/** The account a verified subject maps to, or null. Identity IS the subject. */
+export function getUserByOidcSub(dataDir, sub) {
+  const subject = String(sub ?? '').trim();
+  if (!subject) return null;
+  const row = db(dataDir).prepare('SELECT * FROM users WHERE oidc_sub = ?').get(subject);
+  return row ? rowToRecord(row) : null;
+}
+
+/**
+ * Bind a verified subject to an existing account — AN EXPLICIT ADMIN ACT.
+ *
+ * This is the function whose ABSENCE from the sign-in path is the security
+ * property. The first draft of this track had sign-in auto-link "when the email
+ * already exists"; `users.mjs` keys accounts BY EMAIL, and `createUser`'s own
+ * docstring says it throws on a duplicate address "so a signup can never
+ * silently overwrite an existing account's password". Auto-linking does not
+ * defeat a missing guard — it routes around that one, reaching the same
+ * outcome by aliasing an identity onto the row instead of rewriting its hash.
+ * One request asserting `admin@company.com` at a permissive issuer would have
+ * been enough.
+ */
+export function linkOidcSub(dataDir, email, sub) {
+  const normalized = assertValidEmail(email);
+  const subject = String(sub ?? '').trim();
+  if (!subject) throw new Error('linkOidcSub: a subject is required');
+  const handle = db(dataDir);
+  const owner = handle.prepare('SELECT email FROM users WHERE oidc_sub = ?').get(subject);
+  if (owner && owner.email !== normalized) {
+    throw new Error(`that identity is already linked to ${owner.email}`);
+  }
+  const changed = handle
+    .prepare('UPDATE users SET oidc_sub = ? WHERE email = ?')
+    .run(subject, normalized).changes;
+  if (!changed) throw new Error(`no such user "${normalized}"`);
+  removePendingOidc(dataDir, subject);
+  return getUserByOidcSub(dataDir, subject);
+}

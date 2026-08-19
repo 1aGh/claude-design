@@ -394,6 +394,11 @@ export function applyInsertClipAt(
       }
       const indent = `${lineStartInfo(source, rootClose).indent}  `;
       const s2 = new MagicString(source);
+      // Placeholder wins over media (same precedence as the append path below),
+      // then media, then nothing. The old two-arm form read `media.tag` in the
+      // else, where only the `needs media` throw above ruled out null — a
+      // disjunction the checker cannot carry. Spelled as three arms it needs no
+      // assertion, and the unreachable third arm is honest rather than absent.
       const gfChild = opts.placeholder
         ? placeholderChildText(
             canvasAbsPath,
@@ -402,7 +407,9 @@ export function applyInsertClipAt(
             `${indent}  `,
             dur
           ).trimEnd()
-        : `\n${indent}    <${media.tag} src="${escapeAttr(media.src)}" />`;
+        : media
+          ? `\n${indent}    <${media.tag} src="${escapeAttr(media.src)}" />`
+          : '';
       s2.appendLeft(
         rootClose,
         `  <TransitionSeries>\n${indent}  <TransitionSeries.Sequence durationInFrames={${dur}}>` +

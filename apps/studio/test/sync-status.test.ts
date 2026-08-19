@@ -1,6 +1,8 @@
 // Sync status store tests — Phase 9 Task 8.
 
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import type { SyncStatusSnapshot } from '../sync/connection-state.ts';
 import { createSyncStatusStore, type SyncStatusPayload } from '../sync/status.ts';
@@ -188,5 +190,25 @@ describe('sync status store — asset lane (feature-sync-progress-modal)', () =>
     const { store } = makeStore();
     store.update(snap());
     expect('files' in store.get()).toBe(false);
+  });
+});
+
+describe('held breakers reach the status payload', () => {
+  // Between the plane and the panel sits `noteFilePlane`, which is where the
+  // holds were being dropped: it read synced/pulled/conflicts/pushed/delivery
+  // and nothing else, so the fields existed and never travelled.
+  test('the FilePlaneStatus shape carries them', () => {
+    const src = readFileSync(join(import.meta.dir, '..', 'sync', 'status.ts'), 'utf8');
+    expect(src).toContain('held?:');
+    expect(src).toMatch(/'delete-out' \| 'delete-in' \| 'first-anchor' \| 'reanchor'/);
+  });
+
+  test('and the sync runtime actually fills it in', () => {
+    const src = readFileSync(join(import.meta.dir, '..', 'sync', 'index.ts'), 'utf8');
+    expect(src).toContain('result.deleteHeld');
+    expect(src).toContain('result.firstAnchorHeld');
+    expect(src).toContain('result.reanchorHeld');
+    // And the first-anchor hold has an ANSWER wired, not just a report.
+    expect(src).toContain('resolveFirstAnchor');
   });
 });
