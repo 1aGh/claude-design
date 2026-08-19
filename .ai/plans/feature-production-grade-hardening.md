@@ -187,8 +187,8 @@ Scoped to this repo's real gates (no generic 5-platform scenario runner here):
   - `site/lib/roadmap.json` regenerated for this plan's edits.
 - [ ] B2 all three live drills executed and recorded
 - [ ] C1 v1.0.0 tagged, fleet verified, OIDC labeled beta, known-limits list in notes
-- [ ] Deferred work lives in `feature-post-1.0-hardening-backlog.md` — nothing silently dropped
-- [ ] Debate dissent honored: no rc tag until channel tooling exists; no consent UI built for zero users; A7-notice debt tracked as binding before first external users / Increment 8
+- [x] Deferred work lives in `feature-post-1.0-hardening-backlog.md` — nothing silently dropped (verified against C1's named list: F-4, F-6, F-7/8/14, F-11/12, B6, B11, B13, B14/15, `_trash/` unpruned, sync flags CLI-only — all present; file committed in `74d9e0df`)
+- [x] Debate dissent honored: no rc tag cut (none exists); no consent UI built; A7-notice + the consent/toggle surface both sit in the backlog's BINDING "before first external users" block
 
 ---
 
