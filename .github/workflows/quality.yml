@@ -93,6 +93,18 @@ jobs:
           bash scripts/check-tsc-coverage.sh
 
       - name: Sync-lane tests (required)
+        env:
+          # DDR-054 §2a makes the sync runtime REFUSE to start when it sees
+          # CI/GITHUB_ACTIONS — a real safety property (a runner carrying
+          # GITHUB_TOKEN must never be talked onto a PR-controlled hub), and the
+          # guard's own message names this override. Without it `createSyncRuntime`
+          # returns null and every sync test asserts against `undefined`: the
+          # first run of these jobs took ~30 sync tests down that way, which
+          # looked like the file plane was broken and was really the gate doing
+          # its job to a test runner. Safe here — this runs `bun test`, never
+          # `maude design serve`, and sync-hardening.test.ts deletes the variable
+          # per-test so the gate itself stays covered.
+          MAUDE_SYNC_IN_CI: '1'
         # REQUIRED, and deliberately narrower than the full studio suite. The
         # file plane is the newest and least-exercised code in the tree and it
         # carries data custody over a transport the threat model calls
@@ -182,6 +194,8 @@ jobs:
         run: cd apps/studio && bun install --frozen-lockfile
 
       - name: Full studio suite
+        env:
+          MAUDE_SYNC_IN_CI: '1' # see the required sync-lane step in the job above
         # Same dist clobber guard as the required sync lane above — this job
         # cannot fail the merge, but a clobbered bundle still has to be visible.
         run: |

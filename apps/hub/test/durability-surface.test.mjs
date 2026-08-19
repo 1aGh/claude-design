@@ -39,9 +39,35 @@ function seedDataDir(dir) {
   return dir;
 }
 
-/** Wait for `onStatus` to fire once, then stop the schedule. */
+/**
+ * Wait for `onStatus` to fire once, then stop the schedule.
+ *
+ * KEEP THE EVENT LOOP ALIVE WHILE WAITING. `scheduleBackups` ends with
+ * `timer.unref()` — correct in production, where a backup interval must never
+ * be the reason a hub process refuses to exit — but it means the only thing
+ * this promise is waiting on does NOT hold the loop open. With nothing else
+ * pending, node drains the loop inside the 15 ms window and the test dies as
+ * `cancelledByParent` / "Promise resolution is still pending but the event loop
+ * has already resolved". That race was won on macOS/Node 24 and lost on
+ * Linux/Node 22 — three green runs locally, three reds in CI, same commit.
+ *
+ * So the wait holds its own REF'd timer. The fix belongs here and not in
+ * `backup.mjs`: a test must not depend on ambient loop activity it did not ask
+ * for, and un-unref'ing the production timer to make a test pass would trade a
+ * flaky test for a hub that will not shut down.
+ */
 function firstStatus({ dataDir, target }) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    // Ref'd on purpose (no .unref()) — this is the handle that keeps us alive.
+    const keepAlive = setInterval(() => {}, 1000);
+    const done = (fn, v) => {
+      clearInterval(keepAlive);
+      fn(v);
+    };
+    const bail = setTimeout(
+      () => done(reject, new Error('firstStatus: onStatus never fired')),
+      10_000
+    );
     const stop = scheduleBackups({
       dataDir,
       target,
@@ -49,7 +75,8 @@ function firstStatus({ dataDir, target }) {
       log: { log() {}, error() {} },
       onStatus: (s) => {
         stop();
-        resolve(s);
+        clearTimeout(bail);
+        done(resolve, s);
       },
     });
   });
