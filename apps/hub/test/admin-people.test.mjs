@@ -74,3 +74,57 @@ test('the one-time reveal is reused, not reimplemented', () => {
   const invite = ADMIN_JS.slice(ADMIN_JS.indexOf('person-invite-form'));
   assert.match(invite.slice(0, 1500), /showInvite\(/);
 });
+
+// The bug this pin exists for: the nav item, the panel, `loadPeople()` and the
+// count badge all shipped — and clicking People bounced straight back to
+// Overview, because `setView` reads `VIEW_TITLES[name]` and falls back to
+// `overview` on a missing key. Every assertion above passed the whole time.
+//
+// So presence is not reachability, and asserting markup exists says nothing
+// about whether a person can GET there. This checks the router instead, for
+// every nav item at once — the next view added without a title fails here
+// rather than in someone's browser.
+test('every nav item is reachable — setView has a title for it', () => {
+  const titles = ADMIN_JS.match(/const VIEW_TITLES = \{([\s\S]*?)\}/);
+  assert.ok(titles, 'VIEW_TITLES not found in app.js');
+  const known = new Set([...titles[1].matchAll(/^\s*([A-Za-z0-9_]+)\s*:/gm)].map((m) => m[1]));
+  const navItems = [...ADMIN_HTML.matchAll(/data-view="([a-z-]+)"/g)].map((m) => m[1]);
+  assert.ok(navItems.length >= 6, 'expected the sidebar nav to be parsed');
+  for (const view of new Set(navItems)) {
+    assert.ok(
+      known.has(view),
+      `nav item "${view}" has no VIEW_TITLES entry — setView sends it to overview`
+    );
+  }
+});
+
+// ── the invite panel's three lies (autonomous e2e, 2026-08-19) ──────────────
+// Each was found by driving the real console against a real hub, and each is a
+// source-level question, in this file's house style.
+
+test('Revoke calls the route the hub actually routes', () => {
+  // `DELETE /invites/<id>` is not a route. It 404'd, `api()` swallowed it, the
+  // row vanished on the reload that followed — and the link stayed redeemable.
+  assert.ok(
+    !/\/invites\/\$\{encodeURIComponent\(id\)\}`, \{ method: 'DELETE' \}/.test(ADMIN_JS),
+    'the console still tries DELETE /invites/<id>, which the hub does not route'
+  );
+  assert.match(ADMIN_JS, /'\/invites\/revoke'/);
+});
+
+test('only redeemable invites are listed as outstanding', () => {
+  // GET /invites returns every invite ever issued, each with a `status`.
+  assert.match(ADMIN_JS, /status === 'open'/);
+});
+
+test('the icon-only Revoke button carries an accessible name', () => {
+  assert.match(ADMIN_JS, /data-revoke=[\s\S]{0,200}aria-label="Revoke the invitation/);
+});
+
+test('an expiry is rendered as time REMAINING, not as an age', () => {
+  // `formatTime` measures how long ago something happened; an expiry a week
+  // out has a negative age, so it fell into the "< 60s" arm and every invite
+  // read "just now".
+  assert.match(ADMIN_JS, /function formatUntil/);
+  assert.match(ADMIN_JS, /formatUntil\(i\.expiresAt\)/);
+});

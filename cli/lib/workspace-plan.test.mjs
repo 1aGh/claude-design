@@ -476,7 +476,7 @@ test('.env values are quoted, and a newline in a secret is refused (F8)', () => 
   // A `$` must not be re-interpolated by compose, and a newline must not inject
   // an extra line that a re-run would then persist.
   const env = renderEnv(
-    envEntries(ok({ ...BASE, s3: { ...OIDC && S3, secretAccessKey: 'a$b' } }), {
+    envEntries(ok({ ...BASE, s3: { ...(OIDC && S3), secretAccessKey: 'a$b' } }), {
       hubSecret: 'x',
       adminPassword: 'y'.repeat(12),
     })

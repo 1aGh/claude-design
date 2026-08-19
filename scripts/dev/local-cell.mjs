@@ -328,7 +328,22 @@ async function main() {
     HUB_WORKSPACE_MODE: '1',
     MAUDE_REPO_DIR: repoDir,
     MAUDE_DESIGN_ROOT: '.design',
-    HUB_PUBLIC_URL: `http://127.0.0.1:${port}`,
+    // THE ADDRESS THE PERSON IS ACTUALLY AT — not the bound one.
+    //
+    // `upstreamHeaders` DROPS the incoming Host ("identity comes from
+    // configuration", D4) and sets `host` from this URL, so this value IS what
+    // the studio child believes it is. `sameOriginWrite` then compares the
+    // browser's Origin against that host — bare, with no env in the middle.
+    //
+    // Pointing this at loopback while telling people to browse
+    // `studio.cell.localhost` (as the banner below does, because the canvas
+    // capability cookie is SameSite=Strict and 127.0.0.1 is a different site)
+    // makes those two hosts disagree on every request. Reads are unaffected, so
+    // the rig looks healthy right up until the first write: creating a canvas or
+    // a folder answered `403 cross-origin write rejected`, which reads as broken
+    // creation rather than as a hostname mismatch. Naming the customer-facing
+    // host here is exactly what D4 asks for.
+    HUB_PUBLIC_URL: `http://studio.cell.localhost:${port}`,
     HUB_INSECURE_HTTP: '1',
     // Object storage as a directory — the journal tail, the backup generations
     // and the restore drill all run their real code paths against it.

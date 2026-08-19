@@ -30,6 +30,14 @@ export interface CanvasArtifact {
    *  see DDR-115). Informational only; callers don't need to branch on it
    *  today, but it keeps the taxonomy legible at the one place it's listed. */
   versioned: boolean;
+  /**
+   * May this artifact follow the canvas to a new path? Absent means yes.
+   *
+   * Only the `.ydoc.bin` cache says no, and for a specific reason — see the
+   * comment at its entry. A `false` here means the mover DELETES it rather than
+   * renaming it: it belongs to the slug that is going away.
+   */
+  carryOnMove?: boolean;
 }
 
 /**
@@ -85,10 +93,23 @@ export function canvasArtifacts(input: { rel: string; paths: Paths }): CanvasArt
   });
   out.push({
     // collab/persistence.ts ydocBinPath — the `.ydoc.bin` cache under `_state/`.
+    //
+    // DROPPED ON A MOVE, NEVER CARRIED (`carryOnMove: false`). This file is the
+    // OLD document's CRDT state, and a move's last act before the rename is to
+    // stamp that document retired (`retireForMove` → `movedTo`) and flush it —
+    // so carrying it to the new slug hands the NEW document a cache whose first
+    // word is "I have moved away". Every peer that opened it released the canvas
+    // as retired, the destination path therefore never appeared anywhere else,
+    // and the move looked like "folders don't sync": each machine showed its own
+    // move and the other's canvas still sitting at the root.
+    //
+    // Nothing is lost by dropping it. `flushAndDropRoom` has already written the
+    // canvas to disk, and the new document is seeded from those bytes.
     abs: path.join(paths.designRoot, '_state', `${slug}.ydoc.bin`),
     kind: 'slug-keyed',
     rekey: true,
     versioned: false,
+    carryOnMove: false,
   });
   out.push({
     // Versioned — a real git rename on move, which is correct and expected.

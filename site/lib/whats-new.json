@@ -1,7 +1,25 @@
 {
-  "generated": "2026-08-18T15:49:15.305Z",
+  "generated": "2026-08-19T09:06:45.495Z",
   "version": "0.60.7",
   "entries": [
+    {
+      "id": "moving-a-canvas-reaches-every-machine",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "surface": "design-ui",
+      "title": "Moving a canvas reaches every machine",
+      "summary": "Moving a canvas into a folder now shows up everywhere, instead of only on the machine that moved it. Canvases made on one machine also stop arriving blank or reverting when you edit them somewhere else."
+    },
+    {
+      "id": "durable-backups-for-every-file",
+      "version": null,
+      "date": null,
+      "kind": "improvement",
+      "surface": "design-ui",
+      "title": "Every file in a cloud project is backed up now",
+      "summary": "Cloud-hosted projects now keep a durable copy of every file — design-system stylesheets, shared modules, fonts, and images anywhere in the folder, not just top-level assets. A project that restarts in the cloud comes back whole instead of missing its styling."
+    },
     {
       "id": "the-whole-design-folder-syncs",
       "version": null,

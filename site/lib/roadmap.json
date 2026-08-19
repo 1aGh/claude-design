@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-18T18:20:05.331Z",
+  "generated": "2026-08-19T09:23:15.704Z",
   "currentPhase": null,
   "phases": [
     {
@@ -2127,7 +2127,7 @@
     },
     {
       "id": "feature-production-grade-hardening",
-      "title": "Feature: Production-grade hardening & decomposition (the stack stays)",
+      "title": "Feature: v1.0.0 gate-set — production-grade hardening, re-scoped to what gates the tag",
       "status": "planned",
       "shipTarget": null,
       "date": null,
@@ -2144,6 +2144,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/feature-video-tracking-and-stabilization.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-post-1.0-hardening-backlog",
+      "title": "Feature: post-1.0 hardening backlog (deferred 4-0 from the v1.0.0 gate)",
+      "status": "icebox",
+      "shipTarget": "ICEBOX",
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/feature-post-1.0-hardening-backlog.md",
       "archived": false,
       "phaseKey": null
     }

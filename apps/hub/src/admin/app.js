@@ -83,6 +83,20 @@ function formatUptimeShort(ms) {
   return `${Math.floor(h / 24)}d`;
 }
 
+/**
+ * A timestamp in the FUTURE — an expiry. `formatTime` measures how long ago
+ * something happened, so a negative age fell into its `< 60s` arm and every
+ * invite's EXPIRES column read "just now" for a link good for another week.
+ */
+function formatUntil(ts) {
+  if (!ts) return '—';
+  const left = ts - Date.now();
+  if (left <= 0) return 'expired';
+  if (left < 3_600_000) return `in ${Math.max(1, Math.floor(left / 60_000))}m`;
+  if (left < 86_400_000) return `in ${Math.floor(left / 3_600_000)}h`;
+  return `in ${Math.floor(left / 86_400_000)}d`;
+}
+
 function formatTime(ts) {
   if (!ts) return '—';
   const d = new Date(ts);
@@ -467,15 +481,21 @@ function renderPeople(u, inv) {
   }
 
   const ibody = $('invites-rows');
-  const outstanding = inv?.invites ?? [];
+  // "Outstanding" means REDEEMABLE. The route returns every invite it has ever
+  // issued, each carrying a `status` — listing the used and revoked ones told
+  // the operator that a spent link was still open, and inflated the People
+  // badge with rows nobody can act on.
+  const outstanding = (inv?.invites ?? []).filter(
+    (i) => !i.status || i.status === 'open' || i.status === 'pending'
+  );
   ibody.innerHTML = outstanding.length
     ? outstanding
         .map((i) => {
           const email = escapeHtml(i.email ?? '(any)');
           return (
             `<tr><td>${email}</td><td>${escapeHtml(i.role ?? 'member')}</td>` +
-            `<td class="td-num">${escapeHtml(formatTime(i.expiresAt))}</td>` +
-            `<td class="td-act"><button class="btn btn--danger btn--sm" data-revoke="${escapeHtml(i.id)}"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button></td></tr>`
+            `<td class="td-num">${escapeHtml(formatUntil(i.expiresAt))}</td>` +
+            `<td class="td-act"><button class="btn btn--danger btn--sm" data-revoke="${escapeHtml(i.id)}" title="Revoke this invitation" aria-label="Revoke the invitation for ${email}"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button></td></tr>`
           );
         })
         .join('')
@@ -510,7 +530,16 @@ async function resetPassword(email) {
 }
 
 async function revokeInvite(id) {
-  await api(`/invites/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  // POST /invites/revoke {id} — NOT `DELETE /invites/<id>`, which the hub does
+  // not route. It answered 404 and `api()` swallowed it, so the button looked
+  // like it worked (the row even vanished on the reload that followed) while
+  // the link stayed redeemable. An invite you cannot cancel is the one thing
+  // this panel must never be wrong about.
+  await api('/invites/revoke', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ id }),
+  });
   await loadPeople();
 }
 
@@ -689,9 +718,16 @@ async function loadSettings() {
 
 // -------------------------------- nav -------------------------------------
 
+// EVERY nav item needs an entry here, not just a title: `setView` treats a
+// missing key as an unknown view and falls back to `overview`. Track B shipped
+// the People nav item, the panel, `loadPeople()` and the count badge without
+// this line, so the whole view was unreachable — the button worked, the count
+// was right, and the click bounced you straight back. `admin-static.test.mjs`
+// asserts every nav item's REACHABILITY against this map for that reason.
 const VIEW_TITLES = {
   overview: 'Overview',
   peers: 'Peers',
+  people: 'People',
   tokens: 'Access tokens',
   canvases: 'Synced canvases',
   activity: 'Activity',

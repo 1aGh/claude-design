@@ -75,6 +75,23 @@ export interface MigrateSeedOptions {
   journal?: SyncJournal;
   /** DDR-102 — body snapshot writer (history.ts), same contract as the agent's. */
   snapshot?: (content: string, reason: 'pre-sync-local' | 'pre-sync-hub') => Promise<string | null>;
+  /**
+   * Does the HUB hold state for this slug, per its last document listing?
+   *
+   * `docIsEmpty` asks the local replica, and an empty replica has two
+   * completely different meanings: "the hub has never seen this canvas" (adopt
+   * — the local file is the only copy) and "the hub's state has not landed in
+   * this replica YET" (do nothing — it is on its way). Adopting in the second
+   * case is the DDR-102 F1 concurrent cold-seed collision: both peers
+   * clear-and-rebuild their own replica from a file with the same bytes, and
+   * because the two runs carry different client ids the CRDT merge
+   * CONCATENATES them — the canvas ends up with its body twice on every peer.
+   *
+   * The listing is the only enumeration a peer has, so it is also the only way
+   * to tell the two cases apart before writing. Absent ⇒ treated as "the hub
+   * does not have it", which is the pre-existing behaviour.
+   */
+  hubHasState?: (slug: string) => boolean;
   /** DDR-102 — divergence notification, same contract as the agent's. */
   onConflict?: (info: {
     slug: string;
@@ -100,7 +117,11 @@ export type MigrateSeedResult =
   | 'recover-seed-dup'
   /** DDR-102 — divergence resolved newest-wins. */
   | 'conflict-local-wins'
-  | 'conflict-hub-wins';
+  | 'conflict-hub-wins'
+  /** The replica is empty but the HUB is not — its state is still in flight.
+   *  Seeding here is the F1 collision (see `hubHasState`), so this seed does
+   *  nothing and lets the document arrive. */
+  | 'defer-hub-state';
 
 /** True when the shared doc holds no synced content for any of the five types. */
 export function docIsEmpty(doc: Y.Doc): boolean {
@@ -130,6 +151,26 @@ export async function migrateSeed(opts: MigrateSeedOptions): Promise<MigrateSeed
   // a single MIGRATION transaction. The apply* codecs delete-then-insert, so
   // this is a clear+rebuild (re-running is a no-op once content matches).
   if (docIsEmpty(doc)) {
+    // AN EMPTY REPLICA IS NOT AN EMPTY HUB. See `hubHasState` — on a cell the
+    // hub's workspace agent writes every document onto the checkout, so the
+    // studio child scans up a file whose document the hub already owns. Seeding
+    // from it doubles the body on every peer.
+    if (opts.hubHasState?.(slug)) {
+      // SNAPSHOT BEFORE STANDING ASIDE. Deferring means the local body never
+      // enters the doc — so when the hub's state does arrive, the projection
+      // writes it over this file with no `pre-sync-local` copy behind it and no
+      // conflict recorded, because both live in the non-empty branch this
+      // return skips. The adopt path it replaced could not lose the local body:
+      // it was inside the merge. One snapshot buys back the recoverability.
+      if (localHtml && opts.snapshot) {
+        try {
+          await opts.snapshot(localHtml, 'pre-sync-local');
+        } catch {
+          /* best-effort — history is a safety net, never a gate on syncing */
+        }
+      }
+      return 'defer-hub-state';
+    }
     const hasLocal =
       !!localHtml || !!localComments || !!localAnnotations || !!localMeta || !!localCss;
     if (!hasLocal) return 'empty';

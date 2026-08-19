@@ -40,13 +40,18 @@ import { type CanvasSyncAgent, createCanvasSyncAgent } from './agent.ts';
 import { isPushableAssetRel, pushAssets } from './asset-push.ts';
 import { atomicWrite } from './atomic-write.ts';
 import { type CellPairing, resolveCellPairing, sanitizeForLog } from './cell-pairing.ts';
-import { canvasPathFromDoc, movedToFromDoc, stampCanvasPath, stampMovedTo } from './codec.ts';
+import {
+  canvasPathFromDoc,
+  clearMovedTo,
+  movedToFromDoc,
+  stampCanvasPath,
+  stampMovedTo,
+} from './codec.ts';
 import {
   type ConnectionMonitor,
   createConnectionMonitor,
   type ProviderStatus,
 } from './connection-state.ts';
-
 import { createCtlProvider } from './ctl-provider.ts';
 import { createRescanScheduler, diffCanvasSet, type RescanScheduler } from './discovery.ts';
 import { createDocNameResolver } from './doc-name.ts';
@@ -55,6 +60,7 @@ import { createFileLedger } from './file-ledger.ts';
 import { createFilePlane } from './file-plane.ts';
 import { type FilePullResult, pullFiles } from './file-pull.ts';
 import { createFsReader, type FsReader } from './fs-mirror.ts';
+import { type HubDocRow, hubHolds, indexHubDocs } from './hub-listing.ts';
 import { getHubRecord } from './hubs-config.ts';
 import { loadJournal, type SyncJournal } from './journal.ts';
 import { hasLedger, hubCapabilities } from './journal-client.ts';
@@ -1033,6 +1039,95 @@ export function createSyncRuntime(
   const retiredDocs = new Set<string>();
 
   /**
+   * What the hub's last listing said each document HOLDS, in bytes.
+   *
+   * The one fact that separates "this canvas is mine and the hub has never
+   * heard of it" from "this canvas is the hub's, already written to my disk by
+   * something else". On a cell BOTH are true of a brand-new file: the hub's
+   * workspace agent projects every document onto the checkout, and the studio
+   * child then scans that checkout and finds a canvas it has no descriptor for.
+   * Seeding the doc from it is the DDR-102 F1 collision — two machines each
+   * clear-and-rebuild their own replica, and the merge CONCATENATES the two
+   * runs, so the body arrives doubled (two `export default`s, `0 ARTBOARDS`)
+   * on every peer. Consulted by the adopt guard in `migrateSeed`.
+   */
+  let hubDocIndex: ReadonlyMap<string, number> = new Map<string, number>();
+
+  /**
+   * Slugs whose refusal has already asked for a rescan. Once per slug per
+   * process — see `nudgeRescanFor`, which fires on a REPEATING poll.
+   */
+  const rescanNudged = new Set<string>();
+
+  /**
+   * Slugs whose pull this runtime has refused. `retiredDocs` exists to stop a
+   * hub-listed document being re-fetched forever; a REFUSED one needs the same
+   * memo. Without it `releaseOne` drops the descriptor, the next poll sees the
+   * document as hub-only again, and every 20 s buys a full handshake plus a Y
+   * state transfer that ends in the same refusal — the churn shape that named
+   * `retiredDocs` in the first place, on a lane whose own comment says volume
+   * is a security property. Bounded like the sets beside it.
+   *
+   * Keyed slug → the path that blocked it, because the refusal is not forever:
+   * `admitPullTarget` refuses on a file that EXISTS, and a user may delete it.
+   * Re-checking that one path costs a `statSync`; re-checking by handshake costs
+   * a document transfer. So the memo is dropped the moment its reason is gone.
+   */
+  const refusedPulls = new Map<string, string>();
+
+  /** Distinct hub-invented names are not a budget this process pays forever. */
+  const NUDGE_MEMO_CAP = 512;
+
+  /**
+   * The hub is advertising a document we are not syncing, and there is a file
+   * in the way. Ask the scan.
+   *
+   * On a cell this is the ordinary case, not an edge one: the hub's workspace
+   * agent projects every document onto the checkout, so a canvas created on
+   * another machine arrives as a FILE this process never wrote. The chain that
+   * is supposed to notice — `fs:any` → `canvas-list-watch` → rescan — is driven
+   * by `fs.watch` on a desktop and by the ctl healer in a container, and the
+   * healer announces JOURNAL rows. A canvas body is not journaled (it is Plane
+   * A), so in a container nothing announced it and the child never adopted it:
+   * the canvas showed up in the tree, and an edit made to it in the cloud was
+   * silently reverted by the hub's next projection, because no provider on this
+   * side was carrying the change up.
+   *
+   * The refusal itself is the signal — it means "a file is already there" — and
+   * `scanCanvases` is the authority on whether that file belongs in the sync
+   * set (`syncable: false` and the sandbox gate are ITS rules, so a genuinely
+   * opted-out canvas stays out and simply refuses again next poll).
+   */
+  const nudgeRescanFor = (slug: string): void => {
+    if (rescanNudged.has(slug) || rescanNudged.size >= NUDGE_MEMO_CAP) return;
+    rescanNudged.add(slug);
+    discoveryRescan?.schedule();
+  };
+
+  /**
+   * Record one listing's byte counts, keyed by the FULL document name.
+   *
+   * NOT by slug. `slugFromDocName` strips `ws/<workspace>/<branch>/`, and this
+   * map answers "does the hub hold MY document" — so a flattened key makes a
+   * `hero` on `main` answer for a DIFFERENT peer's `hero` on `feat/x`, which
+   * defers that peer's seed forever while logging that state is on its way.
+   * Nothing would be coming. A peer token is commonly `scope: '*'`, so one
+   * listing spans every namespace on the hub and no hostile hub is required —
+   * one member creating a same-named canvas on another branch is enough.
+   * `diffRemoteDocs`, twelve lines below, compares namespaced names for exactly
+   * this reason; one input must not have two key spaces.
+   *
+   * A FAILED listing leaves the previous answer standing rather than clearing
+   * it: an empty map means "the hub holds nothing", which re-opens the DDR-102
+   * F1 doubling this guard exists to close — and it would be re-opened by the
+   * party the guard defends against simply refusing to answer.
+   */
+  const noteHubListing = (docs: readonly HubDocRow[] | null): void => {
+    if (docs === null) return;
+    hubDocIndex = indexHubDocs(docs);
+  };
+
+  /**
    * A retired document arrived (another machine moved this canvas): release
    * the canvas and QUARANTINE the stale local copy into `_trash/` — never
    * unlink, the DDR-102 recoverability spine. Safe against a plain deletion
@@ -1058,6 +1153,17 @@ export function createSyncRuntime(
       const contained =
         newAbs === ctx.paths.designRoot || newAbs.startsWith(ctx.paths.designRoot + path.sep);
       if (!contained) return; // hostile path — never act on it
+      // A DOCUMENT THAT MOVED TO WHERE IT ALREADY IS DID NOT MOVE.
+      //
+      // `retireForMove` stamps the OLD slug's doc, and the moved file is then
+      // adopted under the NEW slug — whose doc carries the same `movedTo`, now
+      // pointing at its own path. Without this guard the receiver reads that as
+      // "this canvas moved elsewhere", waits for the destination (it exists —
+      // it IS the destination), and parks the file it just created. The canvas
+      // vanishes from the UI on the very machine that moved it, on both sides,
+      // and the trash entry is named after the NEW slug — which is what makes
+      // the logs read as a delivery failure rather than as self-deletion.
+      if (desc.html && path.resolve(desc.html) === newAbs) return;
       const deadline = Date.now() + 60_000;
       while (!existsSync(newAbs) && Date.now() < deadline && !stopped) {
         await new Promise((r) => setTimeout(r, 1_000));
@@ -1254,6 +1360,7 @@ export function createSyncRuntime(
       const slug = slugFromDocName(stone.name);
       if (slug) tombstoned.add(slug);
     }
+    noteHubListing(remoteListing?.documents ?? null);
     const remoteDiff = diffRemoteDocs(
       localCanvases.map((c) => docNameFor(c.slug)),
       remoteListing?.documents ?? null
@@ -1834,16 +1941,55 @@ export function createSyncRuntime(
       // its canvas moved to a new path in a new document. Seen here mostly by
       // a machine that pulled the project down after the move: connect, learn
       // the fact, let go. The watcher handles a stale local copy.
-      if (movedToFromDoc(provider.document) !== null) {
-        // Remembered, so the remote pull never fetches this document again —
-        // logging this line every 20 s forever was the symptom that found the
-        // churn.
-        retiredDocs.add(canvas.slug);
-        console.log(
-          `[sync/${canvas.slug}] document is retired (canvas moved to ${movedToFromDoc(provider.document)}) — releasing.`
+      const movedTo = movedToFromDoc(provider.document);
+      if (movedTo !== null) {
+        // A DOCUMENT THAT SAYS IT MOVED TO WHERE IT ALREADY IS DID NOT MOVE.
+        //
+        // The stamp lives inside the document, and a move renames the canvas's
+        // `_state/<slug>.ydoc.bin` cache onto the new slug — so the NEW document
+        // opened with the OLD one's last word, "I have moved away". Every peer
+        // released it as retired, the destination path never appeared anywhere
+        // but on the machine that did the move, and the whole thing read as
+        // "folders don't sync": each side showed its own move and the other's
+        // canvas still at the root. `canvas-artifacts.ts` stops producing this
+        // (the cache is dropped, not carried); clearing the stamp is what
+        // REPAIRS the trees that already have it, and because it is a doc edit
+        // the correction reaches every peer that believed it.
+        const movedAbs = path.resolve(
+          ctx.paths.designRoot,
+          movedTo.replace(/\\/g, '/').replace(/^\/+/, '')
         );
-        void onRetirementSeen(canvas.slug);
-        return;
+        // ONLY A LOCAL DESCRIPTOR MAY BE REPAIRED. For a PULLED canvas
+        // `canvas.html` is the provisional slug-derived target, not a path this
+        // disk chose — and `relocatePulled` returns early for a retired document,
+        // so it never went through `resolvePulledTarget`, the `canvas-path.ts`
+        // rules, or the re-ask of `admitPullTarget`. A hub picks the document
+        // NAME (hence that provisional path) and writes `movedTo`, so it would
+        // control BOTH sides of this equality — turning a repair into a write to
+        // an unvalidated path, which is the resurrection primitive the retirement
+        // release exists to deny. The repair is for the machine that did the
+        // move, whose descriptor came from its own scan.
+        if (
+          !pulledSlugs.has(canvas.slug) &&
+          canvas.html &&
+          path.resolve(canvas.html) === movedAbs
+        ) {
+          if (clearMovedTo(provider.document, ORIGINS.MIGRATION)) {
+            console.log(
+              `[sync/${canvas.slug}] this document is stamped as moved to its OWN path — clearing the stale retirement and keeping the canvas.`
+            );
+          }
+        } else {
+          // Remembered, so the remote pull never fetches this document again —
+          // logging this line every 20 s forever was the symptom that found the
+          // churn.
+          retiredDocs.add(canvas.slug);
+          console.log(
+            `[sync/${canvas.slug}] document is retired (canvas moved to ${movedTo}) — releasing.`
+          );
+          void onRetirementSeen(canvas.slug);
+          return;
+        }
       }
       clearRejection(canvas.slug);
       // Not `connected` yet — the reconcile below is what makes that true. But
@@ -1875,9 +2021,15 @@ export function createSyncRuntime(
             }
           },
           onConflict: (info) => store.addConflict(info),
+          hubHasState: (slug) => hubHolds(hubDocIndex, docNameFor(slug)),
         });
         if (result === 'local-adopt') {
           console.log(`[sync/${canvas.slug}] shared-doc: adopted local state (hub was empty).`);
+        } else if (result === 'defer-hub-state') {
+          console.log(
+            `[sync/${canvas.slug}] shared-doc: not seeding — the hub already holds this ` +
+              'document; waiting for its state to arrive.'
+          );
         } else if (result === 'conflict-local-wins' || result === 'conflict-hub-wins') {
           console.warn(
             `[sync/${canvas.slug}] shared-doc: diverged — kept the ${
@@ -1982,13 +2134,13 @@ export function createSyncRuntime(
       canvas: CanvasDescriptor,
       canvasPaths: import('./agent.ts').CanvasSyncPaths,
       doc: Y.Doc
-    ): void => {
-      if (!pulledSlugs.has(canvas.slug)) return;
+    ): boolean => {
+      if (!pulledSlugs.has(canvas.slug)) return true;
       // A retired document (codec stampMovedTo) is not a canvas to place — its
       // content lives at the new path in a different document. Deciding a
       // location here would materialise a ghost on a machine pulling the
       // project down fresh; handleSynced releases it a moment later.
-      if (movedToFromDoc(doc) !== null) return;
+      if (movedToFromDoc(doc) !== null) return true;
       const resolved = resolvePulledTarget({
         slug: canvas.slug,
         path: canvasPathFromDoc(doc),
@@ -2004,7 +2156,17 @@ export function createSyncRuntime(
         allowUndeclaredGroup: pathOpts.allowUndeclaredGroup && !strictPullSlugs.has(canvas.slug),
         onRefused: (reason) => pathOpts.onRefused(canvas.slug, reason),
       });
-      if (!resolved) return;
+      // A DOCUMENT WHOSE PATH WAS REFUSED IS NOT A DOCUMENT TO WRITE SOMEWHERE
+      // ELSE. Falling through here left the descriptor on the PROVISIONAL
+      // target — `<group>/<rest-of-slug>.tsx` — and the reconcile below then
+      // materialised the document there. Since `canvasSlugFromRel` is lossy
+      // (`ui/Desk A.tsx` → `ui-desk_a`), that provisional name is a DIFFERENT
+      // file from the one the document names, so the peer ended up holding the
+      // canvas twice: `ui/Desk A.tsx` (correct) and `ui/desk_a.tsx` (a ghost).
+      // Both then flatten to one slug, which is a collision — and a collision
+      // takes the canvas OUT of sync on that machine entirely. The refusal has
+      // to end the pull, not redirect it.
+      if (!resolved) return false;
 
       // NEVER ONTO A FILE THAT ALREADY EXISTS.
       //
@@ -2018,7 +2180,7 @@ export function createSyncRuntime(
       // let a hub overwrite exactly the canvas the user opted OUT of syncing.
       // The same admission the provisional target already passed, re-asked of
       // the destination the document actually chose.
-      if (resolved.fromPath && !admitPullTarget(ctx, canvas.slug, resolved.bodyAbs)) return;
+      if (resolved.fromPath && !admitPullTarget(ctx, canvas.slug, resolved.bodyAbs)) return false;
       // The TOP-level component only — `canvasGroups` names a group, not every
       // folder inside it (`ui/2026/social/x.tsx` declares `ui`). A body that
       // landed at the design root has no group and teaches nothing.
@@ -2026,7 +2188,7 @@ export function createSyncRuntime(
         .relative(ctx.paths.designRoot, resolved.bodyAbs)
         .split(path.sep);
       if (group && rest.length > 0) noteLearnedGroup(group);
-      if (resolved.bodyAbs === canvas.html) return;
+      if (resolved.bodyAbs === canvas.html) return true;
       const next = descriptorFor(canvas.slug, resolved.bodyAbs);
       // Mutated in place: the descriptor and the paths object are already held
       // by the status surfaces and by the setup closure below, and handing them
@@ -2048,6 +2210,7 @@ export function createSyncRuntime(
       // One small write per relocation is the right price for a marker that is
       // never wrong.
       markUntrusted();
+      return true;
     };
 
     const connectCanvas = async (
@@ -2151,7 +2314,17 @@ export function createSyncRuntime(
       // Cold-start reconcile fires once the provider has hub state.
       const synced = provider.onceSynced().then(() => {
         if (deferSetup) {
-          relocatePulled(canvas, canvasPaths, provider.document);
+          // Abandon before `setup?.()`, so no projection and no agent is ever
+          // built for a canvas we are not going to place — nothing exists that
+          // could flush the document onto the provisional path on the way out.
+          if (!relocatePulled(canvas, canvasPaths, provider.document)) {
+            pulledSlugs.delete(canvas.slug);
+            if (canvas.html) refusedPulls.set(canvas.slug, canvas.html);
+            // The document names a path we would not write to — which on a cell
+            // usually means the file is already there. See `nudgeRescanFor`.
+            nudgeRescanFor(canvas.slug);
+            return releaseOne(canvas.slug).then(() => undefined);
+          }
           setup?.(provider);
         }
         return runHandleSynced(canvas, canvasPaths, provider);
@@ -2553,6 +2726,7 @@ export function createSyncRuntime(
       // immediately pulled back — the resurrection this lane exists to end,
       // reintroduced inside one tick.
       await applyTombstones(listing.tombstones);
+      noteHubListing(listing.documents);
       const diff = diffRemoteDocs(
         [...descriptors.keys()].map((slug) => docNameFor(slug)),
         listing.documents
@@ -2575,7 +2749,20 @@ export function createSyncRuntime(
         // A canvas the project deleted is not a canvas to fetch, even while the
         // hub is still listing it — see `tombstoned`.
         .filter((t) => !tombstoned.has(t.slug))
-        .filter((t) => admitPullTarget(ctx, t.slug, t.bodyAbs))
+        .filter((t) => {
+          // The reason is gone ⇒ so is the memo. See `refusedPulls`.
+          const blocker = refusedPulls.get(t.slug);
+          if (blocker === undefined) return true;
+          if (existsSync(blocker)) return false;
+          refusedPulls.delete(t.slug);
+          return true;
+        })
+        .filter((t) => {
+          if (admitPullTarget(ctx, t.slug, t.bodyAbs)) return true;
+          refusedPulls.set(t.slug, t.bodyAbs);
+          nudgeRescanFor(t.slug);
+          return false;
+        })
         .filter((t) => admitPulledBody(t.slug, t.bodyAbs));
       const fresh = admitted
         .filter((t) => !agents.has(t.slug) && !projections.has(t.slug) && !providers.has(t.slug))

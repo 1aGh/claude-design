@@ -60,6 +60,37 @@ describe('/_api/fs-move — POST round-trip', () => {
     }
   });
 
+  // THE `.ydoc.bin` CACHE IS THE ONE ARTIFACT THAT MUST NOT FOLLOW.
+  //
+  // It is the OLD document's CRDT state, and the move's last act before the
+  // rename is to stamp that document retired (`movedTo`) and flush it. Carried
+  // over, the NEW document opens with the old one's last word — "I have moved
+  // away" — so every peer releases the canvas as retired instead of syncing it.
+  // Reported from a live pair as "folders don't sync": each machine showed its
+  // own move and the other machine's canvas still sitting at the root.
+  test("the old slug's .ydoc.bin cache is dropped, never carried to the new slug", async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      const created = await createBoard(port, 'Cached');
+      const fromSlug = created.slug;
+      mkdirSync(join(designRoot, '_state'), { recursive: true });
+      writeFileSync(join(designRoot, '_state', `${fromSlug}.ydoc.bin`), 'STAMPED-RETIRED');
+
+      const r = await move(port, created.rel, 'ui/sub');
+      expect(r.status).toBe(200);
+      const j = (await r.json()) as { toSlug: string; moved: string[] };
+
+      expect(existsSync(join(designRoot, '_state', `${fromSlug}.ydoc.bin`))).toBe(false);
+      expect(existsSync(join(designRoot, '_state', `${j.toSlug}.ydoc.bin`))).toBe(false);
+      // And it is not claimed as relocated in the forensic list either.
+      expect(j.moved.some((m) => m.includes('.ydoc.bin'))).toBe(false);
+    } finally {
+      await killProc(proc);
+    }
+  });
+
   test('full re-key: history, canvas-state view, comments, annotations, locator all follow the move', async () => {
     const { root, designRoot } = makeSandbox();
     const port = nextPort();

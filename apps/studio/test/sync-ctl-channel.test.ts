@@ -277,6 +277,54 @@ describe('createCtlHealer — poke ⇒ journal ⇒ fs:any', () => {
     expect(emitted).toEqual([]);
   });
 
+  // THE HOLE THE FIRST-POKE BASELINE LEFT. The hub pokes only when the journal
+  // APPENDS, so the first poke a freshly booted child sees is itself a change
+  // it has never seen — and adopting its head as the baseline swallowed it.
+  // On a cell that is "the first asset a peer delivered after boot never
+  // healed the open canvas", which reads exactly like a dead channel.
+  test('anchor() takes the baseline from the head, so the first poke is a real read', async () => {
+    const emitted: string[] = [];
+    const { fetchImpl, asked } = journalServer([
+      { epoch: 'e', head: 5, entries: [] },
+      {
+        epoch: 'e',
+        head: 6,
+        entries: [
+          {
+            seq: 6,
+            path: 'assets/late.png',
+            sha256: 'c'.repeat(64),
+            size: 1,
+            class: 'inert-media',
+          },
+        ],
+      },
+    ]);
+    const healer = createCtlHealer({
+      ...base,
+      emit: (r) => emitted.push(r),
+      fetchImpl,
+      log: silent,
+      debounceMs: 0,
+    });
+    await healer.anchor();
+    healer.onPoke(6);
+    await healer.drain();
+
+    expect(emitted).toEqual(['assets/late.png']);
+    expect(asked[1]).toContain('since=5');
+  });
+
+  test('anchor() never overrules a cursor a poke already set', async () => {
+    const { fetchImpl } = journalServer([{ epoch: 'e', head: 99, entries: [] }]);
+    const healer = createCtlHealer({ ...base, emit: () => {}, fetchImpl, log: silent });
+    healer.onPoke(5);
+    await healer.anchor();
+    // Still anchored at 5 — a poke at 5 is noise, and one above it is a read.
+    healer.onPoke(5);
+    expect(healer.ignored()).toBe(1);
+  });
+
   test('a later poke reads the journal and announces each path', async () => {
     const emitted: string[] = [];
     const { fetchImpl, asked } = journalServer([
@@ -317,15 +365,40 @@ describe('createCtlHealer — poke ⇒ journal ⇒ fs:any', () => {
     expect(asked[1]).toContain('epoch=e');
   });
 
-  test('a poke at or below the cursor is counted and ignored', async () => {
+  test('a poke AT the cursor is counted and ignored', async () => {
     const { fetchImpl, asked } = journalServer([{ epoch: 'e', head: 5, entries: [] }]);
     const healer = createCtlHealer({ ...base, emit: () => {}, fetchImpl, log: silent });
     healer.onPoke(5);
     healer.onPoke(5);
+    await healer.drain();
+    expect(healer.ignored()).toBe(1);
+    expect(asked).toEqual([]);
+  });
+
+  // A BACKWARD head is the one thing "at or below" must not swallow: an epoch
+  // rotation, a compaction and a restore-from-backup all move the head down, and
+  // they are exactly what `reanchor` was written to recover from — so the old
+  // rule made that recovery unreachable from the states it existed for, and a
+  // cursor parked above the log left the healer deaf for good. The cursor is not
+  // moved on the poke's word (a coalesced frame can carry a stale head); the
+  // journal is asked, and its own `since > head` rule answers.
+  test('a poke BELOW the cursor asks the journal instead of being ignored', async () => {
+    const { fetchImpl, asked } = journalServer([
+      { epoch: 'e2', head: 2, reanchor: true, reason: 'cursor not in this log' },
+      { epoch: 'e2', head: 3, entries: [{ seq: 3, path: 'assets/a.png', class: 'inert-media' }] },
+    ]);
+    const healer = createCtlHealer({
+      ...base,
+      emit: () => {},
+      fetchImpl,
+      log: silent,
+      debounceMs: 0,
+    });
+    healer.onPoke(5);
     healer.onPoke(3);
     await healer.drain();
-    expect(healer.ignored()).toBe(2);
-    expect(asked).toEqual([]);
+    expect(asked.length).toBe(1);
+    expect(asked[0]).toContain('since=5');
   });
 
   test('a TOMBSTONE is not a heal — deletion is Increment 6', async () => {

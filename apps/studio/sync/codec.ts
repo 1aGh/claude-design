@@ -579,6 +579,27 @@ export function stampMovedTo(doc: Y.Doc, toRel: string, origin?: unknown): boole
   return true;
 }
 
+/**
+ * Un-retire a document that says it moved to where it already is.
+ *
+ * A move renames the canvas's artifacts onto the new slug, and the retirement
+ * stamp lives INSIDE the document — so any copy of the old document that reaches
+ * the new slug arrives pre-stamped "I have moved away", and every peer that
+ * opens it releases the canvas instead of syncing it. Clearing the stamp is the
+ * correction, and because it is a doc edit it travels to every peer that already
+ * believed the lie. The caller decides the "already is" part; this only writes.
+ */
+export function clearMovedTo(doc: Y.Doc, origin?: unknown): boolean {
+  const map = doc.getMap<unknown>(Y_SYNC_TYPES.syncMeta);
+  if (map.get('movedTo') === undefined) return false;
+  doc.transact(() => {
+    map.delete('movedTo');
+    map.delete('movedAt');
+    map.delete('movedBy');
+  }, origin);
+  return true;
+}
+
 /** Where a retired document says its canvas went, or null for a live one.
  *  UNTRUSTED — a consumer that turns this into a path must validate it the
  *  same way it validates `syncMeta.path`. Most consumers only need the

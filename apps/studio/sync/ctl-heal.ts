@@ -41,6 +41,18 @@ export interface CtlHealerOptions {
 export interface CtlHealer {
   /** A poke arrived. `head` is the hub's hint; the journal is the answer. */
   onPoke(head: number): void;
+  /**
+   * Set the baseline from the hub's CURRENT head, replaying nothing.
+   *
+   * Without this the cursor is adopted from the FIRST POKE — and the hub pokes
+   * only when the journal appends, so that first poke IS a change this child
+   * has not seen. Adopting its head as the baseline therefore swallowed exactly
+   * one change per boot: the first asset a peer delivered after a cell started
+   * never healed an open canvas, and looked like the channel was dead. Called
+   * once at attach; a failure is harmless (the first poke still anchors, as
+   * before).
+   */
+  anchor(): Promise<void>;
   /** Read now (tests; boot). Resolves once the pass is done. */
   drain(): Promise<void>;
   stop(): void;
@@ -116,6 +128,12 @@ export function createCtlHealer(opts: CtlHealerOptions): CtlHealer {
     }
 
     epoch = page.epoch;
+    // WHAT THIS PASS ACTUALLY ANNOUNCED. The counters exist but nothing reads
+    // them, so "the poke arrived but the canvas never repainted" was a question
+    // with no evidence on either side of it. One line per non-empty pass, named
+    // paths, capped — the receiving half of the "N poke(s) folded" line the
+    // sender already prints.
+    const announced: string[] = [];
     for (const entry of page.entries) {
       // A tombstone is not a heal — Increment 6 owns deletion, and emitting
       // `fs:any` for a vanished path would make the canvas layer look for a
@@ -124,9 +142,18 @@ export function createCtlHealer(opts: CtlHealerOptions): CtlHealer {
       try {
         opts.emit(entry.path);
         healed += 1;
+        announced.push(entry.path);
       } catch (err) {
         log.warn?.(`[sync/ctl] heal emit failed for ${entry.path}: ${(err as Error).message}`);
       }
+    }
+    if (announced.length > 0) {
+      const shown = announced.slice(0, 5).join(', ');
+      log.log?.(
+        `[sync/ctl] healed ${announced.length} path(s) from the journal: ${shown}${
+          announced.length > 5 ? `, +${announced.length - 5} more` : ''
+        }`
+      );
     }
     // Advance only over what we actually consumed. `truncated` means the next
     // pass has more, and the poke that follows (or the next drain) takes it.
@@ -166,8 +193,40 @@ export function createCtlHealer(opts: CtlHealerOptions): CtlHealer {
   }
 
   return {
+    async anchor(): Promise<void> {
+      if (stopped || cursor !== null) return;
+      const page = await fetchJournal({
+        hubUrl: opts.hubUrl,
+        token: opts.token,
+        since: 0,
+        epoch: null,
+        ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
+      });
+      // Unreachable → stay unanchored; `onPoke` still has the old fallback.
+      if (page === null || cursor !== null) return;
+      cursor = page.head;
+      epoch = page.epoch;
+    },
     onPoke(head: number): void {
       if (stopped) return;
+      // A HEAD BELOW THE CURSOR IS A QUESTION FOR THE JOURNAL, NOT NOISE.
+      //
+      // `reanchor` recovers from an epoch rotation, a compaction, or a
+      // restore-from-backup — and every one of those moves the head BACKWARD,
+      // which the "at or below the cursor is noise" rule below then swallowed.
+      // The recovery path was therefore unreachable from precisely the states it
+      // was written for, and a cursor parked above the log (an over-large head,
+      // honest or not) left the healer permanently deaf.
+      //
+      // We do NOT move the cursor here — a coalesced or reordered frame can
+      // carry a stale head, and trusting it would rewind a healthy cursor on the
+      // hub's say-so. We only ASK: `GET /api/journal` answers `reanchor` when
+      // `since > head` (its own rule), and the branch in `readOnce` then takes
+      // the new head and epoch from a page we actually read.
+      if (cursor !== null && Number.isFinite(head) && head < cursor) {
+        schedule();
+        return;
+      }
       if (cursor === null) {
         // First contact: adopt the hub's head as the baseline. Everything
         // before it is already on disk and already rendered.

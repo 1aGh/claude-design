@@ -80,6 +80,11 @@ export function startCellFileEvents(
     },
   });
 
+  // Baseline the heal cursor from the hub's head BEFORE the first poke — see
+  // `anchor`. Fire-and-forget: the studio must start whether or not the hub
+  // answers, and an unanchored healer still works the way it always did.
+  void healer.anchor();
+
   const provider = createCtlProvider({
     url: target.url,
     token: target.token,

@@ -75,6 +75,23 @@ describe('canvas-list-watch / isCanvasCandidate (pure gate)', () => {
     expect(isCanvasCandidate('node_modules/pkg/index.tsx', groups)).toBe(false);
   });
 
+  // Renaming or moving a folder from Finder / `mv` / a `git checkout` names the
+  // DIRECTORY, and that event used to be dropped here — so the tree kept showing
+  // the old folder and every canvas inside it silently stopped syncing (its
+  // descriptor pointed at a path that no longer existed) until an unrelated
+  // `.tsx` write happened to nudge the same recompute.
+  test('accepts a directory under a group — a folder rename is a list change', () => {
+    expect(isCanvasCandidate('ui/dbox2', groups)).toBe(true);
+    expect(isCanvasCandidate('ui/2026/social', groups)).toBe(true);
+    expect(isCanvasCandidate('system', groups)).toBe(true);
+  });
+
+  test('a directory still obeys every other rule', () => {
+    expect(isCanvasCandidate('ui/_drafts', groups)).toBe(false);
+    expect(isCanvasCandidate('node_modules/pkg', groups)).toBe(false);
+    expect(isCanvasCandidate('docs/whatever', groups)).toBe(false);
+  });
+
   test('rejects canvases outside any configured group', () => {
     expect(isCanvasCandidate('docs/Thing.tsx', groups)).toBe(false);
     expect(isCanvasCandidate('Thing.tsx', groups)).toBe(false);

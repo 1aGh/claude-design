@@ -105,6 +105,7 @@ import { createPhotoStore, PHOTO_EDIT_MAX_BYTES } from './photo-store.ts';
 import { probeReadiness } from './readiness.ts';
 import { getRuntimeBundle, packageForSlug } from './runtime-bundle.ts';
 import { currentSession } from './session-scope.ts';
+import { sanitizeForLog } from './sync/cell-pairing.ts';
 import { linkHub } from './sync/hub-link.ts';
 import { isHubReadOnly } from './sync/hubs-config.ts';
 import { signInToWorkspace, workspaceDisclosure } from './sync/workspace-signin.ts';
@@ -2324,6 +2325,22 @@ export function createHttp(
           { status: result.status, headers: { 'Cache-Control': 'no-store' } }
         );
       }
+      // WHO moved this file. A move is the one file-tree op that can make a
+      // canvas seem to vanish, and the receiving side's log only ever names the
+      // retirement — never the request that caused it. The caller (browser
+      // webview vs. a script) is the fact that separates "the sync runtime did
+      // something" from "someone asked for this".
+      // SCRUBBED, ALL THREE VALUES. The User-Agent is caller-controlled and this
+      // line's whole job is answering "who moved this canvas" — an unscrubbed
+      // one lets a caller forge a second, convincing `[fs-move]` line and defeat
+      // the record at exactly its own purpose (ANSI/ESC survives even where a
+      // header parser rejects CR/LF). `fromRel`/`toRel` are CONTAINED but not
+      // renderable: `moveCanvas` checks traversal and group membership, never
+      // control characters.
+      console.log(
+        `[fs-move] ${sanitizeForLog(result.fromRel)} → ${sanitizeForLog(result.toRel)} ` +
+          `(ua=${sanitizeForLog(req.headers.get('user-agent') || 'none').slice(0, 60)})`
+      );
       return Response.json(
         {
           ok: true,

@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "moving-a-canvas-reaches-every-machine",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "surface": "design-ui",
+      "title": "Moving a canvas reaches every machine",
+      "summary": "Moving a canvas into a folder now shows up everywhere, instead of only on the machine that moved it. Canvases made on one machine also stop arriving blank or reverting when you edit them somewhere else."
+    },
+    {
       "id": "durable-backups-for-every-file",
       "version": null,
       "date": null,

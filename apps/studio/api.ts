@@ -1888,6 +1888,17 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       // Trailing newline — consistent with canvas-create.ts + sync/codec.ts
       // (mergeSharedMetaIntoLocal), so a layout edit doesn't churn the newline.
       await Bun.write(metaAbs, `${JSON.stringify(next, null, 2)}\n`);
+      // Same reason as the annotations sidecar below, and the same bug: this
+      // lane writes the FILE and nothing else, so in a cell — where there is no
+      // `fs.watch` — the layout never entered the doc and never reached a peer.
+      // Not "late", NEVER: a canvas `.meta.json` is `canvas-owned`, so it is
+      // excluded from the journal by design and the walk-import belt behind
+      // every other class does not cover it either. Dragging an artboard in the
+      // cloud left every other machine showing the old position indefinitely,
+      // while the same drag on a laptop crossed in seconds (a laptop watcher
+      // fires) — which reads as "sync is broken one way" rather than as a
+      // missing announce.
+      announceWritten(path.relative(paths.designRoot, metaAbs));
     }
 
     // Return the merged view (shared meta + camera) — identical to GET, so the
@@ -3111,6 +3122,16 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     const moved: string[] = [path.relative(paths.repoRoot, toAbs)];
     for (const artifact of canvasArtifacts({ rel, paths })) {
       if (artifact.kind === 'primary') continue; // already moved above
+      if (artifact.carryOnMove === false) {
+        // The old slug's CRDT cache — carrying it would hand the new document
+        // the retirement stamp we just wrote. Drop it; the canvas is on disk.
+        // A FILE, not a tree: `recursive` would turn a future slug regression
+        // into a directory delete, and this path is only ever one cache file.
+        await rm(artifact.abs, { force: true }).catch((err) => {
+          console.warn(`[move] could not drop the stale doc cache: ${(err as Error).message}`);
+        });
+        continue;
+      }
       const dest = relocatedName(artifact, rel, toRel, paths);
       if (path.resolve(dest) === path.resolve(artifact.abs)) continue;
       try {
