@@ -9,11 +9,57 @@
  * Run: `pnpm test:e2e:desktop:build` (one-time / on source change) then
  *      `pnpm test:e2e:desktop`.
  */
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+
+// ── Specs that are NOT ours ───────────────────────────────────────────────
+// Each of these has a dedicated wdio.<name>.conf.ts that supplies env the spec
+// cannot run without (a stubbed control plane, a seeded git remote, a
+// first-run-clean home, a second browser target). Sweeping them into the
+// default `scenarios/**/*.e2e.ts` glob made `pnpm test:e2e:desktop` look like a
+// "run everything" command while actually running those seven under the WRONG
+// config — so they failed for missing env, not for a real defect.
+const DEDICATED: Record<string, string> = {
+  'acp-cold-start.e2e.ts': 'pnpm test:e2e:desktop:acp-cold-start',
+  'cloud-attach.e2e.ts': 'pnpm test:e2e:desktop:cloud',
+  'git-branch-switcher.e2e.ts': 'pnpm test:e2e:desktop:git',
+  'git-lifecycle.e2e.ts': 'pnpm test:e2e:desktop:lifecycle',
+  'git-switch-repos.e2e.ts': 'pnpm test:e2e:desktop:switchrepos',
+  'onboarding.e2e.ts': 'pnpm test:e2e:desktop:onboarding',
+  'shell-parity.e2e.ts': 'pnpm test:e2e:desktop:parity',
+};
+
+// Drift tripwire. Adding a wdio.<name>.conf.ts without listing its spec above
+// would silently put that spec back under this config — the exact bug this
+// block exists to fix — so fail loud at load time instead.
+{
+  const confs = readdirSync(HERE).filter((f) => /^wdio\..+\.conf\.ts$/.test(f));
+  const missingSpec = Object.keys(DEDICATED).filter((s) => !existsSync(join(HERE, 'scenarios', s)));
+  if (missingSpec.length > 0) {
+    throw new Error(
+      `[wdio] DEDICATED names a spec that no longer exists: ${missingSpec.join(', ')}`
+    );
+  }
+  if (confs.length !== Object.keys(DEDICATED).length) {
+    throw new Error(
+      `[wdio] ${confs.length} dedicated config(s) on disk but ${Object.keys(DEDICATED).length} ` +
+        `spec(s) excluded from the default glob. Update DEDICATED in wdio.conf.ts.\n  ` +
+        confs.join('\n  ')
+    );
+  }
+}
+
+// An explicit list rather than `exclude:` — every dedicated config does
+// `{ ...base, specs: [theirSpec] }` WITHOUT touching `exclude`, so an inherited
+// exclude list would have contained their own spec and left each of those
+// suites running nothing at all.
+const DEFAULT_SPECS = readdirSync(join(HERE, 'scenarios'))
+  .filter((f) => f.endsWith('.e2e.ts') && !(f in DEDICATED))
+  .sort()
+  .map((f) => join(HERE, 'scenarios', f));
 
 // ── Fixture + boot env ────────────────────────────────────────────────────
 // MAUDE_PROJECT_ROOT short-circuits resolve_project_root() in the Rust shell,
@@ -76,8 +122,24 @@ export const config: WebdriverIO.Config = {
   runner: 'local',
   tsConfigPath: join(HERE, 'tsconfig.json'),
 
-  specs: [join(HERE, 'scenarios', '**', '*.e2e.ts')],
+  specs: DEFAULT_SPECS,
   maxInstances: 1, // one native window at a time
+
+  onPrepare: (cfg: WebdriverIO.Config) => {
+    // Only when THIS config is the one running — a dedicated config spreads
+    // `...base` and would otherwise print a banner about specs it never meant
+    // to run. Identity holds because each override supplies a fresh array.
+    if (cfg.specs !== DEFAULT_SPECS) return;
+    // Say out loud what this run does NOT cover, so the default command stops
+    // reading as "run everything".
+    console.log(
+      `\n[wdio] ${Object.keys(DEDICATED).length} scenario(s) NOT run here — each needs its own config:\n` +
+        Object.entries(DEDICATED)
+          .map(([spec, cmd]) => `  ${spec.replace('.e2e.ts', '')} → ${cmd}`)
+          .join('\n') +
+        '\n'
+    );
+  },
 
   capabilities: [
     {

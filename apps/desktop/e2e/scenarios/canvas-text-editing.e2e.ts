@@ -1,8 +1,9 @@
-import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { $, browser, expect } from '@wdio/globals';
 import { capture, startReport } from '../helpers/evidence';
+import { createFixtureGuard } from '../helpers/fixture-guard';
 import { waitForSidecar } from '../helpers/sidecar';
 
 /**
@@ -33,12 +34,15 @@ const SECTION = '[data-id="s_e2esection1"]';
 
 // Commit tests WRITE THROUGH to disk (annotations PUT + /_api/edit-text on the
 // canvas source) — snapshot the committed fixture files and restore them
-// byte-exact after the run so the repo never dirties.
+// byte-exact after the run so the repo never dirties. The guard survives a
+// killed run (see helpers/fixture-guard.ts); a plain after()-only restore did
+// not, and the dirt cascaded into the next run's baseline.
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_FILES = [
   join(HERE, '../fixtures/project/.design/ui/Smoke.tsx'),
   join(HERE, '../fixtures/project/.design/ui-smoke.annotations.svg'),
 ];
+const fixtures = createFixtureGuard('canvas-text-editing', FIXTURE_FILES);
 
 type Probe = {
   frame: boolean;
@@ -343,8 +347,6 @@ async function waitForStableRect(sel: string, timeout = 8_000): Promise<void> {
 }
 
 describe('canvas-text-editing (native-desktop / WKWebView)', () => {
-  const fixtureSnapshots = new Map<string, string>();
-
   before(() => {
     // Camera state persists per-user across runs (_canvas-state/<slug>.view.json,
     // DDR-115) — a previous run's pan/zoom would leave targets OFF-VIEWPORT,
@@ -355,13 +357,13 @@ describe('canvas-text-editing (native-desktop / WKWebView)', () => {
       recursive: true,
       force: true,
     });
-    for (const f of FIXTURE_FILES) fixtureSnapshots.set(f, readFileSync(f, 'utf8'));
+    fixtures.snapshot();
     startReport('canvas-text-editing (native-desktop / WKWebView)');
   });
 
   after(() => {
     // Byte-exact restore of everything the commit tests wrote through to disk.
-    for (const [f, content] of fixtureSnapshots) writeFileSync(f, content);
+    fixtures.restore();
   });
 
   it('boots, opens the fixture canvas, and reaches every seeded surface', async () => {
@@ -902,7 +904,7 @@ describe('canvas-text-editing (native-desktop / WKWebView)', () => {
     const smokePath = FIXTURE_FILES[0] as string;
     const src = readFileSync(smokePath, 'utf8');
     expect(src).toMatch(/<h1[^>]*>[^<]*P6<\/h1>/);
-    const orig = fixtureSnapshots.get(smokePath) as string;
+    const orig = fixtures.baselineOf(smokePath);
     const stripH1 = (s: string) => s.replace(/<h1[^>]*>[^<]*<\/h1>/, '<h1/>');
     expect(stripH1(src)).toBe(stripH1(orig));
     // On-canvas: the sibling <p> renders identically.

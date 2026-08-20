@@ -116,6 +116,14 @@ describe('multi-tab stress (Phase 8 Task 8)', () => {
       room.disconnect(B);
       expect(room.size()).toBe(0);
     },
-    STRESS_MS + 5_000
+    // Headroom must scale WITH the stress window, not sit a flat few seconds
+    // above it. The body burns `STRESS_MS` of wall clock by construction
+    // (`while (Date.now() - start < STRESS_MS)`), so on a loaded machine the
+    // setup/teardown and the ~33 ms tick drift are the only slack — a flat
+    // +5 s put the budget at 15 s against a measured 10.1 s run, and this was
+    // the one test that tipped over in a full-suite run under load. Nothing
+    // here asserts speed (the checks are RSS + Y.Doc growth), so a wide budget
+    // costs no signal: a real hang still dies, just later.
+    STRESS_MS * 2 + 10_000
   );
 });

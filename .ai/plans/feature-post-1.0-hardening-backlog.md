@@ -81,13 +81,22 @@ is left is harness quality, not correctness:
   `feedback_native_app_verification_ceiling` in its load form; the honest fix is
   either an idle-run measurement or a deterministic settle signal (an explicit
   "source rewritten + canvas rebuilt" event to await instead of polling the DOM).
-- **E2 — a run leaves the VERSIONED fixture dirty on failure.**
-  `canvas-text-editing` snapshots `ui/Smoke.tsx` + `ui-smoke.annotations.svg` in
-  `before` and restores in `after`, but a crashed/killed run skips `after` — the
-  tree is then dirty, and worse, the NEXT run snapshots the dirty state as its
-  baseline and cascades (observed: one run reported 6 failures purely from this).
-  It also broke a `git stash pop` mid-investigation. Restore should not depend on
-  a clean exit.
+- **E2 — RESOLVED (2026-08-20).** A run left the VERSIONED fixture dirty on
+  failure: `canvas-text-editing` snapshotted `ui/Smoke.tsx` +
+  `ui-smoke.annotations.svg` in `before` and restored in `after`, but a
+  crashed/killed run skipped `after` — the tree was then dirty, and worse, the
+  NEXT run snapshotted the dirty state as its baseline and cascaded (observed:
+  one run reported 6 failures purely from this). It also broke a `git stash pop`
+  mid-investigation. Two more scenarios had the identical shape and the identical
+  bug: `timeline-manual-cut` (`ui/Cut.tsx`) and `cloud-attach`
+  (`.design/config.json`). All three now go through
+  `apps/desktop/e2e/helpers/fixture-guard.ts`, which writes the baseline to a
+  gitignored sidecar under `_e2e-evidence/fixture-guard/` BEFORE any test runs.
+  A sidecar still present at the next `snapshot()` is the fingerprint of a run
+  that died: the guard repairs the tree from it and only then baselines, which is
+  what breaks the cascade. SIGINT/SIGTERM/`exit` handlers cover the catchable
+  cases; the sidecar covers SIGKILL. Verified by simulating a killed run —
+  baseline pristine + tree repaired on the following run.
 - **E-1 — five server-booting studio tests race on CI and pass locally.** Surfaced
   by the new non-blocking `studio-suite` job on its first real runs (the whole
   point of it): `POST /_api/import-asset`, `POST /_api/import-brand`,
@@ -99,18 +108,28 @@ is left is harness quality, not correctness:
   assume a settle rather than awaiting a signal. Left red on purpose for now —
   the job cannot fail the merge, and inventing timeouts without an idle-machine
   measurement just moves the ceiling.
-- **E0 — `collab-stress.test.ts` has no headroom by construction.** Its body runs
-  a deliberate 10-second stress window under bun's 10-second default timeout, so
-  the budget EQUALS the workload: measured 10.09 s passing in isolation, and it
-  is the one test that tips over in a full-suite run on a loaded machine (seen on
-  merged main, load 9.9). Not flakiness in the usual sense — give it an explicit
-  `--timeout` well above its own window, or shorten `STRESS_MS`.
-- **E3 — the default `wdio.conf.ts` spec glob claims scenarios that have their own
-  configs.** `specs: scenarios/**/*.e2e.ts` sweeps in `onboarding`, `cloud`,
-  `git-*`, `acp-*`, `parity` — each of which has a dedicated conf supplying env
-  those scenarios need. `pnpm test:e2e:desktop` therefore cannot be the "run
-  everything" command it looks like. Either exclude the specialised specs from the
-  default glob or make the suite self-skip without its env.
+- **E0 — RESOLVED (2026-08-20), with the diagnosis corrected.** The item claimed
+  the test ran "under bun's 10-second default timeout, so the budget EQUALS the
+  workload". That was wrong on the tree: it has carried an explicit per-test
+  timeout of `STRESS_MS + 5_000` since 2026-05-27 (`5f911512`). The real defect
+  was that the headroom was a FLAT +5 s over a wall-clock window the body burns
+  by construction — re-measured 2026-08-20 at 10.10 s against a 15 s budget on a
+  loaded box (load 6.3). Now `STRESS_MS * 2 + 10_000`, so headroom scales with
+  the window. Nothing in the test asserts speed (the checks are RSS + Y.Doc
+  growth), so the wider budget costs no signal.
+- **E3 — RESOLVED (2026-08-20).** The default `wdio.conf.ts` spec glob claimed
+  scenarios that have their own configs: `specs: scenarios/**/*.e2e.ts` swept in
+  `onboarding`, `cloud-attach`, `git-*`, `acp-cold-start` and `shell-parity` —
+  seven specs, each with a dedicated conf supplying env they cannot run without,
+  so `pnpm test:e2e:desktop` ran them under the WRONG config and they failed for
+  missing env rather than a real defect. Fixed by naming the seven in a
+  `DEDICATED` map and computing the default spec list as "everything else"
+  (17 → 10). **Deliberately NOT via `exclude:`** — all seven confs do
+  `{ ...base, specs: [theirSpec] }` without touching `exclude`, so an inherited
+  exclude list would have contained their own spec and left every one of those
+  suites running nothing. A load-time tripwire fails loud when the conf count and
+  the map size diverge (verified: firing on a planted 8th conf), and `onPrepare`
+  now prints what the default run does NOT cover, with the command for each.
 
 ### Release-mechanics hazards found preparing the B2 drills (2026-08-20)
 

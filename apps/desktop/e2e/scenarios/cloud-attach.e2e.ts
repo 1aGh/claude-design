@@ -1,9 +1,10 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { $, browser, expect } from '@wdio/globals';
 
 import { capture, startReport } from '../helpers/evidence';
+import { createFixtureGuard } from '../helpers/fixture-guard';
 import { waitForSidecar } from '../helpers/sidecar';
 
 /**
@@ -45,24 +46,20 @@ interface TauriGlobal {
   event: { emit: (name: string, payload: unknown) => void };
 }
 
-let originalConfig: string | null = null;
+const fixtures = createFixtureGuard('cloud-attach', [FIXTURE_CONFIG]);
 
 describe('cloud-attach — sign-in, picker, attach, deep-link decision (stubbed)', () => {
   before(async function () {
     startReport('cloud-attach — Maude Cloud sign-in + attach, control plane stubbed');
     if (!process.env.MAUDE_E2E_CLOUD_STUB) this.skip();
-    try {
-      originalConfig = readFileSync(FIXTURE_CONFIG, 'utf8');
-    } catch {
-      originalConfig = null;
-    }
+    fixtures.snapshot();
     await waitForSidecar();
   });
 
   after(() => {
     // The fixture must stay deterministic for every other suite — undo the
-    // linkedHub this run wrote.
-    if (originalConfig !== null) writeFileSync(FIXTURE_CONFIG, originalConfig);
+    // linkedHub this run wrote. Survives a killed run too (fixture-guard).
+    fixtures.restore();
   });
 
   it('1 · signed out: the rail offers Maude Cloud sign-in', async () => {

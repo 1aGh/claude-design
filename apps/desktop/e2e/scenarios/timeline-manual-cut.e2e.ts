@@ -1,8 +1,8 @@
-import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { $, browser, expect } from '@wdio/globals';
 import { capture, startReport } from '../helpers/evidence';
+import { createFixtureGuard } from '../helpers/fixture-guard';
 
 /**
  * timeline-manual-cut — feature-enhanced-video-editing (Task 25).
@@ -15,11 +15,13 @@ import { capture, startReport } from '../helpers/evidence';
  * house DOM-driven style — never computer-use).
  *
  * Split/Delete WRITE THROUGH to the fixture .tsx — snapshot + byte-exact
- * restore in before/after so the repo never dirties.
+ * restore in before/after so the repo never dirties. The guard also survives a
+ * killed run; see helpers/fixture-guard.ts.
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = join(HERE, '../fixtures/project/.design/ui/Cut.tsx');
+const fixtures = createFixtureGuard('timeline-manual-cut', [FIXTURE]);
 
 const key = (init: Record<string, unknown>) =>
   browser.execute((k) => {
@@ -50,15 +52,13 @@ const beatCount = () =>
   browser.execute(() => document.querySelectorAll('[data-testid^="timeline-seq-"]').length);
 
 describe('timeline — manual cut (select · split · delete · undo · zoom)', () => {
-  let fixtureBytes: string;
-
   before(async () => {
-    fixtureBytes = readFileSync(FIXTURE, 'utf8');
+    fixtures.snapshot();
     startReport('timeline-manual-cut');
   });
 
   after(() => {
-    writeFileSync(FIXTURE, fixtureBytes);
+    fixtures.restore();
   });
 
   it('opens the Cut canvas and the Timeline shows all three beats', async () => {
