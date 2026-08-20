@@ -49,6 +49,12 @@ if (existsSync(feedPath)) {
   const parsed = JSON.parse(readFileSync(feedPath, 'utf8'));
   if (Array.isArray(parsed.entries)) entries = parsed.entries;
   validateEntries(entries);
+} else {
+  // No feed ⇒ not in the repo (Vercel uploads only site/). Keep the committed
+  // mirror instead of overwriting it with an empty one — same guard as
+  // build-roadmap.mjs.
+  console.warn('[whats-new] feed not found — keeping the committed whats-new.json untouched');
+  process.exit(0);
 }
 
 let version = 'dev';

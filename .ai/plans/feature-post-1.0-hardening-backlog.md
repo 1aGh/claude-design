@@ -227,8 +227,12 @@ Per-item, inherited from the original plan's per-task validation (see the pre-re
   diffs `roadmap.json` + `whats-new.json` too. The blocker was that both
   generators stamped a clock-based `generated` field — every regen was dirty by
   construction, which is *why* they had been left out; both now derive
-  `generated` deterministically from their inputs. Found along the way, left
-  open: the roadmap's per-phase dates are ALL null — `parseHistoryRows` expects
-  the pre-kgai `## History` markdown table and the kgai-era STATE.md records
-  history as `_YYYY-MM-DD:_` prose it never matches, so the public roadmap has
-  quietly lost its date enrichment.
+  `generated` deterministically from their inputs. Follow-up closed
+  2026-08-20: the roadmap's per-phase dates were ALL null (three stacked causes
+  — the kgai-era STATE.md records history as prose the table parser never
+  matched; the migration moved the old tables to `.ai/archive/state/` which the
+  generator never read; and the newer tables put the plan ID in the Phase cell
+  where the matcher expected `Phase X.Y`). All three parse now, with the
+  archival commit date (`git log --diff-filter=A`) as the last-resort source —
+  192/192 dated. Both generators also bail out instead of overwriting their
+  committed output when run outside the repo (the Vercel shape).

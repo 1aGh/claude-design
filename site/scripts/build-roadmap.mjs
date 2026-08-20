@@ -9,6 +9,7 @@
 // Output: site/lib/roadmap.json (committed -- Vercel uploads only site/).
 // Run as prebuild step -- see site/package.json `prebuild`.
 
+import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -193,6 +194,44 @@ function parseHistoryRows(stateText) {
       inTable = false;
     }
   }
+
+  // kgai-era prose history (2026-08+): STATE.md is a pointer stub with no
+  // `## History` table — closeouts are prose lines anywhere in the file:
+  //   _YYYY-MM-DD:_ **done** | <phase/title> | <note>
+  //   _YYYY-MM-DD:_ **<plan-name> closed** (commit …) — <note>
+  //   _YYYY-MM-DD:_ **Figma import Phase 6 CLOSED — …** …
+  // Without parsing these, every phase date is null and the public roadmap
+  // silently lost its date enrichment (found 2026-08-20).
+  for (const line of lines) {
+    const m = line.match(/^_(\d{4}-\d{2}-\d{2}):_\s+\*\*([^*]+)\*\*\s*(.*)$/);
+    if (!m) continue;
+    const [, date, bold, restRaw] = m;
+    const rest = restRaw.trim();
+    if (/^(done|partial|paused|blocked)$/i.test(bold.trim())) {
+      // `**done** | phase | note` — the pipe cells follow the bold status.
+      const cells = rest
+        .replace(/^\|\s*/, '')
+        .split('|')
+        .map((c) => c.trim());
+      rows.push({
+        date,
+        phase: cells[0] || '',
+        status: bold.trim().toLowerCase(),
+        note: cells.slice(1).join(' | '),
+        prose: true,
+      });
+    } else {
+      // `**<title/plan-name> closed/CLOSED …**` — the bold text carries the
+      // subject; treat a closed/CLOSED marker as done.
+      rows.push({
+        date,
+        phase: bold.trim(),
+        status: /\bclosed\b/i.test(bold) ? 'done' : '',
+        note: rest,
+        prose: true,
+      });
+    }
+  }
   return rows;
 }
 
@@ -201,8 +240,42 @@ function parseHistoryRows(stateText) {
 //   1. Newer table (has Status col): match `Phase X.Y` exactly + status=done.
 //   2. Older table: match `Phase X.Y` exactly; take the latest date.
 //   3. Fall back to anywhere in note column referencing the phase + done marker.
-function matchHistoryRow(_planId, phaseKey, rows) {
+function matchHistoryRow(planId, phaseKey, rows) {
+  // Prose rows (kgai-era STATE.md) name the PLAN, not a numeric phase — match
+  // the plan id (or its `feature-`-less form) as a whole token in the phase
+  // cell or note. Runs first: it is the only source of dates for feature-*
+  // plans, which the table-era passes below never matched either.
+  const idForms = [planId, planId.replace(/^feature-/, '')].filter((s) => s.length >= 8);
+
+  // Newer tables put the PLAN ID itself in the Phase cell
+  // (`feature-4-canvas-editing-figma-parity`, `ds-scaffold-…`) — the `^Phase
+  // X.Y` regex passes below never match those, which is why feature-* plans
+  // were undated even in the table era. Exact cell match, done rows first.
+  const byId = rows.filter((r) => r.phase === planId);
+  const byIdDone = byId.filter((r) => (r.status || '').toLowerCase() === 'done');
+  const idPick = (byIdDone.length ? byIdDone : byId).reduce(
+    (latest, r) => (r.date > (latest?.date || '') ? r : latest),
+    null
+  );
+  if (idPick) return idPick;
+
+  const proseHits = rows.filter(
+    (r) => r.prose && idForms.some((f) => `${r.phase} ${r.note}`.includes(f))
+  );
+  if (proseHits.length) {
+    return proseHits.reduce((latest, r) => (r.date > (latest?.date || '') ? r : latest), null);
+  }
+
   if (!phaseKey) return null;
+  // Prose rows can also carry a numeric phase mid-sentence ("Figma import
+  // Phase 6 CLOSED") — the table passes below anchor `^Phase`, so check
+  // containment here.
+  const escapedKey = phaseKey.replace(/\./g, '\\.');
+  const looseRe = new RegExp(`\\bPhase\\s+${escapedKey}(?!\\.|\\d)\\b`);
+  const proseByKey = rows.filter((r) => r.prose && looseRe.test(`${r.phase} ${r.note}`));
+  if (proseByKey.length) {
+    return proseByKey.reduce((latest, r) => (r.date > (latest?.date || '') ? r : latest), null);
+  }
   const escaped = phaseKey.replace(/\./g, '\\.');
   // Phase cell must match exactly: "Phase X.Y" optionally followed by space/dash/end.
   // Use a negative lookahead on `.` so `4.2` doesn't catch `4.2.1`.
@@ -308,7 +381,43 @@ const [activePlans, archivedPlans] = await Promise.all([
 const stateText = existsSync(stateFile) ? await readFile(stateFile, 'utf8') : '';
 const readmeText = existsSync(readmeFile) ? await readFile(readmeFile, 'utf8') : '';
 
-const historyRows = parseHistoryRows(stateText);
+// The kgai migration (2026-07-28) stubbed STATE.md and moved the accumulated
+// `## History` tables to .ai/archive/state/ — without reading the archive,
+// every pre-migration phase loses its date. Parse both: archive first, live
+// stub second (later rows win ties by date comparison anyway).
+const archiveStateDir = resolve(repoRoot, '.ai/archive/state');
+let archivedStateText = '';
+if (existsSync(archiveStateDir)) {
+  for (const name of (await readdir(archiveStateDir)).filter((n) => n.endsWith('.md')).sort()) {
+    archivedStateText += `\n${await readFile(resolve(archiveStateDir, name), 'utf8')}`;
+  }
+}
+
+const historyRows = [...parseHistoryRows(archivedStateText), ...parseHistoryRows(stateText)];
+
+// Last-resort date source: when the plan file was ADDED to .ai/plans/archive/
+// — i.e. the /flow:done archival commit, a faithful closeout proxy. Needed
+// because many closeouts (the whole cloud-phase-* arc) were recorded straight
+// into the kgai graph and appear in no STATE.md at all. One git call for the
+// whole map; empty (and harmless) off-repo or in a shallow clone.
+const archiveAddDates = (() => {
+  const map = {};
+  try {
+    const out = execFileSync(
+      'git',
+      ['log', '--diff-filter=A', '--format=@%as', '--name-only', '--', '.ai/plans/archive'],
+      { cwd: repoRoot, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }
+    );
+    let date = null;
+    for (const line of out.split('\n')) {
+      if (line.startsWith('@')) date = line.slice(1).trim();
+      else if (line.trim() && date) map[line.trim().split('/').pop()] ??= date;
+    }
+  } catch {
+    /* off-repo / no git — fall through to null dates */
+  }
+  return map;
+})();
 const execOrder = parseExecutionOrder(readmeText);
 const active = parseActiveBlock(stateText);
 
@@ -331,7 +440,7 @@ function decorate(plan, { archived }) {
     title: plan.title,
     status,
     shipTarget: shipTarget || null,
-    date: archived && hist ? hist.date : null,
+    date: archived ? (hist?.date ?? archiveAddDates[filename] ?? null) : null,
     summary: plan.summary,
     planPath: plan.planPath,
     archived,
@@ -343,6 +452,14 @@ const phases = [
   ...archivedPlans.map((p) => decorate(p, { archived: true })),
   ...activePlans.map((p) => decorate(p, { archived: false })),
 ];
+
+// No plans found ⇒ we are NOT in the repo (Vercel uploads only site/, so the
+// .ai/ sibling does not exist there). Keep the committed roadmap.json instead
+// of overwriting it with an empty one.
+if (phases.length === 0) {
+  console.warn('[roadmap] no .ai/plans found — keeping the committed roadmap.json untouched');
+  process.exit(0);
+}
 
 // Sort: done by date asc (oldest first), then in-progress, then planned by
 // phase number asc, then icebox.
