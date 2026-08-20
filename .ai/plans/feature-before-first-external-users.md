@@ -33,18 +33,18 @@ The DDR-064 A7 shared-doc notice and the DDR-079 TSX-bodies notice are
 `syncTsx` block) that a terminal-free desktop user never sees. Binding before
 Increment 8 (after the relay deletion there is no two-doc fallback).
 
-- [ ] Add `notices[]` to `SyncStatusPayload` (`sync/status.ts`) — `{ id, text,
+- [x] Add `notices[]` to `SyncStatusPayload` (`sync/status.ts`) — `{ id, text,
       severity }`, additive so old payload readers keep working (same rule as
       `cold-start-hub-wins`).
-- [ ] Reorder `start()` so the status store exists before the notice sites;
+- [x] Reorder `start()` so the status store exists before the notice sites;
       route both warns through `store.notice(...)` (keep the console.warn too —
       the terminal is still a valid surface).
-- [ ] Render notices in `client/panels/SyncPanel.jsx` with per-notice dismiss
+- [x] Render notices in `client/panels/SyncPanel.jsx` with per-notice dismiss
       persisted per (notice id, hub url) — a machine-local ack, mirroring the
       `mdcc-whatsnew-seen` convention.
-- [ ] Tests in the required sync lane (`test/sync-*.test.ts`): payload carries
+- [x] Tests in the required sync lane (`test/sync-*.test.ts`): payload carries
       the notice; cell-pairing suppression still holds; dismiss round-trip.
-- [ ] Rebuild the committed client bundle release-minified (CLAUDE.md rule).
+- [x] Rebuild the committed client bundle release-minified (CLAUDE.md rule).
 
 ### Task 2 — Consent / first-upgrade dialog + UI toggles
 
