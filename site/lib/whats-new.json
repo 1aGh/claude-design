@@ -1,11 +1,11 @@
 {
   "generated": "2026-08-20T00:00:00.000Z",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "entries": [
     {
       "id": "export-from-the-cloud-studio",
-      "version": null,
-      "date": null,
+      "version": "1.0.1",
+      "date": "2026-08-20",
       "kind": "feature",
       "surface": "design-ui",
       "title": "Export works in the cloud studio now",
@@ -13,8 +13,8 @@
     },
     {
       "id": "your-sync-controls-are-in-the-app-now",
-      "version": null,
-      "date": null,
+      "version": "1.0.1",
+      "date": "2026-08-20",
       "kind": "feature",
       "surface": "design-ui",
       "title": "Sync settings, consent and a Trash you can find",
