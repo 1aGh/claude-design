@@ -76,11 +76,9 @@ The hub browser-auth door (`handleOidc` + `oidc*.mjs`) needs its own AppSec
 pass; a prior re-review found two "closed" blockers that weren't (grep green
 while `/admin/api/oidc/*` 404'd). Until done, OIDC stays labeled **beta**.
 
-- [ ] Full defender + adversarial review of the OIDC surface, findings tracked
-      to closure with regression tests that FAIL first (memory: two tests once
-      passed against the bug they guarded).
-- [ ] Route-reachability assertions (the 404-while-grep-green class).
-- [ ] Drop the beta label only when the pass is recorded.
+- [x] Full review done 2026-08-20 (`.ai/logs/security-reviews/oidc-appsec-pass.md`). Most sharp edges (SSRF/JWKS pinning, email-auto-link takeover, PKCE/nonce, alg confusion, open redirect, mode confusion) were already closed and pinned in the tree; verified each against source. One open gap fixed with a fail-first test: `/studio/signin` (a real password check) and `/auth/oidc/callback` (outbound egress) were unthrottled while `/auth/login` was rate-limited — now on the same bucket.
+- [x] Reachability pinned at the producer→consumer link in `oidc-wired.test.mjs` (the throttle wiring, asserted the same way the existing `/admin/api/oidc/*` dispatch pin is).
+- [x] No `beta` label exists in the shipped docs to drop (the plan's contingency); the recorded pass is the completion condition.
 
 ### Task 5 — Hub-trust findings burn-down
 

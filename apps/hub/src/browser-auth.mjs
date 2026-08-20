@@ -106,6 +106,8 @@ export async function handleOidc({
   publicUrl,
   env = process.env,
   fetchImpl,
+  checkRateLimit,
+  respondRateLimited,
 }) {
   const cfg = oidcConfig(env);
   if (!cfg.enabled) {
@@ -154,6 +156,15 @@ export async function handleOidc({
   }
 
   if (path === '/auth/oidc/callback') {
+    // OIDC AppSec pass (post-1.0) — the callback drives an outbound token
+    // exchange + a verify, on the same bucket the password door uses. Without
+    // it, `/auth/oidc/callback?code=…` is an unthrottled way to make the hub
+    // hammer the issuer's token endpoint (the txn cookie gate is real but a
+    // page that can set a cookie on the hub origin can also mint valid ones).
+    if (checkRateLimit && respondRateLimited && !checkRateLimit(request)) {
+      respondRateLimited();
+      return true;
+    }
     const txn = readTransaction(cookieValue(request, OIDC_TXN_COOKIE), { secret });
     if (!txn) {
       page(
@@ -256,6 +267,8 @@ export async function handleBrowserAuth({
   secret,
   env = process.env,
   fetchImpl = fetch,
+  checkRateLimit,
+  respondRateLimited,
 }) {
   if (path === '/auth/browser/signout') {
     // POST ONLY. This is not a cookie clear — it calls `removeToken`, which
@@ -300,6 +313,15 @@ export async function handleBrowserAuth({
       return true;
     }
     if (method === 'POST') {
+      // OIDC AppSec pass (post-1.0) — the self-hosted password door does a real
+      // credential check against the local user store, and unlike its sibling
+      // `/auth/login` it was NOT rate-limited: an unthrottled password-guessing
+      // oracle behind one opaque "did not match" message. Same bucket as the
+      // control-plane door.
+      if (checkRateLimit && respondRateLimited && !checkRateLimit(request)) {
+        respondRateLimited();
+        return true;
+      }
       const form = await readForm(request);
       const result = authenticateForMode(
         { email: form.get('email'), password: form.get('password') },

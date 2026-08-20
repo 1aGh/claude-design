@@ -879,6 +879,12 @@ export function createHub(config = {}) {
           method,
           dataDir,
           secret,
+          // OIDC AppSec pass — the self-hosted /studio/signin POST is a real
+          // password check and must ride the same throttle /auth/login does.
+          checkRateLimit: rateLimit
+            ? (req) => checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
+            : undefined,
+          respondRateLimited: () => respondRateLimited(response),
         });
         if (handled) bailFromOnRequest();
       }
@@ -897,6 +903,12 @@ export function createHub(config = {}) {
           dataDir,
           secret,
           publicUrl,
+          // OIDC AppSec pass — the callback drives outbound egress + a verify;
+          // throttle it on the same bucket as the password doors.
+          checkRateLimit: rateLimit
+            ? (req) => checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
+            : undefined,
+          respondRateLimited: () => respondRateLimited(response),
         });
         if (handled) bailFromOnRequest();
       }

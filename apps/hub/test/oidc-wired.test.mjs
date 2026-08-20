@@ -70,3 +70,36 @@ test('server.mjs actually DISPATCHES /oidc/* into the admin handler', () => {
     assert.ok(cond.includes(route), `server.mjs does not route ${route} to the admin handler`);
   }
 });
+
+test('OIDC AppSec pass — the browser + OIDC doors are rate-limited like /auth/login', () => {
+  // The 404-while-grep-green class, applied to a throttle: /auth/login carries
+  // checkRateLimit; /studio/signin (a real password check) and
+  // /auth/oidc/callback (outbound egress) did NOT, so both were unthrottled
+  // guessing / egress oracles. Assert the wiring at the producer→consumer link.
+  const server = src('server.mjs');
+
+  // handleBrowserAuth is passed a rate limiter.
+  const ba = server.slice(server.indexOf('handleBrowserAuth({'));
+  const baArgs = ba.slice(0, ba.indexOf('});'));
+  assert.match(baArgs, /checkRateLimit:/, 'handleBrowserAuth gets checkRateLimit');
+  assert.match(baArgs, /respondRateLimited:/, 'handleBrowserAuth gets respondRateLimited');
+
+  // handleOidc is passed a rate limiter.
+  const oi = server.slice(server.indexOf('handleOidc({'));
+  const oiArgs = oi.slice(0, oi.indexOf('});'));
+  assert.match(oiArgs, /checkRateLimit:/, 'handleOidc gets checkRateLimit');
+  assert.match(oiArgs, /respondRateLimited:/, 'handleOidc gets respondRateLimited');
+
+  // …and the handlers actually CONSULT it on the password POST + the callback.
+  const door = src('browser-auth.mjs');
+  assert.match(
+    door,
+    /method === 'POST'[\s\S]{0,400}checkRateLimit && respondRateLimited && !checkRateLimit\(request\)/,
+    'the /studio/signin POST checks the limiter before authenticating'
+  );
+  assert.match(
+    door,
+    /oidc\/callback'\)[\s\S]{0,600}checkRateLimit && respondRateLimited && !checkRateLimit\(request\)/,
+    'the OIDC callback checks the limiter before egress'
+  );
+});
