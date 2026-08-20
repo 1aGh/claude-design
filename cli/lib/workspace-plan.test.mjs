@@ -506,3 +506,92 @@ test('a seed URL never carries its credential into anything printable', () => {
   // Unparseable is refused wholesale rather than echoed on the chance it is clean.
   assert.equal(safeSeedUrl('https://user:pw@ho st/r.git'), '<unparseable seed url>');
 });
+
+// feature-cloud-export-render-workers (DDR-230) — the optional render sidecar.
+test('--render wires the sidecar end to end; without it nothing render-shaped appears', () => {
+  const cfg = ok({ ...BASE, render: true });
+  const yaml = renderCompose(cfg);
+  assert.match(yaml, /ghcr\.io\/1agh\/maude-render/, 'the sidecar service renders');
+  assert.match(yaml, /MAUDE_RENDER_CANVAS_ORIGINS: http:\/\/hub:1234/, 'origin allowlist pins the hub');
+  assert.match(yaml, /MAUDE_RENDER_URL/, 'the hub is told where to dispatch');
+  const env = renderEnv(
+    envEntries(cfg, { hubSecret: 'x', adminPassword: 'y'.repeat(12), renderSecret: 'rsec' })
+  );
+  assert.match(env, /MAUDE_RENDER_SECRET='?rsec'?/, 'its own secret, in .env');
+  assert.match(env, /MAUDE_RENDER_URL=/, '.env carries the dispatch URL');
+  assert.match(env, /MAUDE_RENDER_CANVAS_BASE=/, '.env carries the canvas base');
+  assert.ok(
+    verificationPlan(cfg).some((s) => s.id === 'render-health'),
+    'the sidecar must prove itself before the run says it worked'
+  );
+
+  const plain = ok(BASE);
+  assert.ok(!renderCompose(plain).includes('maude-render'), 'no sidecar without --render');
+  assert.ok(
+    !verificationPlan(plain).some((s) => s.id === 'render-health'),
+    'no phantom verification step without the sidecar'
+  );
+});
+
+// M7 (AWS spike, 2026-08-20) — the studio splits the canvas iframe onto its
+// own origin (DDR-054), the hub routes it by Host, the child env forwards
+// MAUDE_PUBLIC_CANVAS_ORIGIN — every layer was built, and NO deployment path
+// ever set the variable. The stack came up, all eight verification steps
+// passed, and every canvas was a blank frame pointing at
+// `http://localhost:<container port>`. The spike read that as "workspaces
+// cannot render by design" and planned around it.
+test('a canvas domain renders the full chain: .env, compose passthrough, Caddy site', () => {
+  const cfg = ok({ ...BASE, canvasDomain: 'canvas.acme.com' });
+  assert.equal(cfg.canvasDomain, 'canvas.acme.com');
+
+  const env = renderEnv(envEntries(cfg, { hubSecret: 'x', adminPassword: 'y'.repeat(12) }));
+  assert.match(env, /CANVAS_DOMAIN='canvas\.acme\.com'/);
+  assert.match(env, /MAUDE_PUBLIC_CANVAS_ORIGIN='https:\/\/canvas\.acme\.com'/);
+
+  // Rendered into .env AND forwarded to the hub container — the drift between
+  // those two lists is the exact shape that shipped MAUDE_ADMIN_PASSWORD half-wired.
+  const compose = renderCompose(cfg);
+  assert.match(compose, /MAUDE_PUBLIC_CANVAS_ORIGIN: \$\{MAUDE_PUBLIC_CANVAS_ORIGIN\}/);
+  assert.match(compose, /CANVAS_DOMAIN: \$\{CANVAS_DOMAIN\}/);
+
+  // Caddy serves the second hostname; the hub routes by Host, so the block
+  // needs no port knowledge — but without it there is no name and no cert.
+  const caddy = renderCaddyfile(cfg);
+  assert.match(caddy, /\{\$CANVAS_DOMAIN\} \{/);
+});
+
+test('no canvas domain leaves no empty canvas variables to misread', () => {
+  const cfg = ok(BASE);
+  assert.equal(cfg.canvasDomain, null);
+  const env = renderEnv(envEntries(cfg, { hubSecret: 'x', adminPassword: 'y'.repeat(12) }));
+  assert.ok(!/CANVAS_DOMAIN|MAUDE_PUBLIC_CANVAS_ORIGIN/.test(env));
+  assert.ok(!/CANVAS_DOMAIN/.test(renderCompose(cfg)));
+  assert.ok(!/CANVAS_DOMAIN/.test(renderCaddyfile(cfg)));
+});
+
+test('the canvas domain must be a REAL second name — same-origin defeats the split', () => {
+  const dup = validateWorkspaceConfig({ ...BASE, canvasDomain: BASE.domain });
+  assert.equal(dup.ok, false);
+  assert.ok(dup.errors.some((e) => /must differ from domain/.test(e)));
+
+  const bad = validateWorkspaceConfig({ ...BASE, canvasDomain: 'not a hostname' });
+  assert.equal(bad.ok, false);
+
+  // Scheme + trailing junk normalize away, same as the main domain.
+  const cfg = ok({ ...BASE, canvasDomain: 'https://Canvas.Acme.com/' });
+  assert.equal(cfg.canvasDomain, 'canvas.acme.com');
+});
+
+test('local mode keeps the canvas name loopback-only and plain HTTP', () => {
+  const cfg = ok({ local: true, adminEmail: BASE.adminEmail, canvasDomain: 'canvas.localhost' });
+  const env = renderEnv(envEntries(cfg, { hubSecret: 'x', adminPassword: 'y'.repeat(12) }));
+  assert.match(env, /MAUDE_PUBLIC_CANVAS_ORIGIN='http:\/\/canvas\.localhost'/);
+  assert.match(renderCaddyfile(cfg), /http:\/\/\{\$CANVAS_DOMAIN\} \{/);
+
+  const bad = validateWorkspaceConfig({
+    local: true,
+    adminEmail: BASE.adminEmail,
+    canvasDomain: 'canvas.acme.com',
+  });
+  assert.equal(bad.ok, false);
+});

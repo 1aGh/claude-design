@@ -134,3 +134,38 @@ test('a REAL restore failure is still a failure', () => {
   assert.ok(!verdict.skipped, 'an empty restore is a genuine failure, not a skip');
   assert.match(verdict.note, /provisioning drill failed/);
 });
+
+// M7 — without a canvas domain the stack comes up green and every canvas is a
+// blank frame. Verification never catches it (all eight steps pass), so the
+// COMMAND has to say it — loudly, in both the dry run and the real one.
+test('--dry-run without --canvas-domain warns that canvases will not render remotely', () => {
+  withDir((dir) => {
+    const r = runCli([...BASE, '--dry-run'], { cwd: dir });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(`${r.stdout}${r.stderr}`, /canvases will NOT render in remote browsers/i);
+    assert.match(r.stdout, /canvas\s+NOT SET/);
+  });
+});
+
+test('--canvas-domain silences the warning and renders the full chain', () => {
+  withDir((dir) => {
+    const r = runCli([...BASE, '--dry-run', '--canvas-domain', 'canvas.acme.com'], { cwd: dir });
+    assert.equal(r.status, 0, r.stderr);
+    const out = `${r.stdout}${r.stderr}`;
+    assert.ok(!/NOT render in remote browsers/i.test(out), 'warning must be gone');
+    assert.match(r.stdout, /canvas\s+https:\/\/canvas\.acme\.com/);
+    // The duty list tells the operator the second DNS record is on them.
+    assert.match(r.stdout, /DNS for the canvas domain/);
+  });
+});
+
+test('--local does not warn — localhost IS reachable from the browser that matters there', () => {
+  withDir((dir) => {
+    const r = runCli(
+      ['hub', 'workspace-up', '--local', '--admin-email', 'ops@acme.com', '--dry-run'],
+      { cwd: dir }
+    );
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(!/NOT render in remote browsers/i.test(`${r.stdout}${r.stderr}`));
+  });
+});

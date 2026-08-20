@@ -62,8 +62,8 @@ Not boilerplate. If you configure [BYO identity](/docs/hub/identity), the hub fe
 ## Bringing it up
 
 1. Create the volume and instance; attach the EBS volume with `DeleteOnTermination=false`.
-2. Point DNS at the ALB.
-3. `maude hub workspace-up --dry-run --domain design.acme.com …` and read what it would write.
+2. Point DNS at the ALB — **two records**: the workspace domain and the canvas domain (e.g. `design.acme.com` and `canvas.acme.com`). The canvas iframe lives on its own origin (that split is what keeps studio cookies unreachable from canvas code), so without the second name every canvas is a blank frame in remote browsers.
+3. `maude hub workspace-up --dry-run --domain design.acme.com --canvas-domain canvas.acme.com …` and read what it would write.
 4. Drop `--dry-run`, then read the verification report **honestly** — a check that could not run prints as skipped, never as passed.
 5. `maude hub restore-drill`, and schedule it.
 6. Remove `MAUDE_SEED_REPO` from `.env`.

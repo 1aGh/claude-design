@@ -94,6 +94,12 @@ export function validateWorkspaceConfig(raw = {}) {
   // suite ends up needing a purchased domain before it can run even once.
   cfg.local = raw.local === true;
 
+  // feature-cloud-export-render-workers (DDR-230) — the optional maude-render
+  // sidecar. Opt-in: it is the one container in the stack that carries a
+  // browser, and an operator must mean that. Without it the workspace still
+  // works; browser-format exports refuse with a remedy (lane `none`).
+  cfg.render = raw.render === true;
+
   cfg.domain = String(raw.domain ?? '')
     .trim()
     .toLowerCase()
@@ -132,6 +138,43 @@ export function validateWorkspaceConfig(raw = {}) {
       `--local requires a loopback name (localhost or *.localhost); "${cfg.domain}" is not one — ` +
         'a name that merely resolves to 127.0.0.1 is controlled by whoever owns the domain'
     );
+  }
+
+  // Spike finding M7 — the SECOND hostname, for the canvas origin. The studio
+  // splits the canvas iframe onto its own origin (DDR-054), and without a
+  // public name for it the iframe falls back to `http://localhost:<container
+  // port>` — an address only the server itself can reach. The stack then comes
+  // up, all eight verification steps pass, and every canvas renders as a blank
+  // frame with ERR_CONNECTION_REFUSED in the console. The hub already routes
+  // by Host (`isCanvasHost`), so all this needs is a name: DNS → Caddy block →
+  // MAUDE_PUBLIC_CANVAS_ORIGIN, all rendered from this one value.
+  cfg.canvasDomain = String(raw.canvasDomain ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '');
+  if (cfg.canvasDomain) {
+    const canvasIsLoopback =
+      cfg.canvasDomain === 'localhost' || cfg.canvasDomain.endsWith('.localhost');
+    if (cfg.local && canvasIsLoopback) {
+      // same carve-out as the main domain — `canvas.localhost` is loopback by RFC 6761
+    } else if (!DOMAIN_RE.test(cfg.canvasDomain)) {
+      errors.push(`canvasDomain "${cfg.canvasDomain}" is not a valid hostname`);
+    } else if (!cfg.canvasDomain.includes('.')) {
+      errors.push('canvasDomain must be fully qualified');
+    }
+    if (cfg.local && !canvasIsLoopback) {
+      errors.push(
+        `--local requires a loopback canvas name (*.localhost); "${cfg.canvasDomain}" is not one`
+      );
+    }
+    // The SAME name would collapse the origin split this domain exists to
+    // create — one origin again, cookies reachable from tenant code (DDR-054).
+    if (cfg.canvasDomain === cfg.domain) {
+      errors.push('canvasDomain must differ from domain — a same-origin canvas defeats the split');
+    }
+  } else {
+    cfg.canvasDomain = null;
   }
 
   cfg.acmeEmail = String(raw.acmeEmail ?? '').trim();
@@ -273,7 +316,7 @@ export function workspaceBaseUrl(cfg) {
  * without it every client shares one rate-limit bucket and a single attacker's
  * login flood limits everybody (DDR-194 §4).
  */
-export function envEntries(cfg, { hubSecret, adminPassword }) {
+export function envEntries(cfg, { hubSecret, adminPassword, renderSecret }) {
   const entries = [
     {
       key: 'PUBLIC_DOMAIN',
@@ -362,6 +405,39 @@ export function envEntries(cfg, { hubSecret, adminPassword }) {
   }
   if (cfg.seedRepo) {
     entries.push({ key: 'MAUDE_SEED_REPO', value: cfg.seedRepo, comment: 'cloned on first boot' });
+  }
+  if (cfg.canvasDomain) {
+    entries.push(
+      {
+        key: 'CANVAS_DOMAIN',
+        value: cfg.canvasDomain,
+        comment: 'second hostname for the canvas origin; Caddy serves it, DNS must point here too',
+      },
+      {
+        key: 'MAUDE_PUBLIC_CANVAS_ORIGIN',
+        value: `${cfg.local ? 'http' : 'https'}://${cfg.canvasDomain}`,
+        comment: 'without this the canvas iframe points at a container-internal port (M7)',
+      }
+    );
+  }
+  if (cfg.render) {
+    entries.push(
+      {
+        key: 'MAUDE_RENDER_SECRET',
+        value: renderSecret,
+        comment: 'hub ↔ render ingress bearer (DDR-230) — its own secret, never HUB_SECRET',
+      },
+      {
+        key: 'MAUDE_RENDER_URL',
+        value: 'http://render:8790',
+        comment: 'compose-internal address the hub dispatches export jobs to',
+      },
+      {
+        key: 'MAUDE_RENDER_CANVAS_BASE',
+        value: 'http://hub:1234',
+        comment: 'where the render service fetches canvases — the hub, over the compose network',
+      }
+    );
   }
   entries.push({
     key: 'MAUDE_IMAGE_TAG',
@@ -453,6 +529,11 @@ export function renderCompose(cfg) {
         ]
       : []),
     ...(cfg.seedRepo ? ['MAUDE_SEED_REPO'] : []),
+    // Written into .env AND forwarded here — same hand-maintained pair as the
+    // S3 block above, same failure mode when they drift (M7: the origin was
+    // supported end to end and no deployment path ever set it).
+    ...(cfg.canvasDomain ? ['MAUDE_PUBLIC_CANVAS_ORIGIN'] : []),
+    ...(cfg.render ? ['MAUDE_RENDER_SECRET', 'MAUDE_RENDER_URL', 'MAUDE_RENDER_CANVAS_BASE'] : []),
   ];
 
   return `# Maude workspace — generated by \`maude hub workspace-up\`.
@@ -486,14 +567,33 @@ ${envLines(hubEnv)}
     expose:
       - "1234"
 
-  caddy:
+${
+  cfg.render
+    ? `  # The maude-render sidecar (DDR-230) — the ONE container here that holds a
+  # browser. It renders export jobs the hub dispatches; it holds no hub
+  # secret, no volume, no tenant store, and it refuses to boot if a known
+  # secret variable reaches it. Not exposed publicly — the hub talks to it
+  # over the compose network only.
+  render:
+    image: ghcr.io/1agh/maude-render:\${MAUDE_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      MAUDE_RENDER_SECRET: \${MAUDE_RENDER_SECRET}
+      # This service only fetches canvases from the hub next door.
+      MAUDE_RENDER_CANVAS_ORIGINS: http://hub:1234
+    expose:
+      - "8790"
+
+`
+    : ''
+}  caddy:
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
       - "80:80"${cfg.local ? '' : '\n      - "443:443"'}
     environment:
       PUBLIC_DOMAIN: \${PUBLIC_DOMAIN}
-      ACME_EMAIL: \${ACME_EMAIL}
+      ACME_EMAIL: \${ACME_EMAIL}${cfg.canvasDomain ? '\n      CANVAS_DOMAIN: ${CANVAS_DOMAIN}' : ''}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
@@ -574,6 +674,24 @@ export function renderCaddyfile(cfg) {
 }
 `;
 
+  const canvasSite = cfg.canvasDomain
+    ? `
+# The CANVAS origin (M7) — a second hostname for the same hub. The hub routes
+# by Host (isCanvasHost) and proxies to the studio's canvas listener itself, so
+# this block needs no port knowledge; it exists so the name resolves and gets a
+# certificate. Deliberately a separate ORIGIN, not a path: the split is what
+# keeps studio cookies unreachable from tenant canvas code (DDR-054).
+${cfg.local ? 'http://{$CANVAS_DOMAIN}' : '{$CANVAS_DOMAIN}'} {
+  encode zstd gzip
+  reverse_proxy hub:1234 {
+    header_up X-Forwarded-For {remote_host}
+    header_up X-Forwarded-Proto {scheme}
+    header_up Host {host}
+  }
+}
+`
+    : '';
+
   return `# Maude workspace — generated by \`maude hub workspace-up\`.
 ${header}
 ${site} {
@@ -589,7 +707,7 @@ ${site} {
     header_up Host {host}
   }
 }
-`;
+${canvasSite}`;
 }
 
 /**
@@ -643,6 +761,13 @@ export function verificationPlan(cfg) {
       }
     );
   }
+  if (cfg.render) {
+    steps.push({
+      id: 'render-health',
+      title: 'the render service answers and is configured',
+      detail: 'GET http://render:8790/_health (via the hub container) reports configured:true',
+    });
+  }
   steps.push({
     id: 'restore-drill',
     title: 'a backup can actually be restored',
@@ -684,6 +809,12 @@ export function operatorDuties(cfg) {
       detail: 'This runs on your infrastructure. Nothing here monitors spend.',
     },
   ];
+  if (cfg.canvasDomain) {
+    duties.push({
+      title: 'DNS for the canvas domain too',
+      detail: `${cfg.canvasDomain} must point at this machine, same as ${cfg.domain} — Caddy fetches its certificate on first request; until DNS lands, canvases are blank frames.`,
+    });
+  }
   if (cfg.s3) {
     duties.push({
       title: 'Never expire the assets/ prefix',

@@ -38,6 +38,11 @@ export function usage() {
   before saying so.
 
   --domain HOST            public hostname (design.acme.com)
+  --canvas-domain HOST     SECOND hostname for the canvas origin
+                           (canvas.acme.com). The studio renders canvases on
+                           their own origin; without a public name for it the
+                           iframe points at a container-internal port and every
+                           canvas is a blank frame. Point DNS here too.
   --acme-email EMAIL       Let's Encrypt contact
   --admin-email EMAIL      the first person who can sign in
   --admin-password PASS    their initial password (>= 12 chars; generated if omitted)
@@ -54,6 +59,11 @@ export function usage() {
                            verification step — on a laptop, with no domain and
                            no paid account. Never serve a real workspace this
                            way: sign-in passwords would travel in the clear.
+  --render                 add the maude-render sidecar — the one container
+                           that carries a browser. Enables PNG/PDF/PPTX/video
+                           export from the hosted studio (DDR-230). Without
+                           it those formats say so and point at the desktop
+                           app; ZIP export works either way.
   --seed-repo URL          clone an existing project; omit to start fresh
   --image-tag TAG          default "latest" — pin it before you rely on this
   --config FILE            read all of the above from a JSON file
@@ -73,7 +83,7 @@ export function usage() {
 
 export async function run({ args, pkgRoot }) {
   const { flags } = parseArgs(args, {
-    booleans: ['help', 'dry-run', 'json', 'dev-minio', 'local'],
+    booleans: ['help', 'dry-run', 'json', 'dev-minio', 'local', 'render'],
   });
   if (flags.help) {
     process.stdout.write(usage());
@@ -91,7 +101,9 @@ export async function run({ args, pkgRoot }) {
       : {}),
     devMinio: flags['dev-minio'] === true || raw.devMinio === true,
     local: flags.local === true || raw.local === true,
+    render: flags.render === true || raw.render === true,
     seedRepo: flags['seed-repo'] ?? raw.seedRepo,
+    canvasDomain: flags['canvas-domain'] ?? raw.canvasDomain,
     imageTag: flags['image-tag'] ?? raw.imageTag,
     ...(flags['s3-endpoint'] || raw.s3
       ? {
@@ -168,8 +180,11 @@ export async function run({ args, pkgRoot }) {
   const hubSecret = existing.HUB_SECRET || randomBytes(32).toString('hex');
   const adminPassword = config.adminPassword || existing.MAUDE_ADMIN_PASSWORD || generatePassword();
   const reusedSecret = Boolean(existing.HUB_SECRET);
+  // Its OWN secret (DDR-230) — rotating the render bearer must never lock out
+  // peers holding hub tokens, and vice versa. Reused on re-runs like the rest.
+  const renderSecret = existing.MAUDE_RENDER_SECRET || randomBytes(32).toString('hex');
 
-  const entries = envEntries(config, { hubSecret, adminPassword });
+  const entries = envEntries(config, { hubSecret, adminPassword, renderSecret });
   const files = [
     { name: '.env', body: renderEnv(entries), mode: 0o600 },
     { name: 'docker-compose.yml', body: renderCompose(config), mode: 0o644 },
@@ -189,9 +204,14 @@ export async function run({ args, pkgRoot }) {
       reusedSecret,
     };
     if (flags.json) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-    else printDryRun({ config, outDir, files, plan, duties, reusedSecret });
+    else {
+      printDryRun({ config, outDir, files, plan, duties, reusedSecret });
+      warnNoCanvasDomain(config);
+    }
     return;
   }
+
+  warnNoCanvasDomain(config);
 
   mkdirSync(outDir, { recursive: true });
   for (const f of files) {
@@ -399,6 +419,8 @@ async function runVerification(step, { config, hubSecret, adminPassword, outDir,
       return verifyNoLifecycle(config, pkgRoot);
     case 'restore-drill':
       return verifyRestoreDrill(config, { outDir, pkgRoot });
+    case 'render-health':
+      return verifyRenderHealth(outDir);
     default:
       return {
         ok: false,
@@ -429,6 +451,44 @@ async function verifySignin(base, email, password) {
     return body?.token ? { ok: true } : { ok: false, note: 'login returned no session token' };
   } catch (err) {
     return { ok: false, note: err.name === 'TimeoutError' ? 'timed out' : 'unreachable' };
+  }
+}
+
+/**
+ * The render sidecar answers AND is configured (DDR-230).
+ *
+ * Probed from INSIDE the hub container, because that is the only place the
+ * service is reachable from — it deliberately has no public port. `configured`
+ * comes from the service's own /_health: a booted sidecar with a missing
+ * secret or an empty origin allowlist refuses every job, and "up but refusing
+ * everything" must not read as a pass.
+ */
+async function verifyRenderHealth(outDir) {
+  const probe = await sh(
+    'docker',
+    [
+      'compose',
+      'exec',
+      '-T',
+      'hub',
+      'sh',
+      '-c',
+      'wget -q -O - http://render:8790/_health || curl -sf http://render:8790/_health',
+    ],
+    { cwd: outDir }
+  );
+  if (probe.code !== 0) return { ok: false, note: 'the render service did not answer /_health' };
+  try {
+    const body = JSON.parse(probe.stdout);
+    if (body?.ok && body?.configured) return { ok: true };
+    return {
+      ok: false,
+      note: body?.ok
+        ? 'render service is up but not configured (missing secret or canvas-origin allowlist)'
+        : 'render service /_health did not report ok',
+    };
+  } catch {
+    return { ok: false, note: 'render service /_health returned something that is not JSON' };
   }
 }
 
@@ -735,6 +795,27 @@ async function tryFetch(url, init) {
   }
 }
 
+/**
+ * The M7 warning — LOUD, in both the dry run and the real one.
+ *
+ * Without a canvas domain the stack comes up, every verification step passes,
+ * and every canvas renders as a blank frame: the iframe's origin defaults to
+ * `http://localhost:<container port>`, an address only the server itself can
+ * reach. The spike hit exactly this, concluded "the workspace can't render by
+ * design", and planned around a limitation that was one missing hostname.
+ */
+function warnNoCanvasDomain(config) {
+  if (config.canvasDomain || config.local) return;
+  process.stderr.write(
+    '\n  ⚠ no --canvas-domain: canvases will NOT render in remote browsers.\n' +
+      '    The canvas iframe needs its own public hostname (e.g. canvas.' +
+      config.domain.replace(/^[^.]+\./, '') +
+      ').\n' +
+      '    Point a DNS record at this machine and re-run with --canvas-domain <host>.\n' +
+      '    The studio chrome (file tree, comments) works either way.\n\n'
+  );
+}
+
 function printDryRun({ config, outDir, files, plan, duties, reusedSecret }) {
   process.stdout.write(
     `maude hub workspace-up — DRY RUN, nothing was written\n\n` +
@@ -742,6 +823,7 @@ function printDryRun({ config, outDir, files, plan, duties, reusedSecret }) {
       `  first user  ${config.adminEmail}\n` +
       `  storage     ${config.s3 ? `${config.s3.bucket} @ ${config.s3.endpoint}${config.s3.dev ? ' (dev MinIO)' : ''}` : 'none — media stays in git'}\n` +
       `  project     ${safeSeedUrl(config.seedRepo) ?? 'starts fresh'}\n` +
+      `  canvas      ${config.canvasDomain ? `${config.local ? 'http' : 'https'}://${config.canvasDomain}` : config.local ? 'same-machine (local mode — the browser can reach the container port)' : 'NOT SET — canvases will not render in remote browsers'}\n` +
       `  image       ghcr.io/1agh/maude-hub:${config.imageTag}\n` +
       `  out         ${outDir}\n` +
       (reusedSecret ? '  secrets     reusing HUB_SECRET from the existing .env\n' : '') +
