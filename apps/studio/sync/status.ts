@@ -60,6 +60,26 @@ export interface SyncStatusPayload extends SyncStatusSnapshot {
    * conflict a person cannot find is silent loss with extra steps.
    */
   files?: FilePlaneStatus;
+  /**
+   * feature-before-first-external-users Task 1 — consent-class notices
+   * (DDR-064 A7 shared-doc, DDR-079 TSX bodies). These lived only in
+   * `console.warn`, which a terminal-free desktop user never sees — the same
+   * disease the breaker `held` field cured one section up. Additive; absent
+   * until the first notice of a boot. The client renders them in the Sync
+   * panel and keeps a machine-local dismiss ack keyed on (id, hub url).
+   */
+  notices?: SyncNotice[];
+}
+
+export interface SyncNotice {
+  /** Stable, human-readable key (`shared-doc`, `tsx-bodies`) — the dismiss
+   *  ack and the once-per-boot dedupe both key on it. */
+  id: string;
+  /** One paragraph, in the user's terms — what now leaves this machine and
+   *  which config key opts out. */
+  text: string;
+  severity: 'info' | 'warn';
+  at: number;
 }
 
 export interface FilePlaneStatus {
@@ -134,6 +154,10 @@ export interface SyncStatusStore {
   /** feature-sync-file-plane — merge Plane B counts + persist + broadcast.
    *  Same reasoning as `updateAssets`: a lane, not a connection. */
   updateFiles(files: FilePlaneStatus): void;
+  /** Record a consent-class notice (A7) + persist + broadcast. Idempotent by
+   *  `id` — the notice sites fire once per boot, and a repeat is a no-op
+   *  rather than a duplicate row. */
+  notice(notice: Omit<SyncNotice, 'at'>): void;
   /** Current payload (defensive copy). */
   get(): SyncStatusPayload;
 }
@@ -159,6 +183,7 @@ export function createSyncStatusStore(opts: SyncStatusStoreOptions): SyncStatusS
 
   let assets: AssetPushProgress | undefined;
   let files: FilePlaneStatus | undefined;
+  const notices: SyncNotice[] = [];
 
   function payload(): SyncStatusPayload {
     return {
@@ -169,6 +194,7 @@ export function createSyncStatusStore(opts: SyncStatusStoreOptions): SyncStatusS
       ...(opts.sharedDoc ? { sharedDoc: true } : {}),
       ...(assets ? { assets } : {}),
       ...(files ? { files } : {}),
+      ...(notices.length ? { notices: notices.slice() } : {}),
     };
   }
 
@@ -202,6 +228,11 @@ export function createSyncStatusStore(opts: SyncStatusStoreOptions): SyncStatusS
     },
     updateFiles(next) {
       files = next;
+      flush();
+    },
+    notice(next) {
+      if (notices.some((n) => n.id === next.id)) return;
+      notices.push({ ...next, at: now() });
       flush();
     },
     get: payload,

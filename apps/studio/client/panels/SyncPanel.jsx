@@ -98,6 +98,53 @@ function readFiles(raw) {
   return raw;
 }
 
+/** Consent-class notices (feature-before-first-external-users Task 1), or []
+ *  when the shape can't be trusted. Absent is the norm — the payload carries
+ *  `notices` only when a boot raised one (shared-doc ON, TSX bodies). */
+function readNotices(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((n) => n && typeof n.id === 'string' && typeof n.text === 'string');
+}
+
+/** safeDetail's sanitation with a paragraph-sized cap — a consent notice is a
+ *  full explanation by design and `MAX_DETAIL_LEN`'s 160 chars would cut it
+ *  mid-sentence. Still bounded: the payload is read back off `_sync.json`. */
+function safeNoticeText(raw) {
+  const s = String(raw ?? '')
+    .replace(/[\p{Cc}\p{Cf}]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return s.length > 600 ? `${s.slice(0, 600)}…` : s;
+}
+
+/**
+ * Machine-local dismiss ack, keyed per (hub url) → list of dismissed notice
+ * ids — the `mdcc-whatsnew-seen` convention. Per-hub on purpose: dismissing
+ * "shared-doc is ON for hub A" must not silence the same notice when the
+ * project is re-linked to hub B; what leaves this machine changed again.
+ */
+const NOTICE_ACK_KEY = 'maude-sync-notice-ack';
+function readNoticeAcks(url) {
+  try {
+    const all = JSON.parse(localStorage.getItem(NOTICE_ACK_KEY) || '{}');
+    const ids = all[url];
+    return Array.isArray(ids) ? ids.filter((i) => typeof i === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+function writeNoticeAck(url, id) {
+  try {
+    const all = JSON.parse(localStorage.getItem(NOTICE_ACK_KEY) || '{}');
+    const ids = Array.isArray(all[url]) ? all[url] : [];
+    if (!ids.includes(id)) ids.push(id);
+    all[url] = ids;
+    localStorage.setItem(NOTICE_ACK_KEY, JSON.stringify(all));
+  } catch {
+    /* private mode etc. — the notice simply reappears next boot */
+  }
+}
+
 export default function SyncPanel({
   status, // the live `sync:status` payload (never null while mounted)
   project, // display name for the header sentence (hub-supplied → safeName'd)
@@ -160,6 +207,23 @@ export default function SyncPanel({
   const assets = readAssets(status?.assets);
   const assetFailures = assets?.failures || [];
   const files = readFiles(status?.files);
+
+  // Consent notices minus this machine's dismissals. `ackTick` only forces the
+  // re-read after a dismiss — the acks themselves live in localStorage.
+  const hubUrl = typeof status?.url === 'string' ? status.url : '';
+  const [ackTick, setAckTick] = useState(0);
+  const notices = useMemo(() => {
+    const acked = readNoticeAcks(hubUrl);
+    return readNotices(status?.notices).filter((n) => !acked.includes(n.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ackTick invalidates the localStorage read
+  }, [status?.notices, hubUrl, ackTick]);
+  const dismissNotice = useCallback(
+    (id) => {
+      writeNoticeAck(hubUrl, id);
+      setAckTick((t) => t + 1);
+    },
+    [hubUrl]
+  );
 
   const { attention, byGroup } = useMemo(() => {
     const attention = items.filter((i) => i.state === 'auth-rejected');
@@ -249,6 +313,29 @@ export default function SyncPanel({
       </div>
 
       <div className="sp-body">
+        {/* Consent-class notices come FIRST: they say what leaves this machine
+            (shared-doc buffer, TSX bodies) and used to live only in a
+            console.warn a desktop user never sees. Dismiss is per (notice,
+            hub) on this machine — a new hub resurfaces them by design. */}
+        {notices.length > 0 && (
+          <section aria-label="Notices" data-testid="sync-notices">
+            {notices.map((n) => (
+              <div key={n.id} className="sp-notice" data-testid={`sync-notice-${n.id}`}>
+                <p className="sp-notice-text">{safeNoticeText(n.text)}</p>
+                <button
+                  type="button"
+                  className="sp-notice-dismiss"
+                  data-testid={`sync-notice-dismiss-${n.id}`}
+                  onClick={() => dismissNotice(n.id)}
+                  title="Got it — don't show this again for this hub on this machine"
+                >
+                  Got it
+                </button>
+              </div>
+            ))}
+          </section>
+        )}
+
         {items.length === 0 && !assets && (
           <div className="gp-empty">
             <p>No per-file detail yet — it arrives with the first sync report after this panel shipped. If this persists, restart Maude.</p>

@@ -2705,6 +2705,15 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .sp-resync:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .sp-resync:disabled { color: var(--fg-3); cursor: default; }
 .sp-resync-note { padding: 0 var(--space-4) var(--space-2); font-size: var(--type-xs); color: var(--fg-2); line-height: var(--lh-base); }
+/* Consent-class notices (feature-before-first-external-users Task 1) — a warm
+   card at the top of the panel body: says what leaves this machine, dismissed
+   per (notice, hub) on this machine. */
+.sp-notice { margin: var(--space-2) var(--space-4); padding: var(--space-2) var(--space-3); border: 1px solid var(--status-warn); border-radius: var(--radius-md); background: color-mix(in oklab, var(--status-warn) 8%, transparent); }
+.sp-notice-text { margin: 0 0 var(--space-1); font-size: var(--type-xs); color: var(--fg-1); line-height: var(--lh-base); }
+.sp-notice-dismiss { appearance: none; font-family: var(--font-body); font-size: var(--type-xs); color: var(--fg-2); background: transparent; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
+.sp-notice-dismiss:hover { color: var(--fg-0); }
+.sp-notice-dismiss:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
 .sp-assets-cancel { appearance: none; margin-left: var(--space-2); font-family: var(--font-body); font-size: var(--type-xs); color: var(--fg-2); background: transparent; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
 .sp-assets-cancel:hover { color: var(--status-error); }
 .sp-assets-cancel:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

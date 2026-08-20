@@ -212,3 +212,39 @@ describe('held breakers reach the status payload', () => {
     expect(src).toContain('resolveFirstAnchor');
   });
 });
+
+describe('sync status store — consent notices (feature-before-first-external-users T1)', () => {
+  test('notice() lands in the payload, stamped, and persists + broadcasts', () => {
+    const { store, writes } = makeStore();
+    store.notice({ id: 'shared-doc', severity: 'warn', text: 'shared-doc is ON' });
+    const p = store.get();
+    expect(p.notices).toEqual([
+      { id: 'shared-doc', severity: 'warn', text: 'shared-doc is ON', at: 42 },
+    ]);
+    expect(writes.at(-1)?.notices).toHaveLength(1);
+  });
+
+  test('notice() is idempotent by id — a repeat neither duplicates nor re-flushes', () => {
+    const { store, writes } = makeStore();
+    store.notice({ id: 'tsx-bodies', severity: 'warn', text: 'first' });
+    const flushesAfterFirst = writes.length;
+    store.notice({ id: 'tsx-bodies', severity: 'warn', text: 'second (ignored)' });
+    expect(store.get().notices).toHaveLength(1);
+    expect(store.get().notices?.[0]?.text).toBe('first');
+    expect(writes.length).toBe(flushesAfterFirst);
+  });
+
+  test('old-shape readers: a payload with no notices simply omits the field', () => {
+    const { store } = makeStore();
+    expect('notices' in store.get()).toBe(false);
+  });
+
+  test('the A7 sites route through the store, not only console.warn (source pin)', () => {
+    // The regression this task exists for: both consent notices lived ONLY in
+    // console.warn. Pin that the notice sites reach store.notice with the two
+    // stable ids the SyncPanel dismiss ack keys on.
+    const src = readFileSync(join(import.meta.dir, '../sync/index.ts'), 'utf8');
+    expect(src).toMatch(/store\.notice\(\{\s*id: 'tsx-bodies'/);
+    expect(src).toMatch(/store\.notice\(\{\s*id: 'shared-doc'/);
+  });
+});

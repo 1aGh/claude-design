@@ -1587,23 +1587,10 @@ export function createSyncRuntime(
       return;
     }
 
-    // DDR-079 — TSX sync defaults ON, so every linked non-loopback project that
-    // ships .tsx broadcasts the WebRTC/self-nav exfil residual (the sandbox
-    // contains execution but not that lane) to every synced canvas. The default
-    // traded a footgun (silent 0-syncable) for this surface, so the surface must
-    // be LOUD: a banner on every `serve` naming the count + the opt-outs. Fires
-    // unless explicitly opted out (`syncTsx: false`); loopback hubs (local dev)
-    // skip it — no remote exfil concern.
-    const tsxBodyCount = canvases.filter((c) => c.html.toLowerCase().endsWith('.tsx')).length;
-    if (linkedHub.syncTsx !== false && tsxBodyCount > 0 && !isLoopbackHubUrl(linkedHub.url)) {
-      console.warn(
-        `[sync] ${tsxBodyCount} TSX canvas BODIES will sync to ${linkedHub.url} (TSX sync is ON by default — DDR-079). The sandbox contains execution, but a WebRTC/self-nav exfil residual applies to every synced canvas — link only hubs you operate or trust. Opt out: linkedHub.syncTsx=false (whole project) or a canvas .meta.json "syncable": false (one canvas).`
-      );
-    }
-
-    // DDR-064 pre-cutover A7 — one-time notice, before any doc is attached.
-    if (useSharedDoc) noticeSharedDocOnce(linkedHub.url, !!cellPairing);
-
+    // The store is created BEFORE the consent notices below so they land in
+    // the payload (feature-before-first-external-users Task 1): a notice that
+    // exists only as a console.warn never reaches a terminal-free desktop
+    // user — the same disease the breaker `held` field cured.
     statusStore =
       opts.statusStore ??
       createSyncStatusStore({
@@ -1617,6 +1604,33 @@ export function createSyncRuntime(
         broadcast: (payload) => ctx.bus.emit('sync:status', payload),
       });
     const store = statusStore;
+
+    // DDR-079 — TSX sync defaults ON, so every linked non-loopback project that
+    // ships .tsx broadcasts the WebRTC/self-nav exfil residual (the sandbox
+    // contains execution but not that lane) to every synced canvas. The default
+    // traded a footgun (silent 0-syncable) for this surface, so the surface must
+    // be LOUD: a banner on every `serve` naming the count + the opt-outs. Fires
+    // unless explicitly opted out (`syncTsx: false`); loopback hubs (local dev)
+    // skip it — no remote exfil concern.
+    const tsxBodyCount = canvases.filter((c) => c.html.toLowerCase().endsWith('.tsx')).length;
+    if (linkedHub.syncTsx !== false && tsxBodyCount > 0 && !isLoopbackHubUrl(linkedHub.url)) {
+      const tsxNotice = `${tsxBodyCount} TSX canvas ${tsxBodyCount === 1 ? 'body' : 'bodies'} will sync to ${linkedHub.url} (TSX sync is ON by default — DDR-079). The sandbox contains execution, but a WebRTC/self-nav exfil residual applies to every synced canvas — link only hubs you operate or trust. Opt out: linkedHub.syncTsx=false (whole project) or a canvas .meta.json "syncable": false (one canvas).`;
+      console.warn(`[sync] ${tsxNotice}`);
+      store.notice({ id: 'tsx-bodies', severity: 'warn', text: tsxNotice });
+    }
+
+    // DDR-064 pre-cutover A7 — one-time notice, before any doc is attached.
+    // Terminal once per process; the payload notice fires every boot (the
+    // client keeps its own per-(id, hub) dismiss ack, so re-announcing after a
+    // restart costs nothing and a NEW hub url resurfaces it by design).
+    if (useSharedDoc && !cellPairing) {
+      noticeSharedDocOnce(linkedHub.url, false);
+      store.notice({
+        id: 'shared-doc',
+        severity: 'warn',
+        text: sharedDocNoticeText(linkedHub.url),
+      });
+    }
     monitor =
       opts.connectionMonitor ?? createConnectionMonitor({ onChange: (snap) => store.update(snap) });
     const mon = monitor;
@@ -3305,12 +3319,13 @@ export function admitCanvases(
  * canvas boot would train an operator to skip the line that matters.
  */
 let sharedDocNoticeShown = false;
+function sharedDocNoticeText(url: string): string {
+  return `shared-doc is ON for ${url} — your live editing buffer for each canvas is now the same object that syncs to the hub, not a copy reconciled through disk (DDR-064). Link only hubs you operate or trust.`;
+}
 function noticeSharedDocOnce(url: string, cellPairing: boolean): void {
   if (cellPairing || sharedDocNoticeShown) return;
   sharedDocNoticeShown = true;
-  console.warn(
-    `[sync] shared-doc is ON for ${url} — your live editing buffer for each canvas is now the same object that syncs to the hub, not a copy reconciled through disk (DDR-064). Link only hubs you operate or trust.`
-  );
+  console.warn(`[sync] ${sharedDocNoticeText(url)}`);
 }
 
 /* ---------------------------------------------------------------- discovery */
