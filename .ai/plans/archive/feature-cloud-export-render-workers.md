@@ -202,3 +202,19 @@ Execute in order. Tasks 1–2 are independently shippable; 3 gates 4–9; 10–1
 - [ ] Cell + hub images remain browser-free (containment gates green); render image passes its own no-secrets assert
 - [ ] Export works on cloud.maude.sh (verified live) and the self-host sidecar path is documented in docs site + skill + `workspace-up`
 - [ ] What's New entry added (pending, stamped at release)
+
+---
+
+## Retro (2026-08-21)
+
+- **The RCA's debate paid off twice.** The Track 3 vs Track 4 flip (browser-side → external worker) came from the user's own push-back, and the second look surfaced the load-bearing fact — the exporter spine is already browser-native, so the worker reuses it unchanged. Encoding that verdict in the RCA meant the plan never re-litigated it.
+- **Reusing existing primitives was the win.** `mintRenderToken`, the job queue, the `export` capability, the tag-gated deploy shape — almost nothing net-new in the trust model. The one net-new trust surface (the render service) is exactly where the security review found everything.
+- **The security review earned its gate.** Attacker broke the SSRF allowlist (parsed-URL vs raw-string) and caught the write-capable forwarded token contradicting the DDR's own §c. Both were real, both shipped-blocking. Lesson reinforced: an allowlist that matches a string `fetch` will re-parse must match the PARSED form.
+- **Concurrent-session coordination worked cleanly.** A peer held M7 changes interleaved in three of my files; a short SendMessage exchange (they commit the shared trio, I commit the rest atomically) avoided a clobber and the v0.51.0 import-coherence trap — jobs.ts + remote.ts shipped in one commit.
+- **What to change next time:** the cross-platform scenario (`cloud-export-jobs`) can't run without a live fleet, so it's authored-but-unrun. A plan that ships a cloud feature should flag "scenario needs a live deploy to execute" at plan time so it's not a surprise at `/done`.
+
+### Follow-ups (tracked in DDR-230)
+- Render sharding across N named instances (per-tenant DoS fairness).
+- Move render ingress to a Cloudflare Worker-to-Worker service binding (drop the public route + shared bearer).
+- Live `cloud-export-jobs` scenario run once the fleet carries the render env.
+- Fidelity byte-compare (remote vs local PNG) on a shared fixture canvas.

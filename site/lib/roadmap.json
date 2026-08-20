@@ -3,6 +3,17 @@
   "currentPhase": null,
   "phases": [
     {
+      "id": "feature-cloud-export-render-workers",
+      "title": "Feature: cloud-export-render-workers",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-cloud-export-render-workers.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
       "id": "phase-1-contribute-infra-changesets",
       "title": "Phase 1: Contribute infrastructure + Changesets bootstrap",
       "status": "done",
@@ -2123,17 +2134,6 @@
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/archive/feature-production-grade-hardening.md",
       "archived": true,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-cloud-export-render-workers",
-      "title": "Feature: cloud-export-render-workers",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-cloud-export-render-workers.md",
-      "archived": false,
       "phaseKey": null
     },
     {
