@@ -61,6 +61,22 @@ if (existsSync(manifestPath)) {
   }
 }
 
-const payload = { generated: new Date().toISOString(), version, entries };
+// `generated` must be DETERMINISTIC (a function of the inputs, never the
+// clock) so the site-content drift gate can regenerate and `git diff` this
+// file — a build timestamp made every regen dirty, which is exactly why this
+// mirror sat outside the gate and went stale for a whole release (v1.0.0
+// shipped while the site still advertised 0.60.7). The changelog page only
+// renders the date part, and the newest stamped entry date IS the last
+// release — more truthful than "when did CI last run".
+const newestStamped = entries
+  .map((e) => e.date)
+  .filter((d) => typeof d === 'string')
+  .sort()
+  .at(-1);
+const payload = {
+  generated: newestStamped ? `${newestStamped}T00:00:00.000Z` : null,
+  version,
+  entries,
+};
 writeFileSync(out, `${JSON.stringify(payload, null, 2)}\n`);
 console.log(`[whats-new] wrote ${out} — ${entries.length} entries (v${version})`);

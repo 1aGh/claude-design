@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 // TS widens the imported JSON's literal strings (status, etc.) to `string`,
 // so we re-narrow here at the trust boundary.
 const roadmap = roadmapJson as unknown as {
-  generated: string;
+  generated: string | null; // deterministic: newest phase date (see build-roadmap.mjs)
   currentPhase: CurrentPhase;
   phases: Phase[];
 };

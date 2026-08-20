@@ -81,11 +81,11 @@ export function RoadmapTimeline({
 }: {
   phases: Phase[];
   currentPhase: CurrentPhase;
-  generated: string;
+  generated: string | null;
 }) {
   const sorted = [...phases].sort((a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status]);
   const groups = groupedPhases(sorted);
-  const generatedDate = generated.slice(0, 10);
+  const generatedDate = generated ? generated.slice(0, 10) : null;
   const counts = sorted.reduce<Record<Status, number>>(
     (acc, p) => {
       acc[p.status] = (acc[p.status] || 0) + 1;
@@ -147,7 +147,7 @@ export function RoadmapTimeline({
         <div className="mdcc-section-head">
           <h2 id="rdm-sec-h">All phases.</h2>
           <span className="mdcc-eyebrow">
-            {sorted.length} units · regenerated {generatedDate}
+            {sorted.length} units{generatedDate ? ` · last moved ${generatedDate}` : ''}
           </span>
         </div>
 

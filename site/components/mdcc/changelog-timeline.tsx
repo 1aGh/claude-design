@@ -46,12 +46,12 @@ export function ChangelogTimeline({
   counts,
 }: {
   groups: TLGroup[];
-  generated: string;
+  generated: string | null; // deterministic: newest phase date; null only on an empty roadmap
   counts: { now: number; shipped: number; next: number };
 }) {
   const [filter, setFilter] = useState<Filter>('all');
   const visible = groups.filter((g) => filter === 'all' || g.kind === filter);
-  const generatedDate = generated.slice(0, 10);
+  const generatedDate = generated ? generated.slice(0, 10) : null;
 
   return (
     <main className="mdcc-landing" id="main-content">
@@ -135,8 +135,9 @@ export function ChangelogTimeline({
           ))}
 
           <p className="mdcc-tl-foot">
-            {counts.shipped} shipped · {counts.now} in flight · {counts.next} planned · regenerated{' '}
-            {generatedDate} · <a href="/roadmap">full phase archive →</a>
+            {counts.shipped} shipped · {counts.now} in flight · {counts.next} planned
+            {generatedDate ? ` · last moved ${generatedDate}` : ''} ·{' '}
+            <a href="/roadmap">full phase archive →</a>
           </p>
         </div>
       </div>

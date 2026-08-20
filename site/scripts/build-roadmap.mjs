@@ -376,9 +376,25 @@ const currentPhase = (() => {
   };
 })();
 
+// Deterministic `generated` (a function of the inputs, never the clock) so the
+// site-content drift gate can regenerate this file in CI and diff it — a build
+// timestamp made every regen dirty. "Newest date the inputs mention" == the
+// last time the roadmap actually moved, which is what the changelog header
+// wants to say anyway. Scanned from the raw STATE.md text (not per-phase
+// dates: those come from the `## History` TABLE parser, and the kgai-era
+// STATE.md records history as `_YYYY-MM-DD:_` prose the table parser never
+// matches — every phase date is null today). Same fix as build-whats-new.mjs.
+const newestInputDate = [
+  ...new Set(
+    [stateText, ...phases.map((p) => p.date || '')].join('\n').match(/\b20\d{2}-\d{2}-\d{2}\b/g) ??
+      []
+  ),
+]
+  .sort()
+  .at(-1);
 const roadmap = {
   // Regenerated every build -- do NOT edit by hand. See site/scripts/build-roadmap.mjs.
-  generated: new Date().toISOString(),
+  generated: newestInputDate ? `${newestInputDate}T00:00:00.000Z` : null,
   currentPhase,
   phases,
 };

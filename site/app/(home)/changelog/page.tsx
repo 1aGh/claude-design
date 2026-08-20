@@ -14,12 +14,12 @@ export const metadata: Metadata = {
 // Both JSONs are regenerated at build time (build-roadmap.mjs / build-whats-new.mjs)
 // from .ai/ + the dev-server feed. TS widens the imported literals; re-narrow here.
 const roadmap = roadmapJson as unknown as {
-  generated: string;
+  generated: string | null; // deterministic: newest phase date (see build-roadmap.mjs)
   currentPhase: CurrentPhase;
   phases: Phase[];
 };
 const feed = whatsNewJson as unknown as {
-  generated: string;
+  generated: string | null; // deterministic: newest stamped entry date; null pre-first-release
   version: string;
   entries: WhatsNewEntry[];
 };

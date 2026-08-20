@@ -72,12 +72,12 @@ export function WhatsNewFeed({
   version,
   entries,
 }: {
-  generated: string;
+  generated: string | null;
   version: string;
   entries: WhatsNewEntry[];
 }) {
   const groups = groupByVersion(entries);
-  const generatedDate = generated.slice(0, 10);
+  const generatedDate = generated ? generated.slice(0, 10) : null;
   const featureCount = entries.filter((e) => e.kind === 'feature').length;
 
   return (
@@ -109,7 +109,7 @@ export function WhatsNewFeed({
         <div className="mdcc-section-head">
           <h2 id="wn-sec-h">Release notes.</h2>
           <span className="mdcc-eyebrow">
-            {entries.length} entries · regenerated {generatedDate}
+            {entries.length} entries{generatedDate ? ` · latest ${generatedDate}` : ''}
           </span>
         </div>
 

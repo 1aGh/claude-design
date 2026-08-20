@@ -44,9 +44,22 @@ Everything the original 5-phase hardening program (rounds 1–3, 2026-08-05) and
 
 ### Observability + hygiene (old Phase 1 residue)
 
-- **T0b** delete the dead pre-DDR-009 `apps/studio/server.mjs` + loud no-bun refusal in `cli/commands/design.mjs`.
-- **T0d′** wire `check-import-coherence.sh` per-PR (today it runs only inside `bump-version.sh`).
-- **T0e** pin the bun version end-to-end (`bunVersion` field asserted by `check-version-parity.sh`; CI reads one source).
+- **T0b — RESOLVED (2026-08-20).** Deleted the 1,312-line pre-DDR-009 Node
+  server; `maude design serve` from source now refuses loud without bun (the
+  fallback silently served a years-stale feature surface). The published
+  `claude-design-server` bin now forwards to `maude design serve` via a shim
+  (`cli/bin/claude-design-server.mjs`) instead of pointing at the deleted file;
+  `apps/studio/package.json` `main`/`start` repointed; CLAUDE.md's
+  "runtime migration ahead" note (stale since Phase 3.4 landed) rewritten.
+- **T0d′ — RESOLVED (2026-08-20).** `check-import-coherence.sh` runs as a
+  required step in `quality.yml` (~26 s), next to the other script gates.
+- **T0e — RESOLVED (2026-08-20).** `.bun-version` is the one source; all six
+  workflow `setup-bun` steps consume it via `bun-version-file`, and
+  `apps/hub/Dockerfile`'s three `oven/bun` stages are pinned to it — they had
+  floated on `oven/bun:1`, i.e. the hub image's runtime was whatever bun
+  published that week. `check-version-parity.sh` asserts all of it: the file
+  exists and is exact x.y.z, no workflow carries a literal `bun-version:`, and
+  the Dockerfile tags match (both negative cases verified firing).
 - **T3** remove the Biome client exclusion (`"!**/apps/studio/client"`) — format-only commit first, then errors-only ratchet over the 33k virgin lines.
 - **T4** per-PR boot + bundle-parity gates on `client/**` PRs (v0.51.1 / v0.22.0 class).
 - **T5** JSDoc `@ts-check` trial over `cli/lib` with the three named escalation triggers.
@@ -210,5 +223,12 @@ Per-item, inherited from the original plan's per-task validation (see the pre-re
 - **What the gate can't see.** Running the quality gates surfaced an unrelated
   stale artifact (`site/lib/whats-new.json` still on 0.60.7 after the v1.0.0
   release) because the site-content gate compares only `site/content/docs/` and
-  `site/lib/stats.json`. Widening that gate to the whole generated set under
-  `site/lib/` is a candidate backlog item.
+  `site/lib/stats.json`. **Done 2026-08-20:** the gate now regenerates and
+  diffs `roadmap.json` + `whats-new.json` too. The blocker was that both
+  generators stamped a clock-based `generated` field — every regen was dirty by
+  construction, which is *why* they had been left out; both now derive
+  `generated` deterministically from their inputs. Found along the way, left
+  open: the roadmap's per-phase dates are ALL null — `parseHistoryRows` expects
+  the pre-kgai `## History` markdown table and the kgai-era STATE.md records
+  history as `_YYYY-MM-DD:_` prose it never matches, so the public roadmap has
+  quietly lost its date enrichment.
