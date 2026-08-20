@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `Maude` — a Claude Code marketplace (defined by `.claude-plugin/marketplace.json`) shipping two plugins plus an npm-published CLI. Project was renamed from `md-claude` in v0.15.0; see [`docs/MIGRATING-MD-CLAUDE-TO-MAUDE.md`](docs/MIGRATING-MD-CLAUDE-TO-MAUDE.md).
 
-- **`plugins/design`** — canvas-first iteration on TSX/JSX mocks under a project's `<designRoot>` (default `.design/`). Includes a zero-dep Node dev server (`apps/studio/server.mjs`) that injects an inspector overlay for Cmd+Click element selection and tracks active-canvas state over WebSocket.
+- **`plugins/design`** — canvas-first iteration on TSX/JSX mocks under a project's `<designRoot>` (default `.design/`). Includes a Bun dev server (`apps/studio/server.ts`, DDR-009) that injects an inspector overlay for Cmd+Click element selection and tracks active-canvas state over WebSocket.
 - **`plugins/flow`** — generic agentic workflow loop with a second-brain `.ai/` workspace. Project-agnostic via `<project>` placeholders + per-repo `.ai/workflows.config.json` (schema at `plugins/flow/.claude-plugin/config.schema.json`).
 - **`cli/`** — `maude` CLI (entry `cli/bin/maude.mjs`, subcommands in `cli/commands/`). Published as `@1agh/maude` on npm. Bins: `maude` (primary), `mdcc` (legacy alias — prints deprecation warning, drop in v0.17.x), `maude-safe`/`mdcc-safe` (per-call platform-detection fallback), `claude-design-server` (direct dev-server alias).
 
@@ -48,7 +48,7 @@ After editing a decision file, re-ingest with `maude kg import` (safe — identi
 # Run dev server against a target project (NOT this repo unless you're testing the server itself)
 npm run start                          # serves $CLAUDE_PROJECT_DIR or cwd; needs a .design/ there
 npm run dev                            # same, explicit port 4399
-node apps/studio/server.mjs --root /path/to/target-repo
+bun run apps/studio/server.ts --root /path/to/target-repo
 
 # CLI (after `npm i -g @1agh/maude` OR `npm run maude -- <args>` locally)
 maude init [--name <project>] [--force] [--dry-run]    # scaffold .ai/ from plugins/flow/templates/ai-skeleton
@@ -69,11 +69,11 @@ There is **no test suite, lint config, or build step** in this repo — the plug
 
 `.claude-plugin/marketplace.json` is the entry point Claude Code reads when a user runs `/plugin marketplace add 1aGh/maude`. It lists the two plugins and their source paths. Each plugin has its own `.claude-plugin/plugin.json` manifest plus `commands/`, `agents/`, and `skills/` directories — these are surfaced as slash commands, subagents, and auto-loaded skills inside Claude Code.
 
-### Dev server runtime contract (`apps/studio/server.mjs`)
+### Dev server runtime contract (`apps/studio/server.ts`)
 
-> **Runtime migration ahead — [DDR-009](.ai/archive/decisions/DDR-009-bun-runtime-authoritative-for-dev-server.md) (2026-05-15):** Phase 3.4 ([`.ai/plans/archive/phase-3.4-architecture-refactor.md`](.ai/plans/archive/phase-3.4-architecture-refactor.md)) migrates this server to **Bun authoritatively** (`Bun.serve` + `Bun.file` + `Bun.write` + `Bun.spawn` + `bun:test`), distributed as per-platform `bun --compile` standalone binaries via npm `optionalDependencies` sub-packages (mirroring `@anthropic-ai/claude-code`). No Node fallback. **When writing new dev-server code, reach for `Bun.*` APIs instead of `node:http` / `node:fs.readFile` / `node:child_process.spawn`** — `node:path` and `node:url` stay (Bun supports them identically). Tests under `apps/studio/` use `bun:test`, not `node --test` (the `cli/` shim stays Node). The description below documents the current pre-migration state; update it once Task 7 of Phase 3.4 lands.
+> **Bun is authoritative — [DDR-009](.ai/archive/decisions/DDR-009-bun-runtime-authoritative-for-dev-server.md):** the server runs on Bun (`Bun.serve` + `Bun.file` + `Bun.write` + `Bun.spawn`), distributed as per-platform `bun --compile` standalone binaries via npm `optionalDependencies` sub-packages (mirroring `@anthropic-ai/claude-code`). **There is NO Node fallback** — the pre-DDR-009 zero-dep `server.mjs` was deleted in the post-1.0 hardening pass (it silently served a years-stale feature surface when bun was absent); `maude design serve` from source now refuses loud without bun. **When writing new dev-server code, reach for `Bun.*` APIs instead of `node:http` / `node:fs.readFile` / `node:child_process.spawn`** — `node:path` and `node:url` stay (Bun supports them identically). Tests under `apps/studio/` use `bun:test`, not `node --test` (the `cli/` shim stays Node).
 
-The server is zero-dep (`node:http` + `node:crypto` for WS handshake) and resolves the **target repo root** in this order: `--root <path>` arg → `$CLAUDE_PROJECT_DIR` → `process.cwd()`. It deliberately never uses `__dirname` for the project root, because the plugin can be installed centrally (npm global) and serve any repo.
+The server resolves the **target repo root** in this order: `--root <path>` arg → `$CLAUDE_PROJECT_DIR` → `process.cwd()`. It deliberately never uses `__dirname` for the project root, because the plugin can be installed centrally (npm global) and serve any repo.
 
 **Path resolution rule ([DDR-045](.ai/archive/decisions/DDR-045-real-disk-path-resolution-for-compiled-dev-server.md)):** every dev-server module that needs a filesystem-relative path MUST import from `apps/studio/paths.ts` (`DEV_SERVER_ROOT`, `DIST_DIR`, `CLIENT_DIR`, `RUNTIME_BUNDLES_DIR`). NEVER compute `dirname(fileURLToPath(import.meta.url))` locally — inside `bun --compile` standalone binaries that resolves to the virtual `/$bunfs/root` and every `existsSync` against it silently returns false. Two production releases (v0.18.0 and v0.18.1) shipped broken because of this bug; the lesson is in DDR-045.
 

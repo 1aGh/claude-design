@@ -474,7 +474,6 @@ async function runServe({ args, pkgRoot }) {
   }
 
   const tsEntry = resolve(pkgRoot, 'apps', 'studio', 'server.ts');
-  const mjsEntry = resolve(pkgRoot, 'apps', 'studio', 'server.mjs');
 
   const hasBun = await new Promise((res) => {
     const probe = spawn('bun', ['--version'], { stdio: 'ignore' });
@@ -482,9 +481,21 @@ async function runServe({ args, pkgRoot }) {
     probe.on('exit', (code) => res(code === 0));
   });
 
-  const child = hasBun
-    ? spawn('bun', ['run', tsEntry, ...forwarded], { stdio: 'inherit', env: process.env })
-    : spawn(process.execPath, [mjsEntry, ...forwarded], { stdio: 'inherit', env: process.env });
+  if (!hasBun) {
+    // The pre-DDR-009 zero-dep Node server used to be the silent fallback here.
+    // It was deleted (post-1.0 hardening, T0b): it served a years-stale feature
+    // surface, so "works without bun" really meant "silently degrades to a
+    // different product". Bun is authoritative (DDR-009) — refuse loud instead.
+    process.stderr.write(
+      `maude design serve: running from source requires bun (DDR-009 — the dev\nserver is Bun-authoritative; the old Node fallback served a stale feature\nsurface and was removed).\n\n  Install bun:  curl -fsSL https://bun.sh/install | bash\n  Or use the shipped platform binary instead of the source tree:\n    npm i -g @1agh/maude && maude design serve\n\nRepo: ${pkgRoot}\n`
+    );
+    process.exit(1);
+  }
+
+  const child = spawn('bun', ['run', tsEntry, ...forwarded], {
+    stdio: 'inherit',
+    env: process.env,
+  });
   child.on('exit', (code) => process.exit(code ?? 0));
   child.on('error', (err) => {
     process.stderr.write(`maude design serve: ${err.message}\n`);

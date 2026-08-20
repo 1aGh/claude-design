@@ -14,7 +14,7 @@
     "mdcc": "cli/bin/mdcc.mjs",
     "maude-safe": "cli/cli-wrapper.cjs",
     "mdcc-safe": "cli/cli-wrapper.cjs",
-    "claude-design-server": "apps/studio/server.mjs"
+    "claude-design-server": "cli/bin/claude-design-server.mjs"
   },
   "scripts": {
     "start": "bun run apps/studio/server.ts",
