@@ -61,7 +61,16 @@ Everything the original 5-phase hardening program (rounds 1–3, 2026-08-05) and
   exists and is exact x.y.z, no workflow carries a literal `bun-version:`, and
   the Dockerfile tags match (both negative cases verified firing).
 - **T3** remove the Biome client exclusion (`"!**/apps/studio/client"`) — format-only commit first, then errors-only ratchet over the 33k virgin lines.
-- **T4** per-PR boot + bundle-parity gates on `client/**` PRs (v0.51.1 / v0.22.0 class).
+- **T4 — RESOLVED (2026-08-20).** New path-filtered `client-boot.yml` on
+  `client/**` PRs: (a) `check-runtime-bundles.sh` size floors per-PR (v0.22.0
+  class — previously release-only); (b) `scripts/check-client-boots-source.mjs`
+  — builds `--release`, boots the SOURCE server, loads it in chromium with a
+  `window.__TAURI__` stub injected and asserts `#root` mounted (v0.51.1 class,
+  verified failing on a planted broken bundle). Committed-bundle byte-drift is
+  a REPORT-ONLY step by design: the committed `client.bundle.js` is not what
+  ships (regenerated at package time) and bun's minifier has been
+  environment-sensitive, so a hard byte gate would go permanently red on any
+  macOS↔Linux nondeterminism — the boot gate is the correctness check.
 - **T5** JSDoc `@ts-check` trial over `cli/lib` with the three named escalation triggers.
 - **T2′** cloud/cells type gate (`wrangler types` + `tsc --noEmit` — cloud has no tsconfig at all today); **T15c** `apps/cells` → TypeScript (838 lines guarding tenant isolation).
 - **T6** characterization tests + desktop-e2e scenarios for panels about to move (prerequisite for the decomposition below).

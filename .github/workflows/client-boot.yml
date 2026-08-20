@@ -1,0 +1,76 @@
+# T4 (post-1.0 backlog) — per-PR gates for the two shipped-broken-client classes,
+# so a client/** PR fails in minutes instead of at the next release:
+#
+#   v0.51.1 class — the packaged app opened to a BLANK window: the fault needed
+#   window.__TAURI__ present AND the minified release build, so every browser
+#   check and `tauri dev` run was green. build-desktop.yml's packaged-boot gate
+#   catches it at release; this workflow catches it on the PR by serving a
+#   freshly-built --release bundle to a chromium with a Tauri global injected.
+#
+#   v0.22.0 class — a committed dist/runtime/*.js bundle silently clobbered by
+#   an environment-sensitive regen (13 kB motion_react.js vs the working
+#   155 kB+). The size-floor check ran only in the release workflows; here it
+#   runs on the PR that would commit the bad bundle.
+name: Client boot
+
+on:
+  pull_request:
+    paths:
+      - 'apps/studio/client/**'
+      - 'apps/studio/canvas-lib.tsx'
+      - 'apps/studio/build.ts'
+      - 'apps/studio/dist/**'
+      - 'apps/studio/bun.lock'
+      - 'apps/studio/package.json'
+      - 'scripts/check-client-boots-source.mjs'
+      - '.github/workflows/client-boot.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  client-boot:
+    name: Client boot (release bundle + Tauri global)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install (apps/studio)
+        # apps/studio resolves its own bun.lock (DDR-009), independent of the
+        # root pnpm workspace — no pnpm needed in this job.
+        working-directory: apps/studio
+        run: bun install --frozen-lockfile
+
+      - name: Runtime bundle floors (v0.22.0 class)
+        # The committed dist/runtime/*.js ARE the release artifacts
+        # (MAUDE_SKIP_RUNTIME_BUILD=1 pins them in every release build). If this
+        # PR commits a clobbered one, fail here, not at publish time.
+        run: bash apps/studio/bin/check-runtime-bundles.sh
+
+      - name: Build the release client bundle
+        working-directory: apps/studio
+        run: MAUDE_SKIP_RUNTIME_BUILD=1 bun run build.ts --release
+
+      - name: Committed-bundle drift (report only)
+        # The committed client.bundle.js is NOT what ships (every release build
+        # regenerates it), so byte-parity with this runner's output is not a
+        # correctness gate — bun's minifier output has been environment-
+        # sensitive before (the v0.22.0 lesson), and a hard gate here would go
+        # permanently red on any macOS↔Linux nondeterminism. Surface the drift
+        # so a "forgot to rebuild after a client edit" PR is visible in the log.
+        run: |
+          if ! git diff --quiet -- apps/studio/dist/client.bundle.js apps/studio/dist/styles.css; then
+            echo "::warning::committed dist/client.bundle.js differs from this runner's --release build. If you edited client/** without rebuilding, run: cd apps/studio && MAUDE_SKIP_RUNTIME_BUILD=1 bun run build.ts --release, then commit the diff. (Cross-platform minifier drift also lands here — the boot gate below is the correctness check.)"
+            git --no-pager diff --stat -- apps/studio/dist/
+          fi
+
+      - name: Install chromium
+        working-directory: apps/studio
+        run: bunx playwright install --with-deps chromium
+
+      - name: Boot gate (v0.51.1 class)
+        run: node scripts/check-client-boots-source.mjs
