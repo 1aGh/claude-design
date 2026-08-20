@@ -154,13 +154,19 @@ export function doorVerdict({ request, pathname, env = process.env, session }) {
  * customer-facing name; the header is only a fallback for a hub that has none.
  */
 export function signInUrl({ request, env = process.env }) {
-  const dashboard = env.HUB_DASHBOARD_URL ?? 'https://cloud.maude.sh';
+  // BOTH, or neither. The tenant id alone used to be the switch, with the
+  // control-plane address defaulted to cloud.maude.sh — so a hub that had a
+  // tenant id for its own reasons (asset key prefix, namespacing) and no
+  // dashboard URL would send every unauthenticated visitor to the vendor's
+  // SaaS to sign in for a project the SaaS does not host. Requiring the
+  // address to be CONFIGURED is the same rule the landing page keeps.
+  const dashboard = env.HUB_DASHBOARD_URL;
   const tenant = env.MAUDE_TENANT_ID;
   const publicBase = (env.HUB_PUBLIC_URL ?? '').replace(/\/+$/, '');
   const back = `${publicBase || `https://${request?.headers?.host ?? ''}`}/auth/browser`;
   // Platform: the Maude account, at the control plane. Self-hosted (E2): this
   // hub's own users, at its own sign-in — one door each, one studio.
-  return tenant
+  return tenant && dashboard
     ? `${dashboard}/projects/${encodeURIComponent(tenant)}/browser?return=${encodeURIComponent(back)}`
     : '/studio/signin';
 }
@@ -194,11 +200,16 @@ export function servicePage(title, message, { action = null } = {}) {
  * bundle to show a link is a page that can fail to show it.
  *
  * Under `hybrid` it sits beside the password form; under `strict` it is the
- * only way in. It costs NOTHING against the admin bundle's gz ceiling — this
+ * only way in. That promise is kept by TWO callers: `servicePage()` below and
+ * `signInPage()` in browser-auth.mjs. For a while it had only the first, so
+ * the sentence above was true of the intent and false of the product — a
+ * `strict` hub rendered a password form that `cloud-identity` refuses, and the
+ * one working door was a URL the UI never showed. It costs NOTHING against the
+ * admin bundle's gz ceiling — this
  * file is not in that bundle, which is why the plan's "the People view plus an
  * OIDC button will blow the budget" framing was wrong on both halves.
  */
-function oidcButton(esc, env = process.env) {
+export function oidcButton(esc, env = process.env) {
   const mode = env.HUB_OIDC_MODE;
   if (mode !== 'hybrid' && mode !== 'strict') return '';
   let label = String(env.HUB_OIDC_LABEL ?? '').trim();

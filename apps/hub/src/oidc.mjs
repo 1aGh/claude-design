@@ -87,6 +87,18 @@ export function createVerifier({
   fetchImpl = fetchGuarded,
 } = {}) {
   const disco = discovery ?? createDiscovery({ issuer, ttlMs, fetchImpl });
+  // `iss` is compared as an EXACT string by `jwtVerify`, and a trailing slash
+  // is a real difference to it — Auth0 (and plenty of others) serve
+  // `https://tenant/` in both discovery and the id_token, while the config we
+  // are handed has been slash-stripped twice on the way here (workspace-plan
+  // renders `.env`, oidc-routes re-strips at read). Accepting BOTH forms is
+  // the fix; un-stripping is NOT, because `createDiscovery` builds
+  // `${base}/.well-known/…` off this same value and would emit `//.well-known`.
+  //
+  // Both variants name the same origin — `assertSameOrigin` already fenced the
+  // JWKS host — so this widens the string match, never the trust boundary.
+  const issuerBase = String(issuer ?? '').replace(/\/+$/, '');
+  const issuerVariants = [issuerBase, `${issuerBase}/`];
   let keys = null;
   let keysAt = 0;
   const budget = createRefetchBudget();
@@ -123,13 +135,21 @@ export function createVerifier({
     let resolved = await keySet(now);
     let payload;
     try {
-      ({ payload } = await jwtVerify(jwt, resolved, { issuer, audience, algorithms }));
+      ({ payload } = await jwtVerify(jwt, resolved, {
+        issuer: issuerVariants,
+        audience,
+        algorithms,
+      }));
     } catch (err) {
       // A rotated signing key looks exactly like a bad token until the set is
       // refreshed — once, on a budget.
       if (!/no applicable key|signature verification failed/i.test(String(err?.message))) throw err;
       resolved = await keySet(now, { force: true });
-      ({ payload } = await jwtVerify(jwt, resolved, { issuer, audience, algorithms }));
+      ({ payload } = await jwtVerify(jwt, resolved, {
+        issuer: issuerVariants,
+        audience,
+        algorithms,
+      }));
     }
 
     if (payload.nonce !== nonce) {

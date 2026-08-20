@@ -27,7 +27,7 @@ Neither is exotic advice — they are simply the two choices an AWS-shaped insti
 
 ## IAM — least privilege for the bucket
 
-The hub needs four verbs against one prefix. Nothing else.
+The hub needs three verbs against one prefix, plus two reads on the bucket itself. Nothing else.
 
 ```json
 {
@@ -40,12 +40,14 @@ The hub needs four verbs against one prefix. Nothing else.
     },
     {
       "Effect": "Allow",
-      "Action": ["s3:ListBucket"],
+      "Action": ["s3:ListBucket", "s3:GetLifecycleConfiguration"],
       "Resource": "arn:aws:s3:::acme-design-assets"
     }
   ]
 }
 ```
+
+`s3:GetLifecycleConfiguration` reads a bucket's configuration, not its data, and it is what lets `workspace-up` prove the point below instead of shrugging at it. Without it the `s3-no-expiry` check gets a 403 where it expects a 404, and — correctly, since it cannot read the config it cannot call the bucket safe — reports **skipped** forever. An earlier version of this page omitted the verb, so the recommended policy disabled a check the same tool performs.
 
 **No lifecycle rule on `assets/`.** A canvas in git history can reference media no current canvas does, so "unreferenced" never means "unreachable" — an expired object is a permanently broken canvas with no recovery path. Backups under `backups/` rotate themselves (14 generations); they need no lifecycle rule either.
 

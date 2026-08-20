@@ -55,6 +55,36 @@ export function sanitizeBackupPrefix(raw) {
  * problems, not the first one: someone filling this in wants to fix everything
  * in one pass, not to play whack-a-mole with a wizard.
  */
+/**
+ * A seed URL with its credential masked, for anything an eye or a log can see.
+ *
+ * The recommended seed URL carries a live GitHub PAT in userinfo
+ * (`https://x-access-token:<PAT>@github.com/org/repo.git` — `seed-repo.mjs`
+ * accepts nothing else). The AWS spike printed it raw, and the token landed in
+ * SSM command history, CloudTrail and a session transcript before anyone
+ * noticed; it had to be revoked. `.env` is written `0600` — stdout has no such
+ * thing, so nothing may print the configured value directly.
+ *
+ * The host and path survive, because those are what an operator reads the line
+ * to confirm.
+ */
+export function safeSeedUrl(raw) {
+  const value = String(raw ?? '').trim();
+  if (!value) return null;
+  try {
+    const u = new URL(value);
+    if (u.username || u.password) {
+      u.username = '***';
+      u.password = '';
+    }
+    return u.toString();
+  } catch {
+    // `git@host:org/repo.git` is not a URL but carries no secret; anything
+    // else unparseable is not worth guessing at with a token possibly inside.
+    return /^git@[^\s:]+:[^\s]+$/.test(value) ? value : '<unparseable seed url>';
+  }
+}
+
 export function validateWorkspaceConfig(raw = {}) {
   const errors = [];
   const cfg = { ...raw };

@@ -14,6 +14,7 @@ import {
   renderCaddyfile,
   renderCompose,
   renderEnv,
+  safeSeedUrl,
   validateWorkspaceConfig,
   verificationPlan,
   workspaceBaseUrl,
@@ -486,4 +487,22 @@ test('.env values are quoted, and a newline in a secret is refused (F8)', () => 
     () => renderEnv([{ key: 'X', value: 'a\nMAUDE_ALLOW_EMPTY_START=1' }]),
     /newline or control character/
   );
+});
+
+// M3 (AWS spike, 2026-08-20) — the seed URL carries a live GitHub PAT in
+// userinfo, and `workspace-up` printed it verbatim, `--dry-run` included. The
+// token reached SSM command history, CloudTrail and a session transcript, and
+// had to be revoked. `.env` is 0600; stdout is not.
+test('a seed URL never carries its credential into anything printable', () => {
+  assert.equal(
+    safeSeedUrl('https://x-access-token:SECRET123@github.com/o/r.git'),
+    'https://***@github.com/o/r.git'
+  );
+  // Nothing to hide, nothing changed — the operator still reads host and path.
+  assert.equal(safeSeedUrl('https://github.com/o/r.git'), 'https://github.com/o/r.git');
+  assert.equal(safeSeedUrl('git@github.com:o/r.git'), 'git@github.com:o/r.git');
+  assert.equal(safeSeedUrl(null), null);
+  assert.equal(safeSeedUrl(''), null);
+  // Unparseable is refused wholesale rather than echoed on the chance it is clean.
+  assert.equal(safeSeedUrl('https://user:pw@ho st/r.git'), '<unparseable seed url>');
 });

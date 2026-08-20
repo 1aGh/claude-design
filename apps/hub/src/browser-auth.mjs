@@ -34,7 +34,7 @@ import {
 } from './oidc-routes.mjs';
 import { isRevoked } from './revocations.mjs';
 import { isReadOnlyRole, projectRoleForAccount } from './role-matrix.mjs';
-import { servicePage } from './studio-door.mjs';
+import { oidcButton, servicePage } from './studio-door.mjs';
 import { addToken, removeToken, verifyToken } from './tokens.mjs';
 import { authenticate as localAuthenticate } from './users.mjs';
 
@@ -444,12 +444,27 @@ async function readForm(request, max = 8 * 1024) {
   return new URLSearchParams(Buffer.concat(chunks).toString('utf8'));
 }
 
-function signInPage(error = null) {
+/**
+ * The self-hosted door's sign-in page.
+ *
+ * It renders the OIDC button whenever a mode is set, because `oidcButton`'s
+ * own contract says so — and because for a while nothing here called it, so
+ * `/auth/oidc/start` worked while being unreachable from the UI (M6's sibling
+ * in the AWS spike: OIDC verified fine and no one could find the door).
+ *
+ * Under `strict` the password form is not merely redundant, it is a LIE:
+ * `cloud-identity` refuses passwords outright (`password-refused-oidc-strict`),
+ * so a form shown there can only produce a failed attempt. Strict renders the
+ * provider link alone.
+ */
+export function signInPage(error = null, env = process.env) {
   const esc = (s) =>
     String(s).replace(
       /[&<>"']/g,
       (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
     );
+  const oidc = oidcButton(esc, env);
+  const passwordsRefused = env.HUB_OIDC_MODE === 'strict';
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Sign in</title>
@@ -464,12 +479,21 @@ function signInPage(error = null) {
   button { margin-top:16px; width:100%; padding:10px; border:0; border-radius:9px;
            background:#7a86f8; color:#0f1020; font:inherit; font-weight:650; cursor:pointer; }
   .err { color:#f0a3a3; font-size:13px; margin-top:10px; }
+  .button { display:block; margin-top:16px; padding:10px; border-radius:9px; text-align:center;
+            border:1px solid #262c38; background:#14171d; color:inherit; text-decoration:none; font-weight:600; }
+  .or { margin:18px 0 0; text-align:center; font-size:12px; color:#828b9e; }
 </style></head>
 <body><form method="post" action="/studio/signin">
   <h1>Sign in to this workspace</h1>
-  <label for="email">Email</label><input id="email" name="email" type="email" autocomplete="username" required autofocus>
+  ${
+    passwordsRefused
+      ? ''
+      : `<label for="email">Email</label><input id="email" name="email" type="email" autocomplete="username" required autofocus>
   <label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required>
-  <button type="submit">Sign in</button>
+  <button type="submit">Sign in</button>`
+  }
   ${error ? `<p class="err">${esc(error)}</p>` : ''}
+  ${oidc && !passwordsRefused ? '<p class="or">or</p>' : ''}
+  ${oidc}
 </form></body></html>`;
 }

@@ -24,6 +24,7 @@ import {
   renderCaddyfile,
   renderCompose,
   renderEnv,
+  safeSeedUrl,
   validateWorkspaceConfig,
   verificationPlan,
   workspaceBaseUrl,
@@ -132,6 +133,31 @@ export async function run({ args, pkgRoot }) {
       process.stderr.write('maude hub workspace-up: the configuration is not usable yet.\n\n');
       for (const e of errors) process.stderr.write(`  • ${e}\n`);
       process.stderr.write('\nRun with --help for the full list of options.\n');
+    }
+    process.exit(2);
+  }
+
+  // REFUSE a new admin password on a re-run, rather than writing one that goes
+  // nowhere.
+  //
+  // `seedFirstUser()` (first-user.mjs) creates the account on FIRST BOOT only.
+  // On a re-run the account already exists and keeps its original password, so
+  // letting `--admin-password` win here produces a `.env` that states one
+  // password and a database that holds another. The command's own verification
+  // then reports `HTTP 401 — the first user cannot sign in`, and the only
+  // repair found on the live AWS run was `docker compose down -v` — on a
+  // production box that is losing the project, not fixing the password.
+  //
+  // Checked BEFORE anything is written or started, so the refusal costs the
+  // operator a message rather than a half-applied run.
+  if (config.adminPassword && existing.MAUDE_ADMIN_PASSWORD) {
+    const message =
+      'the first user already exists — `--admin-password` applies to a FIRST boot only. ' +
+      'Change their password in the admin UI; re-run without the flag to leave it alone.';
+    if (flags.json) {
+      process.stdout.write(`${JSON.stringify({ ok: false, errors: [message] }, null, 2)}\n`);
+    } else {
+      process.stderr.write(`maude hub workspace-up: ${message}\n`);
     }
     process.exit(2);
   }
@@ -552,10 +578,21 @@ async function verifyNoLifecycle(config, pkgRoot) {
     if (res.status === 404) return { ok: true, note: 'no lifecycle configuration' };
     if (!res.ok) {
       // Cannot read the config ⇒ cannot claim it is safe. Skipped, never passed.
+      //
+      // 403 gets its own sentence because it is almost always OUR fault, not a
+      // misconfiguration: the least-privilege policy we ship omitted
+      // `s3:GetLifecycleConfiguration` until 2026-08-20, so following the docs
+      // to the letter left this check permanently skipped — and the thing it
+      // guards (an expiry rule silently deleting media that canvases still
+      // reference) has no recovery path once it fires.
+      const why =
+        res.status === 403
+          ? 'the credential may not read lifecycle config — add s3:GetLifecycleConfiguration on the bucket ARN'
+          : `HTTP ${res.status}`;
       return {
         ok: false,
         skipped: true,
-        note: `could not read lifecycle config (HTTP ${res.status})`,
+        note: `could not read lifecycle config (${why})`,
       };
     }
     const xml = await res.text();
@@ -578,6 +615,43 @@ async function verifyNoLifecycle(config, pkgRoot) {
 }
 
 /**
+ * Turn a failed drill subprocess into a verdict — and separate the two very
+ * different things a non-zero exit can mean.
+ *
+ * Exported because this distinction, not the spawning, is the thing worth
+ * pinning: on the first live AWS run all three of "no generation yet",
+ * "nowhere to run" and "the restore is broken" printed as a single red
+ * `failed`, and the operator spent the evening on the third when the truth was
+ * the second.
+ */
+export function classifyDrillFailure(text) {
+  if (/no complete backup generation/i.test(text)) {
+    return {
+      ok: false,
+      skipped: true,
+      note: 'no generation exists yet (the first one lands within 6h) — run `maude hub restore-drill` then',
+    };
+  }
+  // "NOWHERE TO RUN" IS NOT "THE BACKUP IS BROKEN". The standard deployment
+  // this command generates is container-only: the host clone has no
+  // `node_modules` (so `backup.mjs` dies on `Cannot find module
+  // 'better-sqlite3'`) and the image carries the bundled server, not
+  // `cli/bin/maude.mjs` — so the drill has nowhere to execute, through no
+  // fault of the backups. Reported as `failed`, that reads as data loss.
+  if (/cannot find module|backup engine.*not found|ERR_MODULE_NOT_FOUND/i.test(text)) {
+    return {
+      ok: false,
+      skipped: true,
+      note:
+        'the drill could not run here — this host has no installed backup engine, so nothing ' +
+        'about the backups was proven either way. Run `maude hub restore-drill` from a full ' +
+        'checkout against the same target.',
+    };
+  }
+  return { ok: false, note: `provisioning drill failed: ${text.trim().slice(0, 160)}` };
+}
+
+/**
  * A backup nobody has restored is a hypothesis. Runs the real drill.
  *
  * This used to report `skipped` unconditionally, on the grounds that "the
@@ -593,25 +667,37 @@ async function verifyNoLifecycle(config, pkgRoot) {
  * it is labelled a PROVISIONING drill and the recurring duty stays uncrossed
  * in `operatorDuties()`.
  */
-async function verifyRestoreDrill(config, { pkgRoot }) {
+async function verifyRestoreDrill(config, { outDir, pkgRoot }) {
   if (!config.s3) return { ok: false, skipped: true, note: 'no backup target configured' };
 
-  const drill = await sh(process.execPath, [
-    resolve(pkgRoot, 'cli/bin/maude.mjs'),
-    'hub',
-    'restore-drill',
-    '--json',
-  ]);
+  // PASS THE RENDERED ENV EXPLICITLY.
+  //
+  // The subprocess resolves its target through `engine.targetFromEnv()` — the
+  // SHELL's environment. `MAUDE_S3_*` was rendered into `.env` for the
+  // CONTAINER and was never exported here, so the drill reported "no backup
+  // target configured" on a deployment whose storage was configured and
+  // working. The note above this function said the credentials "are the ones
+  // we just rendered into `.env` on this machine": rendered, yes — loaded, no.
+  const rendered = readExistingEnv(resolve(outDir, '.env'));
+  const env = { ...process.env };
+  for (const [key, value] of Object.entries(rendered)) {
+    if (
+      key.startsWith('MAUDE_S3_') ||
+      key === 'MAUDE_BACKUP_TARGET' ||
+      key === 'MAUDE_BACKUP_PREFIX'
+    ) {
+      env[key] = value;
+    }
+  }
+
+  const drill = await sh(
+    process.execPath,
+    [resolve(pkgRoot, 'cli/bin/maude.mjs'), 'hub', 'restore-drill', '--json'],
+    { env }
+  );
   if (drill.code !== 0) {
     const text = `${drill.stdout}${drill.stderr}`;
-    if (/no complete backup generation/i.test(text)) {
-      return {
-        ok: false,
-        skipped: true,
-        note: 'no generation exists yet (the first one lands within 6h) — run `maude hub restore-drill` then',
-      };
-    }
-    return { ok: false, note: `provisioning drill failed: ${text.trim().slice(0, 160)}` };
+    return classifyDrillFailure(text);
   }
   return { ok: true, note: 'provisioning drill passed — schedule it, this proves today only' };
 }
@@ -655,7 +741,7 @@ function printDryRun({ config, outDir, files, plan, duties, reusedSecret }) {
       `  workspace   ${workspaceBaseUrl(config)}${config.local ? '  (LOCAL — plain HTTP)' : ''}\n` +
       `  first user  ${config.adminEmail}\n` +
       `  storage     ${config.s3 ? `${config.s3.bucket} @ ${config.s3.endpoint}${config.s3.dev ? ' (dev MinIO)' : ''}` : 'none — media stays in git'}\n` +
-      `  project     ${config.seedRepo ?? 'starts fresh'}\n` +
+      `  project     ${safeSeedUrl(config.seedRepo) ?? 'starts fresh'}\n` +
       `  image       ghcr.io/1agh/maude-hub:${config.imageTag}\n` +
       `  out         ${outDir}\n` +
       (reusedSecret ? '  secrets     reusing HUB_SECRET from the existing .env\n' : '') +
