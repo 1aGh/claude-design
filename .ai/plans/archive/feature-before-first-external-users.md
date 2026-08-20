@@ -1,6 +1,6 @@
 ---
 name: before-first-external-users
-status: in-progress
+status: done
 created: 2026-08-20
 decisions:
   - kg:maude/debate-v1-gate-set (round 4 — this block is the BINDING half of the deferral)
@@ -134,9 +134,40 @@ security fan-out (defender + adversarial) on the diff.
 
 ## Acceptance Criteria
 
-- [ ] Every A7-class notice is visible in the product UI, not only the terminal
-- [ ] All three sync toggles operable from the UI; first-upgrade consent asked once
-- [ ] `_trash/` is discoverable, restorable, and pruned with a report
-- [ ] OIDC pass recorded; beta label removed or retained by explicit decision
-- [ ] Hub-trust list empty or every remaining item carries a recorded rejection
-- [ ] Increment 8 (relay deletion) unblocks only after Task 1 ships in a release
+- [x] Every A7-class notice is visible in the product UI, not only the terminal
+- [x] All three sync toggles operable from the UI; first-upgrade consent asked once
+- [x] `_trash/` is discoverable, restorable, and pruned with a report
+- [x] OIDC pass recorded; no beta label existed to remove (explicit decision)
+- [x] Hub-trust list: 9 fixed with fail-first tests; the scope half of B14/B15 carries a recorded, dated deferral (needs the document-name↔path vocabulary reconciliation, a feature not a patch)
+- [ ] **STILL BLOCKED (correct):** Increment 8 (relay deletion) unblocks only after Task 1 ships in a RELEASE. Everything here is merged to main but unreleased — npm is still on 0.60.7 (the v1.0.0 token blocker, see STATE.md). Increment 8 stays parked until a release carries these.
+
+## Close-out (2026-08-20)
+
+All five tasks complete and merged (commits `fee7150d` A7 · `26cfbbcc` +
+`78a2de12` Task 2 · `7f512e24` Task 3 · `566096bd` Task 5 · `62b949ac`
+Task 4). Two things deliberately NOT done, both recorded above: the scope half
+of B14/B15 (deferred with rationale), and Increment 8 (blocked on a release,
+by the arc's own soak rule). The binding "before first external users" debt is
+otherwise cleared — every A7 notice, sync toggle, trash control, ownership
+switch and consent gate is in the product UI, and the hub-trust burn-down is
+done bar the one item that needs a feature.
+
+### Retro
+
+- **A filed finding ages worse than its symptom (again).** Task 5's list and
+  the OIDC "two closed blockers that weren't" both turned out mostly-closed in
+  the current tree — the v1.0.0 gate set had landed the hub delete budget, and
+  the B-round security fixes had pinned the OIDC surface. Verifying each item
+  against source before implementing (the E0 lesson) saved re-fixing closed
+  holes and found the two that were genuinely open (F-7/F-8/F-14 receipts, the
+  unthrottled signin door).
+- **The concurrent-session hazard was real and handled.** A second session
+  edited hub OIDC + docs files throughout Tasks 2–5. Staging file-by-file
+  (never `git add -A`) and checking `git diff -U0` for foreign hunks before
+  each commit kept the two streams from colliding — the exact `~/git` Syncthing
+  discipline the root CLAUDE.md warns about.
+- **One shared surface, many owners.** The Sync panel absorbed notices,
+  settings, doručenka, ownership, trash and a global consent dialog without
+  becoming a second source of truth — every control writes through a
+  MAIN-ORIGIN route that the canvas-origin gate test pins, so untrusted canvas
+  content can reach none of them.

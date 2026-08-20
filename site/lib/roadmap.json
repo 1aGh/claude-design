@@ -1,12 +1,18 @@
 {
   "generated": "2026-08-20T00:00:00.000Z",
-  "currentPhase": {
-    "id": "feature-before-first-external-users",
-    "title": "Feature: Before first external users (binding debt from the v1.0.0 gate)",
-    "branch": null,
-    "status": "done — **v1.0.0 RELEASED 2026-08-20**, with one half unshipped. Plan `feature-production-grade-hardening` archived. The tag rolled the fleet for real (`releaseVersion 0.60.7` → instance restart → `1.0.0`, client bundle `d43058f5848b` matching the seal of the image that run built), published `ghcr.io/1agh/maude-hub:v1.0.0` + `:latest`, and built desktop installers past the bundle-completeness + client-boot gates."
-  },
+  "currentPhase": null,
   "phases": [
+    {
+      "id": "feature-before-first-external-users",
+      "title": "Feature: Before first external users (binding debt from the v1.0.0 gate)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-before-first-external-users.md",
+      "archived": true,
+      "phaseKey": null
+    },
     {
       "id": "phase-1-contribute-infra-changesets",
       "title": "Phase 1: Contribute infrastructure + Changesets bootstrap",
@@ -2120,13 +2126,13 @@
       "phaseKey": null
     },
     {
-      "id": "feature-before-first-external-users",
-      "title": "Feature: Before first external users (binding debt from the v1.0.0 gate)",
-      "status": "in-progress",
+      "id": "feature-cloud-export-render-workers",
+      "title": "Feature: cloud-export-render-workers",
+      "status": "planned",
       "shipTarget": null,
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-before-first-external-users.md",
+      "planPath": ".ai/plans/feature-cloud-export-render-workers.md",
       "archived": false,
       "phaseKey": null
     },
