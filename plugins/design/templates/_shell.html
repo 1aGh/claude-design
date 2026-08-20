@@ -274,7 +274,11 @@
           .catch((err) => {
             // Build/transpile/import error → keep the current render, surface a
             // non-destructive "holding" toast. Next good build swaps it in.
-            if (rt.setHolding) rt.setHolding(true, (err && (err.message || String(err))) || 'build error');
+            // Same M8 diagnosis as the mount path: the 422 body names the
+            // culprit, the TypeError never does.
+            diagnoseImportFailure(canvasUrl, err).then((msg) => {
+              if (rt.setHolding) rt.setHolding(true, msg || 'build error');
+            });
             console.warn('[canvas-shell] soft-reload held last good (build error):', err);
           });
       }
@@ -294,6 +298,30 @@
         const el = document.getElementById('canvas-mount-error');
         if (el) el.textContent = msg;
         console.error('[canvas-shell]', msg);
+      }
+
+      // Spike finding M8 — a failed dynamic import throws a bare
+      // "TypeError: Failed to fetch dynamically imported module", and the
+      // browser DISCARDS the response body, which for a 422 is the one thing
+      // worth reading ("Canvas build error: this canvas imports …"). The spike
+      // burned several rounds on token/cookie hypotheses when the server had
+      // already written the answer into the body; it took a manual curl to see
+      // it. So: when the import fails, fetch the same URL once more and, if the
+      // server answered with a legible non-2xx body, show THAT.
+      function diagnoseImportFailure(url, err) {
+        const fallback = (err && (err.stack || err.message)) || String(err);
+        if (!url) return Promise.resolve(fallback);
+        return fetch(url, { headers: { 'Cache-Control': 'no-store' } })
+          .then((r) => {
+            if (r.ok) return fallback; // import failed but the fetch is fine → the error was in the module itself
+            return r.text().then((body) => {
+              const text = (body || '').trim();
+              if (!text) return 'HTTP ' + r.status + ' for ' + url + '\n\n' + fallback;
+              // Cap it — a build error is a paragraph, not a payload.
+              return 'HTTP ' + r.status + ' — ' + text.slice(0, 4000);
+            });
+          })
+          .catch(() => fallback);
       }
 
       // ---------------------------------------------------------------------
@@ -589,7 +617,9 @@
             } catch (e) { /* parent gone */ }
           }, 800);
         } catch (err) {
-          showError((err && err.stack) || String(err));
+          // The canvas module is the import worth diagnosing — comment-mount is
+          // ours and does not 422 on tenant content.
+          diagnoseImportFailure(canvasUrl, err).then(showError);
         }
       }
     </script>

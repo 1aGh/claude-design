@@ -269,6 +269,16 @@ function importAllowlist(
     name: 'maude-import-allowlist',
     setup(builder) {
       builder.onResolve({ filter: /.*/ }, (args: { path: string; importer: string }) => {
+        // `data:` / `blob:` are SELF-CONTAINED — no request leaves the page, so
+        // the sandbox has nothing to say about them. They reach this hook
+        // because bundled CSS runs every `url()` through onResolve, and
+        // `url("data:image/svg+xml,…")` — the standard idiom for grain,
+        // textures and tiny inline icons — is neither relative nor absolute,
+        // so the bare-specifier branch below used to reject it with the
+        // npm-packages message (spike finding M9: a design system's always-on
+        // film-grain took the whole canvas build down). The denial is for
+        // schemes that go to the NETWORK; these never do.
+        if (/^(data|blob):/i.test(args.path)) return { path: args.path, external: true };
         const importer = args.importer ? path.resolve(args.importer) : '';
         // Our own modules (canvas-lib and its graph) resolve normally.
         if (importer && !inRoot(importer)) return null;

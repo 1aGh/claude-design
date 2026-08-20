@@ -76,3 +76,66 @@ describe('canvas-build / buildCanvasModule', () => {
     expect(r.js).toMatch(/export\s*\{[\s\S]*default[\s\S]*\}/);
   });
 });
+
+// Spike finding M9 (studyfi-design AWS run, 2026-08-20) — the sandbox's import
+// allowlist rejected `data:` URIs. Bundled CSS runs every `url()` through
+// onResolve, and `url("data:image/svg+xml,…")` is the standard idiom for
+// grain, textures and tiny inline icons — it is neither relative nor absolute,
+// so the bare-specifier branch denied it with the npm-packages message. A
+// design system's always-on film-grain took every canvas build down; the
+// sandbox exists to stop NETWORK reads, and a data: URI never makes one.
+describe('canvas-build / sandbox scheme handling (M9)', () => {
+  const GRAIN =
+    `.grain {\n` +
+    `  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise'/%3E%3C/filter%3E%3C/svg%3E");\n` +
+    `}\n`;
+
+  // REALPATH, not `/tmp` — on macOS `/tmp` is a symlink to `/private/tmp`, and
+  // Bun reports importers by their real path. A root captured through the
+  // symlink never matches, the allowlist silently disarms (returns null → the
+  // native resolver), and every "denied" assertion here would be testing
+  // nothing. Discovered by this very suite going green for the wrong reason.
+  async function tmpProject(): Promise<{ dir: string; abs: string; src: string }> {
+    const dir = `/private/tmp/canvas-build-m9-${Math.random().toString(36).slice(2, 8)}`;
+    await Bun.write(`${dir}/style.css`, GRAIN);
+    const src = `import "./style.css";\nexport default function G() { return <div className="grain" />; }\n`;
+    const abs = `${dir}/canvas.tsx`;
+    await Bun.write(abs, src);
+    return { dir, abs, src };
+  }
+
+  test('a data: URI inside bundled CSS survives the ARMED sandbox', async () => {
+    const { dir, abs, src } = await tmpProject();
+    const r = await buildCanvasModule(abs, src, { restrictImportsTo: dir });
+    expect(r.js).toContain('data:image/svg+xml');
+  });
+
+  test('the sandbox still denies a bare npm specifier — the scheme pass-through is not a hole', async () => {
+    const dir = `/private/tmp/canvas-build-m9-deny-${Math.random().toString(36).slice(2, 8)}`;
+    const src = `import x from "left-pad";\nexport default function D() { return <i>{x}</i>; }\n`;
+    const abs = `${dir}/canvas.tsx`;
+    await Bun.write(abs, src);
+    await expect(buildCanvasModule(abs, src, { restrictImportsTo: dir })).rejects.toThrow(
+      /not available when it renders in a browser/
+    );
+  });
+
+  test('an http(s) @import is still refused by the armed sandbox — only non-network schemes pass', async () => {
+    // The spike's original fontshare failure was exactly this shape: an
+    // `@import url(https://…)` is a BUILD-TIME network fetch, so the sandbox
+    // must keep refusing it even now that data:/blob: pass. (A plain
+    // `url(https://…)` image reference never reaches onResolve — Bun's CSS
+    // loader leaves it external for the browser, where the cell CSP owns it.)
+    const dir = `/private/tmp/canvas-build-m9-http-${Math.random().toString(36).slice(2, 8)}`;
+    await Bun.write(
+      `${dir}/style.css`,
+      `@import url("https://api.fontshare.com/v2/css?f=x");\n.x { color: red; }\n`
+    );
+    const src = `import "./style.css";\nexport default function H() { return <div className="x" />; }\n`;
+    const abs = `${dir}/canvas.tsx`;
+    await Bun.write(abs, src);
+    await expect(buildCanvasModule(abs, src, { restrictImportsTo: dir })).rejects.toThrow(
+      /not available when it renders in a browser/
+    );
+  });
+});
