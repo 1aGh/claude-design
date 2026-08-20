@@ -131,6 +131,15 @@ COPY patches /build/patches
 RUN bun install --frozen-lockfile --ignore-scripts
 COPY apps/studio ./
 COPY plugins/design/templates /build/plugins/design/templates
+# `apps/studio/http.ts` imports `../../cli/lib/design-ownership.mjs` (the
+# adopt/detach ownership logic — DDR-228), so the cloud studio build resolves
+# it at compile time and MUST have it in context. The import landed between
+# v1.0.0 and v1.0.1 and broke this stage with `Could not resolve` because
+# nothing staged `cli/` here — the studio dir is copied, its one cross-package
+# dependency was not. design-ownership.mjs imports only node builtins, so this
+# single file is the whole closure; a new `../../cli/` import from studio needs
+# its own line (there is exactly one today — grep guards it in CI would be nice).
+COPY cli/lib/design-ownership.mjs /build/cli/lib/design-ownership.mjs
 # The client bundle + stylesheet are COMMITTED artifacts (see CLAUDE.md: what
 # you commit is what ships) — MAUDE_SKIP_RUNTIME_BUILD keeps the runtime bundles
 # verbatim for the same reason. The E1 seal below records what came out of here.
