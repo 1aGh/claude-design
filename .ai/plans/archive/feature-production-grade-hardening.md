@@ -185,8 +185,13 @@ Scoped to this repo's real gates (no generic 5-platform scenario runner here):
   - `/design:smoke`: **73/73 rendered styled**, exit 0. Per DDR-021 every PNG was looked at: 44 differ byte-wise from the last cleared run and were read individually; the other 29 are byte-identical to that run, which is proof of no change rather than a sample of it. Three visual oddities were checked against the prior run and are all **pre-existing, not regressions**: the agent-cursor label overlap in `colors-presence`, the empty toolbar glyphs in `iconography` section 4, and the label-less black boxes in `commands_overview`. Worth a backlog entry, not a gate.
   - Release-minified `dist/client.bundle.js` + `comment-mount.js` rebuilt and staged (within ~80 bytes of the committed artifacts — this IS the release artifact, per CLAUDE.md's rebuild rule); `dist/runtime/*.js` untouched.
   - `site/lib/roadmap.json` regenerated for this plan's edits.
-- [ ] B2 all three live drills executed and recorded
-- [ ] C1 v1.0.0 tagged, fleet verified, OIDC labeled beta, known-limits list in notes
+- [~] B2 **two of three drills executed** — and the third is the one that mattered most.
+  - **D7 self-host: DONE.** Operator path run end to end against `ghcr.io/1agh/maude-hub:latest` — `maude hub deploy docker` (which **failed on a fresh `--out` dir**: ENOENT, fixed in `730021f0`), hub up in Docker, admin claimed, invite minted, project linked, `1/1 synced`, backup → restore drill PASS with sentinel and FAIL+exit 1 on an empty hub. Not covered: the Caddy/TLS layer, which needs a real domain.
+  - **Fleet: EXECUTED, BUT AS PART OF THE RELEASE, NOT AS A REHEARSAL.** The `workflow_dispatch` rehearsal the plan specifies turned out to be **impossible as written** — it reported success while doing nothing (`wrangler`: `no changes maude-cells-maudecellb`), because the cell tag comes from `wrangler.toml` and does not change on a dispatch, and `verify-fleet-release.sh` is `if: ref_type == 'tag'` so the one check that would have said so was skipped. The real roll happened on the v1.0.0 tag and DID verify: `attempt 7: releaseVersion=0.60.7` → restart → `attempt 9: releaseVersion=1.0.0 client=d43058f5848b`, matching the seal of the image the run built. **If it had failed, it would have failed in production** — passing does not retroactively justify the order.
+  - **Two-machine cloud↔desktop pass (delete + conflict): NOT DONE.** Blocked on machine load from a concurrent session and on genuinely needing a second machine. This is the drill that would have exercised what 1.0 principally sells, and it remains unexercised.
+- [~] C1 **released, with one half unshipped.** Tagged `v1.0.0` (annotated), fleet verified running 1.0.0 on the bytes the run built, hub image `:v1.0.0` + `:latest` published, desktop installers built past the blank-window gates, GitHub Release live and not draft. CHANGELOG carries the OIDC-beta label and the known-limits list.
+  - **BLOCKER — npm is still on 0.60.7.** All 7 platform jobs failed on `npm error 404 ... PUT @1agh%2fmaude-linux-x64`, npm's way of saying unauthorized; `NPM_TOKEN` dates from 2026-05-20 and a 90-day token would have expired ~2026-08-18. `publish-main` was **skipped**, so nothing shipped half-way — but the fleet runs 1.0.0 while `npm i -g @1agh/maude` still gives 0.60.7. Fix is a token rotation plus `gh run rerun 32368661180 --failed`; the tag does not move and `npm publish` is idempotent.
+  - The runbook's own pre-flight lists that token as a prose checkbox. It was rendered and not verified — the staleness was visible the whole time via `gh secret list`. Worth making executable.
 - [x] Deferred work lives in `feature-post-1.0-hardening-backlog.md` — nothing silently dropped (verified against C1's named list: F-4, F-6, F-7/8/14, F-11/12, B6, B11, B13, B14/15, `_trash/` unpruned, sync flags CLI-only — all present; file committed in `74d9e0df`)
 - [x] Debate dissent honored: no rc tag cut (none exists); no consent UI built; A7-notice + the consent/toggle surface both sit in the backlog's BINDING "before first external users" block
 
@@ -211,3 +216,50 @@ Rounds 1–3 (2026-08-05): full record in this file's git history (`git log -p -
 ## Confidence
 
 **8/10** for one-pass implementation. Phase A is bounded and mechanical (the largest unknown — full-suite health — is deliberately non-blocking). B2's drills are the first-ever live exercise of the arc and may surface real defects; that is their purpose, and the plan treats a red drill as a gate doing its job, not a schedule failure.
+
+---
+
+## Retro
+
+**Local green proved almost nothing.** Every one of the four blocking CI failures
+after the merge was invisible on this machine: macOS/Node 24 wins races that
+Linux/Node 22 loses (an unref'd backup timer, a late `git` spawn), and the two
+new CI jobs shipped without the `MAUDE_SYNC_IN_CI` override the sync tests
+require — so ~30 tests asserted against `undefined` and it read as a broken file
+plane. The hub image could not be built *at all* from merged main, and nothing in
+`quality.yml` builds it. **The lesson is not "run more tests locally"; it is that
+some claims are only checkable where they will actually run.**
+
+**I made main red, and the cause was mine every time.** The merge went to main
+directly. Branch protection said, in the push output, that it wanted a PR; the
+push succeeded only on a bypass. A PR would have surfaced all four failures
+without main ever being broken, and would have cost one extra step. Next time the
+gate's own words are the signal, not the exit code.
+
+**The plan's task list was wrong in both directions.** Three of seven Phase-A
+tasks were already done on the branch (the seed fix, the door's owner gate on
+DELETE, the untrusted-marker coverage) and one was four times its estimate — A2
+turned 28 errors into 69 once the surface was complete, and surfaced six real
+bugs nobody could have seen because 52 files were read by no checker. Checking
+`git log` against a plan's checkboxes before trusting them is now cheap
+experience rather than a CLAUDE.md line nobody applies.
+
+**Two fixes made things worse before they made them better.** A guard I added
+during A2 sat above the `postMessage` that performs a text edit rather than above
+the undo record it was meant to gate — silently dropping the edit. And fixing
+`firstStatus` while missing the hand-rolled copy of the same wait left CI red for
+an extra round. Both were found by tests; neither by review. **Duplication is the
+through-line: two spellings of a wait, four spellings of a path rule.**
+
+**The drills paid for themselves and still did not do their job.** Self-host
+found that the first command in the operator docs fails on a fresh box. The
+fleet rehearsal proved *impossible as specified* — a dispatch deploy reports
+success while `wrangler` prints `no changes`, and the check that would say so is
+tag-gated. So the fleet rolled for the first time in production. It passed; that
+does not retroactively make the order right. **The two-machine pass — the drill
+covering what 1.0 principally sells — never ran at all.**
+
+**For the next plan:** put the environment-differential claims (image builds, CI
+env, platform races) in the gate explicitly, and treat "rehearse X" as unproven
+until someone has shown the rehearsal path can *fail* — a drill that cannot go
+red is not a drill.

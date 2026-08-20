@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-20T11:56:55.703Z",
+  "generated": "2026-08-20T12:53:57.152Z",
   "currentPhase": null,
   "phases": [
     {
@@ -1033,6 +1033,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/archive/feature-photo-editor.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-production-grade-hardening",
+      "title": "Feature: v1.0.0 gate-set — production-grade hardening, re-scoped to what gates the tag",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-production-grade-hardening.md",
       "archived": true,
       "phaseKey": null
     },
@@ -2122,17 +2133,6 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is the extracted Phase 5 of feature-ai-media-generation (closed at Phase 4, 2026-...",
       "planPath": ".ai/plans/feature-local-media-generation.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-production-grade-hardening",
-      "title": "Feature: v1.0.0 gate-set — production-grade hardening, re-scoped to what gates the tag",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-production-grade-hardening.md",
       "archived": false,
       "phaseKey": null
     },
