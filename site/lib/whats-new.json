@@ -1,11 +1,11 @@
 {
-  "generated": "2026-08-20T11:42:21.102Z",
-  "version": "0.60.7",
+  "generated": "2026-08-20T14:11:19.940Z",
+  "version": "1.0.0",
   "entries": [
     {
       "id": "moving-a-canvas-reaches-every-machine",
-      "version": null,
-      "date": null,
+      "version": "1.0.0",
+      "date": "2026-08-20",
       "kind": "fix",
       "surface": "design-ui",
       "title": "Moving a canvas reaches every machine",
@@ -13,8 +13,8 @@
     },
     {
       "id": "durable-backups-for-every-file",
-      "version": null,
-      "date": null,
+      "version": "1.0.0",
+      "date": "2026-08-20",
       "kind": "improvement",
       "surface": "design-ui",
       "title": "Every file in a cloud project is backed up now",
@@ -22,8 +22,8 @@
     },
     {
       "id": "the-whole-design-folder-syncs",
-      "version": null,
-      "date": null,
+      "version": "1.0.0",
+      "date": "2026-08-20",
       "kind": "feature",
       "surface": "design-ui",
       "title": "Your whole design folder syncs now",
@@ -31,8 +31,8 @@
     },
     {
       "id": "deleting-a-file-deletes-it-everywhere",
-      "version": null,
-      "date": null,
+      "version": "1.0.0",
+      "date": "2026-08-20",
       "kind": "feature",
       "surface": "design-ui",
       "title": "Delete a file and it stays deleted",
@@ -40,8 +40,8 @@
     },
     {
       "id": "repo-owned-or-hub-owned",
-      "version": null,
-      "date": null,
+      "version": "1.0.0",
+      "date": "2026-08-20",
       "kind": "improvement",
       "surface": "design-ui",
       "title": "One owner for your design folder",
@@ -49,8 +49,8 @@
     },
     {
       "id": "history-follows-the-cloud",
-      "version": null,
-      "date": null,
+      "version": "1.0.0",
+      "date": "2026-08-20",
       "kind": "fix",
       "title": "History shows what the cloud is saving",
       "summary": "When a folder is connected to Maude Cloud, the History tab now lists the cloud's saved versions instead of your machine's — headed by the cloud project's name, and you can open a canvas at any of them, including versions that only ever existed in the cloud. If the cloud can't be reached it says so, with a Retry, rather than looking empty. While the cloud is saving, the app also stops keeping a separate account of the folder: no unsaved marks in the tree, no draft switcher. Disconnect and it all returns live. Your own git is untouched.",
@@ -58,8 +58,8 @@
     },
     {
       "id": "canvas-zoom-and-selection-feel",
-      "version": null,
-      "date": null,
+      "version": "1.0.0",
+      "date": "2026-08-20",
       "kind": "improvement",
       "title": "Zooming and drawing feel right",
       "summary": "The mouse wheel and trackpad pinch now move the zoom about twice as far per notch, closer to the canvas tools you already use. Ink you draw scales with the zoom in the browser the way it always did in the desktop app, and the resize handles around a selection now follow a pan or zoom live instead of sitting where the shape used to be until you let go.",
@@ -67,8 +67,8 @@
     },
     {
       "id": "cloud-canvases-heal-themselves",
-      "version": null,
-      "date": null,
+      "version": "1.0.0",
+      "date": "2026-08-20",
       "kind": "fix",
       "title": "The cloud stops needing a reload",
       "summary": "A file that arrives in the cloud now shows up in an open tab by itself. Before, the bytes landed but nothing told the page, so a picture stayed a broken frame until you reloaded by hand — it looked like sync had failed when it had already finished.",
