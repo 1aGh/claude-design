@@ -315,7 +315,7 @@ export async function handleFileDoor(ctx) {
   const expect = String(request.headers?.['x-maude-expect-hash'] ?? '').trim();
 
   if (method === 'DELETE') {
-    return await handleDelete({ ctx, response, landing, target, match, expect });
+    return await handleDelete({ ctx, response, landing, target, expect });
   }
   const casHolds = () => {
     if (!expect) return { ok: true };
@@ -432,7 +432,7 @@ export async function handleFileDoor(ctx) {
  * raced somebody's edit loses the race and says so, which is the whole point:
  * an edit beats a delete, and the peer re-decides against the hash it is told.
  */
-async function handleDelete({ ctx, response, landing, target, match, expect }) {
+async function handleDelete({ ctx, response, landing, target, expect }) {
   return await withPathLock(landing, async () => {
     // B14 (post-1.0 burn-down) — the precondition is REQUIRED on DELETE.
     // Every real client has sent `x-maude-expect-hash` since Increment 6
