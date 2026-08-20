@@ -85,6 +85,17 @@ The command scaffolds and verifies a workspace **once**. It does not operate it.
 - **The bill is yours.** This runs on your infrastructure.
 - **Never expire the `assets/` prefix.** A canvas in your git history can reference media no *current* canvas does, so "unreferenced" never means "unreachable". An expired object is a permanently broken canvas with no recovery path. `maude hub asset-check` proves nothing dangles.
 
+## Where "back" goes in a browser tab
+
+Open a workspace project in a browser and the menubar names the project you are in. It shows **no** "← Dashboard" link, because a workspace is one hub serving one project — there is no list of projects to go back to. That is deliberate, not missing: the link used to default to Maude Cloud, which walked self-hosters off their own deployment onto an account most of them do not have.
+
+If you run your own landing page and want the way back, set two optional variables in `.env`:
+
+| Variable | What it does |
+| --- | --- |
+| `HUB_DASHBOARD_URL` | The address the "← Dashboard" link points at. Omit it and the link is not rendered at all. |
+| `MAUDE_REPORT_URL` | Where the Report-a-Bug dialog sends its (consented, scrubbed) bundle. Omit it and reports go to Maude's own endpoint — nothing is ever sent without the preview and your click. |
+
 ## Your designs are never run on the server
 
 A workspace stores and syncs canvases. It never renders one, never builds a bundle, never runs a browser against your content — and it will **refuse to start** if any surface that could do so is reachable.

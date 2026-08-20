@@ -2569,7 +2569,7 @@ function Sidebar({
   // Cloud Phase 25 C2 — viewer role: create / delete / move / rename
   // affordances are absent (buttons, composer, row menus, drag & drop).
   readOnly = false,
-  /** `{ dashboardUrl, projectName }` when this is a cloud tab, else null. */
+  /** `{ dashboardUrl?, projectName }` when this is a cloud tab, else null. */
   // Tri-state (see the note where this value is created): `undefined` until
   // the server config answers, `null` for the desktop, an object for a cloud
   // tab. Defaulting it to `null` here is what re-broke the boot 404 after the
@@ -3792,7 +3792,7 @@ function EditDropdown({ onAction, onClose, hasCanvas, readOnly = false }) {
 function Menubar({
   activePath,
   project,
-  /** `{ dashboardUrl, projectName }` when this is a cloud tab, else null. */
+  /** `{ dashboardUrl?, projectName }` when this is a cloud tab, else null. */
   // Tri-state (see the note where this value is created): `undefined` until
   // the server config answers, `null` for the desktop, an object for a cloud
   // tab. Defaulting it to `null` here is what re-broke the boot 404 after the
@@ -4094,13 +4094,22 @@ function Menubar({
           component, which is how the two shells started diverging last time. */}
       {cloud ? (
         <span className="st-cloudback" data-testid="cloud-back">
-          <a
-            className="st-cloudback-link"
-            href={cloud.dashboardUrl || 'https://cloud.maude.sh'}
-            title="Back to your projects"
-          >
-            ← Dashboard
-          </a>
+          {/* Only when there IS somewhere to go back TO. `dashboardUrl` is
+              absent on a self-hosted hub (one hub serves one project, so there
+              is no dashboard), and a hardcoded fallback here quietly re-created
+              the exact bug the server side just stopped: the link is the ONE
+              way out this tab offers, and it pointed at cloud.maude.sh. The
+              project name below stays either way — a tab must still say which
+              project it is showing. */}
+          {cloud.dashboardUrl ? (
+            <a
+              className="st-cloudback-link"
+              href={cloud.dashboardUrl}
+              title="Back to your projects"
+            >
+              ← Dashboard
+            </a>
+          ) : null}
           {cloud.projectName ? (
             <span className="st-cloudback-project" data-testid="cloud-project-name">
               {cloud.projectName}
@@ -9626,7 +9635,7 @@ function App() {
   //               UNKNOWN, and anything that would behave differently in the
   //               two shells must wait rather than assume the desktop.
   //   null      — desktop or plain local browser.
-  //   object    — a cloud tab (`{ dashboardUrl, projectName, user, role }`).
+  //   object    — a cloud tab (`{ dashboardUrl?, projectName, user, role }`).
   //
   // Collapsing unknown into "not cloud" is what made the cloud studio open with
   // two console 404s every time: the sign-in bar and the export centre mounted
@@ -9715,7 +9724,7 @@ function App() {
           // Undefined on a server too old to report it, which is why the chip
           // renders conditionally rather than printing `vundefined`.
           version: data.version,
-          // C2/C4 — `{ dashboardUrl, projectName, user, role }` when this is a
+          // C2/C4 — `{ dashboardUrl?, projectName, user, role }` when this is a
           // cloud tab. Its presence is what tells the shared client it is in a
           // browser tab on somebody else's machine; `user`/`role` are what let
           // it say WHICH account that tab is, and offer the way out.

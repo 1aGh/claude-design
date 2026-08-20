@@ -129,3 +129,42 @@ describe('"not known yet" survives every layer between /_config and the DOM', ()
     }
   });
 });
+
+describe('the way back out exists only where there is somewhere to go', () => {
+  // A self-hosted `maude hub workspace` is workspace mode too — the whole
+  // point of "one studio, three shells" — so it gets the `cloud` block, the
+  // stated agent absence, the account chip and the sign-out. What it does NOT
+  // have is a dashboard: one hub serves one project, and `HUB_DASHBOARD_URL`
+  // is written only by the managed fleet (cli/lib/cell-plan.mjs).
+  //
+  // Both sides had defaulted that URL to the vendor's SaaS, so the ONE way out
+  // a browser tab offers walked every self-hoster off their own deployment
+  // onto cloud.maude.sh — a dead end for an account most of them do not have.
+  // Fixing the server alone would not have fixed the button; the client
+  // carried its own copy of the same fallback.
+  test('the client never names the vendor as a fallback destination', () => {
+    // The literal is the bug. `dashboardUrl` is either configured or absent.
+    expect(APP).not.toContain("'https://cloud.maude.sh'");
+  });
+
+  test('the ← Dashboard anchor is gated on the URL, not on the shell', () => {
+    const at = APP.indexOf('data-testid="cloud-back"');
+    expect(at).toBeGreaterThan(0);
+    const block = APP.slice(at, at + 1200);
+    expect(block).toContain('{cloud.dashboardUrl ? (');
+    expect(block).toContain('href={cloud.dashboardUrl}');
+    // The project name is NOT gated with it: a tab must still say which
+    // project it is showing, dashboard or no dashboard.
+    expect(block).toContain('data-testid="cloud-project-name"');
+  });
+
+  test('the server sends the field only when it is configured', () => {
+    const HTTP = readFileSync(join(STUDIO, 'http.ts'), 'utf8');
+    // Conditional spread — the same shape `canvasToken` uses two fields down,
+    // so an absent value is absent rather than a string nobody can act on.
+    expect(HTTP).toContain(
+      '...(process.env.HUB_DASHBOARD_URL\n                  ? { dashboardUrl: process.env.HUB_DASHBOARD_URL }\n                  : {}),'
+    );
+    expect(HTTP).not.toContain("HUB_DASHBOARD_URL ?? 'https://cloud.maude.sh'");
+  });
+});

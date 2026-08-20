@@ -143,6 +143,22 @@ test('a non-loopback pairing URL is refused at the EMITTING end too', () => {
   }
 });
 
+test('the bug-report endpoint override actually reaches the studio', () => {
+  // The studio's own comment promises self-hosters can point Report-a-Bug
+  // somewhere other than the vendor's endpoint via MAUDE_REPORT_URL. Inside a
+  // hub that promise was false: the allowlist did not carry the variable, so
+  // the child fell back to cloud.maude.sh/report no matter what the operator
+  // configured. An allowlist is only as true as its entries.
+  const off = childEnv({ PATH: '/bin' }, { port: 4399 });
+  assert.equal(off.MAUDE_REPORT_URL, undefined);
+
+  const on = childEnv(
+    { PATH: '/bin', MAUDE_REPORT_URL: 'https://reports.internal.example/report' },
+    { port: 4399 }
+  );
+  assert.equal(on.MAUDE_REPORT_URL, 'https://reports.internal.example/report');
+});
+
 test('the child environment never grows a wildcard', () => {
   // The whole guarantee is "an allowlist, not a spread". A future edit adding
   // `...env` would pass every other test in this file.

@@ -108,6 +108,36 @@ describe('the cloud shell states what it is', () => {
     expect(cfg.cloud?.projectName).toBe('Alligators');
   });
 
+  // The shape every test above this line assumed away. A self-hosted
+  // `maude hub workspace` sets MAUDE_WORKSPACE_MODE but never
+  // HUB_DASHBOARD_URL (only cli/lib/cell-plan.mjs writes that), and the
+  // studio used to default it to the vendor's SaaS — so the ONE way out a
+  // browser tab offers walked a self-hoster off their own deployment onto
+  // cloud.maude.sh. Every cloud-block test booted WITH the variable set, so
+  // the whole suite was blind to the deployment the bug applies to.
+  test('a self-hosted hub gets the cloud block WITHOUT a dashboard link', async () => {
+    const { root } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port, {
+      MAUDE_WORKSPACE_MODE: '1',
+      MAUDE_WORKSPACE_ALLOW_DEV_MODULES: '1',
+      MAUDE_PROJECT_NAME: 'Alligators',
+      // deliberately NO HUB_DASHBOARD_URL — this is what self-hosted looks like
+    });
+    procs.push(proc);
+    const cfg = (await (await fetch(`http://localhost:${port}/_config`)).json()) as {
+      cloud?: { dashboardUrl?: string; projectName?: string };
+    };
+    // The block still exists: "you are in a browser tab on somebody else's
+    // machine" is just as true self-hosted, and C2's stated agent absence,
+    // the account chip and the sign-out all hang off it.
+    expect(cfg.cloud).toBeTruthy();
+    expect(cfg.cloud?.projectName).toBe('Alligators');
+    // Only the platform-specific field is gone — absent, so the client's
+    // truthiness check is the single gate.
+    expect(cfg.cloud?.dashboardUrl).toBeUndefined();
+  });
+
   test('the canvas capability is echoed only when the proxy minted one', async () => {
     const { base } = await bootCell();
     const without = (await (await fetch(`${base}/_config`)).json()) as { canvasToken?: string };

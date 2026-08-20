@@ -140,6 +140,23 @@ test('sign-in returns the member to the address CONFIGURATION states (D4)', () =
   assert.ok(!back.includes('cfargotunnel'), 'the tunnel hostname must never reach a member');
 });
 
+test('a tenant id without a configured dashboard is NOT a control plane', () => {
+  // The tenant id alone used to be the switch, with the control-plane address
+  // defaulted to cloud.maude.sh. A hub carrying a tenant id for its own
+  // reasons (asset key prefix, namespacing) and no dashboard URL would then
+  // send every unauthenticated visitor to the vendor's SaaS to sign in for a
+  // project the SaaS does not host. Both, or the hub's own door.
+  const url = signInUrl({
+    request: { headers: { host: 'design.internal.example' } },
+    env: {
+      MAUDE_TENANT_ID: 'alligators',
+      HUB_PUBLIC_URL: 'https://design.internal.example',
+    },
+  });
+  assert.equal(url, '/studio/signin');
+  assert.ok(!url.includes('maude.sh'), 'a self-hosted door never names the vendor');
+});
+
 test('the service page carries no inline style — the CSP would drop it silently', () => {
   // Third recurrence of DDR-097 when it was written; it stays a test.
   const html = servicePage('Paused', 'Nothing has changed.', {

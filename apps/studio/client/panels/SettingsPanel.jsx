@@ -1182,7 +1182,7 @@ function AppearanceTab({ theme, onSetTheme, cpMode, onSetCpMode }) {
 }
 
 export default function SettingsPanel({
-  /** `{ dashboardUrl, projectName }` when this is a cloud tab, else null. */
+  /** `{ dashboardUrl?, projectName }` when this is a cloud tab, else null. */
   // Tri-state (see the note where this value is created): `undefined` until
   // the server config answers, `null` for the desktop, an object for a cloud
   // tab. Defaulting it to `null` here is what re-broke the boot 404 after the

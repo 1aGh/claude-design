@@ -1740,7 +1740,20 @@ export function createHttp(
         ...(isWorkspaceMode()
           ? {
               cloud: {
-                dashboardUrl: process.env.HUB_DASHBOARD_URL ?? 'https://cloud.maude.sh',
+                // PRESENCE IS THE SWITCH — never a default. `HUB_DASHBOARD_URL`
+                // is written only by the managed fleet (cli/lib/cell-plan.mjs);
+                // a self-hosted `maude hub workspace` never sets it and has no
+                // multi-project dashboard to return to. Defaulting it to the
+                // SaaS put a `← Dashboard` link in every self-hoster's menubar
+                // that walked them off their own deployment onto cloud.maude.sh
+                // — a dead end for an account most of them do not have. Same
+                // rule the hub landing already keeps (server.mjs `isPlatform`)
+                // and the auth pages already keep (browser-auth.mjs): no URL,
+                // no link. Absent, not null, so the client's own check is the
+                // single one — exactly like `canvasToken` two fields down.
+                ...(process.env.HUB_DASHBOARD_URL
+                  ? { dashboardUrl: process.env.HUB_DASHBOARD_URL }
+                  : {}),
                 projectName: process.env.MAUDE_PROJECT_NAME ?? ctx.cfg.name ?? null,
                 // WHO the tab is signed in as, and WHAT that makes them —
                 // per REQUEST, from the proxy's injected headers, never from

@@ -207,6 +207,11 @@ export function childEnv(env = process.env, { port }) {
     // C4 — a browser tab has no window title, so the client has to be told
     // which project it is showing and where "back" is.
     ...(env.HUB_DASHBOARD_URL ? { HUB_DASHBOARD_URL: env.HUB_DASHBOARD_URL } : {}),
+    // Where the Report-a-Bug dialog's consented bundle goes. The studio's own
+    // comment promises self-hosters can point it somewhere else — a promise
+    // that was false inside a hub, because the variable never reached the
+    // child and the studio fell back to the vendor's endpoint.
+    ...(env.MAUDE_REPORT_URL ? { MAUDE_REPORT_URL: env.MAUDE_REPORT_URL } : {}),
     ...(env.MAUDE_PROJECT_NAME ? { MAUDE_PROJECT_NAME: env.MAUDE_PROJECT_NAME } : {}),
     ...(env.MAUDE_TENANT_ID ? { MAUDE_TENANT_ID: env.MAUDE_TENANT_ID } : {}),
     // A dev checkout resolves Playwright (the E2E harness) and would otherwise
