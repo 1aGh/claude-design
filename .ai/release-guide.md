@@ -14,6 +14,7 @@
 > - **GitHub Release** — created empty by `build-binaries.yml > create-release` (so matrix `gh release upload` has a target), then `publish-main` populates the body from `CHANGELOG.md` (auto-generated notes if the section is missing).
 > - **Claude Code marketplace** — both plugins (`design`, `flow`) ship via `marketplace.json` read directly from `main`. The moment the release commit is on `main`, end users can `/plugin marketplace update maude`. No separate publish step.
 > - **Maude Cloud fleet** — the same `v*` tag triggers `hub-image.yml` (multi-arch `ghcr.io/1agh/maude-hub:vX.Y.Z` + `:latest`) and `cells-deploy.yml`, which waits for that hub image, builds the cell image at the tag `apps/cells/wrangler.toml` declares (`maude-cell:vX.Y.Z`, written by the bump), pushes it to the Cloudflare registry, and `wrangler deploy`s the data plane. **The tag change is what restarts every cell** — env is applied at container START and Cloudflare only rolls instances on a config change; a re-pushed image under an unchanged tag deploys nothing anywhere (the v30/v31 lesson). Rollout verification is part of the Push step below.
+> - **Render service (DDR-230)** — the same tag also triggers `render-deploy.yml`: it builds `maude-render` at the tag `apps/render/wrangler.toml` declares (written by the bump, asserted by parity), publishes it BOTH to ghcr (`ghcr.io/1agh/maude-render:vX.Y.Z` — the self-host sidecar) and the Cloudflare registry, deploys the `maude-render` Worker, and polls `https://render.cloud.maude.sh/_health` until it reports the release version. Same tag-is-the-instruction contract as the cells.
 
 ## Pre-flight
 
@@ -179,7 +180,7 @@ The `v*.*.*` tag triggers `.github/workflows/build-binaries.yml`, which:
 >
 > **Known, accepted gap:** the per-platform `@1agh/maude-<slug>` sub-packages are published by the matrix *before* `desktop-gate` runs. A refused release therefore leaves the sub-packages on npm with no matching root tarball. That is inert — `npm i -g @1agh/maude` resolves the ROOT, which is what the gate protects — and the next tag's matrix republishes them idempotently.
 
-The same tag also fires the **cloud rollout chain**: `hub-image.yml` (ghcr hub image) → `cells-deploy.yml` (cell image at the wrangler.toml tag, data-plane deploy, instance restart). And `build-desktop.yml` for the native app.
+The same tag also fires the **cloud rollout chain**: `hub-image.yml` (ghcr hub image) → `cells-deploy.yml` (cell image at the wrangler.toml tag, data-plane deploy, instance restart) → and, independently, `render-deploy.yml` (maude-render image to ghcr + Cloudflare, Worker deploy, `/_health` version poll). And `build-desktop.yml` for the native app.
 
 Watch all of them — a release is not done while any is red or running:
 

@@ -185,7 +185,7 @@ const HOP_BY_HOP = new Set([
  */
 export function upstreamHeaders(
   incoming,
-  { role, user, sessionKey, publicUrl, canvasToken, collabRealm }
+  { role, user, sessionKey, publicUrl, canvasToken, renderToken, collabRealm }
 ) {
   const out = {};
   for (const [k, v] of Object.entries(incoming ?? {})) {
@@ -221,6 +221,10 @@ export function upstreamHeaders(
   // it to every canvas iframe URL; minting it here keeps the signing secret in
   // the process that already holds it.
   if (canvasToken) out[`${INJECTED_HEADER_PREFIX}canvas-token`] = canvasToken;
+  // The VIEWER-scoped render capability (DDR-230 §c). The studio forwards THIS
+  // — never the member's own canvas token — to the maude-render service, so
+  // the browser-bearing worker can read the canvas and nothing more.
+  if (renderToken) out[`${INJECTED_HEADER_PREFIX}render-token`] = renderToken;
   // D3 — the session dimension. `_active.json` and `<slug>.view.json` are
   // per-machine singletons by design (DDR-115); in one cell serving two members
   // that means they clobber each other's selection and camera, silently, and it
@@ -280,6 +284,12 @@ export function createStudioProxy({
   /** Mint the canvas origin's capability for this session. Injected so the
    *  signing secret never leaves the process that owns it. */
   mintCanvasToken = null,
+  /** Mint a VIEWER-scoped render capability for this session — the token the
+   *  cell forwards to the maude-render service (DDR-230 §c). Read-only by
+   *  construction, never the member's own write-capable canvas token, so a
+   *  Chromium-escaped worker holds no write grant. Separate closure so the
+   *  signing secret still never leaves this process. */
+  mintRenderToken = null,
   forward = defaultForward,
   forwardUpgrade = defaultForwardUpgrade,
   /**
@@ -360,6 +370,7 @@ export function createStudioProxy({
         sessionKey: session.sessionKey,
         publicUrl,
         canvasToken: mintCanvasToken?.(session) ?? null,
+        renderToken: mintRenderToken?.(session) ?? null,
       }),
     });
     // B3 — only on a write that SUCCEEDED. The studio's own caps and sniff have

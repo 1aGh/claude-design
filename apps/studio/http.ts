@@ -114,7 +114,7 @@ import { listTrash, pruneTrash, restoreFromTrash } from './sync/trash.ts';
 import { signInToWorkspace, workspaceDisclosure } from './sync/workspace-signin.ts';
 import { readUiPrefs, type UiPrefs, writeUiPrefs } from './ui-prefs.ts';
 import { loadWhatsNew, resolveMaudeVersion } from './whats-new.ts';
-import { isWorkspaceMode } from './workspace-mode.ts';
+import { isWorkspaceMode, resolveRenderLane } from './workspace-mode.ts';
 import { isLoopbackHost } from './ws.ts';
 
 // Real disk install root — never the virtual `/$bunfs/root` of compiled bins.
@@ -1351,6 +1351,23 @@ export function createHttp(
         // blank. See canvasShellUrl().
         tokensCssRel: ctx.cfg.designSystems?.[0]?.tokensCssRel ?? ctx.cfg.tokensCssRel,
       },
+      // DDR-230 — how the render service reaches this project's canvas when
+      // the job dispatches remotely (workspace `remote` lane): the PUBLIC
+      // canvas origin the member's own iframes load from, plus the member's
+      // render token forwarded from THIS request. On a desktop both are
+      // absent/loopback and the lane is `local`, so this is never read.
+      remoteCanvas: {
+        // MAUDE_RENDER_CANVAS_BASE overrides for deployments where the render
+        // service reaches the canvas on a different address than the member's
+        // browser does (the self-hosted sidecar fetches the hub over the
+        // compose network, not the public domain).
+        origin: process.env.MAUDE_RENDER_CANVAS_BASE ?? ctx.canvasOrigin ?? '',
+        // The VIEWER-scoped render token (DDR-230 §c) the hub proxy injects —
+        // NOT `x-maude-canvas-token`, which carries the member's own (up to
+        // write-capable) role. The worker only reads, so it holds only read.
+        token: req.headers.get('x-maude-render-token') ?? undefined,
+        tokensCssRel: ctx.cfg.designSystems?.[0]?.tokensCssRel ?? ctx.cfg.tokensCssRel,
+      },
     };
   }
 
@@ -1724,6 +1741,11 @@ export function createHttp(
         // New feed uses: one answer, so the chip in the status bar and the feed
         // can never name different versions.
         version: resolveMaudeVersion(),
+        // feature-cloud-export-render-workers — which export lane this server
+        // holds (`local` | `remote` | `none`). The client gates the export
+        // dialogs on it so a cell without a render service says WHY a format
+        // is unavailable instead of firing a request the proxy 404s.
+        exportLane: resolveRenderLane(),
         // Cloud Phase 27 (DDR-209) — the capability that opens the cookieless
         // canvas origin, minted per session by the proxy. Absent on a desktop,
         // where the canvas origin is loopback and needs none. `canvasUrl()`

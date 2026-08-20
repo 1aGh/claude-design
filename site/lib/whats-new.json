@@ -3,6 +3,15 @@
   "version": "1.0.0",
   "entries": [
     {
+      "id": "export-from-the-cloud-studio",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "surface": "design-ui",
+      "title": "Export works in the cloud studio now",
+      "summary": "Exporting a canvas to PNG, PDF, PPTX, ZIP or video from a project open in your browser used to fail. Now it runs as a background job — kick it off, keep working, and download it from the notifications when it's done. Where a workspace has no render service configured, the formats that need one say so and point you at the desktop app; ZIP always works."
+    },
+    {
       "id": "your-sync-controls-are-in-the-app-now",
       "version": null,
       "date": null,

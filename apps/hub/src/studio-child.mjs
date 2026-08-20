@@ -212,6 +212,15 @@ export function childEnv(env = process.env, { port }) {
     // that was false inside a hub, because the variable never reached the
     // child and the studio fell back to the vendor's endpoint.
     ...(env.MAUDE_REPORT_URL ? { MAUDE_REPORT_URL: env.MAUDE_REPORT_URL } : {}),
+    // feature-cloud-export-render-workers (DDR-230) — where browser-format
+    // export jobs dispatch. Presence flips the studio's render lane to
+    // `remote`; absent, the lane is `none` and the studio refuses those
+    // formats with a remedy instead of failing into a missing browser.
+    ...(env.MAUDE_RENDER_URL ? { MAUDE_RENDER_URL: env.MAUDE_RENDER_URL } : {}),
+    ...(env.MAUDE_RENDER_SECRET ? { MAUDE_RENDER_SECRET: env.MAUDE_RENDER_SECRET } : {}),
+    ...(env.MAUDE_RENDER_CANVAS_BASE
+      ? { MAUDE_RENDER_CANVAS_BASE: env.MAUDE_RENDER_CANVAS_BASE }
+      : {}),
     ...(env.MAUDE_PROJECT_NAME ? { MAUDE_PROJECT_NAME: env.MAUDE_PROJECT_NAME } : {}),
     ...(env.MAUDE_TENANT_ID ? { MAUDE_TENANT_ID: env.MAUDE_TENANT_ID } : {}),
     // A dev checkout resolves Playwright (the E2E harness) and would otherwise

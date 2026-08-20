@@ -34,6 +34,21 @@ That runs the whole stack on your laptop — no domain, no certificate, no accou
 
 When you are ready for something real, [`/design:hub-workspace`](/docs/commands-design) walks you through it and collects exactly the credentials your choices need.
 
+## Exports from the browser: the render sidecar
+
+The hub image carries **no browser** — that is a security invariant (no tenant-authored code is ever evaluated next to your hub's secrets), not an omission. It means the hosted studio cannot, by itself, render a PNG, PDF, PPTX or video: those exports capture the canvas through a real Chromium.
+
+Two honest options:
+
+- **Do nothing.** Rendered formats show up disabled in the export dialog with the reason; ZIP export and everything else works; the desktop app exports every format. Many teams never need more.
+- **Add `--render`** to `workspace-up`. It deploys the **`maude-render` sidecar** — a separate container that holds the Chromium and nothing else: no hub secret, no volume, no public port (the hub reaches it over the compose network only), and a boot-time refusal if any known secret variable is present in its environment. Renders authenticate back to the hub with the same short-lived read-only capability a member's own browser holds.
+
+```sh
+maude hub workspace-up … --render
+```
+
+Re-running with the flag is also how you add it to an existing workspace — like every re-run, existing secrets in `.env` are reused. The verification suite gains a `render-health` step; a sidecar that is up but misconfigured reports as failed, never as fine. Pin its image tag the same way you pin the hub's — the two ship together and `MAUDE_IMAGE_TAG` covers both.
+
 ## What you are taking on
 
 The command scaffolds and verifies **once**. It does not operate the deployment, and it prints that list on every successful run rather than implying otherwise. In short:

@@ -15,7 +15,7 @@
       "agents": 12
     },
     "maude": {
-      "subcommands": 19
+      "subcommands": 20
     }
   },
   "pageUpdated": {
@@ -88,7 +88,7 @@
     "desktop/index.mdx": "2026-07-08",
     "flow.mdx": "2026-08-16",
     "getting-started.mdx": "2026-07-03",
-    "hub/aws.mdx": "2026-08-18",
+    "hub/aws.mdx": "2026-08-21",
     "hub/deploy.mdx": "2026-08-18",
     "hub/durability.mdx": "2026-08-18",
     "hub/identity.mdx": "2026-08-18",
@@ -97,7 +97,7 @@
     "hub/people.mdx": "2026-08-18",
     "hub/pricing.mdx": "2026-05-28",
     "hub/self-host.mdx": "2026-08-18",
-    "hub/workspace.mdx": "2026-07-29",
+    "hub/workspace.mdx": "2026-08-21",
     "index.mdx": "2026-07-06",
     "legal/dpa.mdx": "2026-08-04",
     "legal/privacy.mdx": "2026-08-04",

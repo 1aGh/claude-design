@@ -131,9 +131,18 @@ MAUDE_TUNNEL_HOST = "t-alligators.cloud.maude.sh"
 # running instance — the cell has to stop and be woken again (idle timeout, or
 # an explicit /_cell/restart). A byte-identical config is a no-op roll.
 CELL_LIVE_PAIRING = "alligators"
+# feature-cloud-export-render-workers (DDR-230) — where a cell dispatches
+# browser-format export jobs. Reaches the studio child via cellEnv →
+# childEnv. Remove (or leave unset) to put the fleet's export lane back to
+# `none` — exports then refuse with a remedy, they don't 404. Remember: env
+# applies at container START — a change here reaches a cell on its next wake.
+MAUDE_RENDER_URL = "https://render.cloud.maude.sh"
 
 # Secrets (wrangler secret put):
 #   CELL_SECRET_MASTER          per-cell HUB_SECRETs are derived from this
+#   MAUDE_RENDER_SECRET         ingress bearer for the maude-render service
+#                               (DDR-230). Shared with apps/render's Worker;
+#                               NEVER derived from CELL_SECRET_MASTER.
 #
 # Cloud Phase 25 A-1: the bucket-wide R2 key no longer belongs here. Cells
 # mint per-tenant TEMPORARY credentials from the control plane at container

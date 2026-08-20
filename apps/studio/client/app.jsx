@@ -1538,9 +1538,23 @@ function ExportDialog({
   comps = [],
   activeArtboardId = null,
   selection = null,
+  exportLane = 'local',
   onClose,
 }) {
-  const [sel, setSel] = useState(mode === 'handoff' ? 'shadcn' : 'png');
+  // feature-cloud-export-render-workers — on a cell with no render service
+  // (`lane === 'none'`), formats that render through a browser are offered
+  // disabled-with-a-reason instead of firing a request the proxy 404s. ZIP
+  // (JSZip over project files) and the AI-handoff card (clipboard copy) need
+  // no browser and stay live in every lane.
+  const laneBlocked = useCallback(
+    (c) =>
+      (exportLane === 'none' && !c.handoff && c.format !== 'zip') ||
+      // Canva bundles project files the render service can't reach — desktop only
+      // in every workspace lane (exporters/remote.ts REMOTE_UNSUPPORTED_FORMATS).
+      (exportLane !== 'local' && c.format === 'canva'),
+    [exportLane]
+  );
+  const [sel, setSel] = useState(mode === 'handoff' ? 'shadcn' : exportLane === 'none' ? 'zip' : 'png');
   const [scope, setScope] = useState(
     initialScope && EXPORT_SCOPE_LABELS[initialScope] ? initialScope : 'artboard'
   );
@@ -1621,6 +1635,12 @@ function ExportDialog({
         await navigator.clipboard?.writeText(cmd);
       } catch {}
       setStatus({ ok: true, msg: `Copied: ${cmd} — run it in Claude Code.` });
+      return;
+    }
+    if (laneBlocked(card)) {
+      // Belt to the disabled-card braces — a stale selection can't submit a
+      // format this workspace cannot render.
+      setStatus({ ok: false, msg: 'This format needs the render service, which this workspace doesn’t have configured.' });
       return;
     }
     setBusy(true);
@@ -1706,6 +1726,12 @@ function ExportDialog({
                 type="button"
                 key={c.id}
                 className={'st-fmt' + (c.id === sel ? ' is-on' : '')}
+                disabled={laneBlocked(c)}
+                title={
+                  laneBlocked(c)
+                    ? 'Needs the render service — not configured on this workspace'
+                    : undefined
+                }
                 onClick={() => {
                   setSel(c.id);
                   setStatus(null);
@@ -1717,6 +1743,14 @@ function ExportDialog({
               </button>
             ))}
           </div>
+          {exportLane === 'none' && (
+            <div className="st-dialog-note" data-testid="export-lane-note">
+              Rendered exports (PNG, PDF, video…) need the render service, which this
+              workspace doesn&apos;t have configured. ZIP and AI handoff still work here —
+              for everything else use the desktop app, or ask your admin to add the
+              <code> maude-render</code> service (see the self-hosting docs).
+            </div>
+          )}
           {!card.handoff && (
             <div className="st-dialog-row">
               <label className="st-dialog-lbl" htmlFor="st-export-scope">
@@ -4243,8 +4277,8 @@ function Menubar({
             data-testid="view-only-stamp"
             data-tip={
               cloud?.user
-                ? `${cloud.user} is a viewer on this project — you can browse, comment and export. Ask a project owner for edit access, or sign out if that is not the account you meant to use.`
-                : 'Your role in this project is viewer — you can browse, comment when available, and export. Ask a project owner for edit access.'
+                ? `${cloud.user} is a viewer on this project — you can browse, comment and export where available. Ask a project owner for edit access, or sign out if that is not the account you meant to use.`
+                : 'Your role in this project is viewer — you can browse, comment when available, and export where available. Ask a project owner for edit access.'
             }
           >
             VIEW ONLY
@@ -9729,6 +9763,11 @@ function App() {
           // browser tab on somebody else's machine; `user`/`role` are what let
           // it say WHICH account that tab is, and offer the way out.
           cloud: data.cloud ?? null,
+          // feature-cloud-export-render-workers — `local` | `remote` | `none`.
+          // Which export formats this server can actually produce; the export
+          // dialogs gate on it. Absent on older servers → undefined, treated
+          // as `local` (the pre-lane behavior) everywhere it is read.
+          exportLane: data.exportLane,
         }));
       })
       .catch(() => {});
@@ -10109,10 +10148,15 @@ function App() {
   // toggles on its own and coexists with Inspector/Changes/Comments/Chat.
   const toggleTimeline = useCallback(() => setTimelineOpen((v) => !v), []);
   const whatsNew = useWhatsNew(MDCC_VERSION);
-  // Same tri-state rule as the sign-in bar: the export queue is a LOCAL job
-  // runner, `/_api/export-jobs` is one of the routes a cell refuses outright
-  // (DDR-209 D1), and hydrating before the shell is known 404s every boot.
-  const exportCenter = useExportCenter({ enabled: cfg.cloud === null });
+  // Same tri-state rule as the sign-in bar: hydrating before the shell is
+  // known 404s every boot. On desktop (`cloud === null`) the export queue is
+  // the LOCAL job runner, always on. In a cloud tab it hydrates only when the
+  // cell actually holds a jobs lane (`exportLane === 'remote'`) — a cell
+  // without a render service still refuses `/_api/export-jobs` outright
+  // (DDR-209 D1 posture, now lane-scoped by feature-cloud-export-render-workers).
+  const exportCenter = useExportCenter({
+    enabled: cfg.cloud === null || cfg.exportLane === 'remote',
+  });
   // Phase 29 (E4) — first-run onboarding wizard. The native shell boots a minimal
   // "welcome" project on first launch; we ask it whether this is a first run and, if
   // so, show the wizard OVER the (empty) canvas browser. Completing any door switches
@@ -12962,6 +13006,18 @@ function App() {
           if (source) source.postMessage({ dgn: 'export-result', id, ...msg }, replyOrigin);
         } catch {}
       };
+      // feature-cloud-export-render-workers — a workspace with no render
+      // service can't produce browser-rendered formats; answer the in-canvas
+      // dialog with the reason instead of relaying a request the proxy 404s.
+      // ZIP (and any browser-free format) still goes through.
+      if (cfg.exportLane === 'none' && payload?.format !== 'zip') {
+        reply({
+          ok: false,
+          error:
+            'This format needs the render service, which this workspace doesn’t have configured. ZIP still works here; for rendered formats use the desktop app or ask your admin to add maude-render.',
+        });
+        return;
+      }
       try {
         // feature-background-export-notification-center — enqueue and reply
         // with the job id immediately; the notification center (which
@@ -15774,6 +15830,7 @@ function App() {
           // scope=artboard fell back to `:first-of-type` (always the first).
           activeArtboardId={selected?.artboardId ?? canvasActiveArtboard ?? null}
           selection={selected?.selector ? { selector: selected.selector, file: selected.file } : null}
+          exportLane={cfg.exportLane || 'local'}
           onClose={() => setExportDialog(null)}
         />
       )}

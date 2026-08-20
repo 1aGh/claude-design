@@ -36,12 +36,40 @@ export function isWorkspaceMode(env: NodeJS.ProcessEnv = process.env): boolean {
 }
 
 /**
+ * Where an export gets rendered — the one question every export surface asks.
+ *
+ *   `local`   this process spawns the capture browser (desktop / plain server;
+ *             pre-render-worker behavior, unchanged).
+ *   `remote`  a workspace cell with a render service configured: browser-needing
+ *             formats are dispatched to `MAUDE_RENDER_URL` as jobs; the browser
+ *             never enters THIS image (the containment invariant holds).
+ *   `none`    a workspace cell with no render service: browser-needing formats
+ *             refuse with a remedy, browser-free formats (zip) still run here.
+ *
+ * Resolved once per boot-shaped question (env does not change while a cell
+ * runs — env applies at container start, see apps/cells/wrangler.toml).
+ */
+export type RenderLane = 'local' | 'remote' | 'none';
+
+export function resolveRenderLane(env: NodeJS.ProcessEnv = process.env): RenderLane {
+  if (!isWorkspaceMode(env)) return 'local';
+  return env.MAUDE_RENDER_URL ? 'remote' : 'none';
+}
+
+/**
  * Route paths a workspace cell must not expose, with the reason each one
  * violates containment. The reason travels with the entry so the error message
  * teaches rather than just refusing.
  *
- * These are prefixes: `/_api/export-jobs` is caught by `/_api/export` and that
- * is intended — a variant of a forbidden surface is still forbidden.
+ * These are prefixes: a variant of a forbidden surface is still forbidden.
+ * The ONE escape is an entry's `except` list — EXACT paths that leave the
+ * prefix's shadow because they hold none of what the prefix is forbidden for.
+ * feature-cloud-export-render-workers used it first: `/_api/export-jobs` +
+ * `/_api/export-history` enqueue, list and stream — the EVALUATION the
+ * `/_api/export` prefix names happens in the maude-render service (or is
+ * refused, lane `none`), never here. An unlisted future `/_api/export-*`
+ * route stays forbidden by default, which is the property that makes an
+ * exact-path allowlist safer than narrowing the prefix.
  *
  * TWO KINDS OF ENTRY LIVE HERE, and both belong:
  *
@@ -59,58 +87,66 @@ export function isWorkspaceMode(env: NodeJS.ProcessEnv = process.env): boolean {
  *      these are unreachable, and Cloud Phase 27 D1 is where they stop being in
  *      the image at all. Until then, unreachable is the floor, not the ceiling.
  */
-export const FORBIDDEN_ROUTE_PREFIXES: ReadonlyArray<{ prefix: string; why: string }> =
-  Object.freeze([
-    {
-      prefix: '/_api/export',
-      why: 'export renders the canvas through a headless browser — it EVALUATES tenant TSX',
-    },
-    {
-      prefix: '/_api/generate',
-      why: 'media generation runs tenant-authored prompts against a provider key held here',
-    },
-    {
-      prefix: '/_api/figma',
-      why: 'the Figma lane STORES and SPENDS a user personal access token, and imports write the design root — a cell must hold no provider credential (DDR-216 D2/D3, same class as /_api/generate)',
-    },
-    {
-      prefix: '/_api/shell-shot',
-      why: 'the shell screenshot spawns a headless browser against the studio — the same evaluation `/_api/export` is forbidden for',
-    },
-    {
-      prefix: '/_ws/acp',
-      why: 'the ACP bridge spawns the user’s own `claude` and can drive file edits (DDR-123 is desktop-only)',
-    },
-    // ---- Cloud Phase 27 D1 — the secret-bearing surfaces, named at last ----
-    {
-      prefix: '/_api/acp',
-      why: 'the ACP surface drives the user’s own `claude` session; a cell must not hold one (DDR-123)',
-    },
-    {
-      prefix: '/_api/claude',
-      why: 'installing or signing in to `claude` from a cell would put a user’s subscription on our infra (DDR-123)',
-    },
-    {
-      prefix: '/_api/cloud',
-      why: 'cloud sign-in mints and stores an account session — a cell IS the cloud, it must not be a client of it',
-    },
-    {
-      prefix: '/_api/github',
-      why: 'the GitHub lane spends an operator credential; a cell asks the control plane, it never holds one (DDR-201)',
-    },
-    {
-      prefix: '/_api/hub',
-      why: 'hub linking rewrites which server owns this project — a cell must not repoint itself',
-    },
-    {
-      prefix: '/_api/debug-bundle',
-      why: 'the diagnostic bundle reads this process’s logs, where every cell secret has had a chance to appear',
-    },
-    {
-      prefix: '/_api/design',
-      why: 'design-system init shells out to the CLI on our compute against tenant-chosen input',
-    },
-  ]);
+export const FORBIDDEN_ROUTE_PREFIXES: ReadonlyArray<{
+  prefix: string;
+  why: string;
+  except?: readonly string[];
+}> = Object.freeze([
+  {
+    prefix: '/_api/export',
+    why: 'export renders the canvas through a headless browser — it EVALUATES tenant TSX',
+    // The job lane: enqueue / list+stream / history. No evaluation happens
+    // in-cell — browser formats dispatch to maude-render (exporters/jobs.ts
+    // render lane), zip runs browser-free, and lane `none` refuses with a
+    // remedy. DDR amending DDR-209 A′1 records the contract.
+    except: ['/_api/export-jobs', '/_api/export-jobs/download', '/_api/export-history'],
+  },
+  {
+    prefix: '/_api/generate',
+    why: 'media generation runs tenant-authored prompts against a provider key held here',
+  },
+  {
+    prefix: '/_api/figma',
+    why: 'the Figma lane STORES and SPENDS a user personal access token, and imports write the design root — a cell must hold no provider credential (DDR-216 D2/D3, same class as /_api/generate)',
+  },
+  {
+    prefix: '/_api/shell-shot',
+    why: 'the shell screenshot spawns a headless browser against the studio — the same evaluation `/_api/export` is forbidden for',
+  },
+  {
+    prefix: '/_ws/acp',
+    why: 'the ACP bridge spawns the user’s own `claude` and can drive file edits (DDR-123 is desktop-only)',
+  },
+  // ---- Cloud Phase 27 D1 — the secret-bearing surfaces, named at last ----
+  {
+    prefix: '/_api/acp',
+    why: 'the ACP surface drives the user’s own `claude` session; a cell must not hold one (DDR-123)',
+  },
+  {
+    prefix: '/_api/claude',
+    why: 'installing or signing in to `claude` from a cell would put a user’s subscription on our infra (DDR-123)',
+  },
+  {
+    prefix: '/_api/cloud',
+    why: 'cloud sign-in mints and stores an account session — a cell IS the cloud, it must not be a client of it',
+  },
+  {
+    prefix: '/_api/github',
+    why: 'the GitHub lane spends an operator credential; a cell asks the control plane, it never holds one (DDR-201)',
+  },
+  {
+    prefix: '/_api/hub',
+    why: 'hub linking rewrites which server owns this project — a cell must not repoint itself',
+  },
+  {
+    prefix: '/_api/debug-bundle',
+    why: 'the diagnostic bundle reads this process’s logs, where every cell secret has had a chance to appear',
+  },
+  {
+    prefix: '/_api/design',
+    why: 'design-system init shells out to the CLI on our compute against tenant-chosen input',
+  },
+]);
 
 /**
  * Routes a cell MAY serve, but only while the contract that makes them safe is
@@ -171,9 +207,18 @@ function matches(route: string, prefix: string): boolean {
   return route === prefix || route.startsWith(prefix);
 }
 
-/** True when `route` is (or starts with) a forbidden prefix. */
+/** The forbidden entry shadowing `route`, honoring exact-path `except` escapes. */
+function forbiddenEntryFor(
+  route: string
+): { prefix: string; why: string; except?: readonly string[] } | undefined {
+  return FORBIDDEN_ROUTE_PREFIXES.find(
+    (f) => matches(route, f.prefix) && !f.except?.includes(route)
+  );
+}
+
+/** True when `route` is (or starts with) a forbidden prefix and is not excepted. */
 export function isForbiddenRoute(route: string): boolean {
-  return FORBIDDEN_ROUTE_PREFIXES.some((f) => matches(route, f.prefix));
+  return forbiddenEntryFor(route) !== undefined;
 }
 
 /** True when `route` is one a cell may serve only while the sandbox is armed. */
@@ -237,7 +282,7 @@ export function checkContainment(
   const routes: ContainmentReport['routes'] = [];
   const unattested: ContainmentReport['unattested'] = [];
   for (const route of routeNames) {
-    const forbidden = FORBIDDEN_ROUTE_PREFIXES.find((f) => matches(route, f.prefix));
+    const forbidden = forbiddenEntryFor(route);
     if (forbidden) {
       routes.push({ route, prefix: forbidden.prefix, why: forbidden.why });
       continue;

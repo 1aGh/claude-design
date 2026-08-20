@@ -85,6 +85,25 @@ an account takeover.
 
 Fresh, or an existing repository URL to seed from.
 
+### 5b · Exports (the render sidecar)
+
+Ask whether people will export finished work (PNG, PDF, PPTX, video) **from
+the hosted studio in a browser**. If yes → add `--render`: it deploys the
+`maude-render` sidecar, the one container in the stack that carries a browser
+(DDR-230). The hub itself stays browser-free either way — that is a security
+invariant, not an omission.
+
+Say the trade honestly, in both directions:
+
+- **Without it** nothing breaks silently: rendered formats are disabled in the
+  export dialog with the reason, ZIP export and everything else still works,
+  and the desktop app exports everything. It can be added later by re-running
+  `workspace-up` with `--render`.
+- **With it** the sidecar runs alongside the hub, unreachable from outside
+  (compose-network only), holds no hub secret and no data volume, and refuses
+  to boot if a secret variable reaches it. It costs the memory of an idle
+  Chromium.
+
 ### 6 · Durability
 
 Backup target (the same bucket is fine), and two commitments worth extracting
@@ -98,7 +117,7 @@ now rather than discovering later:
 
 ```sh
 maude hub workspace-up --dry-run --domain <host> --acme-email <email> \
-  --admin-email <email> [--s3-* …] [--seed-repo <url>]
+  --admin-email <email> [--s3-* …] [--seed-repo <url>] [--render]
 ```
 
 Show what it would write and what it would check. This is the moment a wrong

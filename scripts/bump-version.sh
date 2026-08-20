@@ -162,6 +162,23 @@ if [ -f "$WRANGLER_TOML_PATH" ]; then
   echo "[bump] apps/cells/wrangler.toml → maude-cell:v${NEW} (the release tag rolls the fleet)"
 fi
 
+# Same contract for the render service (DDR-230): the tag in
+# apps/render/wrangler.toml is the rollout instruction render-deploy.yml reads.
+RENDER_TOML_PATH="$ROOT/apps/render/wrangler.toml"
+if [ -f "$RENDER_TOML_PATH" ]; then
+  NEW="$NEW" node -e "
+    const fs = require('fs');
+    const p = '$RENDER_TOML_PATH';
+    const s = fs.readFileSync(p, 'utf8');
+    const out = s.replace(/(\/maude-render:)v[0-9A-Za-z.-]+\"/, '\$1v' + process.env.NEW + '\"');
+    if (out === s && !s.includes('/maude-render:v' + process.env.NEW + '\"')) {
+      console.error('[bump] WARNING: no maude-render image tag found in apps/render/wrangler.toml');
+    }
+    fs.writeFileSync(p, out);
+  "
+  echo "[bump] apps/render/wrangler.toml → maude-render:v${NEW}"
+fi
+
 # Stamp any pending What's New entries (version:null) with the new version + date.
 node "$ROOT/scripts/stamp-whats-new.mjs" "$NEW"
 

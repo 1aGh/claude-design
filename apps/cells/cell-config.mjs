@@ -368,6 +368,13 @@ export async function cellEnv({ tenantId, env, hostname, config = NO_CONFIG, s3C
     ...(env.CELL_ZONE
       ? { MAUDE_PUBLIC_CANVAS_ORIGIN: `https://${CANVAS_LABEL}-${tenantId}.${env.CELL_ZONE}` }
       : {}),
+    // feature-cloud-export-render-workers (DDR-230) — where browser-format
+    // export jobs dispatch. The URL is a fleet var, the secret a Worker
+    // secret; both reach the studio child through the hub's childEnv
+    // projection. Absent (service not deployed yet), the studio's lane is
+    // `none` and exports refuse with a remedy instead of a 404.
+    ...(env.MAUDE_RENDER_URL ? { MAUDE_RENDER_URL: env.MAUDE_RENDER_URL } : {}),
+    ...(env.MAUDE_RENDER_SECRET ? { MAUDE_RENDER_SECRET: env.MAUDE_RENDER_SECRET } : {}),
     // The customer-facing landing shows THIS, not a generic default. Absent,
     // the cell prettifies its own tenant slug — it never falls back to the
     // operator placeholder a customer should never meet, and (since B1) never

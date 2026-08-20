@@ -1,0 +1,13 @@
+{
+  "name": "@maude/render",
+  "private": true,
+  "type": "module",
+  "description": "maude-render — the render-worker service (DDR-230). The container's runtime deps resolve through apps/studio; the only dependency here is the Worker's container binding.",
+  "scripts": {
+    "start": "bun server.ts",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.3.7"
+  }
+}

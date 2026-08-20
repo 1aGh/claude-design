@@ -131,6 +131,22 @@ if [ -f "$WRANGLER_TOML_PATH" ]; then
   fi
 fi
 
+# Render service (DDR-230) — same contract as the cell tag: the maude-render
+# image tag in apps/render/wrangler.toml IS render-deploy.yml's instruction,
+# so it rides the release line too. May be absent on older branches.
+RENDER_TOML_PATH="$ROOT/apps/render/wrangler.toml"
+if [ -f "$RENDER_TOML_PATH" ]; then
+  RENDER_TAG=$(grep -m1 '^image = ' "$RENDER_TOML_PATH" | sed -E 's/.*maude-render:([^"]+)".*/\1/')
+  if [[ "$RENDER_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    if [ "v$PKG_VER" != "$RENDER_TAG" ]; then
+      echo "error: version mismatch" >&2
+      printf "  %-50s %s\n" "package.json:" "$PKG_VER" >&2
+      printf "  %-50s %s\n" "apps/render/wrangler.toml (maude-render tag):" "$RENDER_TAG" >&2
+      mismatches=$((mismatches + 1))
+    fi
+  fi
+fi
+
 # optionalDependencies pin parity — every @1agh/maude-* entry must equal PKG_VER.
 mismatches=$((mismatches + $(node -e "
   const j = require('$PKG_PATH');

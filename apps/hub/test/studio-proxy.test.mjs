@@ -186,6 +186,24 @@ test('a client CANNOT speak the injected headers', () => {
   assert.equal(Object.entries(out).filter(([, v]) => v === 'owner').length, 0);
 });
 
+test('the render token is injected separately from the canvas token (DDR-230 §c)', () => {
+  // The member's own canvas token can be write-capable (their project role);
+  // the render token the cell forwards to maude-render is minted viewer-only.
+  // upstreamHeaders must carry both as distinct injected headers, and — like
+  // every x-maude-* header — refuse a client-supplied one (property 2).
+  const out = upstreamHeaders(
+    { 'x-maude-render-token': 'FORGED', 'x-maude-canvas-token': 'ALSO-FORGED' },
+    { role: 'owner', publicUrl: null, canvasToken: 'canvas-cap', renderToken: 'render-cap' }
+  );
+  assert.equal(out['x-maude-canvas-token'], 'canvas-cap');
+  assert.equal(out['x-maude-render-token'], 'render-cap');
+  assert.notEqual(
+    out['x-maude-render-token'],
+    'FORGED',
+    'a forged inbound render token is stripped'
+  );
+});
+
 test('hop-by-hop headers are not forwarded', () => {
   const out = upstreamHeaders(
     {

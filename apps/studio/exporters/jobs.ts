@@ -28,6 +28,7 @@ import { mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { Bus } from '../context.ts';
+import { resolveRenderLane } from '../workspace-mode.ts';
 import {
   type ExportContext,
   type ExportDegradation,
@@ -37,7 +38,16 @@ import {
   runExport,
   type Scope,
 } from './index.ts';
-import type { ResolveScopeArgs } from './scope.ts';
+import {
+  formatNeedsBrowser,
+  NoRenderServiceError,
+  REMOTE_UNSUPPORTED_FORMATS,
+  REMOTE_UNSUPPORTED_MESSAGE,
+  type RemoteCanvasAccess,
+  renderRemotely,
+  resolveRenderService,
+} from './remote.ts';
+import { type ResolveScopeArgs, resolveScope } from './scope.ts';
 
 /** Extended shape of the old Phase 6.5 T10 history entry — additive fields only. */
 export interface ExportHistoryEntry {
@@ -85,6 +95,14 @@ export interface EnqueueArgs {
   options: ExportOptions;
   resolve: Omit<ResolveScopeArgs, 'scope'>;
   ctx: ExportContext;
+  /**
+   * feature-cloud-export-render-workers (DDR-230) — how the render service
+   * reaches this project's canvas when the job dispatches remotely: the
+   * PUBLIC canvas origin plus the requesting member's own render token,
+   * forwarded from the enqueue request. Absent on a desktop, where the lane
+   * is `local` and this is never read.
+   */
+  remoteCanvas?: RemoteCanvasAccess;
 }
 
 export type DownloadResult =
@@ -310,7 +328,33 @@ export function createExportJobQueue(bus: Bus, designRoot: string): ExportJobQue
 
     const controller = new AbortController();
 
+    // DDR-230 — where this job renders. `local` is the pre-render-workers
+    // spine, byte-identical. In a workspace the browser formats dispatch to
+    // the maude-render service (`remote`) or refuse with a remedy (`none`);
+    // browser-free formats (zip) run in-cell in every lane, because there is
+    // nothing to evaluate. Resolved per job, not per process, so tests can
+    // exercise the lanes without a reboot.
+    const lane = resolveRenderLane();
+    const dispatchRemote = lane !== 'local' && formatNeedsBrowser(args.format);
+
     const result = (async (): Promise<ExportResult> => {
+      // Fail BEFORE taking a render slot: a job that can never render must not
+      // queue behind ones that can, and the refusal message is the remedy the
+      // export dialog shows (belt to the client's own lane gate).
+      const laneRefusal =
+        lane !== 'local' && REMOTE_UNSUPPORTED_FORMATS.has(args.format)
+          ? REMOTE_UNSUPPORTED_MESSAGE
+          : dispatchRemote && lane === 'none'
+            ? new NoRenderServiceError().message
+            : null;
+      if (laneRefusal) {
+        job.status = 'failed';
+        job.finishedAt = new Date().toISOString();
+        job.error = laneRefusal;
+        emit(job);
+        await persistAndEvict();
+        throw new Error(laneRefusal);
+      }
       const release = await semaphore.acquire();
       // Started here, not at enqueue — the timeout bounds RENDER time (the
       // intent), not queue-wait time. A job can legitimately sit `queued`
@@ -323,20 +367,38 @@ export function createExportJobQueue(bus: Bus, designRoot: string): ExportJobQue
         job.startedAt = new Date().toISOString();
         emit(job);
 
-        const res = await runExport({
-          format: args.format,
-          scope: args.scope,
-          options: args.options,
-          resolve: args.resolve,
-          ctx: args.ctx,
-          hooks: {
-            signal: controller.signal,
-            onProgress: (update) => {
-              job.progress = update;
-              emit(job);
-            },
-          },
-        });
+        const res = dispatchRemote
+          ? await renderRemotely({
+              format: args.format,
+              // Scope resolves HERE, against the cell's own checkout — Target
+              // is pure data, and the render service holds no tenant store to
+              // resolve against (DDR-230 §1).
+              targets: await resolveScope({
+                scope: args.scope,
+                ...args.resolve,
+                options: args.options,
+              }),
+              options: args.options,
+              canvas: args.remoteCanvas ?? { origin: '' },
+              // resolveRenderService() is non-null on the `remote` lane by
+              // construction (the lane IS the presence of MAUDE_RENDER_URL).
+              service: resolveRenderService()!,
+              signal: controller.signal,
+            })
+          : await runExport({
+              format: args.format,
+              scope: args.scope,
+              options: args.options,
+              resolve: args.resolve,
+              ctx: args.ctx,
+              hooks: {
+                signal: controller.signal,
+                onProgress: (update) => {
+                  job.progress = update;
+                  emit(job);
+                },
+              },
+            });
 
         job.status = 'done';
         job.finishedAt = new Date().toISOString();

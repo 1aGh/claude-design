@@ -1,0 +1,64 @@
+# maude-render — the fleet's render service (DDR-230).
+#
+# A THIRD Worker, separate from both the control plane and the tenant data
+# plane, for the same reason those two are separate: different trust surface,
+# independent deploys. This one carries the ONLY browser in the fleet; a bad
+# rollout here degrades exports, never a tenant's workspace.
+#
+# THE TAG IN THIS FILE IS THE ROLLOUT INSTRUCTION — same contract as
+# apps/cells/wrangler.toml: `render-deploy.yml` reads the tag, builds THAT
+# tag, and deploys. Pushing new bytes under an unchanged tag deploys nobody
+# (`no changes` — the container config is byte-identical). Bump the tag
+# (scripts/bump-version.sh writes it at release time).
+
+name = "maude-render"
+main = "worker.mjs"
+compatibility_date = "2026-07-01"
+preview_urls = false
+# Same trap as the cells: a Worker with no deployable target uploads versions
+# but never deploys one, and the container rollout attaches to a deployment.
+workers_dev = true
+
+# One stable ingress hostname for the whole fleet. Declared here (unlike the
+# cells' per-tenant hostnames, which are API-created and must never be in a
+# committed config) because there is exactly one and it is ours.
+routes = [
+  { pattern = "render.cloud.maude.sh", custom_domain = true },
+]
+
+[[containers]]
+class_name = "MaudeRender"
+# Written by scripts/bump-version.sh; asserted against the release tag in CI.
+image = "registry.cloudflare.com/b5b596efe65abb732777c7171dc18145/maude-render:v1.0.0"
+# ONE instance is the pilot posture (worker.mjs pins a singleton by name).
+# The ceiling is 2 so a rollout can overlap, not so load can spread — raising
+# it further is a billing decision first (see the cells' cost arithmetic:
+# standard-1 ≈ $53/month pinned awake; sleepAfter is what keeps this ~$0 idle).
+max_instances = 2
+# Chromium + the in-page encoders want memory; standard-1 (1/2 vCPU, 4 GiB)
+# matches what the desktop capture spine is comfortable in.
+instance_type = "standard-1"
+
+[[durable_objects.bindings]]
+name = "MAUDE_RENDER"
+class_name = "MaudeRender"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MaudeRender"]
+
+[vars]
+# Origins this service will fetch canvases from — fail-closed allowlist
+# (server.ts refuses jobs naming anything else; one `*` wildcard, host-side).
+# The managed fleet's canvas origins are per-tenant hostnames (cell-config.mjs
+# MAUDE_PUBLIC_CANVAS_ORIGIN); a self-hosted sidecar sets its own instead.
+MAUDE_RENDER_CANVAS_ORIGINS = "https://canvas-*.cloud.maude.sh"
+
+# Secrets (wrangler secret put):
+#   MAUDE_RENDER_SECRET   ingress bearer, shared with the cells. NEVER a hub
+#                         secret and never derived from CELL_SECRET_MASTER —
+#                         rotating one must not touch the other (DDR-230 §1).
+
+[observability]
+enabled = true
+head_sampling_rate = 1

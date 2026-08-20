@@ -62,6 +62,14 @@ export const STUDIO_ROUTES = Object.freeze({
   '/_api/git-user': { safe: 'read', unsafe: null },
   '/_api/git-committers': { safe: 'read', unsafe: null },
   '/_api/export-history': { safe: 'read', unsafe: null },
+  // feature-cloud-export-render-workers — the export JOB lane. Enqueue is a
+  // POST "because it takes work, exactly like the export lane on the hub"
+  // (the git rows' reasoning), and `export` is an all-roles capability:
+  // "look, comment and download" is what viewer means (role-matrix.mjs).
+  // Nothing here evaluates in the cell — browser formats dispatch to the
+  // render service; without one the studio refuses with a remedy (lane `none`).
+  '/_api/export-jobs': { safe: 'read', unsafe: 'export' },
+  '/_api/export-jobs/download': { safe: 'export', unsafe: null },
   '/_api/assets': { safe: 'read', unsafe: null },
   '/_api/footage': { safe: 'read', unsafe: null },
   '/_api/comp-clips': { safe: 'read', unsafe: null },
@@ -193,9 +201,11 @@ export const STUDIO_ROUTES = Object.freeze({
   // are named here because a manifest that only lists what it allows cannot
   // tell "denied on purpose" from "nobody has looked at it yet", and that
   // difference is the entire value of the E3 gate.
+  // The SYNCHRONOUS render stays refused — in the cloud a render is always a
+  // JOB (feature-cloud-export-render-workers): the cell enqueues, the
+  // maude-render service evaluates (DDR amending DDR-209 A′1), the member
+  // downloads. The job rows moved up into the "reading the project" section.
   '/_api/export': REFUSED,
-  '/_api/export-jobs': REFUSED,
-  '/_api/export-jobs/download': REFUSED,
   // Spawns a headless browser against the studio — the same evaluation
   // `/_api/export` is forbidden for, and there is no browser in a cell image.
   '/_api/shell-shot': REFUSED,

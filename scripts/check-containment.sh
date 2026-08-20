@@ -262,6 +262,45 @@ if [ -f "apps/hub/src/canvas/routes.mjs" ] && ! grep -qF "renderDisabled" "apps/
   fail=1
 fi
 
+# ---- 4. the export except-list stays exactly the DDR-230 three --------------
+#
+# DDR-230 introduced the ONE escape from a forbidden prefix: exact paths on the
+# `/_api/export` entry's `except` list (the job lane — enqueue/list/stream,
+# nothing evaluates in-cell). A FOURTH entry appearing here is a containment
+# decision, not a convenience — it must arrive with its own DDR, so it is a red
+# build until this list is updated deliberately.
+EXCEPT_ACTUAL=$(node -e "
+  const s = require('fs').readFileSync('$MODULE', 'utf8');
+  const m = s.match(/except:\s*\[([^\]]*)\]/g) ?? [];
+  const paths = m.flatMap((x) => [...x.matchAll(/'([^']+)'/g)].map((g) => g[1]));
+  console.log(paths.sort().join(','));
+")
+EXCEPT_EXPECTED="/_api/export-history,/_api/export-jobs,/_api/export-jobs/download"
+if [ "$EXCEPT_ACTUAL" != "$EXCEPT_EXPECTED" ]; then
+  echo "FAIL: the forbidden-prefix except-list changed (DDR-230)." >&2
+  echo "      expected: $EXCEPT_EXPECTED" >&2
+  echo "      found:    $EXCEPT_ACTUAL" >&2
+  echo "      A new escape from a forbidden prefix needs its own DDR, then this list." >&2
+  fail=1
+fi
+
+# ---- 5. the render service must be the inverse of a cell --------------------
+#
+# apps/render is the ONE image that carries a browser (DDR-230). Its safety
+# argument is that it holds nothing worth stealing — so the boot-assert that
+# refuses secret-bearing environments must stay, and the cell/hub side must
+# never grow a dependency on it becoming more than that.
+if [ -d "apps/render" ]; then
+  if ! grep -qF "REFUSING TO START" apps/render/server.ts; then
+    echo "FAIL: apps/render/server.ts no longer refuses a secret-bearing environment (DDR-230 §1)." >&2
+    fail=1
+  fi
+  if ! grep -qF "MAUDE_RENDER_CANVAS_ORIGINS" apps/render/server.ts; then
+    echo "FAIL: apps/render/server.ts no longer gates canvas origins (the SSRF allowlist, DDR-230)." >&2
+    fail=1
+  fi
+fi
+
 if [ "$fail" -ne 0 ]; then
   echo "" >&2
   echo "containment gate FAILED" >&2

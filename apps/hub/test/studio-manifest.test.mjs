@@ -171,6 +171,22 @@ test('an unknown role gets nothing at all', () => {
   assert.equal(decide('GET', '/_config', '').allow, false);
 });
 
+test('the export JOBS lane is served, the synchronous render is not (render-workers)', () => {
+  // feature-cloud-export-render-workers — the job routes evaluate nothing in
+  // the cell (enqueue/list/stream; the render happens in maude-render), and
+  // `export` is an all-roles capability ("look, comment and download" is what
+  // viewer means — role-matrix.mjs).
+  assert.equal(decide('GET', '/_api/export-jobs', 'viewer').allow, true);
+  assert.equal(decide('POST', '/_api/export-jobs', 'viewer').allow, true);
+  assert.equal(decide('POST', '/_api/export-jobs', 'member').allow, true);
+  assert.equal(decide('GET', '/_api/export-jobs/download', 'viewer').allow, true);
+  // Download is a GET-only handler — POST is a method refusal, not a grant.
+  assert.equal(decide('POST', '/_api/export-jobs/download', 'viewer').allow, false);
+  assert.equal(decide('GET', '/_api/export-history', 'viewer').allow, true);
+  // The synchronous render stays refused for everyone — a cloud render is a job.
+  assert.equal(decide('POST', '/_api/export', 'owner').reason, 'refused');
+});
+
 test('the refused lane is refused for the owner too', () => {
   for (const path of ['/_api/export', '/_api/acp/status', '/_api/github/repos', '/_api/hub/link']) {
     const verdict = decide('POST', path, 'owner');

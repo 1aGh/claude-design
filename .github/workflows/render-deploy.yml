@@ -1,0 +1,144 @@
+# maude-render image + service deploy (DDR-230).
+#
+# Mirrors cells-deploy.yml's contract, because it exists for the same reasons:
+#
+#   1. THE TAG IN apps/render/wrangler.toml IS THE INSTRUCTION. This workflow
+#      reads it, builds THAT tag, and deploys. Pushing new bytes under an
+#      unchanged tag rolls nobody — a byte-identical container config is a
+#      no-op (`no changes`), and it can only put a SECOND set of bytes under an
+#      existing tag (the bundle-identity hazard). `scripts/bump-version.sh`
+#      rewrites the tag at release time.
+#   2. ONLY A RELEASE TAG (or an explicit workflow_dispatch) touches the
+#      registry or the Worker. A branch push runs the checks and stops.
+#   3. TOKEN SCOPE — same three permissions as the cells (Workers Scripts:
+#      Edit, Workers Containers: Write, Cloudchamber: Write), same
+#      MAUDE_CONTAINERS_TOKEN secret, same bare-`Forbidden` failure mode when
+#      one is missing.
+#
+# One extra output the cells don't have: the image ALSO publishes to
+# ghcr.io/1agh/maude-render:<tag> — that is the self-hosted sidecar
+# (workspace-up --render pulls it by MAUDE_IMAGE_TAG). Both pushes carry the
+# SAME build, which is the point of building once.
+
+on:
+  push:
+    tags: ['v*.*.*']
+    branches: [main]
+    paths:
+      - 'apps/render/**'
+      - 'apps/studio/exporters/**'
+      - '.github/workflows/render-deploy.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: render-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build maude-render + deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Parse-check the service
+        # No test suite lives in apps/render (its logic is the studio's
+        # exporters, tested there); this catches a syntax/import break before
+        # the expensive image build does.
+        run: bun build apps/render/server.ts --target=bun --no-bundle > /dev/null
+
+      - name: Read the image tag from wrangler.toml
+        id: image
+        run: |
+          IMAGE=$(grep -m1 '^image = ' apps/render/wrangler.toml | sed 's/.*"\(.*\)".*/\1/')
+          if [ -z "$IMAGE" ]; then
+            echo "::error::no image line in apps/render/wrangler.toml"
+            exit 1
+          fi
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "Declared render image: $IMAGE"
+
+      - name: On a release tag, the declared image must BE the release
+        if: github.ref_type == 'tag'
+        run: |
+          IMAGE="${{ steps.image.outputs.image }}"
+          case "$IMAGE" in
+            *:"${{ github.ref_name }}") echo "render tag matches release ${{ github.ref_name }}";;
+            *) echo "::error::apps/render/wrangler.toml declares '$IMAGE' but the release is '${{ github.ref_name }}' — run scripts/bump-version.sh and re-tag"; exit 1;;
+          esac
+
+      - uses: docker/setup-buildx-action@v3
+        if: ${{ github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' }}
+
+      - name: Build the render image
+        if: ${{ github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/render/Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: ${{ steps.image.outputs.image }}
+
+      - name: Log in to ghcr
+        if: ${{ github.ref_type == 'tag' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish the self-host sidecar image to ghcr
+        # The SAME build, retagged — never a second `docker build` (two builds,
+        # one version, is the "same tag, different bytes" hazard again, across
+        # registries this time).
+        if: ${{ github.ref_type == 'tag' }}
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+        run: |
+          GHCR="ghcr.io/1agh/maude-render:${{ github.ref_name }}"
+          docker tag "$IMAGE" "$GHCR"
+          docker push "$GHCR"
+          echo "published $GHCR"
+
+      - name: Push to the Cloudflare registry
+        if: ${{ github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' }}
+        working-directory: apps/render
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.MAUDE_CONTAINERS_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          IMAGE: ${{ steps.image.outputs.image }}
+        run: |
+          npm install --no-audit --no-fund
+          npx wrangler containers push "$IMAGE"
+
+      - name: Deploy the Worker
+        if: ${{ github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' }}
+        working-directory: apps/render
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.MAUDE_CONTAINERS_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          MAUDE_RENDER_VERSION: ${{ github.ref_name }}
+        run: npx wrangler deploy --var MAUDE_RENDER_VERSION:"$MAUDE_RENDER_VERSION"
+
+      - name: Verify the service answers at the release version
+        if: ${{ github.ref_type == 'tag' }}
+        run: |
+          for i in $(seq 1 30); do
+            BODY=$(curl -sf https://render.cloud.maude.sh/_health || true)
+            if echo "$BODY" | jq -e --arg v "${{ github.ref_name }}" '.ok and .version == $v' >/dev/null 2>&1; then
+              echo "render service is live at ${{ github.ref_name }}"; exit 0
+            fi
+            echo "attempt $i: $BODY"; sleep 10
+          done
+          echo "::error::the render service never reported the release version — the rollout did not land"
+          exit 1

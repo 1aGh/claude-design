@@ -603,6 +603,26 @@ export function createHub(config = {}) {
             return null;
           }
         },
+        // DDR-230 §c — the token the cell forwards to the maude-render service.
+        // ALWAYS viewer role, whatever the member is: the worker only reads the
+        // canvas, and a read-only capability is all a browser-bearing process
+        // that evaluates tenant TSX may hold. Never the write-capable canvas
+        // token above.
+        mintRenderToken: (session) => {
+          try {
+            return mintRenderToken({
+              secret,
+              project: process.env.MAUDE_TENANT_ID ?? 'local',
+              subject: session.email,
+              role: 'viewer',
+            });
+          } catch {
+            // Same failure mode as the canvas token — a hub without a secret
+            // just can't mint one; the render lane then dispatches tokenless
+            // and the canvas origin refuses it, which fails the export cleanly.
+            return null;
+          }
+        },
       })
     : null;
   /** @type {ReturnType<typeof scheduleMirror>|null} */

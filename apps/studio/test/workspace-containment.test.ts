@@ -71,10 +71,12 @@ describe('checkContainment — what a cell may serve', () => {
 
   test('a VARIANT of a forbidden route is still forbidden', () => {
     // The realistic way this gets reintroduced: not `/_api/export` verbatim, but
-    // a sibling that does the same thing under a new name.
+    // a sibling that does the same thing under a new name. (`/_api/export-jobs`
+    // moved OUT of this list when render-workers excepted it explicitly — an
+    // except-listed exact path is a classified decision, not a variant.)
     for (const route of [
-      '/_api/export-jobs',
       '/_api/export/png',
+      '/_api/export-jobs-v2',
       '/_api/github/repos',
       '/_api/claude/signin',
       '/_ws/acp',
@@ -284,13 +286,16 @@ describe('pruneForWorkspace — how a cell can boot at all', () => {
     expect(Object.keys(routes).sort()).toEqual([
       '/_api/asset',
       '/_api/comments',
+      // Kept since render-workers — the job lane enqueues/streams, it never
+      // evaluates (the `except` escape on the `/_api/export` prefix).
+      '/_api/export-jobs',
       '/_api/git-committers',
       // Kept since the unwithhold — a photo edit is a stored sidecar, and a
       // cell that cannot store it cannot save photo edits at all.
       '/_api/photo-edit',
       '/_health',
     ]);
-    expect(removed).toEqual(['/_api/export', '/_api/export-jobs', '/_api/generate/keys']);
+    expect(removed).toEqual(['/_api/export', '/_api/generate/keys']);
     // Handlers are carried through by reference — pruning must not rebuild them.
     expect(routes['/_api/asset']).toBe('a');
   });
@@ -309,6 +314,36 @@ describe('pruneForWorkspace — how a cell can boot at all', () => {
     expect(() => assertContainment(Object.keys(routes), { env: CELL })).not.toThrow();
     // ...and the unpruned table would have refused.
     expect(() => assertContainment(Object.keys(table), { env: CELL })).toThrow(/REFUSING TO START/);
+  });
+
+  test('the export JOB lane survives the prune; the synchronous render does not (render-workers)', () => {
+    // feature-cloud-export-render-workers: enqueue/list/download evaluate
+    // nothing — the render happens in the maude-render service (or refuses,
+    // lane `none`). The synchronous `/_api/export` stays forbidden, and so
+    // does any FUTURE `/_api/export-*` variant nobody has classified — the
+    // escape is an explicit exact-path allowlist, not a loosened prefix.
+    const table = {
+      '/_api/export': 'x',
+      '/_api/export-jobs': 'j',
+      '/_api/export-jobs/download': 'd',
+      '/_api/export-history': 'h',
+      '/_api/export-next-phase-surprise': 'f',
+      '/_health': 'ok',
+    };
+    const { routes, removed } = pruneForWorkspace(table);
+    expect(Object.keys(routes).sort()).toEqual([
+      '/_api/export-history',
+      '/_api/export-jobs',
+      '/_api/export-jobs/download',
+      '/_health',
+    ]);
+    expect(removed).toEqual(['/_api/export', '/_api/export-next-phase-surprise']);
+    // The single predicate agrees (the fetch fall-through gates on it too).
+    expect(isForbiddenRoute('/_api/export')).toBe(true);
+    expect(isForbiddenRoute('/_api/export-jobs')).toBe(false);
+    expect(isForbiddenRoute('/_api/export-jobs/download')).toBe(false);
+    expect(isForbiddenRoute('/_api/export-history')).toBe(false);
+    expect(isForbiddenRoute('/_api/export-next-phase-surprise')).toBe(true);
   });
 
   test('pruning an already-clean table is a no-op', () => {
