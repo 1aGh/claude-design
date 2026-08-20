@@ -112,6 +112,27 @@ is left is harness quality, not correctness:
   everything" command it looks like. Either exclude the specialised specs from the
   default glob or make the suite self-skip without its env.
 
+### Release-mechanics hazards found preparing the B2 drills (2026-08-20)
+
+- **D-1 — `hub-image.yml` cannot build a staging image, and dispatching it from
+  main would push `:latest`.** B2's fleet drill is specified as "a
+  `cells-deploy.yml` dispatch against a staging-named image", and no such image
+  can be produced: `hub-image.yml` computes its tags as
+  `VER="${GITHUB_REF_NAME#v}"` → on a `workflow_dispatch` from main that is
+  literally `main`, so it would publish `ghcr.io/1agh/maude-hub:vmain` **and
+  `:latest`** — the tag every self-hoster pulls and the deploy emitter's own
+  default — from an unreleased build. Same shape as round 4's finding that the
+  `v*.*.*` globs match `v1.0.0-rc.1`: the manual path inherits a tag nobody
+  chose. Options: add a required `tag` input (mirroring `cells-deploy`'s
+  `hub_image`, which was already made required-with-no-default for exactly this
+  reason), or refuse `:latest` on anything but a release tag. **Until one of
+  those lands, the fleet drill cannot be run as written.**
+- **D-2 — the fleet drill has a chicken-and-egg the plan does not name.**
+  `cells-deploy` derives the cell from an EXISTING hub image, and the merged code
+  is published nowhere (no tag). So a drill of *this* code needs either D-1's
+  staging image or the v1.0.0 tag itself — i.e. the gate cannot be satisfied
+  before the thing it gates, unless D-1 is fixed first.
+
 ### DS specimen defects (found reading all 73 smoke PNGs, 2026-08-19)
 
 All three are **pre-existing** — confirmed byte-identical to the previous cleared
