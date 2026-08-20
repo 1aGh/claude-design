@@ -26,13 +26,33 @@ Everything the original 5-phase hardening program (rounds 1–3, 2026-08-05) and
 
 ## Backlog
 
-### Before first external users (BINDING — promoted debt, not optional)
+### Before first external users (BINDING) — DONE 2026-08-20
 
-- **A7 re-consent notice reaches a human** — the DDR-064 A7 shared-doc notice is a `console.warn` (`apps/studio/sync/index.ts:1567`, `:3234`) a terminal-free desktop user never sees. Binding **before Increment 8** (after the relay deletion there is no two-doc fallback) and before any real external population upgrades into `sharedDoc`/`syncFiles`/`propagateDeletes` ON.
-- **Consent / first-upgrade dialog + UI toggles** for `syncFiles` / `propagateDeletes` / `resolveFirstAnchor` — today every breaker remediation string tells the user to edit `linkedHub.*` JSON with no UI control anywhere in `client/` (round-4 ADVOCATE finding). Includes surfacing per-file doručenka rows in the Sync panel (aggregates-only today) and the adopt/detach desktop dialog (CLI-only, DDR-177 posture).
-- **`_trash/` retention + findable restore** (F-6) — quarantine-not-delete is only safe if discoverable; today nothing prunes or indexes it, and the product's copy points users at a hidden gitignored folder.
-- **OIDC AppSec pass** — the hub browser-auth door (`handleOidc` + `oidc*.mjs`) explicitly "needs its own AppSec pass"; a re-review already found two "closed" blockers that weren't (grep green while `/admin/api/oidc/*` 404'd). Until done, OIDC stays labeled **beta** in release notes.
-- **Remaining hub-trust findings** (burn-down list): F-4 (READ judges scope on lexical path, class on real), F-7/F-8/F-14 (`handleDelete` confirm semantics, seq echo, `x-maude-expect-hash: none` ambiguity), F-11/F-12 (re-anchor storm recovery, poke cooldown on reconnect), B6 (tombstone under degraded epoch), B11 (`settleOwnership` mutates `.gitignore`/index without asking in non-TTY), B13 (`parkedRemote` never expires), B14/B15 (DELETE precondition optional; session tokens wildcard-scoped; scope prefix matching vs file paths).
+The whole binding block shipped to main as `feature-before-first-external-users`
+(archived). All five items complete; two things stay open by design, both
+recorded in that plan's close-out: the scope half of B14/B15 (deferred with
+rationale — needs the document-name↔path vocabulary reconciliation, a feature)
+and Increment 8 (blocked on a RELEASE by the arc's soak rule; main carries the
+work but npm is still 0.60.7 per STATE.md).
+
+- **A7 notices reach a human** — DONE. `console.warn`s became an additive
+  `notices[]` payload rendered in the Sync panel with a per-(notice, hub)
+  machine-local dismiss (commit `fee7150d`).
+- **Consent / first-upgrade dialog + UI toggles** — DONE. `/_api/sync/settings`
+  + panel toggles, per-file doručenka rows, global first-upgrade consent
+  dialog, and in-UI adopt/detach via `/_api/sync/ownership` (commits `26cfbbcc`,
+  `78a2de12`).
+- **`_trash/` retention + findable restore** (F-6) — DONE. `sync/trash.ts`
+  scanner + `/_api/sync/trash` (list/restore/prune) + panel Trash section;
+  product copy repointed off the hidden folder (commit `7f512e24`).
+- **OIDC AppSec pass** — DONE. Surface verified sound; the one open gap
+  (unthrottled `/studio/signin` + `/auth/oidc/callback`) fixed with a fail-first
+  reachability pin. No beta label existed to remove
+  (`.ai/logs/security-reviews/oidc-appsec-pass.md`, commit `62b949ac`).
+- **Hub-trust findings** — DONE bar the deferral. F-4/F-7/F-8/F-14/B14
+  (precondition)/F-11/F-12/B6/B13 fixed with fail-first tests; B11 fell to the
+  ownership confirm row; the scope half of B14/B15 deferred with rationale
+  (commit `566096bd`).
 
 ### Release-channel + detection (old Phase 5, re-scoped by round 4)
 

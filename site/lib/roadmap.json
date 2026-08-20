@@ -3,17 +3,6 @@
   "currentPhase": null,
   "phases": [
     {
-      "id": "feature-before-first-external-users",
-      "title": "Feature: Before first external users (binding debt from the v1.0.0 gate)",
-      "status": "done",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/archive/feature-before-first-external-users.md",
-      "archived": true,
-      "phaseKey": null
-    },
-    {
       "id": "phase-1-contribute-infra-changesets",
       "title": "Phase 1: Contribute infrastructure + Changesets bootstrap",
       "status": "done",
@@ -2111,6 +2100,17 @@
       "date": "2026-08-18",
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/archive/feature-sync-journal-file-plane.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-before-first-external-users",
+      "title": "Feature: Before first external users (binding debt from the v1.0.0 gate)",
+      "status": "done",
+      "shipTarget": null,
+      "date": "2026-08-20",
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-before-first-external-users.md",
       "archived": true,
       "phaseKey": null
     },
