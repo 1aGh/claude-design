@@ -170,3 +170,51 @@ for app in "${APP_MANIFEST_PATHS[@]}"; do
 done
 [ -f "$TAURI_CONF_PATH" ] && echo "  apps/desktop/src-tauri/tauri.conf.json"
 [ -f "$CARGO_TOML_PATH" ] && echo "  apps/desktop/src-tauri/Cargo.toml"
+
+# ── Bun runtime pin (T0e, post-1.0 backlog) ─────────────────────────────────
+# .bun-version is the ONE source for the bun toolchain version. Every CI
+# workflow must consume it via setup-bun's `bun-version-file` (a literal
+# `bun-version:` is drift waiting to happen), and the hub image's oven/bun
+# stages must carry the same exact tag — `oven/bun:1` floated for months, which
+# means the image's runtime was whatever bun happened to publish that week.
+# EXACT matters: Bun's minifier output is not stable across patch releases
+# (a 1.3.14 client bundle rendered a blank desktop app — see build-desktop.yml).
+BUN_VERSION_FILE="$ROOT/.bun-version"
+if [ ! -f "$BUN_VERSION_FILE" ]; then
+  echo "bun pin: .bun-version is missing" >&2
+  exit 1
+fi
+BUN_PIN=$(tr -d '[:space:]' < "$BUN_VERSION_FILE")
+case "$BUN_PIN" in
+  [0-9]*.[0-9]*.[0-9]*) : ;;
+  *)
+    echo "bun pin: .bun-version must be an exact x.y.z, got: '$BUN_PIN'" >&2
+    exit 1
+    ;;
+esac
+
+bun_drift=0
+while IFS= read -r line; do
+  echo "bun pin: workflow hardcodes a bun version instead of bun-version-file:" >&2
+  echo "  $line" >&2
+  bun_drift=1
+done < <(grep -rn "bun-version:" "$ROOT/.github/workflows" 2>/dev/null || true)
+
+while IFS= read -r line; do
+  tag=${line##*oven/bun:}
+  tag=${tag%% *}
+  if [ "$tag" != "$BUN_PIN" ]; then
+    echo "bun pin: apps/hub/Dockerfile stage is not on oven/bun:$BUN_PIN:" >&2
+    echo "  $line" >&2
+    bun_drift=1
+  fi
+done < <(grep -n "FROM oven/bun:" "$ROOT/apps/hub/Dockerfile" 2>/dev/null || true)
+
+if [ $bun_drift -gt 0 ]; then
+  echo "" >&2
+  echo "Fix: change ONLY .bun-version, and reference it everywhere:" >&2
+  echo "  workflows:  bun-version-file: .bun-version" >&2
+  echo "  Dockerfile: FROM oven/bun:<the pinned version>" >&2
+  exit 1
+fi
+echo "bun pin OK: $BUN_PIN (.bun-version → workflows via bun-version-file, hub Dockerfile stages)"

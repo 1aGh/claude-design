@@ -108,7 +108,7 @@ jobs:
           # cheap answer is a fixed toolchain rather than a committed artifact,
           # because unlike the runtime bundles this one changes with source.
           # Bumping it is fine — the client-boot gate will say if it is not.
-          bun-version: '1.3.3'
+          bun-version-file: .bun-version
 
       - name: Install pnpm
         uses: pnpm/action-setup@v6

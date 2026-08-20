@@ -66,7 +66,7 @@ jobs:
         # rationale on build-desktop.yml's Install Bun step).
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: '1.3.3'
+          bun-version-file: .bun-version
 
       - name: Cloud binary elimination (Phase 27 D1)
         # Containment says a cell REFUSES these surfaces; this says the code is
@@ -140,16 +140,32 @@ jobs:
       - name: Version parity
         run: bash scripts/check-version-parity.sh
 
+      # T0d′ (post-1.0 backlog): per-PR, not only inside bump-version.sh. ~/git
+      # is a Syncthing tree with concurrent sessions — a `git add` of a shared
+      # file can carry another session's in-flight import into main while the
+      # module itself stays untracked (green locally, fatal in CI; cost two tag
+      # moves in v0.51.0). Catch it on the PR, not at release time.
+      - name: Import coherence (tracked imports resolve to tracked files)
+        run: bash scripts/check-import-coherence.sh
+
       - name: MDCC tokens drift (.design ↔ site/app)
         run: pnpm --filter @maude/site sync:tokens:check
 
-      - name: Site generated content drift (reference + stats)
+      - name: Site generated content drift (reference + stats + lib mirrors)
+        # The whole generated set, not a subset: site/lib/whats-new.json sat
+        # outside this gate and went stale through the v1.0.0 release (the
+        # public feed still advertised 0.60.7). Its generator — and
+        # build-roadmap.mjs — had a clock-based `generated` field that made
+        # every regen dirty, which is WHY they were left out; both are now
+        # deterministic functions of their inputs, so they can be diffed here.
         run: |
           pnpm --filter @maude/site gen:reference
           pnpm --filter @maude/site gen:stats
-          DRIFT_PATHS="site/content/docs/commands-design site/content/docs/commands-flow site/content/docs/config-schema.mdx site/lib/stats.json"
+          pnpm --filter @maude/site gen:roadmap
+          pnpm --filter @maude/site gen:whatsnew
+          DRIFT_PATHS="site/content/docs/commands-design site/content/docs/commands-flow site/content/docs/config-schema.mdx site/lib/stats.json site/lib/roadmap.json site/lib/whats-new.json"
           if ! git diff --quiet -- $DRIFT_PATHS; then
-            echo "::error::Generated site content is stale. Run \`pnpm --filter @maude/site gen:reference && pnpm --filter @maude/site gen:stats\` locally and commit the diff."
+            echo "::error::Generated site content is stale. Run \`pnpm --filter @maude/site gen:reference && pnpm --filter @maude/site gen:stats && pnpm --filter @maude/site gen:roadmap && pnpm --filter @maude/site gen:whatsnew\` locally and commit the diff."
             git --no-pager diff --stat -- $DRIFT_PATHS
             exit 1
           fi
@@ -188,7 +204,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: '1.3.3'
+          bun-version-file: .bun-version
 
       - name: Install (apps/studio, own bun.lock per DDR-009)
         run: cd apps/studio && bun install --frozen-lockfile
