@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "your-sync-controls-are-in-the-app-now",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "surface": "design-ui",
+      "title": "Sync settings, consent and a Trash you can find",
+      "summary": "The Sync panel now holds the controls that used to mean editing a config file by hand: turn file sync or delete propagation on and off, choose how first-link conflicts resolve, and see per-file delivery. A first-time notice asks before a workspace starts mirroring your whole design folder, and deleted or replaced files land in a Trash section you can restore from or clear — no more hunting for a hidden folder."
+    },
+    {
       "id": "moving-a-canvas-reaches-every-machine",
       "version": "1.0.0",
       "date": "2026-08-20",
