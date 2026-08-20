@@ -92,8 +92,40 @@ poke cooldown on reconnect), B6 (tombstone under degraded epoch), B11
 (`parkedRemote` never expires), B14/B15 (DELETE precondition optional; session
 tokens wildcard-scoped; scope prefix matching vs file paths).
 
-- [ ] Each finding: fix + fail-first regression test, or a recorded rejection
-      with rationale. Nothing exits the list silently.
+- [x] **Fixed with fail-first tests (2026-08-20):**
+      **F-4** the manifest READ half now judges scope on the real path, like
+      class one line up and like the write half. **F-7** the tombstone append
+      result flows back to the door — on failure the quarantined bytes are
+      restored and the answer is 500; the receipt names the tombstone's own
+      seq, never `latestFor`. **F-8** `'none'` means "the hub holds nothing"
+      on BOTH verbs — a `none` DELETE against held content is a 409, never an
+      unconditional purge. **F-14** a file on disk but not in the journal is a
+      REAL delete (CAS against the disk bytes), never a `noop` receipt that
+      lets the file come back. **B14 (precondition half)** DELETE requires
+      `x-maude-expect-hash` outright (428 without it) — every real client has
+      sent it since Increment 6; the hub-side delete budget had already landed
+      in the v1.0.0 gate set. **F-11** the re-anchor hold is a WINDOW
+      (`REANCHOR_HOLD_RECOVERY_MS`), not a brick — one fresh attempt per
+      window, so a legitimate epoch-rotation burst converges and a hostile hub
+      stays capped. **F-12** reconnect-driven polls go through the poke
+      cooldown (a churned socket is hub-controlled; a genuine one-off
+      reconnect still runs immediately). **B6** a degraded epoch damps the
+      deletion row like every overwrite row — a tombstone is never honoured on
+      ancestors the degrade just disqualified. **B13** the park memo dies with
+      the conflict it memoised, and is honoured only while the copy it names
+      still exists. **B11** resolved by Task 2 (the ownership confirm row IS
+      the asking). The new routes are classified REFUSED in the cell manifest
+      (they mutate the operator's checkout).
+- [ ] **DEFERRED with rationale — needs its own design decision:** the scope
+      half of **B14/B15**. Every real session token is wildcard-scoped (the
+      invite-redeem path mints `scope: '*'` with no role), and `matchesScope`'s
+      prefix matching does not fit file paths at all (a token scoped `ui/hero`
+      cannot write `ui/hero.tsx`) — so narrowing the invite default today would
+      not produce working scoped tokens, only broken ones. The fix is a
+      reconciliation of the two vocabularies (document names vs design-root
+      paths) plus a scoped-token UX; that is a feature, not a patch. Until
+      then the honest posture stands: tokens are project-wide, and the delete
+      budget + required CAS are the door's controls.
 
 ## Validation
 

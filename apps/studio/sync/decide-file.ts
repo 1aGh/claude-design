@@ -275,6 +275,20 @@ export function decideFile(state: FileState): FileDecision {
           adoptAncestor: true,
         };
       }
+      // B6 (post-1.0 burn-down) — a degraded epoch damps the deletion row
+      // like every overwrite row above it. The "agreement" here is
+      // `local === ancestor`, and the degrade just disqualified exactly those
+      // ancestors — honouring a tombstone on their strength would let a hub
+      // whose log rewound (or a hostile one that answered `reanchor`) delete
+      // files using authority it no longer has. Hold; a later pass on a
+      // matching epoch re-decides with real ancestors.
+      if (degraded) {
+        return {
+          action: 'noop',
+          reason:
+            'the hub tombstoned this file, but the epoch is degraded — the ancestors that would justify agreeing were just disqualified; keeping local until a clean pass',
+        };
+      }
       // Quarantine, never unlink — the recoverability spine.
       return {
         action: 'quarantine',

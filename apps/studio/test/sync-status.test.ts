@@ -248,3 +248,14 @@ describe('sync status store — consent notices (feature-before-first-external-u
     expect(src).toMatch(/store\.notice\(\{\s*id: 'shared-doc'/);
   });
 });
+
+describe('F-12 (post-1.0 burn-down) — the reconnect trigger is cooled', () => {
+  test('a reconnect-driven poll goes through the cooldown, not around it', () => {
+    // A hub that churns the WebSocket drives reconnects at its own pace; the
+    // poke cooldown never saw that trigger. The cooled path keeps a genuine
+    // one-off reconnect immediate (nothing poked recently ⇒ runs at once) and
+    // folds a churn into the scheduled tick.
+    const src = readFileSync(join(import.meta.dir, '../sync/index.ts'), 'utf8');
+    expect(src).toMatch(/wasDisconnected\) pollRemoteSoon\(\{ cooled: true \}\)/);
+  });
+});

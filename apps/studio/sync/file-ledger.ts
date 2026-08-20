@@ -531,6 +531,13 @@ export function createFileLedger(opts: FileLedgerOptions): FileLedger {
       }
       r.reason = undefined;
       r.conflictCopy = undefined;
+      // B13 (post-1.0 burn-down) — the park memo dies with the conflict it
+      // memoised. `parkedRemote` used to survive convergence forever, so once
+      // hash H was memoised for a path, H was never parked again — after the
+      // user deleted the copy, after the row re-diverged, after a `_trash/`
+      // prune. A hub re-offering H a week later got a `noop` with no
+      // recoverable copy anywhere, while the row still claimed one was made.
+      r.parkedRemote = undefined;
       schedule();
       return true;
     },

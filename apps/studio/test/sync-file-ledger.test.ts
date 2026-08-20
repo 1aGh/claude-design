@@ -311,3 +311,24 @@ process.kill(process.pid, 'SIGKILL');
     expect(l.ancestorOf('assets/x.png')).toBe(A);
   });
 });
+
+describe('B13 (post-1.0 burn-down) — the park memo dies with the conflict it memoised', () => {
+  test('adoptAfter clears parkedRemote alongside conflictCopy', async () => {
+    const l = make();
+    l.setState('ui/hero.tsx', 'conflict', {
+      reason: 'epoch degraded',
+      conflictCopy: '_trash/ui/hero.tsx-conflict-1',
+      parkedRemote: B,
+    });
+    expect(l.row('ui/hero.tsx')?.parkedRemote).toBe(B);
+
+    // The row converges (a later pass lands agreed bytes).
+    await l.adoptAfter('ui/hero.tsx', A, () => {});
+
+    const row = l.row('ui/hero.tsx');
+    expect(row?.conflictCopy).toBeUndefined();
+    // Without this, hash B was memoised FOREVER: re-diverging to B a week
+    // later skipped the park while the ledger still claimed a copy existed.
+    expect(row?.parkedRemote).toBeUndefined();
+  });
+});

@@ -367,3 +367,54 @@ describe('conflict copies are attributable, and never mistaken for Syncthing’s
     expect(conflictCopyName('LICENSE', 0, 'p')).toContain('LICENSE.maude-conflict-');
   });
 });
+
+describe('B6 (post-1.0 burn-down) — a degraded epoch damps the deletion row too', () => {
+  test('a tombstone we would agree with HOLDS under a degraded epoch', () => {
+    const d = decideFile({
+      local: 'X',
+      remote: null,
+      ancestor: 'X',
+      remoteTombstone: true,
+      epochChanged: true,
+    });
+    // The "agreement" is local === ancestor, and the degrade just
+    // disqualified exactly those ancestors — no quarantine on their strength.
+    expect(d.action).toBe('noop');
+    expect(d.reason).toContain('degraded');
+  });
+
+  test('the same tombstone quarantines on a CLEAN epoch (the damp is the delta)', () => {
+    const d = decideFile({
+      local: 'X',
+      remote: null,
+      ancestor: 'X',
+      remoteTombstone: true,
+      epochChanged: false,
+    });
+    expect(d.action).toBe('quarantine');
+  });
+
+  test('a tombstone for a file this machine does not have stays a noop either way', () => {
+    for (const epochChanged of [true, false]) {
+      const d = decideFile({
+        local: null,
+        remote: null,
+        ancestor: 'X',
+        remoteTombstone: true,
+        epochChanged,
+      });
+      expect(d.action).toBe('noop');
+    }
+  });
+
+  test('a CONTESTED tombstone still revives under degrade — an edit beats a delete regardless', () => {
+    const d = decideFile({
+      local: 'Y',
+      remote: null,
+      ancestor: 'X',
+      remoteTombstone: true,
+      epochChanged: true,
+    });
+    expect(d.action).toBe('revive');
+  });
+});

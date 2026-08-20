@@ -40,7 +40,14 @@
 
 import { createHash, randomBytes } from 'node:crypto';
 import { once } from 'node:events';
-import { createWriteStream, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
+import {
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import {
@@ -427,14 +434,49 @@ export async function handleFileDoor(ctx) {
  */
 async function handleDelete({ ctx, response, landing, target, match, expect }) {
   return await withPathLock(landing, async () => {
-    const current = ctx.journal ? currentHashFor(ctx.journal, landing) : null;
-    if (current === null) {
-      // Already absent, or already tombstoned. Idempotent by construction —
-      // a retry after a dropped response must not be an error.
+    // B14 (post-1.0 burn-down) — the precondition is REQUIRED on DELETE.
+    // Every real client has sent `x-maude-expect-hash` since Increment 6
+    // (`file-plane.ts` pushDelete sends `expect ?? 'none'`), so nothing
+    // legitimate is refused — and "remove whatever is there, no questions"
+    // stops being an expressible request. 428 Precondition Required, so a
+    // scripted caller learns exactly what to add.
+    if (!expect) {
+      respondJson(response, 428, {
+        error: 'DELETE requires x-maude-expect-hash (the ancestor sha256, or "none")',
+        path: landing,
+      });
+      return true;
+    }
+
+    // F-14 — "no journal row" is NOT "already deleted" when the bytes are on
+    // disk. A fresh checkout before boot-scan, or a file the git plane placed,
+    // has no row yet; answering `deleted: true, noop: true` made the peer run
+    // `ledger.forget` while the hub kept the file — the next walk-import
+    // journals it and every peer pulls it back ("you delete a file and it
+    // comes back", the sentence Increment 6 exists to make false). The CAS
+    // for this branch compares against the DISK bytes, the only truth there is.
+    const journalHash = ctx.journal ? currentHashFor(ctx.journal, landing) : null;
+    const onDisk = existsSync(target.abs);
+    if (journalHash === null && !onDisk) {
+      // Genuinely absent everywhere, or already tombstoned. Idempotent by
+      // construction — a retry after a dropped response must not be an error.
       respondJson(response, 200, { ok: true, path: landing, deleted: true, noop: true });
       return true;
     }
-    if (expect && expect !== 'none' && current !== expect) {
+    const current = journalHash ?? hashFileOnDisk(target.abs);
+    if (current === null) {
+      // The file vanished between the existsSync and the read — absent wins.
+      respondJson(response, 200, { ok: true, path: landing, deleted: true, noop: true });
+      return true;
+    }
+
+    // F-8 — `'none'` means THE SAME THING on both verbs: "the hub must
+    // currently hold nothing". We are past the absent branch, so the hub holds
+    // something and a `none` DELETE is a conflict, never an unconditional
+    // purge. (PUT has said this since the door shipped; DELETE inherited a
+    // leniency with no reason of its own — and "write whatever is there" and
+    // "remove whatever is there" are not the same risk.)
+    if (current !== expect) {
       respondJson(response, 409, {
         error: 'the hub moved since you decided',
         path: landing,
@@ -483,8 +525,33 @@ async function handleDelete({ ctx, response, landing, target, match, expect }) {
       return true;
     }
 
-    ctx.onDeleted?.({ path: landing, parked });
-    const seq = ctx.journal ? seqFor(ctx.journal, landing) : null;
+    // F-7 — the receipt must name the TOMBSTONE, or admit there is none.
+    // `onDeleted` used to be fire-and-forget while the response reported
+    // `latestFor(rel)?.seq` — after a failed append that is the PREVIOUS
+    // WRITE's seq: a receipt naming a row that says the file exists, handed to
+    // a peer that will run `ledger.forget` on the strength of it. Now the
+    // append result comes back; when no tombstone row was produced the
+    // quarantined bytes are put back and the answer is a 500, because a delete
+    // the journal never heard of is a delete that did not happen.
+    let tombstone = null;
+    if (ctx.onDeleted) {
+      tombstone = ctx.onDeleted({ path: landing, parked }) ?? null;
+      if (!tombstone) {
+        if (parked) {
+          try {
+            mkdirSync(dirname(target.abs), { recursive: true });
+            renameSync(join(ctx.designRoot, parked), target.abs);
+          } catch (err) {
+            console.error(
+              `[hub] file door DELETE ${landing}: tombstone failed AND the quarantined copy could not be restored: ${err.message}`
+            );
+          }
+        }
+        respond(response, 500, 'the deletion could not be journaled — nothing was deleted');
+        return true;
+      }
+    }
+    const seq = tombstone?.seq ?? null;
     respondJson(response, 200, { ok: true, path: landing, deleted: true, parked, seq });
     return true;
   });
@@ -555,4 +622,14 @@ function currentHashFor(journal, rel) {
 /** The seq of the hub's latest row for `rel`, or null. */
 function seqFor(journal, rel) {
   return journal.latestFor(rel)?.seq ?? null;
+}
+
+/** sha256 of the file's bytes on disk, or null when unreadable (F-14 — the
+ *  CAS truth for a file the journal has not met yet). */
+function hashFileOnDisk(abs) {
+  try {
+    return createHash('sha256').update(readFileSync(abs)).digest('hex');
+  } catch {
+    return null;
+  }
 }

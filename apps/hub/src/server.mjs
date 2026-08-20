@@ -511,16 +511,24 @@ export function createHub(config = {}) {
    */
   const noteCheckoutDelete = (info) => {
     const rel = typeof info?.path === 'string' ? info.path : null;
-    if (!journal || !journalDesignRoot || !rel) return;
+    if (!journal || !journalDesignRoot || !rel) return null;
     try {
-      journal.recordWrite({
-        designRoot: journalDesignRoot,
-        path: rel,
-        source: 'peer-put',
-        deleted: true,
-      });
+      // F-7 (post-1.0 burn-down) — the append result flows BACK to the door.
+      // This used to be fire-and-forget with the throw swallowed, while the
+      // door answered `200 {deleted: true}` and reported `latestFor`'s seq —
+      // after a failed append, the previous WRITE's seq. The door now refuses
+      // the delete (and restores the quarantined copy) when this returns null.
+      return (
+        journal.recordWrite({
+          designRoot: journalDesignRoot,
+          path: rel,
+          source: 'peer-put',
+          deleted: true,
+        }) ?? null
+      );
     } catch (err) {
       console.error(`[journal] tombstone failed for ${sanitizeForLog(rel)}: ${err.message}`);
+      return null;
     }
   };
 

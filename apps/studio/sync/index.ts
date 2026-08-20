@@ -906,9 +906,11 @@ export function createSyncRuntime(
   let pokesThrottled = 0;
 
   /**
-   * @param opts.cooled  apply the anti-spam floor. True for hub-driven pokes;
-   *                     false for our own reconnects and boot, which are
-   *                     locally caused and must stay immediate.
+   * @param opts.cooled  apply the anti-spam floor. True for hub-driven pokes
+   *                     AND reconnect-driven passes (F-12 — a churned socket
+   *                     is hub-controlled too; a genuine one-off reconnect
+   *                     still runs immediately because nothing poked
+   *                     recently); false only for boot.
    */
   function pollRemoteSoon(opts: { cooled?: boolean } = {}): void {
     if (stopped || remotePollSoonTimer !== null) return;
@@ -2300,7 +2302,15 @@ export function createSyncRuntime(
             //
             // A reconnect storm is N providers reporting at once —
             // `pollRemoteSoon` coalesces them into one request.
-            if (s === 'connected' && wasDisconnected) pollRemoteSoon();
+            //
+            // COOLED (F-12, post-1.0 burn-down): a reconnect is not purely
+            // locally caused — a hub that churns the WebSocket drives this
+            // trigger at whatever the provider's backoff allows, and the poke
+            // cooldown never saw it. The cooled path already gives the shape
+            // wanted here: a genuine one-off reconnect (nothing poked
+            // recently) runs immediately; a churn folds into the scheduled
+            // tick, costing latency and never correctness.
+            if (s === 'connected' && wasDisconnected) pollRemoteSoon({ cooled: true });
             wasDisconnected = s !== 'connected';
           })
         );

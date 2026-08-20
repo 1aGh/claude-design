@@ -431,10 +431,17 @@ export async function handleProjectFileRoute(ctx) {
   const target = isProjectFileShape(rel)
     ? resolveProjectFileTarget(designRoot, rel)
     : { ok: false };
+  // F-4 (post-1.0 burn-down) — scope is judged on the REAL path, exactly like
+  // the class one line up and exactly like the WRITE half (`file-door.mjs`
+  // judges `matchesScope` on `landing = target.realRel`). Judging scope on the
+  // lexical `rel` while judging class on the real one was the same split the
+  // write half was fixed for: a committed symlink inside a token's scope could
+  // point at a file outside it, and the read would pass the gate on the name
+  // while serving the target's bytes.
   if (
     !target.ok ||
     !isFilePlaneClass(checkoutFileClass(target.realRel, designRoot)) ||
-    !matchesScope(match.scope, rel)
+    !matchesScope(match.scope, target.realRel)
   ) {
     respond(response, 404, 'not found');
     return true;

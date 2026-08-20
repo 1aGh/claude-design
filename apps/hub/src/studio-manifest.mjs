@@ -242,6 +242,15 @@ export const STUDIO_ROUTES = Object.freeze({
   // a sweep to fetch here anyway.
   '/_api/sync/resync': REFUSED,
   '/_api/sync/cancel-assets': REFUSED,
+  // feature-before-first-external-users Task 2/3 — the sync Settings toggles,
+  // ownership (adopt/detach) and the _trash restore/prune. Same reasoning as
+  // resync, sharpened: on a cell these mutate the OPERATOR's checkout — its
+  // config.json, its .gitignore + git index, its quarantined files — and can
+  // restart the shared sync runtime. A browsing member gets none of those
+  // levers; the desktop, where the person owns the machine, is their home.
+  '/_api/sync/settings': REFUSED,
+  '/_api/sync/ownership': REFUSED,
+  '/_api/sync/trash': REFUSED,
   // Signing in to a workspace from INSIDE that workspace is a loop; the proxy
   // already knows who this is, and the control plane is the only authority that
   // could say otherwise (DDR-204).

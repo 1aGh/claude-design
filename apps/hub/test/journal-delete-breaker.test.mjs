@@ -20,6 +20,7 @@
 // would just mean the lower one is real and the other is decoration.
 
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -65,10 +66,15 @@ function seedFile(journal, rel, body = 'BYTES') {
   return rel;
 }
 
-async function doorDelete(rel, bearer = ownerToken) {
+async function doorDelete(rel, bearer = ownerToken, body = 'BYTES') {
   const journal = openJournal(dataDir);
   const request = {
-    headers: { authorization: `Bearer ${bearer}` },
+    headers: {
+      authorization: `Bearer ${bearer}`,
+      // Post-burn-down contract (B14): DELETE requires the CAS precondition.
+      // Every seeded file carries the default 'BYTES' body.
+      'x-maude-expect-hash': createHash('sha256').update(body).digest('hex'),
+    },
     async *[Symbol.asyncIterator]() {},
   };
   let status = 0;
@@ -136,7 +142,7 @@ describe('the delete breaker at the HTTP door', () => {
       await doorDelete(rel);
     }
     seedFile(journal, 'assets/survivor.png', 'STILL HERE');
-    const res = await doorDelete('assets/survivor.png');
+    const res = await doorDelete('assets/survivor.png', ownerToken, 'STILL HERE');
     assert.equal(res.status, 429);
     // The point of checking BEFORE the quarantine: a refused delete must not
     // have already moved the file into _trash/.

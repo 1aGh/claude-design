@@ -90,6 +90,20 @@ const MAX_FILES_PER_PASS = 200;
 export const REANCHOR_STORM_LIMIT = 5;
 
 /**
+ * F-11 (post-1.0 burn-down) — how long a re-anchor hold lasts before ONE more
+ * attempt is allowed. The counter used to be reset only by a pass the hub did
+ * NOT answer `reanchor` to — but the held branch returns before that line, so
+ * once over the limit every later pass was held too and the plane was bricked
+ * until a desktop restart (its comment claimed otherwise). A hub that
+ * legitimately rotates its epoch six times (a cell restarted repeatedly, a
+ * restore drill) must converge eventually; a hostile hub that answers
+ * `reanchor` forever must still be capped. Time gives both: held for the
+ * window, then exactly one retry — a storm costs one full read per window,
+ * a real rotation recovers on the first quiet retry.
+ */
+export const REANCHOR_HOLD_RECOVERY_MS = 15 * 20_000; // 15 poll ticks (index.ts REMOTE_POLL_MS)
+
+/**
  * How many FIRST-ANCHOR conflicts one pass will resolve before it stops and asks.
  *
  * The flip-day shape, and it is structural rather than hypothetical: a project
@@ -337,8 +351,11 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
 
   const auth = () => ({ authorization: `Bearer ${opts.token()}` });
 
-  /** Consecutive passes the hub answered `reanchor` to. Reset by any that did not. */
+  /** Consecutive passes the hub answered `reanchor` to. Reset by any that did
+   *  not — and decayed by time once held (F-11), so a hold is a window, never
+   *  a brick. */
   let reanchorsInARow = 0;
+  let reanchorHeldSince = 0;
 
   /** Fetch one file's bytes and verify them against the hash we were promised. */
   async function fetchVerified(
@@ -735,15 +752,26 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
       // `degraded`, under which every differing path parks a copy of the hub's
       // bytes. A hub that answers `reanchor` to every request therefore drives
       // unbounded work and (before the park memo) unbounded files. Past the
-      // limit the pass holds and says so; the next pass tries again from a
-      // clean counter, so a legitimate epoch rotation still converges.
+      // limit the pass holds and says so; after REANCHOR_HOLD_RECOVERY_MS one
+      // fresh attempt is allowed, so a legitimate epoch rotation still
+      // converges while a storm stays capped at one full read per window.
       reanchorsInARow += 1;
       if (reanchorsInARow > REANCHOR_STORM_LIMIT) {
-        log.warn?.(
-          `[sync/files] the hub has asked to re-anchor ${reanchorsInARow} times in a row — holding this pass. Ancestors are untouched and nothing was overwritten.`
-        );
-        out.reanchorHeld = true;
-        return out;
+        // F-11 — the hold is a WINDOW, not a brick. Once the recovery window
+        // has passed, allow exactly one fresh attempt (counter back to 1): a
+        // legitimate epoch-rotation burst converges on its first quiet retry,
+        // while a hub that answers `reanchor` forever is capped at one full
+        // read per window instead of bricking the plane until a restart.
+        if (reanchorHeldSince === 0) reanchorHeldSince = now();
+        if (now() - reanchorHeldSince < REANCHOR_HOLD_RECOVERY_MS) {
+          log.warn?.(
+            `[sync/files] the hub has asked to re-anchor ${reanchorsInARow} times in a row — holding this pass (retry allowed in ${Math.ceil((REANCHOR_HOLD_RECOVERY_MS - (now() - reanchorHeldSince)) / 60000)} min). Ancestors are untouched and nothing was overwritten.`
+          );
+          out.reanchorHeld = true;
+          return out;
+        }
+        reanchorsInARow = 1;
+        reanchorHeldSince = 0;
       }
       out.reanchored = true;
       log.warn?.(
@@ -765,7 +793,10 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
       if (page === null || page.reanchor) return out;
     }
 
-    if (!out.reanchored) reanchorsInARow = 0;
+    if (!out.reanchored) {
+      reanchorsInARow = 0;
+      reanchorHeldSince = 0;
+    }
 
     // THE HUB'S SIDE IS THE LEDGER'S REPLICA, UPDATED BY THIS PAGE — not the
     // page itself. A delta says "these changed"; it says nothing at all about
@@ -1061,7 +1092,21 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
           // (or merely rotates its epoch, which is a legitimate event) writes
           // a fresh timestamped copy of every diverged path on every pass,
           // and each copy is then scanned as `create-up` and pushed back up.
-          if (ledger.row(rel)?.parkedRemote === remoteHash) return true;
+          //
+          // B13 — honoured only while the copy it names STILL EXISTS. The
+          // memo's claim is "a recoverable copy was made"; after the user
+          // deleted it or a `_trash/` prune swept it, skipping the park on the
+          // memo's word would be a noop with no recoverable copy anywhere.
+          {
+            const memoRow = ledger.row(rel);
+            if (
+              memoRow?.parkedRemote === remoteHash &&
+              memoRow.conflictCopy &&
+              existsSync(path.join(designRoot, memoRow.conflictCopy))
+            ) {
+              return true;
+            }
+          }
           const claim = claimedSize(row);
           if (!budget.take(claim)) {
             out.budgetExhausted = true;

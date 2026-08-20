@@ -428,7 +428,15 @@ describe('DELETE — a tombstone is a row, and the bytes are quarantined', () =>
     await call(exchange({ rel: 'system/ds/gone.css', body: ':root{}' }));
     assert.equal(existsSync(join(designRoot, 'system/ds/gone.css')), true);
 
-    const res = await call(exchange({ rel: 'system/ds/gone.css', method: 'DELETE', body: null }));
+    // Post-burn-down contract (B14): the precondition is REQUIRED.
+    const res = await call(
+      exchange({
+        rel: 'system/ds/gone.css',
+        method: 'DELETE',
+        body: null,
+        headers: { 'x-maude-expect-hash': sha(':root{}') },
+      })
+    );
     assert.equal(res.status, 200);
     assert.equal(res.json.deleted, true);
     assert.equal(existsSync(join(designRoot, 'system/ds/gone.css')), false);
@@ -445,11 +453,26 @@ describe('DELETE — a tombstone is a row, and the bytes are quarantined', () =>
 
   it('is idempotent — a retry after a dropped response is not an error', async () => {
     await call(exchange({ rel: 'system/ds/twice.css', body: 'x' }));
-    const first = await call(
-      exchange({ rel: 'system/ds/twice.css', method: 'DELETE', body: null })
-    );
+    const del = () =>
+      call(
+        exchange({
+          rel: 'system/ds/twice.css',
+          method: 'DELETE',
+          body: null,
+          // The retry carries the same precondition the first attempt did; the
+          // hub then holds nothing, so the SAME header answers noop (F-8's
+          // "none means the hub holds nothing" is exactly the retry shape).
+          headers: { 'x-maude-expect-hash': sha('x') },
+        })
+      );
+    const first = await del();
     const again = await call(
-      exchange({ rel: 'system/ds/twice.css', method: 'DELETE', body: null })
+      exchange({
+        rel: 'system/ds/twice.css',
+        method: 'DELETE',
+        body: null,
+        headers: { 'x-maude-expect-hash': sha('x') },
+      })
     );
     assert.equal(first.status, 200);
     assert.equal(again.status, 200);
@@ -488,5 +511,103 @@ describe('DELETE — a tombstone is a row, and the bytes are quarantined', () =>
     );
     assert.equal(res.status, 403);
     assert.equal(existsSync(join(designRoot, 'system/ds/ro.css')), true);
+  });
+});
+
+describe('DELETE — the burn-down contract (F-7 / F-8 / F-14 / B14)', () => {
+  const put = async (rel, body) =>
+    call(
+      exchange({
+        rel,
+        body,
+        headers: { 'x-maude-content-sha256': sha(body), 'x-maude-expect-hash': 'none' },
+      })
+    );
+  const del = (rel, expect) =>
+    call(
+      exchange({
+        rel,
+        body: null,
+        method: 'DELETE',
+        headers: expect === undefined ? {} : { 'x-maude-expect-hash': expect },
+      })
+    );
+
+  it('B14: a DELETE with NO precondition is 428, not an unconditional purge', async () => {
+    await put('system/ds/tokens.css', 'body{}');
+    const res = await del('system/ds/tokens.css', undefined);
+    assert.equal(res.status, 428);
+    assert.ok(existsSync(join(designRoot, 'system/ds/tokens.css')));
+  });
+
+  it('F-8: "none" means the same thing as on PUT — the hub holds something, so 409', async () => {
+    await put('system/ds/tokens.css', 'body{}');
+    const res = await del('system/ds/tokens.css', 'none');
+    assert.equal(res.status, 409);
+    assert.equal(res.json.current, sha('body{}'));
+    assert.ok(existsSync(join(designRoot, 'system/ds/tokens.css')));
+  });
+
+  it('a matching expectation deletes, quarantines, and the receipt names the TOMBSTONE seq', async () => {
+    const w = await put('system/ds/tokens.css', 'body{}');
+    const res = await del('system/ds/tokens.css', sha('body{}'));
+    assert.equal(res.status, 200);
+    assert.equal(res.json.deleted, true);
+    assert.ok(res.json.parked?.startsWith('_trash/'));
+    // F-7 — the seq is the tombstone's own row, strictly after the write's.
+    assert.ok(typeof res.json.seq === 'number' && res.json.seq > w.json.seq);
+    assert.ok(!existsSync(join(designRoot, 'system/ds/tokens.css')));
+  });
+
+  it('a stale expectation is refused with what to re-decide against', async () => {
+    await put('system/ds/tokens.css', 'body{}');
+    const res = await del('system/ds/tokens.css', sha('SOMETHING ELSE'));
+    assert.equal(res.status, 409);
+    assert.equal(res.json.current, sha('body{}'));
+  });
+
+  it('F-14: a file on disk but NOT in the journal is a real delete, never a noop receipt', async () => {
+    // A fresh checkout before boot-scan: bytes on disk, no journal row.
+    writeFileSync(join(designRoot, 'system/ds/unjournaled.css'), 'a{}');
+    const res = await del('system/ds/unjournaled.css', sha('a{}'));
+    assert.equal(res.status, 200);
+    assert.equal(res.json.deleted, true);
+    assert.notEqual(res.json.noop, true);
+    assert.ok(!existsSync(join(designRoot, 'system/ds/unjournaled.css')));
+    // …and the delete is journaled, so it cannot come back on the next walk.
+    const journal = openJournal(dataDir);
+    assert.ok(journal.latestFor('system/ds/unjournaled.css')?.deleted);
+  });
+
+  it('F-14 CAS: the unjournaled branch compares against the DISK bytes', async () => {
+    writeFileSync(join(designRoot, 'system/ds/unjournaled.css'), 'a{}');
+    const res = await del('system/ds/unjournaled.css', sha('stale view'));
+    assert.equal(res.status, 409);
+    assert.equal(res.json.current, sha('a{}'));
+    assert.ok(existsSync(join(designRoot, 'system/ds/unjournaled.css')));
+  });
+
+  it('genuinely absent everywhere stays an idempotent noop', async () => {
+    const res = await del('system/ds/never-existed.css', 'none');
+    assert.equal(res.status, 200);
+    assert.equal(res.json.noop, true);
+  });
+
+  it('F-7: when the tombstone append fails, the bytes come BACK and the answer is 500', async () => {
+    await put('system/ds/tokens.css', 'body{}');
+    const res = await call(
+      exchange({
+        rel: 'system/ds/tokens.css',
+        body: null,
+        method: 'DELETE',
+        headers: { 'x-maude-expect-hash': sha('body{}') },
+      }),
+      { onDeleted: () => null } // the F-7 failure: append refused/reclassified
+    );
+    assert.equal(res.status, 500);
+    // The quarantined copy was restored — the delete that was not journaled
+    // did not happen.
+    assert.ok(existsSync(join(designRoot, 'system/ds/tokens.css')));
+    assert.equal(readFileSync(join(designRoot, 'system/ds/tokens.css'), 'utf8'), 'body{}');
   });
 });

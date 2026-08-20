@@ -31,6 +31,7 @@ import {
   createFilePlane,
   DELETE_BUDGET_PER_WINDOW,
   foldRemote,
+  REANCHOR_HOLD_RECOVERY_MS,
   REANCHOR_STORM_LIMIT,
   scanLocalFiles,
 } from '../sync/file-plane.ts';
@@ -681,6 +682,31 @@ describe('a hub that re-anchors forever is not obeyed forever', () => {
     }
     expect(held).toBe(true);
     expect(read('system/ds/brand.css')).toBe('mine');
+  });
+
+  test('F-11: the hold is a window, not a brick — a retry is allowed after recovery', async () => {
+    const hub = fakeHub({ 'system/ds/brand.css': 'theirs' });
+    write('system/ds/brand.css', 'mine');
+    let clock = 1_700_000_000_000;
+    const p = plane(hub, { now: () => clock });
+    hub.alwaysReanchor();
+
+    // Drive it into the held state.
+    let lastHeld = false;
+    for (let i = 0; i < REANCHOR_STORM_LIMIT + 3; i++) {
+      lastHeld = (await p.reconcile()).reanchorHeld === true;
+    }
+    expect(lastHeld).toBe(true);
+
+    // Still inside the window: held again — the storm stays capped.
+    clock += 60_000;
+    expect((await p.reconcile()).reanchorHeld).toBe(true);
+
+    // Past the window: exactly one fresh attempt happens (not held). The hub
+    // still answers reanchor, so nothing lands — but the plane is provably not
+    // bricked until a restart, which is what F-11 reported.
+    clock += REANCHOR_HOLD_RECOVERY_MS;
+    expect((await p.reconcile()).reanchorHeld).not.toBe(true);
   });
 
   test('the degraded park happens once per remote hash, not once per pass', async () => {
