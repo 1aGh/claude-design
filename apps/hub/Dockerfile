@@ -50,6 +50,15 @@ COPY apps/hub ./
 # Bun strips their types at bundle time, so the Node runtime stage never sees TS.
 COPY apps/studio/sync/autocommit.ts /build/apps/studio/sync/autocommit.ts
 COPY apps/studio/git/repo-lock.ts /build/apps/studio/git/repo-lock.ts
+# And the path validator autocommit screens its batch through before anything
+# reaches a git pathspec (v1.0.0 gate A5). Same rule, same failure: it was
+# tracked — so `check-import-coherence.sh` was green — but not COPIED, and the
+# first build of this image after the import landed died on
+# `Could not resolve: "../git/safe-rel.ts"`. Nothing in `quality.yml` builds the
+# hub image, so the gate that caught it was the B2 fleet drill; on a release tag
+# it would have been the tag itself. See T15b in the post-1.0 backlog for the
+# manifest gate that would make this a test rather than a discovery.
+COPY apps/studio/git/safe-rel.ts /build/apps/studio/git/safe-rel.ts
 # Same rule again: where a synced canvas belongs on disk, and the eight rules
 # that decide whether an incoming `syncMeta.path` may be believed. A second
 # `.mjs` spelling of those rules would be a spelling without the traversal
