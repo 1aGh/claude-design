@@ -109,7 +109,7 @@ function readNotices(raw) {
 /** DeliveryState → plain words for the doručenka rows (file-ledger.ts owns the
  *  union; unknown states render verbatim so a NEWER producer stays readable). */
 const DELIVERY_WORD = {
-  conflict: 'conflict — older copy in _trash/',
+  conflict: 'conflict — older copy in Trash below',
   stuck: 'stuck',
   'referenced-but-unoffered': 'referenced, never received',
   'local-only': 'only on this machine',
@@ -138,6 +138,33 @@ function readDelivery(raw) {
     fine.sort((a, b) => a[0].localeCompare(b[0]));
   }
   return { attention, fine };
+}
+
+/** TrashEntry.reason → plain words. */
+const TRASH_REASON_WORD = {
+  conflict: 'conflict loser',
+  removed: 'removed by sync',
+  moved: 'moved elsewhere',
+  deleted: 'deleted',
+  migration: 'migration backup',
+  unknown: 'parked',
+};
+
+function fmtBytes(n) {
+  if (!Number.isFinite(n) || n < 0) return '0 B';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} kB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function fmtAge(at) {
+  if (!Number.isFinite(at) || at <= 0) return 'unknown age';
+  const days = Math.floor((Date.now() - at) / (24 * 60 * 60 * 1000));
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 30) return `${days} d ago`;
+  const months = Math.floor(days / 30);
+  return `${months} mo ago`;
 }
 
 /** Display host of a hub url ('workspace' when unparseable). */
@@ -352,6 +379,52 @@ export default function SyncPanel({
       /* keep the stale mode; the note already said what happened */
     }
   }, []);
+
+  // Trash (Task 3, F-6) — quarantine-not-delete is only safe if a person can
+  // FIND the quarantine. Until this section, the product's copy pointed at a
+  // hidden gitignored folder.
+  const [trash, setTrash] = useState(null); // { entries, total, bytes } | null
+  const [trashBusy, setTrashBusy] = useState(false);
+  const [trashNote, setTrashNote] = useState('');
+  const [pruneConfirm, setPruneConfirm] = useState(false);
+  const refreshTrash = useCallback(async () => {
+    try {
+      const r = await fetch('/_api/sync/trash');
+      const j = r.ok ? await r.json() : null;
+      if (j && Array.isArray(j.entries)) setTrash(j);
+    } catch {
+      /* old server — the section doesn't render */
+    }
+  }, []);
+  useEffect(() => {
+    refreshTrash();
+  }, [refreshTrash]);
+  const trashAction = useCallback(
+    async (body, doneNote) => {
+      setTrashBusy(true);
+      setTrashNote('');
+      let json = null;
+      try {
+        const res = await fetch('/_api/sync/trash', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        json = await res.json().catch(() => null);
+      } catch {
+        /* said below */
+      }
+      setTrashBusy(false);
+      setPruneConfirm(false);
+      if (!json || json.ok !== true) {
+        setTrashNote(safeDetail(json?.detail, 'That did not complete.'));
+      } else {
+        setTrashNote(doneNote(json));
+      }
+      refreshTrash();
+    },
+    [refreshTrash]
+  );
 
   // Consent notices minus this machine's dismissals. `ackTick` only forces the
   // re-read after a dismiss — the acks themselves live in localStorage.
@@ -583,7 +656,7 @@ export default function SyncPanel({
             {files.conflicts > 0 && (
               <div className="sp-assets-retry" data-testid="sync-files-conflicts">
                 {files.conflicts} conflict{files.conflicts === 1 ? '' : 's'} — the older copies are
-                kept in _trash/.
+                kept in Trash, below.
               </div>
             )}
             {/*
@@ -650,6 +723,95 @@ export default function SyncPanel({
           </section>
         )}
 
+        {/* Trash (Task 3, F-6) — everything sync parked instead of deleting,
+            with a way back. Rendered only when something is actually parked. */}
+        {trash && trash.total > 0 && (
+          <section aria-label="Trash" data-testid="sync-trash">
+            <div className="gp-sect-label">
+              trash <span className="gp-group-count">{trash.total}</span>
+            </div>
+            <div className="sp-assets-line">
+              {trash.total} file{trash.total === 1 ? '' : 's'} kept instead of deleted (
+              {fmtBytes(trash.bytes)}) — replaced copies, conflict losers and remote deletions
+              land here, in .design/_trash/.
+            </div>
+            <ul className="sp-list" data-testid="sync-trash-list">
+              {trash.entries.slice(0, 50).map((e) => (
+                <li className="sp-row" key={e.trashRel}>
+                  <span className="sp-row-name" title={safeName(e.trashRel, '(unnamed)')}>
+                    {safeName(e.sourceRel ?? e.trashRel.replace(/^_trash\//, ''), '(unnamed)')}
+                  </span>
+                  <span className="sp-row-state">
+                    {TRASH_REASON_WORD[e.reason] || e.reason} · {fmtAge(e.at)}
+                  </span>
+                  {e.sourceRel && (
+                    <button
+                      type="button"
+                      className="sp-assets-cancel"
+                      data-testid={`sync-trash-restore-${e.sourceRel}`}
+                      disabled={trashBusy}
+                      onClick={() =>
+                        trashAction({ action: 'restore', trashRel: e.trashRel }, (j) =>
+                          j.restoredTo ? `Restored to ${j.restoredTo}.` : 'Restored.'
+                        )
+                      }
+                    >
+                      Restore
+                    </button>
+                  )}
+                </li>
+              ))}
+              {trash.total > 50 && (
+                <li className="sp-truncated">…and {trash.total - 50} more in .design/_trash/</li>
+              )}
+            </ul>
+            {!pruneConfirm ? (
+              <div className="sp-assets-line">
+                <button
+                  type="button"
+                  className="sp-assets-cancel"
+                  data-testid="sync-trash-prune"
+                  disabled={trashBusy}
+                  onClick={() => setPruneConfirm(true)}
+                >
+                  Remove copies older than 30 days…
+                </button>
+              </div>
+            ) : (
+              <div className="sp-assets-retry" data-testid="sync-trash-prune-confirm">
+                Permanently delete every parked copy older than 30 days? This cannot be undone.{' '}
+                <button
+                  type="button"
+                  className="sp-assets-cancel"
+                  data-testid="sync-trash-prune-yes"
+                  disabled={trashBusy}
+                  onClick={() =>
+                    trashAction(
+                      { action: 'prune', olderThanDays: 30 },
+                      (j) => `Removed ${j.pruned} file${j.pruned === 1 ? '' : 's'} (${fmtBytes(j.bytes)}); ${j.kept} kept.`
+                    )
+                  }
+                >
+                  {trashBusy ? 'Removing…' : 'Delete them'}
+                </button>{' '}
+                <button
+                  type="button"
+                  className="sp-assets-cancel"
+                  disabled={trashBusy}
+                  onClick={() => setPruneConfirm(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+            {trashNote && (
+              <div className="sp-resync-note" role="status" aria-live="polite">
+                {trashNote}
+              </div>
+            )}
+          </section>
+        )}
+
         {/* Settings (feature-before-first-external-users Task 2) — the three
             toggles every breaker remediation used to hand the user as "edit
             linkedHub.* JSON". Rendered only when a hub is linked (the route
@@ -679,7 +841,7 @@ export default function SyncPanel({
               <span>
                 Propagate deletions
                 <small>
-                  Removing a file here removes it everywhere; replaced copies are kept in _trash/.
+                  Removing a file here removes it everywhere; replaced copies are kept in Trash.
                 </small>
               </span>
             </label>

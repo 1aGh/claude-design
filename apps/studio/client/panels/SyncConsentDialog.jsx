@@ -137,7 +137,7 @@ export default function SyncConsentDialog({ status, cloud }) {
             </li>
             <li>
               <strong>Deleting a file here deletes it there</strong> (and the other way round).
-              Replaced copies are kept in _trash/, and bulk removals pause for confirmation.
+              Replaced copies are kept in the Sync panel's Trash, and bulk removals pause for confirmation.
             </li>
             {status?.sharedDoc && (
               <li>

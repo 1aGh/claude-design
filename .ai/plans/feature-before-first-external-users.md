@@ -65,12 +65,10 @@ anywhere in `client/` — every breaker remediation string tells the user to edi
 
 ### Task 3 — `_trash/` retention + findable restore (F-6)
 
-- [ ] Index: a `_trash/index.json` (or listing route) with source path, reason,
+- [x] Index: a listing route (scanner, deliberately not a write-path index) with source path, reason,
       timestamp per quarantined file.
-- [ ] Retention: prune entries older than a configurable window (default ≥ 30
-      days) — never silently on boot; report what was pruned.
-- [ ] Restore: a Sync-panel list with one-click restore; product copy stops
-      pointing at a hidden gitignored folder.
+- [x] Retention: prune older than a window (default 30 d, min 1 d) — user-triggered only, never on boot; reports pruned/kept/bytes.
+- [x] Restore: Sync-panel Trash section with one-click restore (never overwrites a newer copy — lands beside it); product copy repointed.
 
 ### Task 4 — OIDC AppSec pass
 

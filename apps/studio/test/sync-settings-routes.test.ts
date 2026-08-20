@@ -23,7 +23,7 @@ const HTTP = readFileSync(join(import.meta.dir, '..', 'http.ts'), 'utf8');
 let proc: Subprocess;
 let base: string;
 
-const ROUTES = ['/_api/sync/settings', '/_api/sync/ownership'];
+const ROUTES = ['/_api/sync/settings', '/_api/sync/ownership', '/_api/sync/trash'];
 
 beforeAll(async () => {
   const { root } = makeSandbox();
@@ -135,6 +135,42 @@ describe('same-origin behaviour on an unlinked sandbox', () => {
       body: JSON.stringify({ action: 'yeet' }),
     });
     expect(res.status).toBe(400);
+  });
+});
+
+describe('trash on an empty sandbox', () => {
+  test('GET lists honestly empty', async () => {
+    const res = await fetch(`${base}/_api/sync/trash`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ entries: [], total: 0, bytes: 0 });
+  });
+
+  test('restore of a non-_trash path is refused', async () => {
+    const res = await fetch(`${base}/_api/sync/trash`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'restore', trashRel: 'ui/Hero.tsx' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test('a 0-day prune is refused — "empty the trash" needs its own gesture', async () => {
+    const res = await fetch(`${base}/_api/sync/trash`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'prune', olderThanDays: 0 }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test('prune with a sane window reports counts', async () => {
+    const res = await fetch(`${base}/_api/sync/trash`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'prune' }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, pruned: 0, bytes: 0, kept: 0 });
   });
 });
 

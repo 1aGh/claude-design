@@ -110,6 +110,7 @@ import { sanitizeForLog } from './sync/cell-pairing.ts';
 import { linkHub } from './sync/hub-link.ts';
 import { isHubReadOnly } from './sync/hubs-config.ts';
 import { isFirstAnchorMode, readSyncSettings, writeSyncSettings } from './sync/settings.ts';
+import { listTrash, pruneTrash, restoreFromTrash } from './sync/trash.ts';
 import { signInToWorkspace, workspaceDisclosure } from './sync/workspace-signin.ts';
 import { readUiPrefs, type UiPrefs, writeUiPrefs } from './ui-prefs.ts';
 import { loadWhatsNew, resolveMaudeVersion } from './whats-new.ts';
@@ -2840,6 +2841,49 @@ export function createHttp(
           },
         });
       }
+    },
+
+    // feature-before-first-external-users Task 3 (F-6) — `_trash/` becomes
+    // discoverable, restorable and prunable. MAIN-ORIGIN ONLY, both DDR-088
+    // allowlists absent: restore MOVES files into the live project and prune
+    // DELETES quarantined copies — from the canvas origin either would let
+    // untrusted content resurrect or destroy parked user work.
+    '/_api/sync/trash': async (req: Request) => {
+      if (!isTrustedRequestHost(req))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      if (req.method === 'GET') {
+        const entries = listTrash(ctx.paths.designRoot);
+        const bytes = entries.reduce((n, e) => n + e.size, 0);
+        return Response.json(
+          // Cap the wire size; totals stay exact so the panel never lies.
+          { entries: entries.slice(0, 500), total: entries.length, bytes },
+          { headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return syncRefusal('cross-origin', 'Trash actions must be started');
+      const body = await readJson<{
+        action?: unknown;
+        trashRel?: unknown;
+        olderThanDays?: unknown;
+      }>(req, 8 * 1024);
+      if (body?.action === 'restore') {
+        if (typeof body.trashRel !== 'string')
+          return new Response('trashRel must be a string', { status: 400 });
+        const res = restoreFromTrash(ctx.paths.designRoot, body.trashRel);
+        return gitJson({ status: res.ok ? 200 : 400, json: res });
+      }
+      if (body?.action === 'prune') {
+        const days = body.olderThanDays === undefined ? 30 : Number(body.olderThanDays);
+        // ≥ 1 day: a 0-day prune is "empty the trash", which deserves its own
+        // deliberate gesture, not a slider slipped to zero.
+        if (!Number.isFinite(days) || days < 1)
+          return new Response('olderThanDays must be a number ≥ 1', { status: 400 });
+        const res = pruneTrash(ctx.paths.designRoot, days);
+        return gitJson({ status: 200, json: { ok: true, ...res } });
+      }
+      return new Response('action must be restore|prune', { status: 400 });
     },
 
     '/_api/sync/cancel-assets': async (req: Request) => {
