@@ -254,6 +254,9 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         // delete-propagation on or settle a first-anchor hold against the
         // user — MAIN-ORIGIN ONLY, absent from both allowlists.
         '/_api/sync/settings',
+        // Ownership mutations (adopt/detach) rewrite `.gitignore` + the git
+        // index and can drop the hub link — MAIN-ORIGIN ONLY, same posture.
+        '/_api/sync/ownership',
         // ACP chat attachments (POST upload + GET thumbnail serve) are MAIN-ORIGIN
         // ONLY — absent from CANVAS_SAFE_API + startCanvasServer's routes. The
         // untrusted canvas origin must never read (or write) the user's pasted

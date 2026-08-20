@@ -140,6 +140,15 @@ function readDelivery(raw) {
   return { attention, fine };
 }
 
+/** Display host of a hub url ('workspace' when unparseable). */
+function hostOf(url) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return 'workspace';
+  }
+}
+
 /** safeDetail's sanitation with a paragraph-sized cap — a consent notice is a
  *  full explanation by design and `MAX_DETAIL_LEN`'s 160 chars would cut it
  *  mid-sentence. Still bounded: the payload is read back off `_sync.json`. */
@@ -286,6 +295,62 @@ export default function SyncPanel({
     // Saved is a fact; whether it took effect NOW depends on the supervisor —
     // say which of the two happened rather than letting "saved" imply "live".
     setSettingsNote(json.applied ? 'Saved — sync is restarting with the new setting.' : 'Saved — applies the next time sync restarts.');
+  }, []);
+
+  // Ownership (Task 2) — repo-owned vs hub-owned, previously CLI-only against
+  // DDR-177's own posture. Mutations go through an explicit two-step confirm:
+  // the confirm row IS the asking B11 found missing in non-TTY settleOwnership.
+  const [ownership, setOwnership] = useState(null);
+  const [ownershipConfirm, setOwnershipConfirm] = useState(null); // 'adopt' | 'detach' | null
+  const [ownershipBusy, setOwnershipBusy] = useState(false);
+  const [ownershipNote, setOwnershipNote] = useState('');
+  useEffect(() => {
+    let gone = false;
+    fetch('/_api/sync/ownership')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!gone && j && typeof j.mode === 'string') setOwnership(j);
+      })
+      .catch(() => {
+        /* old server — the section doesn't render */
+      });
+    return () => {
+      gone = true;
+    };
+  }, []);
+  const changeOwnership = useCallback(async (action) => {
+    setOwnershipBusy(true);
+    setOwnershipNote('');
+    let json = null;
+    try {
+      const res = await fetch('/_api/sync/ownership', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      json = await res.json().catch(() => null);
+    } catch {
+      /* said below */
+    }
+    setOwnershipBusy(false);
+    setOwnershipConfirm(null);
+    if (!json || json.ok !== true) {
+      setOwnershipNote(safeDetail(json?.detail, 'The ownership change did not complete.'));
+      return;
+    }
+    setOwnershipNote(
+      action === 'adopt'
+        ? `Done — .design/ is workspace-owned now. ${json.untracked ?? 0} file(s) untracked (still on disk, staged as deletions — commit when ready).`
+        : 'Done — unlinked and repo-owned again. Commit .design/ when you are ready.'
+    );
+    // Re-read rather than guess — the server is the source for mode.
+    try {
+      const r = await fetch('/_api/sync/ownership');
+      const j = r.ok ? await r.json() : null;
+      if (j && typeof j.mode === 'string') setOwnership(j);
+    } catch {
+      /* keep the stale mode; the note already said what happened */
+    }
   }, []);
 
   // Consent notices minus this machine's dismissals. `ackTick` only forces the
@@ -636,6 +701,89 @@ export default function SyncPanel({
             {settingsNote && (
               <div className="sp-resync-note" role="status" aria-live="polite">
                 {settingsNote}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* Ownership (Task 2) — who owns .design/: this repo's git, or the
+            linked workspace. CLI parity for `maude design adopt` / `detach`,
+            behind an explicit confirm. Hidden on a cell (a member's browser
+            must not re-own the operator's checkout) and without git. */}
+        {ownership && !cloud && ownership.git && (
+          <section aria-label="Ownership" data-testid="sync-ownership">
+            <div className="gp-sect-label">ownership</div>
+            <div className="sp-assets-line" data-testid="sync-ownership-mode">
+              {ownership.mode === 'hub-owned' &&
+                'Workspace-owned — .design/ is gitignored and mirrored by the workspace.'}
+              {ownership.mode === 'repo-owned' &&
+                'Repo-owned — .design/ is committed with this repository.'}
+              {ownership.mode === 'hybrid' &&
+                `Two owners — git commits .design/ (${ownership.trackedCount} file${ownership.trackedCount === 1 ? '' : 's'}) AND a workspace mirrors it. A git pull and a sync pass can each undo the other.`}
+            </div>
+            {ownershipConfirm === null && ownership.linked && ownership.mode !== 'hub-owned' && (
+              <div className="sp-assets-line">
+                <button
+                  type="button"
+                  className="sp-assets-cancel"
+                  data-testid="sync-ownership-adopt"
+                  disabled={ownershipBusy}
+                  onClick={() => setOwnershipConfirm('adopt')}
+                >
+                  Hand .design/ to the workspace…
+                </button>
+              </div>
+            )}
+            {ownershipConfirm === null && ownership.mode === 'hub-owned' && (
+              <div className="sp-assets-line">
+                <button
+                  type="button"
+                  className="sp-assets-cancel"
+                  data-testid="sync-ownership-detach"
+                  disabled={ownershipBusy}
+                  onClick={() => setOwnershipConfirm('detach')}
+                >
+                  Take .design/ back into this repo…
+                </button>
+              </div>
+            )}
+            {ownershipConfirm && (
+              <div className="sp-assets-retry" data-testid="sync-ownership-confirm">
+                {ownershipConfirm === 'adopt' ? (
+                  <>
+                    Stop committing .design/ and let the workspace mirror it. Nothing is deleted —
+                    every file stays on disk; git stops tracking them (staged as deletions, commit
+                    when ready).
+                  </>
+                ) : (
+                  <>
+                    Disconnect from the workspace ({hostOf(ownership.hubUrl)}) and take .design/
+                    back into git. Every file is already on disk in full; commit the folder when
+                    you are ready.
+                  </>
+                )}{' '}
+                <button
+                  type="button"
+                  className="sp-assets-cancel"
+                  data-testid="sync-ownership-confirm-yes"
+                  disabled={ownershipBusy}
+                  onClick={() => changeOwnership(ownershipConfirm)}
+                >
+                  {ownershipBusy ? 'Working…' : 'Do it'}
+                </button>{' '}
+                <button
+                  type="button"
+                  className="sp-assets-cancel"
+                  disabled={ownershipBusy}
+                  onClick={() => setOwnershipConfirm(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+            {ownershipNote && (
+              <div className="sp-resync-note" role="status" aria-live="polite">
+                {ownershipNote}
               </div>
             )}
           </section>

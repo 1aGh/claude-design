@@ -33,6 +33,7 @@ import { useTreeDrag } from './use-tree-drag.js';
 import ChatPanel from './panels/ChatPanel.jsx';
 import DiffView from './panels/DiffView.jsx';
 import GitPanel from './panels/GitPanel.jsx';
+import SyncConsentDialog from './panels/SyncConsentDialog.jsx';
 import SyncPanel from './panels/SyncPanel.jsx';
 import CloudBar from './panels/CloudBar.jsx';
 import IdentityBar from './panels/IdentityBar.jsx';
@@ -14714,6 +14715,10 @@ function App() {
       <CloudRoleBanner cloud={cfg.cloud} />
       <UpdateBanner update={updateReady} onDismiss={() => setUpdateReady(null)} />
       <SyncBanner status={syncStatus} />
+      {/* First-upgrade consent (Task 2) — global on purpose: a consent that
+          only appears if you happen to open the Sync panel is not consent.
+          Skipped during first-run onboarding so two flows don't stack. */}
+      {!firstRun && <SyncConsentDialog status={syncStatus} cloud={cfg.cloud} />}
       {!usageNudge && !tourSteps && <WhatsNewToast wn={whatsNew} />}
       {!usageNudge && !tourSteps && <ExportToast center={exportCenter} />}
       {gitLifecycle && (

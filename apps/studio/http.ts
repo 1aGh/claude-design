@@ -7,7 +7,8 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, unlinkSync, watch } from 'node:fs';
 import { dirname, join, posix, relative, resolve, sep } from 'node:path';
-
+// Ownership mutations live with the CLI on purpose — see /_api/sync/ownership.
+import { adoptToHub, detachToRepo, ownershipState } from '../../cli/lib/design-ownership.mjs';
 import {
   cancelSignin,
   getClaudeAuthStatus,
@@ -2740,6 +2741,102 @@ export function createHttp(
           json: {
             ok: false,
             detail: err instanceof Error ? err.message : 'settings write failed',
+          },
+        });
+      }
+    },
+
+    // feature-before-first-external-users Task 2 — ownership (repo-owned vs
+    // hub-owned) from the UI. `maude design adopt`/`detach` were CLI-only,
+    // against DDR-177's own posture (the target user never opens a terminal),
+    // and B11 flagged settleOwnership mutating `.gitignore`/index without
+    // asking in non-TTY — here the dialog IS the asking: this route only ever
+    // acts on an explicit user click. MAIN-ORIGIN ONLY, both allowlists absent
+    // (it mutates `.gitignore` + the git index and can drop the hub link).
+    //
+    // Imports cli/lib/design-ownership.mjs DIRECTLY — deliberately not the
+    // hubs-config.ts read-only-mirror pattern: these are MUTATIONS with safety
+    // rules (narrow staging, refuse-on-malformed-gitignore, --cached only),
+    // and two owners of that logic would drift exactly where drift is loss.
+    // Both trees ship together (npm `files`, desktop resources), so the
+    // relative import resolves in every install shape.
+    '/_api/sync/ownership': async (req: Request) => {
+      if (!isTrustedRequestHost(req))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const linked = !!ctx.cfg.linkedHub?.url;
+      if (req.method === 'GET') {
+        const st = ownershipState(ctx.paths.repoRoot, { linked });
+        return Response.json(
+          {
+            mode: st.mode,
+            git: st.git,
+            trackedCount: st.trackedCount,
+            linked,
+            hubUrl: ctx.cfg.linkedHub?.url ?? null,
+            syncthingRoot: st.syncthingRoot ?? null,
+            ...(st.stignoreLine ? { stignoreLine: st.stignoreLine } : {}),
+          },
+          { headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req)) return syncRefusal('cross-origin', 'Ownership must be changed');
+      const body = await readJson<{ action?: unknown }>(req, 4 * 1024);
+      const action = body?.action;
+      try {
+        if (action === 'adopt') {
+          // A → B: gitignore the design root, untrack (--cached — every byte
+          // stays on disk). Only meaningful while linked: with no hub there
+          // would be no owner left at all.
+          if (!linked)
+            return gitJson({
+              status: 400,
+              json: { ok: false, detail: 'Link a workspace first — adopt hands .design/ to it.' },
+            });
+          const res = adoptToHub(ctx.paths.repoRoot);
+          if (res.action === 'refused-malformed')
+            return gitJson({
+              status: 409,
+              json: {
+                ok: false,
+                detail:
+                  '.gitignore carries an ownership block Maude did not write — fix it by hand, then retry.',
+              },
+            });
+          return gitJson({ status: 200, json: { ok: true, ...res } });
+        }
+        if (action === 'detach') {
+          // B → A: unlink (same path as the Cloud detach — credential dropped,
+          // sync stopped NOW) and un-ignore so the person can commit again.
+          // detachToRepo deliberately does NOT commit or `git add .design` —
+          // what to commit and when stays theirs.
+          const unlink = await cloudApi.detach();
+          const res = detachToRepo(ctx.paths.repoRoot);
+          if (res.action === 'refused-malformed')
+            return gitJson({
+              status: 409,
+              json: {
+                ok: false,
+                detail:
+                  'Unlinked, but .gitignore carries an ownership block Maude did not write — remove it by hand to finish.',
+              },
+            });
+          return gitJson({
+            status: 200,
+            json: {
+              ok: true,
+              unlinked: (unlink.json as { detached?: boolean } | undefined)?.detached ?? false,
+              ...res,
+            },
+          });
+        }
+        return new Response('action must be adopt|detach', { status: 400 });
+      } catch (err) {
+        return gitJson({
+          status: 500,
+          json: {
+            ok: false,
+            detail: err instanceof Error ? err.message : 'ownership change failed',
           },
         });
       }

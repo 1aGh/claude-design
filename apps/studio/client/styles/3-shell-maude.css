@@ -2714,6 +2714,15 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .sp-notice-dismiss:hover { color: var(--fg-0); }
 .sp-notice-dismiss:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
+/* First-upgrade sync consent (feature-before-first-external-users Task 2) —
+   rides the shared .st-scrim/.st-dialog shell. */
+.st-consent .st-dialog-bd { font-size: var(--type-sm); color: var(--fg-1); line-height: var(--lh-base); }
+.st-consent .st-dialog-bd p { margin: 0 0 var(--space-2); }
+.st-consent-list { margin: 0 0 var(--space-2); padding-left: var(--space-4); display: flex; flex-direction: column; gap: var(--space-1); }
+.st-consent-fine { font-size: var(--type-xs); color: var(--fg-2); }
+.st-consent-note { font-size: var(--type-xs); color: var(--status-error); }
+.st-consent .st-dialog-ft { display: flex; justify-content: flex-end; gap: var(--space-2); }
+
 /* Sync settings (feature-before-first-external-users Task 2) — the three
    toggles that used to mean "edit linkedHub.* JSON by hand". */
 .sp-setting { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-1) var(--space-4); font-size: var(--type-sm); color: var(--fg-1); cursor: pointer; }
