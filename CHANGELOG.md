@@ -1,5 +1,282 @@
 # @1agh/maude
 
+## 1.0.0
+
+### Major Changes
+
+- Maude 1.0.
+
+  The release that makes the sync arc real: the whole design folder mirrors both
+  ways by default, deletions propagate behind cumulative breakers on both ends,
+  and a project has exactly one owner — repo or hub, never both, switchable
+  without moving a byte. Everything below it is the work that made that safe to
+  turn on.
+
+  **What 1.0 means here, stated plainly.** The journal, epoch and cursor wire
+  format is now under semver: a peer on 1.x can talk to a hub on 1.x. That is the
+  promise this number makes, and it is the one thing a 1.0.1 cannot take back.
+  Everything else — the CLI surface, the plugin commands, the design-system
+  scaffolding — has been stable in practice for many releases and is now stable by
+  commitment.
+
+  **Sync.** One journal-driven file lane replaces seven: a hub-ordered append-only
+  `file_journal`, a payload-free poke, a per-hub ledger, and one pure three-way
+  decision table. A fresh link delivers the project in full rather than delivering
+  every canvas and losing the design system. A deletion is a tombstone with the
+  same compare-and-swap a write has, so an edit that races a delete wins at the
+  door; nothing is unlinked, losers land in `_trash/` on both ends.
+
+  **Self-hosting.** `maude hub deploy docker` emits a compose stack + Caddyfile
+  that fetches its own TLS; the hub image installs frozen against a committed
+  lockfile so a poisoned transitive cannot ride in at build time; backups carry
+  the checkout in the same generation as the databases, and `maude hub
+restore-drill` proves a generation actually restores rather than assuming it.
+
+  **Hardening.** The typechecker now reads every studio source — 52 files,
+  `canvas-lib.tsx` among them, had been reached by nothing — and a coverage
+  tripwire keeps it that way. The sync lane is a required CI gate. npm publish is
+  blocked on the desktop bundle-completeness and client-boot checks. Six silent
+  bugs the checker found are fixed (see the accompanying entry).
+
+  **Known limits, named rather than discovered.**
+
+  - **Hub OIDC is beta.** The browser-auth door has not had its own AppSec pass;
+    a re-review already found two "closed" blockers that were not. Use tokens for
+    anything you would mind losing.
+  - `_trash/` is never pruned or indexed — quarantine is safe but not yet
+    findable.
+  - The sync flags (`syncFiles`, `propagateDeletes`, `resolveFirstAnchor`) are
+    config-only; there is no UI toggle and no first-upgrade consent dialog.
+  - Per-file sync state reaches `_sync.json` but the panel shows aggregates plus
+    holds, not per-file rows.
+  - Adopt/detach is CLI-only.
+  - Open hub-trust findings remain tracked and unshipped: scope judged on lexical
+    path while class is judged on the real one, delete-confirm semantics, seq
+    echo, re-anchor storm recovery, poke cooldown on reconnect, tombstones under a
+    degraded epoch, non-TTY `.gitignore` mutation, non-expiring parked remotes,
+    and wildcard-scoped session tokens.
+
+  The full deferred list lives in the post-1.0 hardening backlog; nothing on it
+  was dropped silently.
+
+### Minor Changes
+
+- 3fdcc23: One sync lane instead of two, and a cloud project that comes back whole.
+
+  The file-plane arc replaced a stack of sync mechanisms with a single lane, but
+  replacing is not removing — the old asset engines kept running underneath,
+  each a second opinion about a file's fate that nobody consulted on purpose.
+  They are gone now. One decision function moves every project file, both
+  directions; the old push and pull engines survive only as a thin compatibility
+  client for a self-hosted hub that has not upgraded yet, and even that is chosen
+  once when you link, never running beside the new lane.
+
+  The cloud side gets the durability the old engines never had for everything but
+  top-level pictures. Before, a hub-hosted project's design system — its
+  stylesheets, its shared modules, its fonts nested deep in the folder — was safe
+  only in the project's git history. A cloud instance that restarts pulls its
+  working copy from the newest backup, so anything added since existed in one
+  place that instance could not read, and canvases came back framed but unstyled.
+  Every one of those files is now written through to durable storage as it lands,
+  tracked by the same record the sync uses, so a restarted project comes back
+  whole instead of missing its styling. If a file is ever served from the backup
+  instead of the working copy, that is now a logged alarm rather than a silent
+  fallback — it means the working copy drifted and wants looking at.
+
+  On the desktop, the live editing buffer for each canvas is now the same object
+  that syncs to the hub by default, rather than a copy reconciled through disk.
+  Set `MAUDE_SHARED_DOC=0` to return to the previous two-document path.
+
+- e951f48: Self-hosting grows up: a workspace you can operate, with your own identity provider.
+
+  A self-hosted hub is the whole product for anyone not on Maude Cloud, and it
+  gained the parts that were missing between "the container is up" and "a team
+  uses this." People are managed in the admin console now — accounts, roles,
+  invite-by-link (the hub still sends no mail; it hands you the link) — over APIs
+  that already existed but had no UI. And a hub can accept sign-in from your own
+  identity provider: one OIDC adapter covers Auth0, Google, or anything else that
+  speaks it, verified with `jose`, with the rule that authenticating grants
+  nothing until an admin links the identity to an account.
+
+  Underneath, a live data-loss bug is closed: two hubs sharing one object-storage
+  bucket used to prune each other's backup history away on a healthy day. A
+  generation now names its owner, a hub refuses to write into a keyspace it does
+  not own and shows that state in the console, and losing a `/repo` volume makes
+  the hub stop and ask rather than quietly re-seed over the loss. `maude hub
+workspace-up` is walked by a new `/design:hub-workspace` interview, and the
+  docs cover AWS, durability, people and identity — with a test that fails the
+  build if a doc names an environment variable no code reads.
+
+- c825866: Your whole design folder syncs now, deletions stick, and the folder has one owner.
+
+  Until now a linked project synced its canvases and the pictures that happened
+  to sit next to them. Everything else — the design system's stylesheets, its
+  README, the fonts, shared modules — stayed on whichever machine made it. A
+  teammate opening the project got every canvas and none of the styling those
+  canvases were written against, which looks less like "sync is behind" and more
+  like "the project is broken".
+
+  That folder now mirrors both ways in full. Which files count is decided by one
+  rule on each side, and each side asks its own copy rather than trusting the
+  other's answer. Three things still never travel: the file naming your hub (a
+  synced one would let a hub rewrite where it lives), your per-machine state like
+  camera position and local history, and another program's conflict copies.
+  Executable modules are the one class gated at both ends. Linking asks once
+  whether a hub may deliver them, defaulting to no, and that answer lives on your
+  machine where no sign-in response can change it.
+
+  Deleting works. Before, a removed file came back on the next pass, because
+  absence and "I haven't heard about it" are the same thing on the wire until
+  somebody says otherwise. A deletion is now a statement with a timestamp, sent
+  with the same precondition an edit carries — so if somebody changed the file
+  while you were deleting it, their change wins and the file returns. Nothing is
+  ever unlinked: the losing copy moves to a trash folder on both ends. And when a
+  batch goes at once — a branch switch, a restore that half-finished — sync
+  pauses in both directions and the Sync panel says what it was about to do and
+  to which files; nothing moves until you agree. That pause is a budget, not a
+  per-check limit: it counts what has already been removed over the last hour and
+  remembers across a restart, because the thing it guards against adds up.
+
+  The folder also has exactly one owner now, where it used to quietly have two.
+  Committing `.design/` while a hub mirrors it reads as extra safety and is the
+  reverse: a `git pull` and a sync pass can each undo the other, and which wins
+  is a matter of timing. So a project is repo-owned or hub-owned. `maude design
+adopt` moves it to the hub, `maude design detach` brings it back, and neither
+  moves a byte on your disk — adopt stops git tracking the folder, detach lets it
+  see it again, and what to commit stays your call. Projects linked before this
+  keep working and say so until you choose.
+
+  Per project, `linkedHub.syncFiles: false` returns to the old narrow sync and
+  `linkedHub.propagateDeletes: false` holds every absence.
+
+### Patch Changes
+
+- 783f11f: The cloud stops needing a reload, and it stops needing a schedule.
+
+  A file that reached the cloud had already arrived — the bytes were on disk and
+  the server would happily serve them to anyone who asked. Nothing asked. Inside
+  the container, the mechanism that is supposed to notice a file appearing does
+  not fire for the way files actually get written there, so the page showing a
+  broken frame had no idea the picture it wanted was two directories away. The
+  only cure was a manual reload, which is why "sync doesn't work" and "sync
+  finished a minute ago" looked identical from the outside.
+
+  The fix is to stop guessing. The hub now keeps an ordered record of every write
+  it accepts, and the moment it accepts one it says so — over the same connection
+  your canvases are already using. Peers fetch immediately instead of waiting for
+  the next 20-second check, and an open cloud tab repairs the broken frame in
+  place.
+
+  What crosses that connection is deliberately almost nothing: a single number
+  saying the record moved. It never carries a path, a file, or a hash, so a peer
+  still learns _what_ changed only by asking through the same authenticated,
+  re-validated route it always used. A lost notification therefore costs a few
+  seconds and never correctness — the periodic check is still underneath, and it
+  stays at its current cadence until the new path has proven itself in real use.
+
+  Hubs that predate this simply don't advertise it, and every peer keeps today's
+  behaviour against them unchanged. Per project, `linkedHub.fileEvents: false`
+  opts back out.
+
+- 8134ca8: History now shows the versions that are actually being saved.
+
+  Connect a folder to Maude Cloud and the cloud starts saving it for you — every
+  few seconds, without being asked. The panel said so. Directly underneath, it
+  also said "No saved versions yet", while the same project open in a browser
+  listed three saved versions. Both sentences were true, about two different
+  places, and together they read as the one thing that was not true: that nothing
+  was being kept.
+
+  The panel was showing the history of the copy on your machine, which in that
+  mode nobody writes to. It now shows the cloud's — headed by the cloud project's
+  own name, so you can see which project the versions belong to — and clicking a
+  version opens the canvas as it was then, even for versions that only ever
+  existed in the cloud. If the cloud can't be reached, it says that, with a Retry,
+  instead of quietly looking empty.
+
+  While the cloud is saving, the app also stops keeping its own separate account
+  of the folder: no unsaved-file marks in the file tree, no draft switcher, no
+  background checks against a copy you are not editing through. Disconnect and all
+  of it comes straight back, in place, with no restart.
+
+  Your own `git` is untouched by any of this. Nothing is installed into the
+  project, nothing is written to its configuration, and a terminal behaves exactly
+  as it did before — including switching branches, which still updates what you
+  see on screen.
+
+- 35a5b11: Moving a canvas, and opening one made on another machine, stop losing work.
+
+  Four defects in the cloud↔desktop sync, all found by driving a real pair by hand
+  rather than by a test, and each one silent — nothing failed, the work simply
+  wasn't there.
+
+  Moving a canvas into a folder left every other machine showing it at the old
+  place. A move renames the canvas's files onto its new name, and that included
+  the document's own CRDT cache — whose last recorded word, written a step
+  earlier, was "I have moved away." The new document therefore opened already
+  retired and every peer let go of it. The cache is dropped on a move now (the
+  canvas is on disk by then), and a document that claims to have moved to where it
+  already is gets repaired instead of released — which is what heals the projects
+  that already carry the bad stamp.
+
+  A canvas created on a desktop could arrive in the cloud with its body written
+  twice, which renders as an empty canvas. A cloud workspace has two writers over
+  one folder — the hub, and the studio it supervises — so the studio kept finding
+  files it had no record of and offering them to the hub as new, at the moment the
+  hub's own copy was still in flight. Two rebuilds of the same body do not merge;
+  they concatenate. The studio now asks the hub what it already holds before
+  offering anything.
+
+  Editing a canvas in the cloud that was created on a desktop looked like it
+  worked and then quietly reverted, because that canvas had never joined the
+  cloud's sync set at all. And a canvas whose name contains a space could arrive
+  twice under two names, colliding with itself until it stopped syncing entirely.
+
+  Also: revoking an invitation in the admin console now actually revokes it (the
+  button called a route the hub does not serve, so the link stayed usable), the
+  outstanding-invites list no longer counts spent ones, and an invite's expiry
+  reads as time remaining rather than "just now".
+
+- 74d9e0d: Six silent bugs, found by pointing a typechecker at code nothing was checking.
+
+  `apps/studio/tsconfig.json` listed its roots by hand and the list had no `*.tsx`
+  entry. Fifty-two tracked files were therefore read by no checker at all — not
+  loosely checked, not checked. Among them: `canvas-lib.tsx`, which every canvas
+  imports; every overlay; the whole `commands/` directory. Completing the list and
+  driving it to zero errors turned up six real defects, each one quiet enough to
+  have survived a full test suite and a visual smoke sweep.
+
+  Curved connectors imported from FigJam arrived broken. The importer mapped
+  Figma's `CURVED` to the string `curve`, and nothing in the renderer has ever
+  known that word — the arrow type is `curved`. Every curved connector silently
+  fell back to a straight line.
+
+  A context-menu entry inside a submenu could be permanently dead. Leaf items
+  resolve a function-form `disabled` against the thing you right-clicked; submenu
+  items were handed the function itself, which is always truthy — so any such item
+  rendered greyed out and swallowed every click, whatever the rule actually said
+  about that target.
+
+  Design-system motion specimens were not demonstrating their own easing. They
+  passed a CSS `cubic-bezier(...)` string to the animation runtime, which accepts a
+  named curve or four numbers and silently ignores anything else — so the tiles ran
+  on the library default while claiming to show the system's tokens.
+
+  The canvas geometry manifest dropped each artboard's `kind`, so the whiteboard
+  tooling that reads it lost the print/web/video distinction. The artboard element
+  carries the attribute; the reader simply never copied it across.
+
+  Pre-warming the canvas runtime bundles passed the array index as an options
+  object (`.map(fn)` hands its callback three arguments), so every warm-up after
+  the first ran with nonsense settings. Invisible, because a failed pre-warm just
+  means the real build happens on first use.
+
+  And an inline media player dereferenced a context that can legitimately be
+  absent — the overlay beside it already guarded the same value.
+
+  The repair is pinned: a coverage check now asserts that every tracked source
+  still reaches the checker, so the surface cannot quietly shrink again.
+
 ## 0.60.7
 
 ### Patch Changes

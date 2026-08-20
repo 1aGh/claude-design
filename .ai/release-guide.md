@@ -138,6 +138,8 @@ git add package.json \
         apps/desktop/src-tauri/Cargo.lock \
         apps/studio/dist/ \
         apps/studio/whats-new.json \
+        apps/studio/package.json \
+        apps/hub/package.json \
         CHANGELOG.md \
         .changeset/ \
         site/lib/stats.json \
@@ -147,6 +149,14 @@ git status                                           # eyeball — no surprise a
 git commit -m "chore: release v${VER}"
 git tag -a "v${VER}" -m "v${VER}"
 ```
+
+> `apps/studio/package.json` + `apps/hub/package.json` are in that list because
+> `bump-version.sh` writes the version into them (they are the manifests a RUNNING
+> studio / hub process reads its own version from) **and**
+> `check-version-parity.sh` asserts them. They were missing here through v1.0.0 —
+> the release commit would have shipped two manifests still claiming the previous
+> version, and the parity gate would have caught it in CI rather than at the
+> `git add`.
 
 > **Annotated tag (`-a -m`) is required** — `git push --follow-tags` only pushes annotated tags. A lightweight `git tag v${VER}` will silently stay local and `build-binaries.yml` never fires.
 
