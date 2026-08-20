@@ -114,19 +114,18 @@ is left is harness quality, not correctness:
 
 ### Release-mechanics hazards found preparing the B2 drills (2026-08-20)
 
-- **D-1 — `hub-image.yml` cannot build a staging image, and dispatching it from
-  main would push `:latest`.** B2's fleet drill is specified as "a
-  `cells-deploy.yml` dispatch against a staging-named image", and no such image
-  can be produced: `hub-image.yml` computes its tags as
-  `VER="${GITHUB_REF_NAME#v}"` → on a `workflow_dispatch` from main that is
-  literally `main`, so it would publish `ghcr.io/1agh/maude-hub:vmain` **and
-  `:latest`** — the tag every self-hoster pulls and the deploy emitter's own
-  default — from an unreleased build. Same shape as round 4's finding that the
-  `v*.*.*` globs match `v1.0.0-rc.1`: the manual path inherits a tag nobody
-  chose. Options: add a required `tag` input (mirroring `cells-deploy`'s
-  `hub_image`, which was already made required-with-no-default for exactly this
-  reason), or refuse `:latest` on anything but a release tag. **Until one of
-  those lands, the fleet drill cannot be run as written.**
+- **D-1 — RESOLVED (2026-08-20).** `hub-image.yml` computed its tags as
+  `VER="${GITHUB_REF_NAME#v}"` unconditionally, so a `workflow_dispatch` from
+  main resolved `VER=main` and would have published `ghcr.io/1agh/maude-hub:vmain`
+  — a version tag from a ref that is not a version. Same shape as round 4's
+  finding that the `v*.*.*` globs match `v1.0.0-rc.1`: the manual path inherited
+  a name nobody chose. Decision (user): **`:latest` is always published** — it is
+  the deploy emitter's default and what every self-hoster pulls, so it tracks the
+  newest build by design — and the extra tag is an **optional** dispatch input
+  for when a build needs a second addressable name (which is what a fleet drill
+  needs, since `cells-deploy` derives its cell from a named hub image). A
+  dispatch with no tag now publishes `:latest` alone; the version tag is derived
+  only on a real tag push; the input is charset-validated.
 - **D-2 — the fleet drill has a chicken-and-egg the plan does not name.**
   `cells-deploy` derives the cell from an EXISTING hub image, and the merged code
   is published nowhere (no tag). So a drill of *this* code needs either D-1's

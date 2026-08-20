@@ -16,6 +16,15 @@ on:
         description: 'Build only, do not push'
         type: boolean
         default: false
+      tag:
+        # OPTIONAL. Empty is the normal case: the build publishes `:latest` and
+        # nothing else. Give a value to ALSO publish under a name you choose
+        # (e.g. `staging`, `drill-1`) when you want a second, addressable
+        # reference to this exact build — which is what a fleet drill needs,
+        # since `cells-deploy` derives its cell from a named hub image.
+        description: 'Extra tag to publish alongside :latest (optional, e.g. staging)'
+        required: false
+        default: ''
 
 jobs:
   hub-image:
@@ -44,9 +53,30 @@ jobs:
 
       - name: Compute tags
         id: meta
+        env:
+          EXTRA_TAG: ${{ inputs.tag }}
         run: |
-          VER="${GITHUB_REF_NAME#v}"
-          echo "tags=ghcr.io/1agh/maude-hub:v${VER},ghcr.io/1agh/maude-hub:latest" >> "$GITHUB_OUTPUT"
+          # `:latest` ALWAYS — it is what the deploy emitter defaults to and what
+          # every self-hoster pulls, so it tracks the newest build by design.
+          #
+          # The version tag comes from the REF only on a tag push. It used to be
+          # computed unconditionally as `${GITHUB_REF_NAME#v}`, which on a manual
+          # run from main resolved to the literal string `main` and published
+          # `ghcr.io/1agh/maude-hub:vmain` — a tag nobody asked for, from a ref
+          # that is not a version. A dispatch now publishes `:latest` alone
+          # unless it is given an explicit name to use.
+          TAGS="ghcr.io/1agh/maude-hub:latest"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            VER="${GITHUB_REF_NAME#v}"
+            TAGS="ghcr.io/1agh/maude-hub:v${VER},${TAGS}"
+          elif [ -n "${EXTRA_TAG}" ]; then
+            case "$EXTRA_TAG" in
+              *[!A-Za-z0-9._-]*)
+                echo "::error::--tag may only contain [A-Za-z0-9._-]: '${EXTRA_TAG}'"; exit 1 ;;
+            esac
+            TAGS="ghcr.io/1agh/maude-hub:${EXTRA_TAG},${TAGS}"
+          fi
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
         uses: docker/build-push-action@v7
