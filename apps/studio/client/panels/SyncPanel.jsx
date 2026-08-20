@@ -106,6 +106,40 @@ function readNotices(raw) {
   return raw.filter((n) => n && typeof n.id === 'string' && typeof n.text === 'string');
 }
 
+/** DeliveryState → plain words for the doručenka rows (file-ledger.ts owns the
+ *  union; unknown states render verbatim so a NEWER producer stays readable). */
+const DELIVERY_WORD = {
+  conflict: 'conflict — older copy in _trash/',
+  stuck: 'stuck',
+  'referenced-but-unoffered': 'referenced, never received',
+  'local-only': 'only on this machine',
+  pushing: 'uploading…',
+  'on-hub': 'on the workspace',
+  durable: 'backed up',
+  'at-peer': 'reached a teammate',
+  'ui-healed': 'healed',
+  everywhere: 'everywhere',
+};
+
+/** States where a person has to look — always-visible rows; the rest folds. */
+const DELIVERY_ATTENTION = new Set(['conflict', 'stuck', 'referenced-but-unoffered', 'local-only']);
+
+/** The per-file doručenka map split into attention/fine [rel, state] lists,
+ *  fail-closed like every other reader here. */
+function readDelivery(raw) {
+  const attention = [];
+  const fine = [];
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    for (const [rel, state] of Object.entries(raw)) {
+      if (typeof rel !== 'string' || typeof state !== 'string') continue;
+      (DELIVERY_ATTENTION.has(state) ? attention : fine).push([rel, state]);
+    }
+    attention.sort((a, b) => a[0].localeCompare(b[0]));
+    fine.sort((a, b) => a[0].localeCompare(b[0]));
+  }
+  return { attention, fine };
+}
+
 /** safeDetail's sanitation with a paragraph-sized cap — a consent notice is a
  *  full explanation by design and `MAX_DETAIL_LEN`'s 160 chars would cut it
  *  mid-sentence. Still bounded: the payload is read back off `_sync.json`. */
@@ -207,6 +241,52 @@ export default function SyncPanel({
   const assets = readAssets(status?.assets);
   const assetFailures = assets?.failures || [];
   const files = readFiles(status?.files);
+
+  const delivery = useMemo(() => readDelivery(status?.files?.delivery), [status?.files?.delivery]);
+
+  // Sync settings (Task 2) — fetched once on mount; `settings` stays null when
+  // no hub is linked, which is also the render gate for the whole section.
+  const [settings, setSettings] = useState(null);
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const [settingsNote, setSettingsNote] = useState('');
+  useEffect(() => {
+    let gone = false;
+    fetch('/_api/sync/settings')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!gone && j && typeof j === 'object') setSettings(j.settings ?? null);
+      })
+      .catch(() => {
+        /* no server / old server — the section simply doesn't render */
+      });
+    return () => {
+      gone = true;
+    };
+  }, []);
+  const changeSetting = useCallback(async (patch) => {
+    setSettingsBusy(true);
+    setSettingsNote('');
+    let json = null;
+    try {
+      const res = await fetch('/_api/sync/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      json = await res.json().catch(() => null);
+    } catch {
+      /* said below */
+    }
+    setSettingsBusy(false);
+    if (!json || json.ok !== true) {
+      setSettingsNote(safeDetail(json?.detail, 'The setting could not be saved.'));
+      return;
+    }
+    setSettings(json.settings);
+    // Saved is a fact; whether it took effect NOW depends on the supervisor —
+    // say which of the two happened rather than letting "saved" imply "live".
+    setSettingsNote(json.applied ? 'Saved — sync is restarting with the new setting.' : 'Saved — applies the next time sync restarts.');
+  }, []);
 
   // Consent notices minus this machine's dismissals. `ackTick` only forces the
   // re-read after a dismiss — the acks themselves live in localStorage.
@@ -466,6 +546,98 @@ export default function SyncPanel({
                   )}
                 </div>
               ))}
+            {/* THE DORUČENKA, per file (DDR-226 §7). The counts above say how
+                many are fine; they cannot point at the one that is not — which
+                is the question three days of dogfood kept asking. Rows needing
+                a person come first and are always visible; the delivered rest
+                stays behind a fold so a healthy project reads as one line. */}
+            {delivery.attention.length > 0 && (
+              <ul className="sp-list" data-testid="sync-delivery-attention">
+                {delivery.attention.slice(0, 50).map(([rel, state]) => (
+                  <li className="sp-row is-auth-rejected" key={rel}>
+                    <span className="sp-row-dot" aria-hidden="true" />
+                    <span className="sp-row-name" title={safeName(rel, '(unnamed)')}>
+                      {safeName(rel, '(unnamed)')}
+                    </span>
+                    <span className="sp-row-state">{DELIVERY_WORD[state] || state}</span>
+                  </li>
+                ))}
+                {delivery.attention.length > 50 && (
+                  <li className="sp-truncated">…and {delivery.attention.length - 50} more</li>
+                )}
+              </ul>
+            )}
+            {delivery.fine.length > 0 && (
+              <details className="sp-held-paths" data-testid="sync-delivery-fine">
+                <summary>
+                  {delivery.fine.length} file{delivery.fine.length === 1 ? '' : 's'} delivered
+                </summary>
+                <ul>
+                  {delivery.fine.slice(0, 200).map(([rel, state]) => (
+                    <li key={rel}>
+                      {safeName(rel, '(unnamed)')} — {DELIVERY_WORD[state] || state}
+                    </li>
+                  ))}
+                  {delivery.fine.length > 200 && <li>…and {delivery.fine.length - 200} more</li>}
+                </ul>
+              </details>
+            )}
+          </section>
+        )}
+
+        {/* Settings (feature-before-first-external-users Task 2) — the three
+            toggles every breaker remediation used to hand the user as "edit
+            linkedHub.* JSON". Rendered only when a hub is linked (the route
+            answers settings: null otherwise — dead controls teach nothing). */}
+        {settings && (
+          <section aria-label="Sync settings" data-testid="sync-settings">
+            <div className="gp-sect-label">settings</div>
+            <label className="sp-setting" data-testid="sync-setting-syncFiles">
+              <input
+                type="checkbox"
+                checked={settings.syncFiles}
+                disabled={settingsBusy}
+                onChange={(e) => changeSetting({ syncFiles: e.target.checked })}
+              />
+              <span>
+                Sync project files
+                <small>The whole design folder mirrors both ways, not just canvases.</small>
+              </span>
+            </label>
+            <label className="sp-setting" data-testid="sync-setting-propagateDeletes">
+              <input
+                type="checkbox"
+                checked={settings.propagateDeletes}
+                disabled={settingsBusy}
+                onChange={(e) => changeSetting({ propagateDeletes: e.target.checked })}
+              />
+              <span>
+                Propagate deletions
+                <small>
+                  Removing a file here removes it everywhere; replaced copies are kept in _trash/.
+                </small>
+              </span>
+            </label>
+            <label className="sp-setting sp-setting-select" data-testid="sync-setting-firstAnchor">
+              <span>
+                First-link conflicts
+                <small>When both sides have content the first time a project links.</small>
+              </span>
+              <select
+                value={settings.resolveFirstAnchor}
+                disabled={settingsBusy}
+                onChange={(e) => changeSetting({ resolveFirstAnchor: e.target.value })}
+              >
+                <option value="ask">Keep asking</option>
+                <option value="keep-local">Keep this machine's</option>
+                <option value="keep-cloud">Keep the workspace's</option>
+              </select>
+            </label>
+            {settingsNote && (
+              <div className="sp-resync-note" role="status" aria-live="polite">
+                {settingsNote}
+              </div>
+            )}
           </section>
         )}
       </div>

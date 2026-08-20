@@ -248,6 +248,12 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         // budget. A GET here 403s at the gate, never 405 from a reached handler.
         '/_api/sync/resync',
         '/_api/sync/cancel-assets',
+        // feature-before-first-external-users Task 2 — the sync toggles write
+        // `.design/config.json` linkedHub and can restart the sync runtime.
+        // From the canvas origin this would let untrusted content turn
+        // delete-propagation on or settle a first-anchor hold against the
+        // user — MAIN-ORIGIN ONLY, absent from both allowlists.
+        '/_api/sync/settings',
         // ACP chat attachments (POST upload + GET thumbnail serve) are MAIN-ORIGIN
         // ONLY — absent from CANVAS_SAFE_API + startCanvasServer's routes. The
         // untrusted canvas origin must never read (or write) the user's pasted

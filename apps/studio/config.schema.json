@@ -228,6 +228,30 @@
           "type": "boolean",
           "default": true,
           "description": "DDR-079 (supersedes DDR-072) — project-level TSX sync, ON BY DEFAULT. Omit the field to sync ALL .tsx canvases to this hub (the common case: a linked teammate sees the project's TSX without a hidden opt-in). Set false to opt the whole project OUT. A per-canvas .meta.json \"syncable\": false still excludes one canvas (the sidecar always wins). Inert unless the cross-origin sandbox is active (MAUDE_CANVAS_ORIGIN_SPLIT != 0) — the DDR-060 Lock-2 coupling is preserved. TSX bodies execute, so syncing broadens a WebRTC/self-nav exfil residual to every synced canvas — link only hubs you operate or trust; the dev-server prints a loud boot banner against non-loopback hubs."
+        },
+        "workspaceId": {
+          "type": "string",
+          "description": "DDR-192 §5 — stable workspace identity for the hub document namespace (ws/<workspace-id>/<branch>/<slug>). Authoritative when present; the cloud control plane sets it at provisioning time. Absent, the sync runtime derives it from the git origin remote."
+        },
+        "syncFiles": {
+          "type": "boolean",
+          "default": true,
+          "description": "Sync v2 — the journal-driven file plane (Plane B): the downward project-file pull AND the widened upward sweep. Default ON; set false to fall back to the pre-Sync-v2 reach (binary media under assets/ only). Settable from the Sync panel's Settings section."
+        },
+        "propagateDeletes": {
+          "type": "boolean",
+          "default": true,
+          "description": "Sync v2 Increment 6 — a deletion here becomes a deletion everywhere (losers quarantined into _trash/, never unlinked; cumulative breakers hold bulk removals for confirmation). Default ON; set false to hold every absence instead. Settable from the Sync panel's Settings section."
+        },
+        "resolveFirstAnchor": {
+          "type": "string",
+          "enum": ["keep-local", "keep-cloud"],
+          "description": "How to settle a FIRST-ANCHOR hold for the whole set at once: keep-local pushes this machine's copies up; keep-cloud takes the project's and parks yours beside them. ABSENT means keep asking — the hold is not an error. Settable from the Sync panel's Settings section."
+        },
+        "fileEvents": {
+          "type": "boolean",
+          "default": true,
+          "description": "Sync v2 Increment 2 (DDR-226 §4) — the file-event control channel (poke). Default ON where the hub advertises ledger support; set false to fall back to the 20 s poll cadence. The documented rollback for the poke — a config key because the target user has no terminal (DDR-177)."
         }
       },
       "additionalProperties": false

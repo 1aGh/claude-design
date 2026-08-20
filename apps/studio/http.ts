@@ -108,6 +108,7 @@ import { currentSession } from './session-scope.ts';
 import { sanitizeForLog } from './sync/cell-pairing.ts';
 import { linkHub } from './sync/hub-link.ts';
 import { isHubReadOnly } from './sync/hubs-config.ts';
+import { isFirstAnchorMode, readSyncSettings, writeSyncSettings } from './sync/settings.ts';
 import { signInToWorkspace, workspaceDisclosure } from './sync/workspace-signin.ts';
 import { readUiPrefs, type UiPrefs, writeUiPrefs } from './ui-prefs.ts';
 import { loadWhatsNew, resolveMaudeVersion } from './whats-new.ts';
@@ -2671,6 +2672,77 @@ export function createHttp(
       // and this route must never be able to.
       const sync = await control.restart();
       return gitJson({ status: 200, json: { ok: true, sync } });
+    },
+
+    // feature-before-first-external-users Task 2 — the three user-facing sync
+    // toggles (syncFiles / propagateDeletes / resolveFirstAnchor), so the
+    // breaker remediation stops meaning "edit JSON by hand" (DDR-177: the
+    // target user has no terminal). MAIN-ORIGIN ONLY: absent from BOTH
+    // CANVAS_SAFE_API and startCanvasServer's `routes` map (DDR-088) —
+    // untrusted canvas content must not be able to turn delete-propagation on
+    // or resolve a first-anchor hold against the user.
+    '/_api/sync/settings': async (req: Request) => {
+      if (!isTrustedRequestHost(req))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      if (req.method === 'GET') {
+        return Response.json(
+          { settings: readSyncSettings(ctx.paths.repoRoot) },
+          { headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req)) return syncRefusal('cross-origin', 'Settings must be changed');
+      const body = await readJson<{
+        syncFiles?: unknown;
+        propagateDeletes?: unknown;
+        resolveFirstAnchor?: unknown;
+      }>(req, 4 * 1024);
+      const patch: Record<string, unknown> = {};
+      if ('syncFiles' in (body ?? {})) {
+        if (typeof body?.syncFiles !== 'boolean')
+          return new Response('syncFiles must be a boolean', { status: 400 });
+        patch.syncFiles = body.syncFiles;
+      }
+      if ('propagateDeletes' in (body ?? {})) {
+        if (typeof body?.propagateDeletes !== 'boolean')
+          return new Response('propagateDeletes must be a boolean', { status: 400 });
+        patch.propagateDeletes = body.propagateDeletes;
+      }
+      if ('resolveFirstAnchor' in (body ?? {})) {
+        if (!isFirstAnchorMode(body?.resolveFirstAnchor))
+          return new Response('resolveFirstAnchor must be ask|keep-local|keep-cloud', {
+            status: 400,
+          });
+        patch.resolveFirstAnchor = body.resolveFirstAnchor;
+      }
+      if (Object.keys(patch).length === 0)
+        return new Response('nothing to change', { status: 400 });
+      try {
+        const settings = await writeSyncSettings(ctx.paths.repoRoot, patch);
+        reloadConfig(ctx);
+        // The toggles apply at sync boot, so a saved change asks the
+        // supervisor for a restart — same refusal semantics as Resync: when a
+        // cycle is already running the setting is SAVED and applies on the
+        // next restart, and the response says which of the two happened.
+        let applied = false;
+        const control = ctx.syncControl;
+        if (control && !control.busy?.()) {
+          await control.restart();
+          applied = true;
+        }
+        return Response.json(
+          { ok: true, settings, applied },
+          { headers: { 'Cache-Control': 'no-store' } }
+        );
+      } catch (err) {
+        return gitJson({
+          status: 400,
+          json: {
+            ok: false,
+            detail: err instanceof Error ? err.message : 'settings write failed',
+          },
+        });
+      }
     },
 
     '/_api/sync/cancel-assets': async (req: Request) => {

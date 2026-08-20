@@ -52,13 +52,13 @@ Increment 8 (after the relay deletion there is no two-doc fallback).
 anywhere in `client/` — every breaker remediation string tells the user to edit
 `linkedHub.*` JSON (round-4 ADVOCATE finding).
 
-- [ ] Sync panel settings section: read-write toggles for the three keys via a
+- [x] Sync panel settings section: read-write toggles for the three keys via a
       server route that edits `.design/config.json` (config hot-reload exists —
       DDR-149).
 - [ ] First-upgrade consent dialog: when a project's hub link would turn on
       `sharedDoc`/`syncFiles`/`propagateDeletes` for the first time on this
       machine, ask once in the UI (accept / keep off), recording the answer.
-- [ ] Surface per-file doručenka rows in the Sync panel (aggregates-only
+- [x] Surface per-file doručenka rows in the Sync panel (aggregates-only
       today).
 - [ ] Adopt/detach desktop dialog (CLI-only today; DDR-177 posture — the
       target user never opens a terminal).
