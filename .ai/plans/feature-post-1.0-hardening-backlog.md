@@ -181,3 +181,34 @@ Per-item, inherited from the original plan's per-task validation (see the pre-re
 - [ ] "Before first external users" block completed BEFORE any release is promoted to a real external population (or each item carries a recorded, dated waiver)
 - [ ] Each remaining item scheduled into a 1.x plan or explicitly rejected with a DDR
 - [ ] This file archived only when empty
+
+---
+
+## Retro — E-block pass (2026-08-20, E0/E2/E3 closed)
+
+- **A backlog item's diagnosis ages worse than its symptom.** E0 named a cause
+  (`bun`'s default timeout) that had been untrue since 2026-05-27 — the fix it
+  prescribed was already half-applied. The symptom was real, the mechanism was
+  not. Re-measure before implementing anything a backlog item asserts about
+  *why*; the entry is a lead, not a spec. Same shape as the CLAUDE.md rule about
+  plan checkboxes lagging reality.
+- **A bug written up against one file was in three.** E2 was filed against
+  `canvas-text-editing`; `timeline-manual-cut` and `cloud-attach` carried the
+  identical hand-rolled before/after shape. Grepping for the *pattern* rather
+  than the *named file* is what turned a one-scenario patch into a shared guard.
+  Worth doing by default on any "this test does X badly" item.
+- **The obvious fix for E3 would have silently disabled seven suites.** Reaching
+  for wdio's `exclude:` reads as the natural answer and would have been
+  invisible in review — the confs spread `...base` and never override `exclude`,
+  so each would have excluded its own spec and reported success on zero tests.
+  Checking how the *consumers compose the thing you are editing* caught it.
+  Green-on-nothing is the failure mode to fear in test-harness work.
+- **Self-review on my own diff found the only security-shaped defect.** The
+  sidecar is parsed from disk, so its keys were untrusted input feeding a file
+  write; nothing else in the pass would have surfaced it. Small, but it argues
+  for reviewing harness code with the same posture as product code.
+- **What the gate can't see.** Running the quality gates surfaced an unrelated
+  stale artifact (`site/lib/whats-new.json` still on 0.60.7 after the v1.0.0
+  release) because the site-content gate compares only `site/content/docs/` and
+  `site/lib/stats.json`. Widening that gate to the whole generated set under
+  `site/lib/` is a candidate backlog item.
