@@ -372,6 +372,13 @@ function runDeploy({ args, pkgRoot }) {
   }
 
   const outDir = flags.out ? resolve(String(flags.out)) : process.cwd();
+  // CREATE IT. The docs' own command is `--out ./deploy` on a fresh box, where
+  // that directory does not exist yet — and the emitter used to write straight
+  // into it, so the very first thing a self-hoster runs died on
+  // `ENOENT ... docker-compose.yml`. Found by running the operator path end to
+  // end (B2/D7) rather than reading it. `process.cwd()` always exists, so this
+  // only ever fires for an explicit --out.
+  mkdirSync(outDir, { recursive: true });
 
   if (target === 'fly') return deployFly({ hubRoot, outDir, flags });
   return deployDocker({ hubRoot, outDir, flags });
