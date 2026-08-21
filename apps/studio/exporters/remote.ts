@@ -158,6 +158,17 @@ export async function renderRemotely(args: {
   signal?: AbortSignal;
 }): Promise<ExportResult> {
   const { format, targets, options, canvas, service, signal } = args;
+  // The exporters' per-navigation timeouts (png.ts goto `--timeout`, etc.)
+  // default to ~8s — tuned for the DESKTOP path where the canvas origin is
+  // loopback and already warm. The render worker instead loads the canvas from
+  // the REMOTE canvas origin, and a cold cell builds the tenant's TSX in its
+  // sandbox on first access, so `_canvas-shell.html` can take far longer than
+  // 8s to fire `load`. Give the remote path a generous floor (unless the
+  // caller asked for more) so a cold-cell first render doesn't time out.
+  const remoteOptions: ExportOptions = {
+    ...options,
+    timeoutSec: Math.max(Number((options as { timeoutSec?: number }).timeoutSec) || 0, 45),
+  };
   const res = await fetch(`${service.url}/render`, {
     method: 'POST',
     signal,
@@ -165,7 +176,7 @@ export async function renderRemotely(args: {
       'content-type': 'application/json',
       authorization: `Bearer ${service.secret}`,
     },
-    body: JSON.stringify({ format, targets, options, canvas }),
+    body: JSON.stringify({ format, targets, options: remoteOptions, canvas }),
   });
   if (!res.ok) {
     const detail = (await res.text().catch(() => '')) || `${res.status}`;
