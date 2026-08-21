@@ -6,7 +6,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
 
+import { ADMIN_HTML } from '../src/admin-assets.mjs';
 import { createHub } from '../src/server.mjs';
+import { decide } from '../src/studio-manifest.mjs';
 
 const PORT = Number.parseInt(process.env.HUB_TEST_PORT ?? '14598', 10);
 
@@ -134,4 +136,40 @@ test('the admin header carries a slot for the running release', async () => {
   // An absent answer must render as nothing, never as a guess.
   const css = await (await fetch(`http://127.0.0.1:${PORT}/admin/style.css`)).text();
   assert.match(css, /\.nav-brand-ver:empty\s*\{\s*display:\s*none/);
+});
+
+// "Open the studio" — Cloud Phase 25 E1 put the studio first in the console;
+// Cloud Phase 27 C4 / DDR-209 then moved the studio from the hub's own `/studio`
+// page to the proxied root `/`. The sign-in redirect followed the move, the two
+// console CTAs did not, and a self-hoster's primary button opened
+// `{"error":"not found"}` for three weeks. So: every console link must resolve
+// to a path this hub serves, and the studio CTAs must resolve to `/` — and
+// the test proves `/studio` is DEAD first, so it cannot pass by accident.
+test('the console\'s "Open the studio" CTAs point at the studio root, not the deleted /studio page', async () => {
+  // The old target is genuinely unroutable — the proxy refuses it as
+  // unclassified for every role, including the owner.
+  assert.deepEqual(decide('GET', '/studio', 'owner'), {
+    allow: false,
+    reason: 'unclassified',
+    capability: null,
+  });
+  assert.equal(decide('GET', '/', 'owner').allow, true);
+
+  // `ADMIN_HTML` is the exact string `GET /admin` serves (server.mjs); reading
+  // it directly keeps this test off the keep-alive socket pool, which the
+  // previous test's three fetches leave pointing at a destroyed listener.
+  const html = ADMIN_HTML;
+  // Canonical console address (GET /admin/ 301s here), so relative hrefs
+  // resolve exactly as the browser resolves them.
+  const base = 'http://h/admin';
+  for (const id of ['nav-studio', 'topbar-studio']) {
+    const m = html.match(new RegExp(`<a[^>]*\\bid="${id}"[^>]*\\bhref="([^"]*)"`));
+    assert.ok(m, `#${id} is an <a> with an href`);
+    const path = new URL(m[1], base).pathname;
+    assert.notEqual(path, '/studio', `#${id} still points at the deleted /studio page`);
+    assert.equal(path, '/', `#${id} must open the studio at the root`);
+    // Relative, like `admin/style.css` and the `../admin` redirect, so the
+    // link survives a path-stripping reverse proxy (<prefix>/admin → <prefix>/).
+    assert.ok(!m[1].startsWith('/'), `#${id} href must be relative, got ${m[1]}`);
+  }
 });

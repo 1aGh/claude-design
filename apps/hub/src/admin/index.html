@@ -120,9 +120,14 @@
                route to the thing they actually installed this for. The project
                is now the first item and the primary action; Operate is still
                everything it was, one section down. -->
+          <!-- THE STUDIO IS `./` (= `/`). Cloud Phase 27 C4 / DDR-209 deleted the
+               hub's own `/studio` page and the cell proxies the real studio at
+               the root; `/studio` is now refused as unclassified. Relative, like
+               `admin/style.css` and the `../admin` redirect, so the link keeps
+               the mount prefix under a path-stripping reverse proxy. -->
           <div class="nav-sect">Design</div>
           <div class="nav-list">
-            <a class="nav-item" id="nav-studio" href="/studio"><span class="nav-ic"><svg class="ic" aria-hidden="true"><use href="#i-canvases"/></svg></span><span class="nav-label">Open the studio</span></a>
+            <a class="nav-item" id="nav-studio" href="./"><span class="nav-ic"><svg class="ic" aria-hidden="true"><use href="#i-canvases"/></svg></span><span class="nav-label">Open the studio</span></a>
           </div>
           <div class="nav-sect">Operate</div>
           <div class="nav-list" id="nav-list">
@@ -157,7 +162,7 @@
               <input id="search" type="text" placeholder="Search peers, tokens…" aria-label="Search">
               <span class="kbd" aria-hidden="true">/</span>
             </label>
-            <a id="topbar-studio" class="btn btn--primary" href="/studio"><svg class="ic" aria-hidden="true"><use href="#i-canvases"/></svg> Open the studio</a>
+            <a id="topbar-studio" class="btn btn--primary" href="./"><svg class="ic" aria-hidden="true"><use href="#i-canvases"/></svg> Open the studio</a>
             <!-- E3 — in PLATFORM mode the dashboard owns invites (POST /invites
                  409s under strict identity), so the console must not offer a
                  button that fails. app.js hides this and says where they live. -->
