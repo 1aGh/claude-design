@@ -41,6 +41,10 @@ test('the admin console reaches the pending queue and can link', () => {
   assert.match(ADMIN_HTML, /id="card-oidc-pending"/);
   assert.ok(ADMIN_JS.includes("'/oidc/pending'"), 'the console loads the queue');
   assert.ok(ADMIN_JS.includes("'/oidc/link'"), 'and can link a subject');
+  // 2026-08-21 — the third verb: create the account AND link, for the invited
+  // person who signed in through the provider and has nothing to link TO.
+  assert.ok(ADMIN_JS.includes("'/oidc/approve'"), 'and can approve (create + link) a subject');
+  assert.match(ADMIN_JS, /data-approve="\$\{sub\}"/);
 });
 
 test('linking keys on the SUBJECT, not the claimed email', () => {
@@ -55,6 +59,8 @@ test('auth-routes handles the pending admin routes behind the bearer gate', () =
   assert.match(auth, /'\/oidc\/pending'/);
   assert.match(auth, /'\/oidc\/link'/);
   assert.match(auth, /linkOidcSub/);
+  assert.match(auth, /'\/oidc\/approve'/);
+  assert.match(auth, /approveOidcSub/);
 });
 
 test('server.mjs actually DISPATCHES /oidc/* into the admin handler', () => {
@@ -66,7 +72,12 @@ test('server.mjs actually DISPATCHES /oidc/* into the admin handler', () => {
   const server = src('server.mjs');
   const block = server.slice(server.indexOf('user administration'));
   const cond = block.slice(0, block.indexOf('handleUserAdminRoutes'));
-  for (const route of ["'/oidc/pending'", "'/oidc/link'", "'/oidc/pending/dismiss'"]) {
+  for (const route of [
+    "'/oidc/pending'",
+    "'/oidc/link'",
+    "'/oidc/approve'",
+    "'/oidc/pending/dismiss'",
+  ]) {
     assert.ok(cond.includes(route), `server.mjs does not route ${route} to the admin handler`);
   }
 });

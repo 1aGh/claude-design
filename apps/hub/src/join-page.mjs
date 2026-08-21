@@ -19,22 +19,17 @@
 // the redeem is a POST body and never a URL the browser navigates away from
 // (Referer headers, proxy logs). The page is `no-store`.
 
-import { oidcButton } from './studio-door.mjs';
+import { escapeHtml as esc, oidcButton } from './studio-door.mjs';
 import { MIN_PASSWORD_LENGTH } from './users.mjs';
-
-const esc = (s) =>
-  String(s ?? '').replace(
-    /[&<>"']/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
-  );
 
 /** A hostname for the heading — `https://design.acme.com/` → `design.acme.com`. */
 function workspaceName(workspace) {
   if (!workspace) return 'this workspace';
+  const raw = String(workspace);
   try {
-    return new URL(String(workspace)).host || String(workspace);
+    return new URL(raw).host || raw;
   } catch {
-    return String(workspace);
+    return raw;
   }
 }
 
@@ -69,7 +64,7 @@ const STYLE = `
  */
 export function joinPage({ token, workspace, email, error = null, env = process.env }) {
   const name = workspaceName(workspace);
-  const oidc = oidcButton(esc, env);
+  const oidc = oidcButton(env);
   const passwordsRefused = env.HUB_OIDC_MODE === 'strict';
 
   // Under `strict` the hub refuses passwords outright (`cloud-identity`), so an
@@ -104,7 +99,7 @@ export function joinPage({ token, workspace, email, error = null, env = process.
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex">
+<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer">
 <title>Join ${esc(name)}</title>
 <style>${STYLE}</style></head>
 <body><main>${body}</main></body></html>`;

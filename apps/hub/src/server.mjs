@@ -899,6 +899,7 @@ export function createHub(config = {}) {
           method,
           dataDir,
           secret,
+          publicUrl,
           // OIDC AppSec pass — the self-hosted /studio/signin POST is a real
           // password check and must ride the same throttle /auth/login does.
           checkRateLimit: rateLimit
@@ -1336,23 +1337,37 @@ export function createHub(config = {}) {
         authPath === '/join' ||
         authPath.startsWith('/join/')
       ) {
-        const handled = await handleAuthRoutes({
-          request,
-          response,
-          path: authPath,
-          method,
-          dataDir,
-          secret,
-          publicUrl,
-          checkRateLimit: rateLimit
-            ? (req) => checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
-            : undefined,
-          respondRateLimited: () => respondRateLimited(response),
-          respondJson: (status, payload) => respondAdminJson(response, status, payload),
-          readJsonBody,
-          kickLabel: (label) => kickSessionsForLabel(peers, label),
-          pushActivity: (evt) => pushActivity(activity, evt),
-        });
+        // NEVER LET THIS THROW INTO THE REQUEST LOOP (same rule as
+        // `mintCanvasToken` above): a non-null throw out of `onRequest` is not
+        // a 500, it is the hub process exiting — and these are the UNAUTHENTICATED
+        // human doors, the ones a mangled link or a hostile body reaches first.
+        // A handler bug answers 500 to one request; it does not drop every
+        // collab socket (security review 2026-08-21, F1).
+        let handled = false;
+        try {
+          handled = await handleAuthRoutes({
+            request,
+            response,
+            path: authPath,
+            method,
+            dataDir,
+            secret,
+            publicUrl,
+            checkRateLimit: rateLimit
+              ? (req) => checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
+              : undefined,
+            respondRateLimited: () => respondRateLimited(response),
+            respondJson: (status, payload) => respondAdminJson(response, status, payload),
+            readJsonBody,
+            kickLabel: (label) => kickSessionsForLabel(peers, label),
+            pushActivity: (evt) => pushActivity(activity, evt),
+          });
+        } catch (err) {
+          console.error(`[hub] auth route ${authPath} failed: ${err?.message ?? err}`);
+          if (!response.headersSent) respondAdminJson(response, 500, { error: 'internal error' });
+          else response.end();
+          handled = true;
+        }
         if (handled) bailFromOnRequest();
       }
 
@@ -1869,6 +1884,7 @@ async function handleAdminApi(ctx) {
     // never boot. The whole feature authenticates people it can never admit.
     path === '/oidc/pending' ||
     path === '/oidc/link' ||
+    path === '/oidc/approve' ||
     path === '/oidc/pending/dismiss'
   ) {
     const handled = await handleUserAdminRoutes({

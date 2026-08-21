@@ -461,3 +461,50 @@ export function linkOidcSub(dataDir, email, sub) {
   removePendingOidc(dataDir, subject);
   return getUserByOidcSub(dataDir, subject);
 }
+
+/**
+ * Approve a pending identity: CREATE the account for `email` and link the
+ * subject to it, in one transaction.
+ *
+ * The gap this closes (2026-08-21): a person invited by link who signed in
+ * through the provider instead landed in `oidc_pending`, and the only verbs the
+ * admin had were "Link to an EXISTING account" (→ `no such user`) and
+ * "dismiss". Creating the account first meant inventing an initial password
+ * for someone who will never use one. So: the account is created with a
+ * random, never-revealed password — it is an OIDC-only account; a later
+ * "Reset" in the console gives it a password if one is ever wanted — and the
+ * subject is linked in the same step.
+ *
+ * What it deliberately is NOT: a lookup by the claimed email. `email` is what
+ * the ADMIN typed or confirmed. If an account with that address already
+ * exists this throws — that case is `linkOidcSub`, the explicit act of
+ * attaching an identity to an existing account, and the two must not blur
+ * (oidc-routes.mjs: matching an IdP-asserted address to an existing account is
+ * the takeover).
+ */
+export function approveOidcSub(dataDir, { sub, email, role } = {}) {
+  const subject = typeof sub === 'string' ? sub.trim() : '';
+  if (!subject) throw new Error('approveOidcSub: a subject is required');
+  const handle = db(dataDir);
+  const owner = handle.prepare('SELECT email FROM users WHERE oidc_sub = ?').get(subject);
+  if (owner) throw new Error(`that identity is already linked to ${owner.email}`);
+  // Approve is "let the person in MY queue in" — the subject must be one the
+  // provider actually presented here. A typed-in subject is not an approval,
+  // it is an account pre-created for an identity nobody has seen.
+  if (!handle.prepare('SELECT 1 FROM oidc_pending WHERE sub = ?').get(subject)) {
+    throw new Error('that identity is not waiting for access');
+  }
+  const run = handle.transaction(() => {
+    // 32 random bytes, base64url — nobody knows it, nothing ever types it.
+    const user = createUser(dataDir, {
+      email,
+      password: randomBytes(32).toString('base64url'),
+      role,
+    });
+    handle.prepare('UPDATE users SET oidc_sub = ? WHERE email = ?').run(subject, user.email);
+    removePendingOidc(dataDir, subject);
+    return user.email;
+  });
+  const address = run();
+  return getUserByOidcSub(dataDir, subject) ?? getUser(dataDir, address);
+}

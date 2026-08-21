@@ -19,7 +19,13 @@
 
 import { randomBytes } from 'node:crypto';
 
-import { readForm, setSessionCookie } from './browser-auth.mjs';
+import {
+  formOriginAllowed,
+  readForm,
+  respondHtml,
+  STUDIO_SESSION_TTL_MS,
+  setSessionCookie,
+} from './browser-auth.mjs';
 import { authenticateForMode, cloudIdentityStrict } from './cloud-identity.mjs';
 import {
   createInvite,
@@ -28,6 +34,7 @@ import {
   peekInvite,
   redeemInvite,
   revokeInvite,
+  revokeInvitesForEmail,
 } from './invites.mjs';
 import { joinPage } from './join-page.mjs';
 import { isRevoked } from './revocations.mjs';
@@ -42,6 +49,7 @@ import {
   verifyToken,
 } from './tokens.mjs';
 import {
+  approveOidcSub,
   authenticate,
   createUser,
   getUser,
@@ -243,25 +251,24 @@ export async function handleAuthRoutes(ctx) {
 
   // ---- Cloud Phase 6 — magic-link invites -------------------------------
 
-  // Retired under strict cloud identity (Phase 23 B6): every door into a
-  // cloud cell is the control plane's — a hub-local invite would mint exactly
-  // the local credential strict exists to end. One message, both verbs.
   // TWO CLIENTS, ONE DOOR. A browser navigation (`Accept: text/html`) gets a
   // page it can read and a form it can submit; an API caller (the desktop, a
   // script, the tests) gets the JSON it always got. The split is the same one
   // the studio door makes on its sign-in verdict — a fetch() handed a page
   // shows nothing, a person handed JSON reads `{"ok":true,…}` and stops. Which
   // is exactly what the invited teammate saw for the first year of this route.
+  //
+  // TWO KEYS, and they are different headers: page-or-JSON is decided by
+  // `Accept`; cookie-or-bearer (below) by the request `Content-Type`. They can
+  // disagree (`Accept: text/html` + a JSON body → a bearer, in JSON, to a
+  // browser) and that is fine — only the form body ever sets a cookie.
   const wantsHtml = (ctx.request?.headers?.accept ?? '').includes('text/html');
-  const respondPage = (status, html) => {
-    ctx.response.writeHead(status, {
-      'content-type': 'text/html; charset=utf-8',
-      'cache-control': 'no-store',
-      'x-content-type-options': 'nosniff',
-    });
-    ctx.response.end(html);
-  };
+  const respondPage = (status, html) => respondHtml(ctx.response, status, html);
+  const env = ctx.env ?? process.env;
 
+  // Retired under strict cloud identity (Phase 23 B6): every door into a
+  // cloud cell is the control plane's — a hub-local invite would mint exactly
+  // the local credential strict exists to end. One message, both verbs.
   if (cloudIdentityStrict() && (path === '/join' || path.startsWith('/join/'))) {
     const error =
       'Invitations for this workspace are sent from its Maude Cloud dashboard now. Ask whoever runs the project to add you there.';
@@ -275,16 +282,24 @@ export async function handleAuthRoutes(ctx) {
   // invite; that is otherwise a very ordinary way for one to arrive already
   // used. Redemption is the POST below.
   if (method === 'GET' && path.startsWith('/join/')) {
-    const value = decodeURIComponent(path.slice('/join/'.length));
-    const check = peekInvite(dataDir, value);
+    // A mangled link — `…/join/inv_ab%` off a wrapped line in a mail client —
+    // is now the ordinary case, not an edge. `decodeURIComponent` THROWS on a
+    // bad percent-escape, and a throw out of this handler does not make a
+    // 500: it takes the hub process down (Hocuspocus rethrows anything that is
+    // not the bail sentinel). Security defender finding F1, 2026-08-21: one
+    // anonymous GET, every collab socket gone. A bad escape is simply an
+    // invite that does not exist.
+    let value = null;
+    try {
+      value = decodeURIComponent(path.slice('/join/'.length));
+    } catch {
+      value = null;
+    }
+    const check = value ? peekInvite(dataDir, value) : { ok: false, reason: 'unknown' };
     if (!check.ok) {
-      if (wantsHtml)
-        respondPage(
-          410,
-          servicePage('This invitation no longer works', inviteProblem(check.reason))
-        );
-      else
-        respondJson(410, { ok: false, reason: check.reason, error: inviteProblem(check.reason) });
+      const error = inviteProblem(check.reason);
+      if (wantsHtml) respondPage(410, servicePage('This invitation no longer works', error));
+      else respondJson(410, { ok: false, reason: check.reason, error });
       return true;
     }
     if (wantsHtml) {
@@ -293,7 +308,7 @@ export async function handleAuthRoutes(ctx) {
       // then navigates away from.
       respondPage(
         200,
-        joinPage({ token: value, workspace: ctx.publicUrl ?? null, email: check.invite.email })
+        joinPage({ token: value, workspace: ctx.publicUrl ?? null, email: check.invite.email, env })
       );
       return true;
     }
@@ -325,16 +340,31 @@ export async function handleAuthRoutes(ctx) {
     const contentType = String(ctx.request?.headers?.['content-type'] ?? '').toLowerCase();
     const isForm = contentType.startsWith('application/x-www-form-urlencoded');
 
-    // A form POST creates an account and sets a cookie — a cross-site page
-    // must not be able to do that to a visitor (login CSRF: the attacker's
-    // invite redeemed into the victim's browser). Browsers say where a
-    // navigation came from; an honest form submit is `same-origin`.
-    if (isForm) {
-      const site = String(ctx.request?.headers?.['sec-fetch-site'] ?? '').toLowerCase();
-      if (site === 'cross-site') {
-        respondPage(403, servicePage('Not from here', 'Open the invitation link directly.'));
-        return true;
-      }
+    // `HUB_OIDC_MODE=strict` means the identity provider is the ONLY way in
+    // (cloud-identity.mjs) — the page already shows the provider link alone
+    // under strict; the POST has to refuse too, or an invite is a third
+    // password door that strict never closed (defender F2): a password account
+    // strict says cannot exist, and a 12 h session minted with no IdP step.
+    if (env.HUB_OIDC_MODE === 'strict') {
+      const error =
+        'This workspace signs people in through its identity provider. Open the invitation link and sign in there.';
+      if (isForm || wantsHtml) respondPage(403, servicePage('Sign in with your provider', error));
+      else respondJson(403, { ok: false, reason: 'password-refused-oidc-strict', error });
+      return true;
+    }
+
+    // A form POST creates an account and sets a cookie — a page elsewhere must
+    // not be able to do that to a visitor (login CSRF: the attacker's invite
+    // redeemed into the victim's browser, whose later work lands in an account
+    // the attacker holds the password for). FAIL CLOSED on a positive signal,
+    // not open on a missing one (defender F3 / attacker F1): `same-site` is
+    // refused because on the cloud fleet every tenant — and the untrusted
+    // canvas origin — is same-site to every other; an absent
+    // `Sec-Fetch-Site` (pre-Fetch-Metadata engines) falls back to the `Origin`
+    // header, which every browser of the last decade sends on a form POST.
+    if (isForm && !formOriginAllowed(ctx.request, ctx.publicUrl)) {
+      respondPage(403, servicePage('Not from here', 'Open the invitation link directly.'));
+      return true;
     }
 
     let body;
@@ -350,7 +380,12 @@ export async function handleAuthRoutes(ctx) {
         body = await readJsonBody(ctx.request);
       }
     } catch (err) {
-      respondJson(400, { ok: false, error: err.message });
+      if (isForm)
+        respondPage(
+          400,
+          servicePage('Something went wrong', 'Open the invitation link and try again.')
+        );
+      else respondJson(400, { ok: false, error: err.message });
       return true;
     }
     const result = redeemInvite(dataDir, {
@@ -361,13 +396,25 @@ export async function handleAuthRoutes(ctx) {
     });
     if (!result.ok) {
       const status = result.reason === 'account-failed' ? 400 : 410;
-      const error = result.detail ?? inviteProblem(result.reason);
+      // A duplicate address is an account-existence oracle for whoever holds
+      // an OPEN invite (retry is free, the invite survives), so the store's
+      // `user "x" already exists` stays in the server log and the wire gets
+      // one neutral sentence (defender F4 / attacker F5).
+      const taken =
+        result.reason === 'account-failed' && /already exists/.test(result.detail ?? '');
+      if (taken) console.warn(`[hub] invite redeem refused: ${result.detail}`);
+      const error = taken
+        ? "That address can't be used with this invitation. Sign in if you already have an account."
+        : (result.detail ?? inviteProblem(result.reason));
       if (isForm) {
-        // A typo is a retry (the invite is untouched on `account-failed` /
-        // `email-required`), so the form comes back with the sentence above
-        // the button. A dead invite gets the plain page: no form, nothing to
-        // retry with.
-        const retryable = result.reason === 'account-failed' || result.reason === 'email-required';
+        // A typo is a retry (the invite is untouched on `account-failed`,
+        // `email-required` and `email-mismatch`), so the form comes back with
+        // the sentence above the button. A dead invite gets the plain page:
+        // no form, nothing to retry with.
+        const retryable =
+          result.reason === 'account-failed' ||
+          result.reason === 'email-required' ||
+          result.reason === 'email-mismatch';
         const look = retryable ? peekInvite(dataDir, body?.token) : null;
         if (look?.ok) {
           respondPage(
@@ -377,6 +424,7 @@ export async function handleAuthRoutes(ctx) {
               workspace: ctx.publicUrl ?? null,
               email: look.invite.email,
               error,
+              env,
             })
           );
         } else {
@@ -398,7 +446,7 @@ export async function handleAuthRoutes(ctx) {
     // 2026-08-21 this door minted without it — a freshly invited member held a
     // token every HTTP write surface answered with 401.
     const projectRole = projectRoleForAccount(result.user.role);
-    const ttlMs = isForm ? 12 * 3600_000 : userTokenTtlMs();
+    const ttlMs = isForm ? STUDIO_SESSION_TTL_MS : userTokenTtlMs();
     const expiresAt = Date.now() + ttlMs;
     const minted = addToken(dataDir, {
       label: isForm ? `studio-${randomBytes(4).toString('hex')}` : mintLabel(),
@@ -433,6 +481,8 @@ export async function handleAuthRoutes(ctx) {
 /** One plain sentence per failure. Never mentions tokens (DDR-193 §5). */
 function inviteProblem(reason) {
   switch (reason) {
+    case 'email-mismatch':
+      return 'This invitation was sent to a different address. Use the address it was sent to.';
     case 'expired':
       return 'This invitation has expired. Ask whoever invited you for a new link.';
     case 'already-used':
@@ -479,6 +529,35 @@ export async function handleUserAdminRoutes(ctx) {
       respondJson(200, { user });
     } catch (err) {
       respondJson(400, { error: err.message });
+    }
+    return true;
+  }
+  // POST /oidc/approve — the THIRD verb (2026-08-21). "Link" attaches a
+  // subject to an account that exists; "dismiss" drops it; this one CREATES the
+  // account for the address the admin confirms and links in the same step. It
+  // is what an admin reaches for when the person they invited by link signed
+  // in through the provider instead and sits in the queue with no account to
+  // link to. Any open invite bound to that address is revoked — it could only
+  // fail with "already exists" from here on.
+  if (method === 'POST' && path === '/oidc/approve') {
+    let body;
+    try {
+      body = await readJsonBody(ctx.request);
+    } catch (err) {
+      respondJson(400, { error: err.message });
+      return true;
+    }
+    try {
+      const user = approveOidcSub(dataDir, {
+        sub: body?.sub,
+        email: body?.email,
+        role: body?.role ?? 'member',
+      });
+      const revokedInvites = revokeInvitesForEmail(dataDir, user.email);
+      ctx.pushActivity?.({ type: 'oidc-approve', user: user.email, doc: String(body?.sub ?? '') });
+      respondJson(201, { user, revokedInvites });
+    } catch (err) {
+      respondJson(/already exists/.test(err.message) ? 409 : 400, { error: err.message });
     }
     return true;
   }

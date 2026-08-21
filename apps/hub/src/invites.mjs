@@ -232,6 +232,26 @@ export function redeemInvite(dataDir, { value, email, password, createAccount },
   return { ok: true, user, invite: check.invite };
 }
 
+/**
+ * Revoke every OPEN invite bound to an address. Used when an account for that
+ * address comes into being some other way (an OIDC approve) — an invite that
+ * can now only fail with "already exists" is clutter in the admin list and a
+ * confusing dead end for the person holding it.
+ */
+export function revokeInvitesForEmail(dataDir, email, now = Date.now()) {
+  const address = String(email ?? '')
+    .trim()
+    .toLowerCase();
+  if (!address) return 0;
+  const handle = db(dataDir);
+  return handle
+    .prepare(
+      `UPDATE invites SET revoked_at = ?
+       WHERE lower(email) = ? AND revoked_at IS NULL AND redeemed_at IS NULL`
+    )
+    .run(now, address).changes;
+}
+
 export function revokeInvite(dataDir, id, now = Date.now()) {
   const handle = db(dataDir);
   const res = handle

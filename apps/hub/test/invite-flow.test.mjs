@@ -344,3 +344,197 @@ test('a dead link opened in a browser is a page in plain words, not JSON', async
   assert.match(html, /isn&#39;t valid/i);
   assert.ok(!html.includes('"ok"'));
 });
+
+// ---- security review 2026-08-21 (defender F1–F7, attacker F1–F5) ---------
+
+test('F1: a mangled percent-escape in the link is a 410 page, and the hub is still up', async () => {
+  // `decodeURIComponent('%E0')` throws; before the guard that throw left
+  // `onRequest`, Hocuspocus rethrew it, and the PROCESS exited — one anonymous
+  // GET, every collab socket gone.
+  const res = await fetch(`${base()}/join/inv_ab%E0`, { headers: asBrowser });
+  assert.equal(res.status, 410);
+  assert.match(await res.text(), /isn&#39;t valid/);
+  const api = await fetch(`${base()}/join/inv_%`);
+  assert.equal(api.status, 410);
+  assert.equal((await api.json()).reason, 'unknown');
+  assert.equal((await fetch(`${base()}/health`)).status, 200, 'the hub must survive');
+});
+
+test('F2: under HUB_OIDC_MODE=strict the POST refuses both bodies — the provider is the only door', async () => {
+  const { value } = await mintInvite({ email: 'filip@example.com' });
+  process.env.HUB_OIDC_MODE = 'strict';
+  try {
+    const page = await (await fetch(`${base()}/join/${value}`, { headers: asBrowser })).text();
+    assert.ok(!page.includes('name="password"'), 'the page shows no password form under strict');
+    const form = await fetch(
+      `${base()}/join`,
+      postForm({ token: value, email: 'filip@example.com', password: 'a-perfectly-fine-password' })
+    );
+    assert.equal(form.status, 403);
+    assert.ok(!(form.headers.get('set-cookie') ?? '').includes('maude_studio'));
+    const json = await fetch(
+      `${base()}/join`,
+      postJson({ token: value, email: 'filip@example.com', password: 'a-perfectly-fine-password' })
+    );
+    assert.equal(json.status, 403);
+    assert.equal((await json.json()).reason, 'password-refused-oidc-strict');
+  } finally {
+    delete process.env.HUB_OIDC_MODE;
+  }
+  // The invite is untouched — it was never the problem.
+  assert.equal((await fetch(`${base()}/join/${value}`)).status, 200);
+});
+
+test('F3: the form gate fails CLOSED — same-site and header-less submits are refused, Origin rescues old engines', async () => {
+  const { value } = await mintInvite({ email: 'filip@example.com' });
+  const fields = {
+    token: value,
+    email: 'filip@example.com',
+    password: 'a-perfectly-fine-password',
+  };
+  const bare = (extra) => ({
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...asBrowser, ...extra },
+    body: new URLSearchParams(fields).toString(),
+    redirect: 'manual',
+  });
+  // same-site — every cloud tenant and the untrusted canvas origin qualify.
+  assert.equal(
+    (await fetch(`${base()}/join`, bare({ 'Sec-Fetch-Site': 'same-site' }))).status,
+    403
+  );
+  // no Fetch-Metadata and no Origin — nothing vouches for the submit.
+  assert.equal((await fetch(`${base()}/join`, bare({}))).status, 403);
+  // no Fetch-Metadata, Origin of a stranger.
+  assert.equal(
+    (await fetch(`${base()}/join`, bare({ Origin: 'https://evil.example' }))).status,
+    403
+  );
+  // Still unconsumed after three refused attempts.
+  assert.equal((await fetch(`${base()}/join/${value}`)).status, 200);
+  // A pre-Fetch-Metadata browser on the hub's own page sends Origin = publicUrl.
+  const ok = await fetch(`${base()}/join`, bare({ Origin: 'https://acme.cloud.maude.sh' }));
+  assert.equal(ok.status, 303);
+});
+
+test('F3b: a hub with no publicUrl accepts an Origin that matches the Host header', async () => {
+  const { formOriginAllowed } = await import('../src/browser-auth.mjs');
+  const req = (headers) => ({ headers });
+  assert.equal(formOriginAllowed(req({ 'sec-fetch-site': 'same-origin' }), null), true);
+  assert.equal(formOriginAllowed(req({ 'sec-fetch-site': 'none' }), null), true);
+  assert.equal(formOriginAllowed(req({ 'sec-fetch-site': 'same-site' }), null), false);
+  assert.equal(
+    formOriginAllowed(req({ origin: 'http://hub.local:8080', host: 'hub.local:8080' }), null),
+    true
+  );
+  assert.equal(
+    formOriginAllowed(req({ origin: 'http://other.local', host: 'hub.local:8080' }), null),
+    false
+  );
+  assert.equal(formOriginAllowed(req({ origin: 'null', host: 'hub.local' }), null), false);
+  assert.equal(formOriginAllowed(req({}), null), false);
+});
+
+test('F4: a taken address is one neutral sentence, never the store\'s "already exists"', async () => {
+  await fetch(
+    `${base()}/join`,
+    postJson({
+      token: (await mintInvite()).value,
+      email: 'taken@example.com',
+      password: 'a-perfectly-fine-password',
+    })
+  );
+  const { value } = await mintInvite();
+  const form = await fetch(
+    `${base()}/join`,
+    postForm({ token: value, email: 'taken@example.com', password: 'a-perfectly-fine-password' })
+  );
+  assert.equal(form.status, 400);
+  const html = await form.text();
+  assert.ok(!/already exists/.test(html), html.slice(0, 300));
+  assert.match(html, /can&#39;t be used with this invitation/);
+  const json = await fetch(
+    `${base()}/join`,
+    postJson({ token: value, email: 'taken@example.com', password: 'a-perfectly-fine-password' })
+  );
+  assert.equal(json.status, 400);
+  assert.ok(!/already exists/.test((await json.json()).error));
+});
+
+test('F5: the pages carry referrer/framing/CSP hardening, and the landing page opts out of Referer', async () => {
+  const { value } = await mintInvite({ email: 'filip@example.com' });
+  const res = await fetch(`${base()}/join/${value}`, { headers: asBrowser });
+  assert.equal(res.headers.get('referrer-policy'), 'no-referrer');
+  assert.equal(res.headers.get('x-frame-options'), 'DENY');
+  assert.match(res.headers.get('content-security-policy') ?? '', /frame-ancestors 'none'/);
+  assert.match(res.headers.get('content-security-policy') ?? '', /form-action 'self'/);
+  assert.match(await res.text(), /<meta name="referrer" content="no-referrer">/);
+  const dead = await fetch(`${base()}/join/inv_nope`, { headers: asBrowser });
+  assert.equal(dead.headers.get('x-frame-options'), 'DENY');
+});
+
+test('F7: a bound invite submitted with another address comes back as the form, not a dead page', async () => {
+  const { value } = await mintInvite({ email: 'filip@example.com' });
+  const res = await fetch(
+    `${base()}/join`,
+    postForm({
+      token: value,
+      email: 'someone-else@example.com',
+      password: 'a-perfectly-fine-password',
+    })
+  );
+  assert.equal(res.status, 410);
+  const html = await res.text();
+  assert.ok(html.includes('action="/join"'), 'the form is shown again');
+  assert.match(html, /sent to a different address/);
+  assert.equal((await fetch(`${base()}/join/${value}`)).status, 200, 'invite untouched');
+});
+
+test('R2: the self-hosted sign-in form has the same login-CSRF gate as the invite form', async () => {
+  const body = new URLSearchParams({
+    email: 'x@example.com',
+    password: 'whatever-it-is',
+  }).toString();
+  const headers = { 'Content-Type': 'application/x-www-form-urlencoded', ...asBrowser };
+  const blind = await fetch(`${base()}/studio/signin`, {
+    method: 'POST',
+    headers,
+    body,
+    redirect: 'manual',
+  });
+  assert.equal(blind.status, 403);
+  const sameSite = await fetch(`${base()}/studio/signin`, {
+    method: 'POST',
+    headers: { ...headers, 'Sec-Fetch-Site': 'same-site' },
+    body,
+    redirect: 'manual',
+  });
+  assert.equal(sameSite.status, 403);
+  // An honest submit reaches the password check (and fails it — no such user).
+  const own = await fetch(`${base()}/studio/signin`, {
+    method: 'POST',
+    headers: { ...headers, 'Sec-Fetch-Site': 'same-origin' },
+    body,
+    redirect: 'manual',
+  });
+  assert.equal(own.status, 401);
+});
+
+test('R2-1: a malformed session cookie on any door is "no session", not a hub crash', async () => {
+  const { cookieValue } = await import('../src/browser-auth.mjs');
+  assert.equal(cookieValue({ headers: { cookie: 'maude_studio=%E0' } }, 'maude_studio'), null);
+  assert.equal(
+    cookieValue({ headers: { cookie: 'a=1; maude_studio=ok%20x' } }, 'maude_studio'),
+    'ok x'
+  );
+  const bad = { Cookie: 'maude_studio=%E0', ...asBrowser };
+  const out = await fetch(`${base()}/auth/browser/signout`, {
+    method: 'POST',
+    headers: bad,
+    redirect: 'manual',
+  });
+  assert.ok([302, 303].includes(out.status), `signout answered ${out.status}`);
+  const sess = await fetch(`${base()}/auth/session`, { headers: bad });
+  assert.notEqual(sess.status, 500);
+  assert.equal((await fetch(`${base()}/health`)).status, 200, 'the hub must survive');
+});

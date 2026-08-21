@@ -34,11 +34,16 @@ import {
 } from './oidc-routes.mjs';
 import { isRevoked } from './revocations.mjs';
 import { isReadOnlyRole, projectRoleForAccount } from './role-matrix.mjs';
-import { oidcButton, servicePage } from './studio-door.mjs';
+import { escapeHtml, oidcButton, servicePage } from './studio-door.mjs';
 import { addToken, removeToken, verifyToken } from './tokens.mjs';
 import { authenticate as localAuthenticate } from './users.mjs';
 
 export const BROWSER_SESSION_COOKIE = 'maude_studio';
+
+/** How long a studio session (the `maude_studio` cookie) lives, whichever door
+ *  minted it — the self-hosted sign-in, the OIDC callback, the cloud exchange,
+ *  or the invite landing page (auth-routes.mjs). */
+export const STUDIO_SESSION_TTL_MS = 12 * 3600_000;
 
 /** Read one cookie from a Node request. */
 export function cookieValue(request, name) {
@@ -47,7 +52,17 @@ export function cookieValue(request, name) {
   for (const part of String(raw).split(';')) {
     const eq = part.indexOf('=');
     if (eq < 0) continue;
-    if (part.slice(0, eq).trim() === name) return decodeURIComponent(part.slice(eq + 1).trim());
+    if (part.slice(0, eq).trim() === name) {
+      // A malformed percent-escape in a cookie is just "no cookie". Unguarded,
+      // `decodeURIComponent` threw out of `onRequest` and the hub process
+      // exited — one anonymous `Cookie: maude_studio=%E0` on any door that
+      // reads the session (attacker round-2 R2-1, 2026-08-21).
+      try {
+        return decodeURIComponent(part.slice(eq + 1).trim());
+      } catch {
+        return null;
+      }
+    }
   }
   return null;
 }
@@ -67,6 +82,71 @@ function clearSessionCookie(response) {
 function redirect(response, location) {
   response.writeHead(302, { location, 'cache-control': 'no-store' });
   response.end();
+}
+
+/**
+ * Send a server-rendered page — the sign-in page, the invite landing page,
+ * and every `servicePage`. One writer so the headers cannot drift between
+ * doors (security review 2026-08-21, F5 / attacker F3+F4):
+ *   • `no-store` — these pages carry session state and, on the invite landing
+ *     page, the raw invite token;
+ *   • `Referrer-Policy: no-referrer` — the landing page's own URL IS the
+ *     token; nothing the person clicks from it may carry that URL along;
+ *   • `X-Frame-Options: DENY` + `frame-ancestors 'none'` — two of these
+ *     pages collect a password; neither may be framed;
+ *   • a CSP that matches what the pages are: no script, inline or linked
+ *     CSS, forms that post only to this origin.
+ */
+export function respondHtml(response, status, html) {
+  response.writeHead(status, {
+    'content-type': 'text/html; charset=utf-8',
+    'cache-control': 'no-store',
+    'x-content-type-options': 'nosniff',
+    'referrer-policy': 'no-referrer',
+    'x-frame-options': 'DENY',
+    'content-security-policy':
+      "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+  });
+  response.end(html);
+}
+
+/**
+ * May this form POST set a session on this hub? TRUE only on a positive
+ * signal that the submit came from the hub's own page:
+ *   • `Sec-Fetch-Site: same-origin` (or `none` — a typed/bookmarked
+ *     navigation), the header every current engine sends; `same-site` and
+ *     `cross-site` are refused — on the cloud fleet every tenant is same-site
+ *     to every other, and so is the untrusted canvas origin;
+ *   • else an `Origin` header whose origin is the hub's own — `publicUrl`'s
+ *     origin, or (a hub with none configured) any scheme on the request's
+ *     `Host` — which every browser of the last decade sends on a form POST.
+ * Neither ⇒ refused. Used by the invite landing form (auth-routes.mjs) and
+ * the self-hosted sign-in form below — one gate for both cookie-setting doors.
+ */
+export function formOriginAllowed(request, publicUrl) {
+  const site = String(request?.headers?.['sec-fetch-site'] ?? '')
+    .trim()
+    .toLowerCase();
+  if (site) return site === 'same-origin' || site === 'none';
+  const origin = String(request?.headers?.origin ?? '').trim();
+  if (!origin || origin === 'null') return false;
+  let parsed;
+  try {
+    parsed = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (publicUrl) {
+    try {
+      if (parsed.origin === new URL(String(publicUrl)).origin) return true;
+    } catch {
+      /* fall through to the Host comparison */
+    }
+  }
+  const host = String(request?.headers?.host ?? '')
+    .trim()
+    .toLowerCase();
+  return Boolean(host) && parsed.host.toLowerCase() === host;
 }
 
 /** The short-lived transaction cookie for an OIDC sign-in in flight. */
@@ -210,7 +290,7 @@ export async function handleOidc({
 
     const outcome = resolveSubject(dataDir, verified, cfg);
     if (outcome.action === 'sign-in') {
-      const ttlMs = 12 * 3600_000;
+      const ttlMs = STUDIO_SESSION_TTL_MS;
       const projectRole = projectRoleForAccount(outcome.user.role);
       const minted = addToken(dataDir, {
         label: `studio-${Math.random().toString(36).slice(2, 10)}`,
@@ -247,12 +327,7 @@ export async function handleOidc({
 }
 
 function page(response, status, title, message, action) {
-  response.writeHead(status, {
-    'content-type': 'text/html; charset=utf-8',
-    'cache-control': 'no-store',
-    'x-content-type-options': 'nosniff',
-  });
-  response.end(servicePage(title, message, action ? { action } : {}));
+  respondHtml(response, status, servicePage(title, message, action ? { action } : {}));
 }
 
 /**
@@ -265,6 +340,7 @@ export async function handleBrowserAuth({
   method,
   dataDir,
   secret,
+  publicUrl = null,
   env = process.env,
   fetchImpl = fetch,
   checkRateLimit,
@@ -304,12 +380,7 @@ export async function handleBrowserAuth({
   // studio, the sandbox and the role model are all the same code.
   if (path === '/studio/signin') {
     if (method === 'GET') {
-      response.writeHead(200, {
-        'content-type': 'text/html; charset=utf-8',
-        'cache-control': 'no-store',
-        'x-content-type-options': 'nosniff',
-      });
-      response.end(signInPage());
+      respondHtml(response, 200, signInPage());
       return true;
     }
     if (method === 'POST') {
@@ -322,23 +393,32 @@ export async function handleBrowserAuth({
         respondRateLimited();
         return true;
       }
-      const form = await readForm(request);
+      // Login CSRF (security review 2026-08-21, round-2 R2): a page elsewhere
+      // must not be able to sign this browser into an account the attacker
+      // holds the password for. Same gate as the invite landing form.
+      if (!formOriginAllowed(request, publicUrl)) {
+        page(response, 403, 'Not from here', 'Open the sign-in page directly.');
+        return true;
+      }
+      let form;
+      try {
+        form = await readForm(request);
+      } catch {
+        page(response, 400, 'Something went wrong', 'Open the sign-in page and try again.');
+        return true;
+      }
       const result = authenticateForMode(
         { email: form.get('email'), password: form.get('password') },
         { local: (email, password) => localAuthenticate(dataDir, email, password) }
       );
       if (!result.ok) {
-        response.writeHead(401, {
-          'content-type': 'text/html; charset=utf-8',
-          'cache-control': 'no-store',
-        });
         // ONE opaque message — the distinction between "no such user" and
         // "wrong password" is an account-existence oracle.
-        response.end(signInPage('That email and password did not match.'));
+        respondHtml(response, 401, signInPage('That email and password did not match.'));
         return true;
       }
       const user = result.user;
-      const ttlMs = 12 * 3600_000;
+      const ttlMs = STUDIO_SESSION_TTL_MS;
       // TRANSLATED, not passed through — `user.role` is an ACCOUNT role and
       // the role matrix speaks PROJECT roles. Untranslated, an 'admin' is an
       // unknown role, gets nothing, and reads as read-only: the owner opens
@@ -436,8 +516,10 @@ export async function handleBrowserAuth({
   const user = result.user;
   const ttlMs = Math.max(
     60_000,
-    Math.min(result.expiresAt ?? Date.now() + 12 * 3600_000, Date.now() + 12 * 3600_000) -
-      Date.now()
+    Math.min(
+      result.expiresAt ?? Date.now() + STUDIO_SESSION_TTL_MS,
+      Date.now() + STUDIO_SESSION_TTL_MS
+    ) - Date.now()
   );
   // The role the control plane vouched for, in the PROJECT vocabulary — the
   // same translation /auth/login makes (C1).
@@ -455,12 +537,38 @@ export async function handleBrowserAuth({
   return true;
 }
 
-export async function readForm(request, max = 8 * 1024) {
+/**
+ * Read a form body. Same bounds as `readJsonBody` (server.mjs): a size cap
+ * that REJECTS rather than truncates, and a read timeout that destroys the
+ * socket — without it a client could hold the two form doors open by
+ * trickling bytes (security review 2026-08-21, F6). Rejects; callers answer
+ * 400 and never let the throw reach the request loop.
+ */
+export async function readForm(request, max = 8 * 1024, timeoutMs = 15_000) {
   const chunks = [];
   let size = 0;
+  const onTimeout = () => {
+    try {
+      request.destroy(new Error('request body timeout'));
+    } catch {
+      /* ignore */
+    }
+  };
+  try {
+    request.setTimeout?.(timeoutMs, onTimeout);
+  } catch {
+    /* best-effort */
+  }
   for await (const chunk of request) {
     size += chunk.length;
-    if (size > max) break;
+    if (size > max) {
+      try {
+        request.destroy();
+      } catch {
+        /* ignore */
+      }
+      throw new Error('body too large');
+    }
     chunks.push(chunk);
   }
   return new URLSearchParams(Buffer.concat(chunks).toString('utf8'));
@@ -480,12 +588,8 @@ export async function readForm(request, max = 8 * 1024) {
  * provider link alone.
  */
 export function signInPage(error = null, env = process.env) {
-  const esc = (s) =>
-    String(s).replace(
-      /[&<>"']/g,
-      (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
-    );
-  const oidc = oidcButton(esc, env);
+  const esc = escapeHtml;
+  const oidc = oidcButton(env);
   const passwordsRefused = env.HUB_OIDC_MODE === 'strict';
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">

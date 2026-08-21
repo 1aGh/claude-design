@@ -175,13 +175,22 @@ export const PAUSED_MESSAGE =
   'Rendering is paused for this project while we look into something. ' +
   'Your work is safe and nothing has been changed. Maude Desktop still opens it normally.';
 
+/**
+ * HTML-escape one interpolated value for the server-rendered pages — this
+ * one, `signInPage` (browser-auth.mjs) and `joinPage` (join-page.mjs). One
+ * escaper for all three, here because this module is the leaf the other two
+ * already import from. `null`/`undefined` render as nothing, not "null".
+ */
+export function escapeHtml(value) {
+  return String(value ?? '').replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
+  );
+}
+
 /** A plain page for the states that are not the studio. */
 export function servicePage(title, message, { action = null } = {}) {
-  const esc = (s) =>
-    String(s).replace(
-      /[&<>"']/g,
-      (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
-    );
+  const esc = escapeHtml;
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)}</title>
@@ -189,7 +198,7 @@ export function servicePage(title, message, { action = null } = {}) {
 </head>
 <body class="service-page"><main><h1>${esc(title)}</h1><p>${esc(message)}</p>${
     action ? `<a class="button" href="${esc(action.href)}">${esc(action.label)}</a>` : ''
-  }${oidcButton(esc)}</main></body></html>`;
+  }${oidcButton()}</main></body></html>`;
 }
 
 /**
@@ -209,7 +218,7 @@ export function servicePage(title, message, { action = null } = {}) {
  * file is not in that bundle, which is why the plan's "the People view plus an
  * OIDC button will blow the budget" framing was wrong on both halves.
  */
-export function oidcButton(esc, env = process.env) {
+export function oidcButton(env = process.env) {
   const mode = env.HUB_OIDC_MODE;
   if (mode !== 'hybrid' && mode !== 'strict') return '';
   let label = String(env.HUB_OIDC_LABEL ?? '').trim();
@@ -220,5 +229,5 @@ export function oidcButton(esc, env = process.env) {
       label = 'your identity provider';
     }
   }
-  return `<p><a class="button" href="/auth/oidc/start">Sign in with ${esc(label)}</a></p>`;
+  return `<p><a class="button" href="/auth/oidc/start">Sign in with ${escapeHtml(label)}</a></p>`;
 }

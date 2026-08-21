@@ -56,7 +56,14 @@ async function api(path, opts = {}) {
   }
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
-    throw new Error(text || `HTTP ${res.status}`);
+    // The hub answers `{"error":"…"}` — show the sentence, not the envelope.
+    let message = text;
+    try {
+      message = JSON.parse(text)?.error ?? text;
+    } catch {
+      /* not JSON — keep the raw text */
+    }
+    throw new Error(message || `HTTP ${res.status}`);
   }
   if (res.status === 204) return null;
   return res.json();
@@ -384,7 +391,7 @@ async function loadPeople() {
     api('/oidc/pending').catch(() => ({ pending: [] })),
   ]);
   renderPeople(users, invites);
-  renderPending(pending);
+  renderPending(pending, invites);
 }
 
 /**
@@ -396,10 +403,21 @@ async function loadPeople() {
  * is attacker-influenceable, and a lookalike in the list is how an admin would
  * be socially-engineered into linking the wrong one. The subject is shown in
  * full for the same reason — two subjects sharing a prefix must not look alike.
+ *
+ * APPROVE is the third verb: CREATE the account and link it, for the invitee
+ * who signed in through the provider and has no account to link TO. The
+ * claimed address is only the prompt's default — approve never touches an
+ * existing row (409 → use Link).
  */
-function renderPending(data) {
+function renderPending(data, inv) {
   const card = $('card-oidc-pending');
   const rows = data?.pending ?? [];
+  // Whether YOU invited the claimed address — its absence is the cue to look twice.
+  const invited = new Set(
+    (inv?.invites ?? [])
+      .filter((i) => (!i.status || i.status === 'open' || i.status === 'pending') && i.email)
+      .map((i) => String(i.email).toLowerCase())
+  );
   if (card) card.hidden = rows.length === 0;
   const tbody = $('pending-rows');
   if (!tbody) return;
@@ -409,9 +427,15 @@ function renderPending(data) {
           const sub = escapeHtml(p.sub);
           return (
             `<tr><td><code>${sub}</code></td>` +
-            `<td>${escapeHtml(p.email ?? '—')}</td>` +
+            `<td>${escapeHtml(p.email ?? '—')}${
+              p.email && invited.has(String(p.email).toLowerCase())
+                ? ' <span class="tag" title="An open invite is bound to this address">invited</span>'
+                : ''
+            }</td>` +
             `<td class="td-num">${escapeHtml(formatTime(p.firstSeen))}</td>` +
             `<td class="td-act">` +
+            `<select class="input input--sm" data-role-for="${sub}" aria-label="Role for the new account"><option value="member">member</option><option value="admin">admin</option></select> ` +
+            `<button class="btn btn--primary btn--sm" data-approve="${sub}" data-claimed="${escapeHtml(p.email ?? '')}" data-invited="${p.email && invited.has(String(p.email).toLowerCase()) ? '1' : ''}"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> Approve</button> ` +
             `<button class="btn btn--ghost btn--sm" data-link="${sub}"><svg class="ic" aria-hidden="true"><use href="#i-link"/></svg> Link</button> ` +
             `<button class="btn btn--danger btn--sm" data-dismiss="${sub}"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>` +
             `</td></tr>`
@@ -419,6 +443,17 @@ function renderPending(data) {
         })
         .join('')
     : '<tr class="empty"><td colspan="4">None waiting.</td></tr>';
+  for (const btn of tbody.querySelectorAll('button[data-approve]')) {
+    btn.addEventListener('click', () => {
+      const sel = tbody.querySelector(`select[data-role-for="${CSS.escape(btn.dataset.approve)}"]`);
+      approvePending(
+        btn.dataset.approve,
+        btn.dataset.claimed,
+        sel?.value ?? 'member',
+        btn.dataset.invited === '1'
+      );
+    });
+  }
   for (const btn of tbody.querySelectorAll('button[data-link]')) {
     btn.addEventListener('click', () => linkPending(btn.dataset.link));
   }
@@ -434,6 +469,31 @@ async function linkPending(sub) {
   if (!email) return;
   try {
     await api('/oidc/link', { method: 'POST', body: JSON.stringify({ sub, email: email.trim() }) });
+    await loadPeople();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function approvePending(sub, claimed, role, invited) {
+  const note = invited
+    ? 'You invited this address; that invite will be cancelled.'
+    : 'No invite exists for this address — be sure you meant to let them in.';
+  const email = prompt(
+    `Create a ${role} account for ${sub} and link it.\n${note}\n\nAccount email (claimed by the provider — confirm or correct):`,
+    claimed || ''
+  );
+  if (!email) return;
+  try {
+    const r = await api('/oidc/approve', {
+      method: 'POST',
+      body: JSON.stringify({ sub, email: email.trim(), role }),
+    });
+    if (r?.revokedInvites) {
+      alert(
+        `Account created and linked. ${r.revokedInvites} open invite(s) for that address cancelled.`
+      );
+    }
     await loadPeople();
   } catch (err) {
     alert(err.message);

@@ -1256,6 +1256,13 @@ button {
   font-size: var(--type-xs);
   padding: var(--space-2) var(--space-3);
 }
+.input.input--sm {
+  display: inline-block;
+  width: auto;
+  font-size: var(--type-xs);
+  padding: var(--space-2) var(--space-3);
+  vertical-align: middle;
+}
 .btn--lg {
   font-size: var(--type-md);
   padding: var(--space-4) var(--space-6);
@@ -1761,13 +1768,8 @@ dialog::backdrop {
   color: inherit;
 }
 
-/* The plain service pages (`servicePage()` in studio-door.mjs) — "Paused",
-   "You do not have access", "This invitation no longer works". They link this
-   stylesheet for the tokens and, until 2026-08-21, had NO rule of their own:
-   the text sat unpadded in the top-left corner of a dark page, and an invited
-   teammate whose link had expired met that as their first screen. Same column
-   and button shape as the sign-in and join pages (browser-auth.mjs,
-   join-page.mjs), which inline their own CSS. */
+/* servicePage() (studio-door.mjs) — "Paused", "no access", "invitation no
+   longer works". Same column + button shape as the sign-in/join pages. */
 body.service-page {
   min-height: 100vh;
   display: grid;

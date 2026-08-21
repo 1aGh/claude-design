@@ -36,7 +36,10 @@ describe('a canvas build error reaches the person (M8)', () => {
   });
 
   test('the soft-reload holding toast gets the same diagnosis', () => {
-    const soft = SHELL.slice(SHELL.indexOf('function softReload'), SHELL.indexOf('function softReload') + 1500);
+    const soft = SHELL.slice(
+      SHELL.indexOf('function softReload'),
+      SHELL.indexOf('function softReload') + 1500
+    );
     expect(soft).toContain('diagnoseImportFailure(canvasUrl, err)');
   });
 

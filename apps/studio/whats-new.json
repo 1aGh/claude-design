@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "invite-links-open-a-welcome-page",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "Invite links open a welcome page",
+      "summary": "Someone you invite to a self-hosted workspace used to open the link and see a screen of raw data. Now they get a welcome page: their email is already filled in, they choose a password, and one click drops them straight into the studio in their browser — no download, no setup. Expired or already-used links say so in plain words. And if they signed in with your identity provider instead, the People view now has Approve: one click creates their account and links that sign-in, no password to invent.",
+      "surface": "design-ui"
+    },
+    {
       "id": "export-from-the-cloud-studio",
       "version": "1.0.1",
       "date": "2026-08-20",

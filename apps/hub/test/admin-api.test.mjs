@@ -10,6 +10,7 @@ import { afterEach, beforeEach, test } from 'node:test';
 import { readAdminSecret } from '../src/admin-auth.mjs';
 import { issueBootstrap } from '../src/bootstrap.mjs';
 import { createHub } from '../src/server.mjs';
+import { recordPendingOidc } from '../src/users.mjs';
 
 // Each test allocates BASE_PORT + counter. Range 14600–14699 keeps us clear
 // of cli/commands/design-link.test.mjs (14396) + cli/commands/hub.test.mjs.
@@ -473,5 +474,91 @@ test('POST /admin/api/oidc/link REACHES the handler (not a 404)', async () => {
 
 test('the OIDC admin routes still require the bearer', async () => {
   const res = await api('/oidc/pending');
+  assert.equal(res.status, 401);
+});
+
+// ---------------------------------------------------- OIDC approve (2026-08-21)
+
+test('POST /admin/api/oidc/approve creates the account AND links the subject in one step', async () => {
+  // The gap: an invited person who signed in through the provider instead sat
+  // in the queue, "Link" answered `no such user`, and the only way forward was
+  // to invent an initial password for someone who will never type one.
+  recordPendingOidc(dataDir, { sub: 'google-oauth2|filip', email: 'filip@acme.com' });
+  recordPendingOidc(dataDir, { sub: 'google-oauth2|other', email: 'other@acme.com' });
+  // A subject nobody has presented here cannot be approved — approve means
+  // "the one in my queue", not "pre-create an account for a typed-in id".
+  const unseen = await api('/oidc/approve', {
+    method: 'POST',
+    headers: auth({ 'content-type': 'application/json' }),
+    body: JSON.stringify({ sub: 'google-oauth2|nobody', email: 'nobody@acme.com' }),
+  });
+  assert.equal(unseen.status, 400);
+  assert.match((await unseen.json()).error, /not waiting/);
+
+  const created = await api('/oidc/approve', {
+    method: 'POST',
+    headers: auth({ 'content-type': 'application/json' }),
+    body: JSON.stringify({ sub: 'google-oauth2|filip', email: 'filip@acme.com', role: 'member' }),
+  });
+  const text = await created.text();
+  assert.equal(created.status, 201, text);
+  const body = JSON.parse(text);
+  assert.equal(body.user.email, 'filip@acme.com');
+  assert.equal(body.user.role, 'member');
+
+  const users = await (await api('/users', { headers: auth() })).json();
+  assert.ok(
+    users.users.some((u) => u.email === 'filip@acme.com'),
+    'the account exists now'
+  );
+
+  // Approve never touches an existing account — that is Link's job, and the
+  // two must not blur (the email→account inference is the takeover).
+  const again = await api('/oidc/approve', {
+    method: 'POST',
+    headers: auth({ 'content-type': 'application/json' }),
+    body: JSON.stringify({ sub: 'google-oauth2|other', email: 'filip@acme.com', role: 'admin' }),
+  });
+  assert.equal(again.status, 409);
+  assert.match((await again.json()).error, /already exists/);
+
+  // A subject linked once cannot be approved onto a second address either.
+  const dup = await api('/oidc/approve', {
+    method: 'POST',
+    headers: auth({ 'content-type': 'application/json' }),
+    body: JSON.stringify({ sub: 'google-oauth2|filip', email: 'filip2@acme.com' }),
+  });
+  assert.equal(dup.status, 400);
+  assert.match((await dup.json()).error, /already linked/);
+});
+
+test('approving an identity cancels the open invite bound to the same address', async () => {
+  const mint = await api('/invites', {
+    method: 'POST',
+    headers: auth({ 'content-type': 'application/json' }),
+    body: JSON.stringify({ email: 'filip@acme.com', role: 'member' }),
+  });
+  assert.equal(mint.status, 201);
+  const { invite } = await mint.json();
+
+  recordPendingOidc(dataDir, { sub: 'google-oauth2|filip', email: 'filip@acme.com' });
+  const approved = await api('/oidc/approve', {
+    method: 'POST',
+    headers: auth({ 'content-type': 'application/json' }),
+    body: JSON.stringify({ sub: 'google-oauth2|filip', email: 'Filip@acme.com' }),
+  });
+  assert.equal(approved.status, 201);
+  assert.equal((await approved.json()).revokedInvites, 1);
+
+  const list = await (await api('/invites', { headers: auth() })).json();
+  assert.equal(list.invites.find((i) => i.id === invite.id).status, 'revoked');
+});
+
+test('/oidc/approve requires the admin bearer', async () => {
+  const res = await api('/oidc/approve', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ sub: 'x', email: 'x@acme.com' }),
+  });
   assert.equal(res.status, 401);
 });

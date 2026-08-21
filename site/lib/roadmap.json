@@ -1983,17 +1983,6 @@
       "phaseKey": null
     },
     {
-      "id": "phase-6-comments-presentation-export",
-      "title": "Phase 6: In-place comments UX (FigJam-style bubbles)",
-      "status": "done",
-      "shipTarget": "v1.0",
-      "date": "2026-08-12",
-      "summary": "Replace the current shell-bound BottomBar composer with a FigJam-grade in-place comment experience: the composer pops up at the click location on the canvas (not in a panel chrome at the bottom), p...",
-      "planPath": ".ai/plans/archive/phase-6-comments-presentation-export.md",
-      "archived": true,
-      "phaseKey": "6"
-    },
-    {
       "id": "phase-7-acp-chat-sidebar",
       "title": "Phase 7: ACP local chat sidebar — DELIVERED (de-iceboxed → shipped as phase-31)",
       "status": "done",
@@ -2135,6 +2124,17 @@
       "planPath": ".ai/plans/archive/feature-cloud-export-render-workers.md",
       "archived": true,
       "phaseKey": null
+    },
+    {
+      "id": "phase-6-comments-presentation-export",
+      "title": "Phase 6: In-place comments UX (FigJam-style bubbles)",
+      "status": "done",
+      "shipTarget": "v1.0",
+      "date": "2026-08-21",
+      "summary": "Replace the current shell-bound BottomBar composer with a FigJam-grade in-place comment experience: the composer pops up at the click location on the canvas (not in a panel chrome at the bottom), p...",
+      "planPath": ".ai/plans/archive/phase-6-comments-presentation-export.md",
+      "archived": true,
+      "phaseKey": "6"
     },
     {
       "id": "feature-goal-unattended-pipelines",
