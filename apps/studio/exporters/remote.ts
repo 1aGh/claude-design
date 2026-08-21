@@ -167,7 +167,7 @@ export async function renderRemotely(args: {
   // caller asked for more) so a cold-cell first render doesn't time out.
   const remoteOptions: ExportOptions = {
     ...options,
-    timeoutSec: Math.max(Number((options as { timeoutSec?: number }).timeoutSec) || 0, 45),
+    timeoutSec: Math.max(Number((options as { timeoutSec?: number }).timeoutSec) || 0, 60),
   };
   const res = await fetch(`${service.url}/render`, {
     method: 'POST',
