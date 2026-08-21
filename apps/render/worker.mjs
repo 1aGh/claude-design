@@ -35,6 +35,21 @@ export class MaudeRender extends Container {
     // Per DDR-230 §1 this is the COMPLETE environment: the ingress bearer, the
     // canvas-origin allowlist, and the release stamp. A secret beyond these
     // must not appear — server.ts boot-asserts the known ones and refuses.
+    //
+    // ENV IS READ ONCE, HERE. A Durable Object caches its `env` at construction;
+    // a MAUDE_RENDER_SECRET set (or rotated) AFTER this DO was first constructed
+    // does NOT reach the container until the DO is reconstructed — which only a
+    // byte-different Worker deploy (a new script version) forces, never a bare
+    // `wrangler secret put` or a container rollout. The operator flow is
+    // therefore: set the secret, then redeploy this Worker. The startup log
+    // below records which half is missing so "configured:false" is diagnosable
+    // from the tail rather than guessed at (the env-hash-drift class the fleet
+    // runbook flags as an open follow-up).
+    const hasSecret = Boolean(env.MAUDE_RENDER_SECRET);
+    const hasOrigins = Boolean(env.MAUDE_RENDER_CANVAS_ORIGINS);
+    console.log(
+      `[maude-render DO] constructed — secret:${hasSecret ? 'set' : 'MISSING'} origins:${hasOrigins ? 'set' : 'MISSING'}`
+    );
     this.envVars = {
       MAUDE_RENDER_SECRET: env.MAUDE_RENDER_SECRET ?? '',
       MAUDE_RENDER_CANVAS_ORIGINS: env.MAUDE_RENDER_CANVAS_ORIGINS ?? '',
