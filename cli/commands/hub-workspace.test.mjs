@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
@@ -15,8 +15,12 @@ const BIN = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'maude
 
 const { classifyDrillFailure } = await import('./hub-workspace.mjs');
 
-function runCli(args, { cwd } = {}) {
-  return spawnSync(process.execPath, [BIN, ...args], { cwd, encoding: 'utf8' });
+function runCli(args, { cwd, env } = {}) {
+  return spawnSync(process.execPath, [BIN, ...args], {
+    cwd,
+    encoding: 'utf8',
+    env: { ...process.env, ...env },
+  });
 }
 
 function withDir(fn) {
@@ -167,5 +171,105 @@ test('--local does not warn — localhost IS reachable from the browser that mat
     );
     assert.equal(r.status, 0, r.stderr);
     assert.ok(!/NOT render in remote browsers/i.test(`${r.stdout}${r.stderr}`));
+  });
+});
+
+// M10 — `--render` on a host the sidecar image is not published for.
+//
+// On the live AWS run the flag was accepted, the compose file was written, the
+// image PULLED (Docker falls back across architectures on pull), and the truth
+// arrived as `exec format error` in a container log — after 2.99 GB. The
+// judgement lives in `classifyRenderImage` (unit-tested next door); what is
+// only true out here is that the command asks BEFORE it writes.
+
+/**
+ * A `docker` on PATH that answers exactly one question — which platforms an
+ * image is published for — and exits non-zero for everything else, so a test
+ * that slips past the gate fails loudly instead of trying to boot a stack.
+ *
+ * `manifest inspect --verbose` is the shape the real probe uses: an ARRAY of
+ * descriptors for a manifest list, ONE object for a single-platform image.
+ */
+function withFakeDocker({ platforms, missing = false }, fn) {
+  const dir = mkdtempSync(join(tmpdir(), 'maude-fake-docker-'));
+  let script;
+  if (missing) {
+    script =
+      '#!/bin/sh\ncase "$*" in\n' +
+      '  "manifest inspect --verbose "*) echo "manifest unknown" >&2; exit 1 ;;\n' +
+      'esac\nexit 90\n';
+  } else {
+    const descriptor = (p) => ({
+      Ref: 'ghcr.io/1agh/maude-render',
+      Descriptor: { platform: { os: p.split('/')[0], architecture: p.split('/')[1] } },
+    });
+    const body = platforms.length === 1 ? descriptor(platforms[0]) : platforms.map(descriptor);
+    script =
+      '#!/bin/sh\ncase "$*" in\n' +
+      '  "manifest inspect --verbose "*) cat <<\'JSON\'\n' +
+      `${JSON.stringify(body, null, 2)}\nJSON\n    exit 0 ;;\n` +
+      'esac\nexit 90\n';
+  }
+  const bin = join(dir, 'docker');
+  writeFileSync(bin, script);
+  chmodSync(bin, 0o755);
+  try {
+    return fn({ PATH: `${dir}:${process.env.PATH}` });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** What `hostContainerPlatform()` will report inside the child process. */
+const HOST_PLATFORM = `linux/${{ x64: 'amd64', arm64: 'arm64' }[process.arch] ?? process.arch}`;
+
+test('--render on a host the image is not published for refuses, and writes NOTHING', () => {
+  withDir((dir) => {
+    // s390x so the case holds on any machine this suite runs on.
+    const r = withFakeDocker({ platforms: ['linux/s390x'] }, (env) =>
+      runCli([...BASE, '--render', '--image-tag', 'v1.0.2'], { cwd: dir, env })
+    );
+    assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+    const out = `${r.stdout}${r.stderr}`;
+    assert.match(out, /--render cannot work on this machine/);
+    assert.match(out, /exec format error/);
+    assert.match(out, new RegExp(HOST_PLATFORM.replace('/', '\\/')));
+    // The whole point: no compose file naming a container that cannot start.
+    assert.ok(!existsSync(join(dir, 'docker-compose.yml')), 'no compose file may be written');
+    assert.ok(!existsSync(join(dir, '.env')), 'no .env may be written');
+  });
+});
+
+test('--render without --image-tag says the sidecar has no :latest, before pulling it', () => {
+  withDir((dir) => {
+    const r = withFakeDocker({ missing: true }, (env) =>
+      runCli([...BASE, '--render'], { cwd: dir, env })
+    );
+    assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+    assert.match(`${r.stdout}${r.stderr}`, /RELEASE TAGS ONLY/);
+    assert.ok(!existsSync(join(dir, 'docker-compose.yml')));
+  });
+});
+
+test('--render on a multi-arch image covering this host proceeds', () => {
+  withDir((dir) => {
+    const r = withFakeDocker({ platforms: ['linux/amd64', 'linux/arm64', HOST_PLATFORM] }, (env) =>
+      runCli([...BASE, '--render', '--image-tag', 'v1.0.3', '--dry-run'], { cwd: dir, env })
+    );
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    assert.match(r.stdout, /DRY RUN/);
+    assert.ok(!/cannot work on this machine/.test(`${r.stdout}${r.stderr}`));
+  });
+});
+
+test('no docker at all is a warning, not a refusal — an offline operator is not the bug', () => {
+  withDir((dir) => {
+    const r = runCli([...BASE, '--render', '--image-tag', 'v1.0.3', '--dry-run'], {
+      cwd: dir,
+      // An empty PATH: `which docker` cannot find anything.
+      env: { PATH: join(dir, 'nothing-here') },
+    });
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /could not check whether/);
   });
 });

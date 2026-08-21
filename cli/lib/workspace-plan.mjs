@@ -831,3 +831,106 @@ export function operatorDuties(cfg) {
   }
   return duties;
 }
+
+/**
+ * The self-host sidecar image, resolved.
+ *
+ * `renderCompose` names it through `${MAUDE_IMAGE_TAG:-latest}` so the operator
+ * can re-pin without regenerating; this is that same reference with the tag
+ * this run would write into `.env`.
+ */
+export function renderImageRef(cfg) {
+  return `ghcr.io/1agh/maude-render:${cfg.imageTag}`;
+}
+
+/**
+ * `process.arch` → the platform a container registry names.
+ *
+ * Always `linux/*`, whatever the host OS is: the sidecar is a Linux container
+ * either way, and on Docker Desktop the host kernel is a Linux VM of the same
+ * architecture. What decides the answer is the CPU, not the desktop OS.
+ */
+export function hostContainerPlatform(arch = process.arch) {
+  const architecture =
+    { x64: 'amd64', arm64: 'arm64', arm: 'arm', ppc64: 'ppc64le', s390x: 's390x' }[arch] ?? arch;
+  return `linux/${architecture}`;
+}
+
+/**
+ * Can THIS machine run the render sidecar? (M10)
+ *
+ * The failure this exists to prevent: `--render` was accepted, the compose file
+ * was written, `docker pull` SUCCEEDED (Docker falls back across architectures
+ * on pull), and the operator learned the truth from `exec format error` in the
+ * container log — after 2.99 GB. The remedy the product itself recommends
+ * failed on the host the product's own AWS runbook recommends.
+ *
+ * Pure on purpose: the probe is one `docker manifest inspect` away in
+ * `hub-workspace.mjs`, and every judgement about what its answer MEANS is here,
+ * where it can be tested without a registry.
+ *
+ * Three verdicts, and the third is deliberate: a probe that could not run is a
+ * WARNING, never a refusal. Not knowing the architecture is not evidence of a
+ * mismatch, and a guard that blocks an offline operator is a worse bug than the
+ * one it guards.
+ *
+ * @param {object} input
+ * @param {string} input.imageRef      the image the compose file will name
+ * @param {string} input.hostPlatform  `linux/arm64`, from `hostContainerPlatform()`
+ * @param {{status: 'ok'|'missing'|'unknown', platforms?: string[], note?: string}} input.probe
+ * @returns {{ok: boolean, level: 'ok'|'warn'|'refuse', message: string}}
+ */
+export function classifyRenderImage({ imageRef, hostPlatform, probe }) {
+  const tag = imageRef.slice(imageRef.lastIndexOf(':') + 1);
+
+  if (probe.status === 'unknown') {
+    return {
+      ok: true,
+      level: 'warn',
+      message:
+        `\n  ⚠ could not check whether ${imageRef} runs on this machine` +
+        `${probe.note ? ` (${probe.note})` : ''}.\n` +
+        `    This host is ${hostPlatform}. If the image is not published for it, the\n` +
+        `    render container will exit with "exec format error" after pulling ~3 GB.\n` +
+        `    Check with: docker manifest inspect --verbose ${imageRef}\n\n`,
+    };
+  }
+
+  if (probe.status === 'missing') {
+    return {
+      ok: false,
+      level: 'refuse',
+      message:
+        `--render names an image that is not published: ${imageRef}\n\n` +
+        (tag === 'latest'
+          ? '  ghcr.io/1agh/maude-render publishes RELEASE TAGS ONLY — there is no\n' +
+            '  `latest`. The hub image has one, which is why the default tag looks\n' +
+            '  like it should work here and does not.\n\n' +
+            '  Pass the release you want, e.g. --image-tag v1.0.3. It pins the hub too.\n'
+          : `  Pick a published release tag (see\n` +
+            `  https://github.com/1aGh/maude/pkgs/container/maude-render), or drop\n` +
+            `  --render: ZIP export and Maude Desktop work either way.\n`),
+    };
+  }
+
+  const platforms = probe.platforms ?? [];
+  if (platforms.includes(hostPlatform)) return { ok: true, level: 'ok', message: '' };
+
+  return {
+    ok: false,
+    level: 'refuse',
+    message:
+      `--render cannot work on this machine.\n\n` +
+      `  ${imageRef}\n` +
+      `  is published for ${platforms.join(', ') || 'no architecture this can read'}; ` +
+      `this host is ${hostPlatform}.\n\n` +
+      `  Docker would pull it anyway — it falls back across architectures on pull —\n` +
+      `  and the container would exit with "exec format error" after ~3 GB.\n\n` +
+      `  What to do:\n` +
+      `    • run the workspace on ${platforms[0] ?? 'matching'} hardware ` +
+      `(on AWS that is t3.small, not t4g.small), or\n` +
+      `    • pin --image-tag to a release published for ${hostPlatform}, or\n` +
+      `    • drop --render: ZIP export still works, and Maude Desktop renders\n` +
+      `      PNG/PDF/PPTX/video locally.\n`,
+  };
+}

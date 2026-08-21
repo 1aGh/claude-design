@@ -47,7 +47,11 @@ Two honest options:
 maude hub workspace-up … --render
 ```
 
-Re-running with the flag is also how you add it to an existing workspace — like every re-run, existing secrets in `.env` are reused. The verification suite gains a `render-health` step; a sidecar that is up but misconfigured reports as failed, never as fine. Pin its image tag the same way you pin the hub's — the two ship together and `MAUDE_IMAGE_TAG` covers both.
+Re-running with the flag is also how you add it to an existing workspace — like every re-run, existing secrets in `.env` are reused. The verification suite gains a `render-health` step; a sidecar that is up but misconfigured reports as failed, never as fine.
+
+**Pin the tag, and know your architecture.** `MAUDE_IMAGE_TAG` covers both containers, and the sidecar is published for **release tags only** — unlike the hub it has no `:latest`, so `--render` without `--image-tag vX.Y.Z` names an image that does not exist. Both images are published for `linux/amd64` and `linux/arm64`; releases up to and including **v1.0.3** published the sidecar for amd64 only, so on an arm64 host pin a later tag. `workspace-up` checks the published architectures before it writes anything and refuses with the reason — Docker itself would pull the image happily and only fail at `exec format error`, ~3 GB later.
+
+The sidecar is a **~3 GB image running Chromium**, so give it room: a 2 GB instance is tight for the hub plus a render, and swap or a larger instance is the cheaper answer than a killed container mid-export.
 
 ## What you are taking on
 

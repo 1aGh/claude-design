@@ -17,7 +17,7 @@ Neither is exotic advice — they are simply the two choices an AWS-shaped insti
 
 ## The shape
 
-- **EC2**, `t4g.small` (arm64) is comfortable. One instance.
+- **EC2**, `t4g.small` (arm64) is comfortable. One instance. **If you want the `--render` sidecar** (browser exports from the hosted studio), check its architecture before you pick the instance: the sidecar image is published for arm64 from **after v1.0.3** only, and it is a ~3 GB image running Chromium, so `t4g.small`'s 2 GB is tight for hub + render together. Either size up, or take a `t3.small` (amd64), or skip the sidecar and export from Maude Desktop. `workspace-up --render` refuses up front on a host the image cannot run on, so a wrong choice here costs a message rather than a deployment.
 - **A gp3 EBS volume**, mounted for `/data` and `/repo`, with **`DeleteOnTermination=false`**. That single flag is the difference between replacing an instance and losing a project.
 - **An ALB** with an ACM certificate. It upgrades WebSockets natively, so you can skip Caddy and let the ALB terminate TLS. Set the idle timeout well above the default — sync sockets are long-lived; 4000 s is a reasonable ceiling.
 - **S3** for media and backups.

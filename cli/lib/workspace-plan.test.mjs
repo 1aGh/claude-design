@@ -9,11 +9,14 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  classifyRenderImage,
   envEntries,
+  hostContainerPlatform,
   operatorDuties,
   renderCaddyfile,
   renderCompose,
   renderEnv,
+  renderImageRef,
   safeSeedUrl,
   validateWorkspaceConfig,
   verificationPlan,
@@ -512,7 +515,11 @@ test('--render wires the sidecar end to end; without it nothing render-shaped ap
   const cfg = ok({ ...BASE, render: true });
   const yaml = renderCompose(cfg);
   assert.match(yaml, /ghcr\.io\/1agh\/maude-render/, 'the sidecar service renders');
-  assert.match(yaml, /MAUDE_RENDER_CANVAS_ORIGINS: http:\/\/hub:1234/, 'origin allowlist pins the hub');
+  assert.match(
+    yaml,
+    /MAUDE_RENDER_CANVAS_ORIGINS: http:\/\/hub:1234/,
+    'origin allowlist pins the hub'
+  );
   assert.match(yaml, /MAUDE_RENDER_URL/, 'the hub is told where to dispatch');
   const env = renderEnv(
     envEntries(cfg, { hubSecret: 'x', adminPassword: 'y'.repeat(12), renderSecret: 'rsec' })
@@ -594,4 +601,99 @@ test('local mode keeps the canvas name loopback-only and plain HTTP', () => {
     canvasDomain: 'canvas.acme.com',
   });
   assert.equal(bad.ok, false);
+});
+
+// -------------------------------------------- the render sidecar's architecture
+
+// M10 — the sidecar shipped `linux/amd64` only while the AWS runbook recommends
+// `t4g.small` (arm64). `--render` was accepted, the compose file was written,
+// the image PULLED (Docker falls back across architectures on pull), and the
+// container exited with `exec format error` after 2.99 GB. Everything below is
+// the judgement that turns a manifest into an answer BEFORE any of that.
+
+test('the sidecar reference follows the image tag the run would write', () => {
+  assert.equal(renderImageRef(ok({ ...BASE })), 'ghcr.io/1agh/maude-render:latest');
+  assert.equal(
+    renderImageRef(ok({ ...BASE, imageTag: 'v1.0.3' })),
+    'ghcr.io/1agh/maude-render:v1.0.3'
+  );
+});
+
+test('the host platform is a linux container platform whatever the desktop OS is', () => {
+  assert.equal(hostContainerPlatform('arm64'), 'linux/arm64');
+  assert.equal(hostContainerPlatform('x64'), 'linux/amd64');
+  // Unknown architectures pass through rather than guessing amd64 — a wrong
+  // confident answer here refuses a run that would have worked.
+  assert.equal(hostContainerPlatform('riscv64'), 'linux/riscv64');
+});
+
+test('an image published for this host passes', () => {
+  const verdict = classifyRenderImage({
+    imageRef: 'ghcr.io/1agh/maude-render:v1.0.3',
+    hostPlatform: 'linux/arm64',
+    probe: { status: 'ok', platforms: ['linux/amd64', 'linux/arm64'] },
+  });
+  assert.equal(verdict.ok, true);
+  assert.equal(verdict.level, 'ok');
+});
+
+test('an amd64-only image on an arm64 host is REFUSED, and says why and what to do', () => {
+  const verdict = classifyRenderImage({
+    imageRef: 'ghcr.io/1agh/maude-render:v1.0.2',
+    hostPlatform: 'linux/arm64',
+    probe: { status: 'ok', platforms: ['linux/amd64'] },
+  });
+  assert.equal(verdict.ok, false);
+  assert.equal(verdict.level, 'refuse');
+  // The three things the live AWS run had to work out for itself.
+  assert.match(verdict.message, /linux\/amd64/);
+  assert.match(verdict.message, /linux\/arm64/);
+  assert.match(verdict.message, /exec format error/);
+  assert.match(verdict.message, /t3\.small/);
+  // …and the way out that needs no new machine at all.
+  assert.match(verdict.message, /ZIP export/);
+});
+
+test('the mirror case is refused too — this is not an arm64 special case', () => {
+  const verdict = classifyRenderImage({
+    imageRef: 'ghcr.io/1agh/maude-render:v9.9.9',
+    hostPlatform: 'linux/amd64',
+    probe: { status: 'ok', platforms: ['linux/arm64'] },
+  });
+  assert.equal(verdict.ok, false);
+});
+
+test('an unpublished tag is refused before the pull, and `latest` says the real reason', () => {
+  const latest = classifyRenderImage({
+    imageRef: 'ghcr.io/1agh/maude-render:latest',
+    hostPlatform: 'linux/arm64',
+    probe: { status: 'missing' },
+  });
+  assert.equal(latest.ok, false);
+  // The compose file defaults to `${MAUDE_IMAGE_TAG:-latest}` and the HUB
+  // publishes `:latest` — so the default looks like it works and does not.
+  assert.match(latest.message, /RELEASE TAGS ONLY/);
+  assert.match(latest.message, /--image-tag/);
+
+  const pinned = classifyRenderImage({
+    imageRef: 'ghcr.io/1agh/maude-render:v0.0.1',
+    hostPlatform: 'linux/arm64',
+    probe: { status: 'missing' },
+  });
+  assert.equal(pinned.ok, false);
+  assert.doesNotMatch(pinned.message, /RELEASE TAGS ONLY/);
+});
+
+test('a probe that could not run WARNS — it never refuses', () => {
+  const verdict = classifyRenderImage({
+    imageRef: 'ghcr.io/1agh/maude-render:v1.0.3',
+    hostPlatform: 'linux/arm64',
+    probe: { status: 'unknown', note: 'docker is not on PATH' },
+  });
+  // Not knowing the architecture is not evidence of a mismatch. A guard that
+  // blocks an offline operator is a worse bug than the one it guards.
+  assert.equal(verdict.ok, true);
+  assert.equal(verdict.level, 'warn');
+  assert.match(verdict.message, /docker is not on PATH/);
+  assert.match(verdict.message, /docker manifest inspect/);
 });

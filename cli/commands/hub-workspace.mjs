@@ -19,11 +19,14 @@ import { resolve } from 'node:path';
 
 import { parseArgs } from '../lib/argv.mjs';
 import {
+  classifyRenderImage,
   envEntries,
+  hostContainerPlatform,
   operatorDuties,
   renderCaddyfile,
   renderCompose,
   renderEnv,
+  renderImageRef,
   safeSeedUrl,
   validateWorkspaceConfig,
   verificationPlan,
@@ -64,6 +67,11 @@ export function usage() {
                            export from the hosted studio (DDR-230). Without
                            it those formats say so and point at the desktop
                            app; ZIP export works either way.
+                           Needs a host architecture the sidecar image is
+                           published for, and ~3 GB of image plus headroom for
+                           Chromium. This command checks the published
+                           architectures before writing anything and refuses
+                           rather than leaving you an "exec format error".
   --seed-repo URL          clone an existing project; omit to start fresh
   --image-tag TAG          default "latest" — pin it before you rely on this
   --config FILE            read all of the above from a JSON file
@@ -147,6 +155,35 @@ export async function run({ args, pkgRoot }) {
       process.stderr.write('\nRun with --help for the full list of options.\n');
     }
     process.exit(2);
+  }
+
+  // REFUSE `--render` on a host the sidecar image cannot run on (M10).
+  //
+  // Checked HERE — before the admin-password gate, before a byte is written —
+  // because the whole point is to cost the operator a message rather than a
+  // 2.99 GB pull that ends in `exec format error`. Applies to `--dry-run` too:
+  // a dry run that describes a stack which cannot start is the bug, not a
+  // preview of it.
+  if (config.render) {
+    const imageRef = renderImageRef(config);
+    const verdict = classifyRenderImage({
+      imageRef,
+      hostPlatform: hostContainerPlatform(),
+      probe: await probeImagePlatforms(imageRef),
+    });
+    if (!verdict.ok) {
+      if (flags.json) {
+        process.stdout.write(
+          `${JSON.stringify({ ok: false, errors: [verdict.message] }, null, 2)}\n`
+        );
+      } else {
+        process.stderr.write(`maude hub workspace-up: ${verdict.message}`);
+      }
+      process.exit(2);
+    }
+    // stderr even under --json: a caveat the machine reader will not see is a
+    // caveat nobody sees, and stderr never corrupts the JSON on stdout.
+    if (verdict.level === 'warn') process.stderr.write(verdict.message);
   }
 
   // REFUSE a new admin password on a re-run, rather than writing one that goes
@@ -387,6 +424,55 @@ async function waitForHealth(base, { timeoutMs = 45_000, intervalMs = 1_000 } = 
 async function which(bin) {
   const res = await sh(process.platform === 'win32' ? 'where' : 'which', [bin]);
   return res.code === 0;
+}
+
+/**
+ * Ask the registry which platforms an image is published for.
+ *
+ * `docker manifest inspect --verbose` is the form that answers for BOTH shapes:
+ * an ARRAY of descriptors for a manifest list, ONE object for a single-platform
+ * image — whose `.Descriptor.platform` is the only place its architecture
+ * appears at all. The plain (non-verbose) form omits it entirely for the single
+ * case, which is precisely why the live AWS run could not tell an amd64-only
+ * image from a portable one without pulling 3 GB of it.
+ *
+ * Never throws and never blocks: anything it cannot establish comes back as
+ * `unknown`, and `classifyRenderImage` turns that into a warning.
+ */
+async function probeImagePlatforms(imageRef) {
+  if (!(await which('docker'))) {
+    return { status: 'unknown', platforms: [], note: 'docker is not on PATH' };
+  }
+  const res = await sh('docker', ['manifest', 'inspect', '--verbose', imageRef]);
+  if (res.code !== 0) {
+    const err = `${res.stderr}${res.stdout}`;
+    if (/manifest unknown|not found|no such manifest|denied/i.test(err)) {
+      return { status: 'missing', platforms: [] };
+    }
+    return { status: 'unknown', platforms: [], note: firstLine(err) };
+  }
+  try {
+    const parsed = JSON.parse(res.stdout);
+    const platforms = [
+      ...new Set(
+        (Array.isArray(parsed) ? parsed : [parsed])
+          .map((entry) => entry?.Descriptor?.platform)
+          // `unknown/unknown` is how buildx describes an attestation manifest —
+          // a sibling of the real images in the list, never a runnable one.
+          .filter((p) => p?.os && p?.architecture && p.architecture !== 'unknown')
+          .map((p) => `${p.os}/${p.architecture}`)
+      ),
+    ];
+    return platforms.length
+      ? { status: 'ok', platforms }
+      : { status: 'unknown', platforms: [], note: 'the manifest declared no platform' };
+  } catch {
+    return { status: 'unknown', platforms: [], note: 'the manifest was not JSON' };
+  }
+}
+
+function firstLine(text) {
+  return String(text).trim().split('\n')[0].slice(0, 200);
 }
 
 /**

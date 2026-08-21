@@ -17,8 +17,12 @@
 #
 # One extra output the cells don't have: the image ALSO publishes to
 # ghcr.io/1agh/maude-render:<tag> — that is the self-hosted sidecar
-# (workspace-up --render pulls it by MAUDE_IMAGE_TAG). Both pushes carry the
-# SAME build, which is the point of building once.
+# (workspace-up --render pulls it by MAUDE_IMAGE_TAG). Both consumers carry the
+# SAME build, which is the point of building once; since M10 they share it as a
+# REGISTRY DIGEST rather than a local daemon tag, because the sidecar has to be
+# multi-arch (amd64 + arm64, like maude-hub) and `load:` only takes one
+# platform. GHCR is published first, Cloudflare is fed the amd64 child of that
+# exact digest.
 
 on:
   push:
@@ -75,19 +79,15 @@ jobs:
             *) echo "::error::apps/render/wrangler.toml declares '$IMAGE' but the release is '${{ github.ref_name }}' — run scripts/bump-version.sh and re-tag"; exit 1;;
           esac
 
+      - name: Set up QEMU (arm64 emulation)
+        # The arm64 half of the release build runs emulated. It is slow — the
+        # Playwright/Chromium layer especially — and that is the price of the
+        # self-hoster on a t4g box getting an image that starts at all.
+        if: ${{ github.ref_type == 'tag' }}
+        uses: docker/setup-qemu-action@v4
+
       - uses: docker/setup-buildx-action@v3
         if: ${{ github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' }}
-
-      - name: Build the render image
-        if: ${{ github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' }}
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: apps/render/Dockerfile
-          platforms: linux/amd64
-          load: true
-          push: false
-          tags: ${{ steps.image.outputs.image }}
 
       - name: Log in to ghcr
         if: ${{ github.ref_type == 'tag' }}
@@ -97,18 +97,62 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish the self-host sidecar image to ghcr
-        # The SAME build, retagged — never a second `docker build` (two builds,
-        # one version, is the "same tag, different bytes" hazard again, across
-        # registries this time).
+      # ONE `docker build` per release, still — but now the REGISTRY is where
+      # the two consumers meet, not the local daemon.
+      #
+      # The old shape built amd64 with `load: true` and retagged that local
+      # image to ghcr. The invariant it protected was right ("two builds, one
+      # version" is the same-tag-different-bytes hazard across registries), but
+      # `load:` can only take a SINGLE platform into the daemon, so the shape
+      # also pinned the self-host sidecar to amd64 — on the arm64 instance our
+      # own AWS runbook recommends, `--render` could not start (M10).
+      #
+      # Inverted, the invariant holds MORE strictly: buildx publishes the
+      # manifest list, and Cloudflare is handed the amd64 bytes FROM THAT
+      # DIGEST. Both consumers now share a registry digest rather than a local
+      # daemon tag.
+      - name: Build the render image (multi-arch) and publish the self-host sidecar
+        id: build
         if: ${{ github.ref_type == 'tag' }}
-        env:
-          IMAGE: ${{ steps.image.outputs.image }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/render/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/1agh/maude-render:${{ github.ref_name }}
+
+      - name: The published sidecar must be a manifest list covering both architectures
+        # The half of this workflow that had no gate. The Worker probe below
+        # verifies the Cloudflare consumer; nothing verified the one a
+        # self-hoster pulls, so it shipped amd64-only through every release
+        # since DDR-230 without a red check anywhere.
+        if: ${{ github.ref_type == 'tag' }}
         run: |
           GHCR="ghcr.io/1agh/maude-render:${{ github.ref_name }}"
-          docker tag "$IMAGE" "$GHCR"
-          docker push "$GHCR"
-          echo "published $GHCR"
+          PLATFORMS=$(docker buildx imagetools inspect --raw "$GHCR" \
+            | jq -r '.manifests[]?.platform | select(.architecture != "unknown") | "\(.os)/\(.architecture)"')
+          echo "$GHCR publishes: ${PLATFORMS:-<not a manifest list>}"
+          for want in linux/amd64 linux/arm64; do
+            echo "$PLATFORMS" | grep -qx "$want" || {
+              echo "::error::$GHCR does not publish $want — a self-hoster on that architecture gets 'exec format error'"
+              exit 1
+            }
+          done
+
+      - name: Build the render image (dispatch lane — Cloudflare only)
+        # A manual run off a non-tag ref never touches ghcr (see the header's
+        # rule 2), so there is nothing to pull by digest: build the one platform
+        # Cloudflare runs, straight into the daemon.
+        if: ${{ github.ref_type != 'tag' && github.event_name == 'workflow_dispatch' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/render/Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: ${{ steps.image.outputs.image }}
 
       - name: Push to the Cloudflare registry
         if: ${{ github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' }}
@@ -117,7 +161,16 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.MAUDE_CONTAINERS_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           IMAGE: ${{ steps.image.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
         run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            # BY DIGEST, not by tag: the exact index just published, and the
+            # amd64 child of it. Cloudflare Containers run amd64 — handing them
+            # a manifest list would be a different bug, quieter than this one.
+            SRC="ghcr.io/1agh/maude-render@${DIGEST}"
+            docker pull --platform linux/amd64 "$SRC"
+            docker tag "$SRC" "$IMAGE"
+          fi
           npm install --no-audit --no-fund
           npx wrangler containers push "$IMAGE"
 

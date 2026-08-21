@@ -37,6 +37,12 @@ Then:
 - `t4g.small` (arm64) is comfortable. **One instance, no autoscaling** — the
   hub is single-process and stateful, so two over one volume is a corrupt
   database rather than double capacity. Deployment `minimumHealthyPercent: 0`.
+  **Raise `--render` here, not later.** The sidecar image is published for
+  arm64 only from after v1.0.3, and it is ~3 GB running Chromium — on 2 GB,
+  hub + render is tight. If they want browser exports, either size up, or
+  choose `t3.small` (amd64), or agree to export from Maude Desktop. The
+  instance type is the decision this depends on, so it belongs in this
+  conversation.
 - EBS with **`DeleteOnTermination=false`**. That flag is the difference between
   replacing an instance and losing a project.
 - An **ALB** with an ACM certificate upgrades WebSockets natively, so Caddy is

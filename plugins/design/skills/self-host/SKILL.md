@@ -103,6 +103,13 @@ Say the trade honestly, in both directions:
   (compose-network only), holds no hub secret and no data volume, and refuses
   to boot if a secret variable reaches it. It costs the memory of an idle
   Chromium.
+- **It constrains the machine.** The image is ~3 GB and carries a browser, and
+  it is published for arm64 only from after v1.0.3 — so on AWS this decides
+  between `t4g.small` and `t3.small`, and 2 GB is tight for both containers.
+  Ask it BEFORE §5 lands on an instance type, not after. It is also published
+  for release tags only (no `:latest`), so a `--render` run must pass
+  `--image-tag vX.Y.Z`. `workspace-up` refuses up front when the host and the
+  image cannot match, rather than leaving an `exec format error` in a log.
 
 ### 6 · Durability
 

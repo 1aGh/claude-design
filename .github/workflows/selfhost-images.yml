@@ -1,0 +1,73 @@
+name: Self-hostable images are multi-arch
+
+# THE RELEASE GATE FOR THE HALF NOBODY WAS WATCHING (M10).
+#
+# Two different workflows publish the two images a self-hoster runs:
+# `hub-image.yml` builds `maude-hub` for amd64 + arm64, `render-deploy.yml`
+# built `maude-render` for amd64 alone. Both were green for every release after
+# DDR-230, because neither workflow reads the other and no check read the SET.
+# The result: our own AWS runbook recommends `t4g.small` (arm64), and the
+# sidecar it tells you to add could not start there — discovered by an operator,
+# from `exec format error`, after a 2.99 GB pull.
+#
+# So this runs AFTER both, on the same release tag, and asserts the property
+# that belongs to the set rather than to either publisher.
+# `scripts/check-selfhost-images-multiarch.sh` derives the image list from the
+# compose file `workspace-up` actually renders, so the next sidecar is covered
+# without anyone remembering to widen a list.
+#
+# Separate workflow rather than a step inside either publisher: a step can only
+# see its own image, and whichever one it lived in would decide the ordering.
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to check (e.g. v1.0.3). Defaults to package.json.'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  multiarch:
+    name: Every self-hostable image publishes amd64 + arm64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve the tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          TAG="$INPUT_TAG"
+          if [ -z "$TAG" ] && [ "$GITHUB_REF_TYPE" = "tag" ]; then TAG="$GITHUB_REF_NAME"; fi
+          [ -n "$TAG" ] || TAG="v$(node -p "require('./package.json').version")"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Checking $TAG"
+
+      - name: Wait for both publishers to land the tag
+        # `hub-image.yml` and `render-deploy.yml` start from the same tag push
+        # and both build multi-arch under QEMU. The render image is the slow one
+        # — it carries Chromium, and the arm64 half is emulated. The budget is
+        # generous on purpose: waiting costs runner minutes, giving up early
+        # reports a release as broken when it is merely still building.
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          for image in ghcr.io/1agh/maude-hub ghcr.io/1agh/maude-render; do
+            ok=0
+            for i in $(seq 1 180); do
+              if docker manifest inspect "$image:$TAG" >/dev/null 2>&1; then
+                echo "$image:$TAG is published"; ok=1; break
+              fi
+              echo "waiting for $image:$TAG (attempt $i)"; sleep 20
+            done
+            [ "$ok" -eq 1 ] || { echo "::error::$image:$TAG never appeared"; exit 1; }
+          done
+
+      - name: Check
+        run: bash scripts/check-selfhost-images-multiarch.sh "${{ steps.tag.outputs.tag }}"
