@@ -220,8 +220,13 @@ jobs:
 
       - name: Verify the service answers at the release version
         if: ${{ github.ref_type == 'tag' }}
+        # 15 min, not 5: the rollout above is ACCEPTED immediately but the ~3 GB
+        # Chromium image takes minutes to pull + boot to healthy, so a 5-min
+        # window raced the roll and failed the verify while the new instance was
+        # still starting (the container reported the previous version until it
+        # flipped). The version poll IS the completion check — give it room.
         run: |
-          for i in $(seq 1 30); do
+          for i in $(seq 1 90); do
             BODY=$(curl -sf https://render.cloud.maude.sh/_health || true)
             if echo "$BODY" | jq -e --arg v "${{ github.ref_name }}" '.ok and .version == $v' >/dev/null 2>&1; then
               echo "render service is live at ${{ github.ref_name }}"; exit 0
