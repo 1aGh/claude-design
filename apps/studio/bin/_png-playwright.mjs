@@ -77,7 +77,23 @@ try {
     deviceScaleFactor,
   });
   const page = await ctx.newPage();
-  await page.goto(url, { waitUntil: 'load', timeout: timeoutMs });
+  // Diagnostics for a stuck load (the remote render worker hits a canvas origin
+  // the desktop path never does): capture console errors, page exceptions and
+  // failed sub-resource requests so a `goto` timeout can name WHY the page never
+  // fired `load` instead of just that it didn't. Printed to stderr only on
+  // failure, so the success path and desktop output are unchanged.
+  const diag = [];
+  page.on('console', (m) => {
+    if (m.type() === 'error' || m.type() === 'warning') diag.push(`console.${m.type()}: ${m.text()}`);
+  });
+  page.on('pageerror', (e) => diag.push(`pageerror: ${e.message}`));
+  page.on('requestfailed', (r) => diag.push(`requestfailed: ${r.url()} — ${r.failure()?.errorText ?? '?'}`));
+  try {
+    await page.goto(url, { waitUntil: 'load', timeout: timeoutMs });
+  } catch (e) {
+    if (diag.length) console.error(`[page diagnostics]\n${diag.slice(0, 40).join('\n')}`);
+    throw e;
+  }
   await page.evaluate(() => document.fonts.ready);
   // `load` fires before React mounts (and a video comp never reaches
   // `networkidle`), so gate on the artboard element actually rendering before we
