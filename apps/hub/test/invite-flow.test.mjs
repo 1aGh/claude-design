@@ -207,3 +207,140 @@ test('redeeming an invite is rate-limited like every other credential path', asy
   }
   assert.ok(attempts.includes(429), `expected a 429 among ${attempts.join(',')}`);
 });
+
+// ---- the BROWSER path (2026-08-21) --------------------------------------
+//
+// The link is opened in a browser by a person, not fetched by a client. For
+// the first year of this route that person saw the LOOK endpoint's JSON —
+// `{"ok":true,"workspace":…}` — because the desktop deep-link client half of
+// Cloud Phase 6 was never built. The browser door (Cloud Phase 25) makes the
+// studio a page at `/`, so the landing page now redeems in the browser and
+// sets the same session cookie `/studio/signin` does.
+
+const asBrowser = { Accept: 'text/html,application/xhtml+xml,*/*;q=0.8' };
+const postForm = (fields, headers = {}) => ({
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    'Sec-Fetch-Site': 'same-origin',
+    ...asBrowser,
+    ...headers,
+  },
+  body: new URLSearchParams(fields).toString(),
+  redirect: 'manual',
+});
+
+test('a browser opening the link gets a welcome page with a form, not JSON', async () => {
+  const { value } = await mintInvite({ email: 'filip@example.com' });
+  const res = await fetch(`${base()}/join/${value}`, { headers: asBrowser });
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type'), /text\/html/);
+  assert.equal(res.headers.get('cache-control'), 'no-store');
+  const html = await res.text();
+  assert.ok(!html.trimStart().startsWith('{'), 'must not be JSON');
+  assert.match(html, /invited to acme\.cloud\.maude\.sh/i);
+  assert.ok(html.includes('action="/join"'), 'the form posts to /join');
+  assert.ok(html.includes('value="filip@example.com"'), 'a bound invite shows its address');
+  assert.ok(html.includes('name="password"'));
+  // The token is on the page ONLY as the hidden field, never in a link.
+  assert.equal(html.split(value).length - 1, 1);
+
+  // Looking in a browser does not consume the invite either.
+  const again = await fetch(`${base()}/join/${value}`);
+  assert.equal(again.status, 200);
+  assert.equal((await again.json()).ok, true);
+});
+
+test('an open invite asks the browser for an email; a bound one does not', async () => {
+  const open = await mintInvite();
+  const html = await (await fetch(`${base()}/join/${open.value}`, { headers: asBrowser })).text();
+  assert.ok(html.includes('name="email"') && html.includes('required'), 'email field is required');
+  assert.ok(!/<input[^>]*name="email"[^>]*readonly/.test(html));
+});
+
+test('submitting the form signs the person into the studio: cookie + redirect to /', async () => {
+  const { value, invite } = await mintInvite({ email: 'filip@example.com' });
+  const res = await fetch(
+    `${base()}/join`,
+    postForm({ token: value, email: 'filip@example.com', password: 'a-perfectly-fine-password' })
+  );
+  assert.equal(res.status, 303);
+  assert.equal(res.headers.get('location'), '/');
+  const cookie = res.headers.get('set-cookie') ?? '';
+  const m = cookie.match(/maude_studio=([^;]+)/);
+  assert.ok(m, `expected a maude_studio session cookie, got: ${cookie}`);
+  assert.match(cookie, /HttpOnly/);
+  assert.match(cookie, /SameSite=Lax/);
+
+  // The cookie is a working session with a PROJECT role stored — browserSession
+  // treats a token without one as no session at all.
+  const match = verifyToken(dataDir, decodeURIComponent(m[1]), SECRET);
+  assert.ok(match, 'the cookie must be a working credential');
+  assert.equal(match.owner, 'filip@example.com');
+  assert.equal(match.role, 'member');
+
+  // Consumed — a second person with the same link gets the plain page.
+  const second = await fetch(
+    `${base()}/join`,
+    postForm({ token: value, email: 'filip@example.com', password: 'a-perfectly-fine-password' })
+  );
+  assert.equal(second.status, 410);
+  assert.match(await second.text(), /already been used/i);
+
+  const listed = (
+    await (await fetch(`${base()}/admin/api/invites`, { headers: admin() })).json()
+  ).invites.find((i) => i.id === invite.id);
+  assert.equal(listed.status, 'used');
+});
+
+test('a short password in the form comes back as the form with a sentence, invite intact', async () => {
+  const { value } = await mintInvite({ email: 'filip@example.com' });
+  const weak = await fetch(
+    `${base()}/join`,
+    postForm({ token: value, email: 'filip@example.com', password: 'short' })
+  );
+  assert.equal(weak.status, 400);
+  const html = await weak.text();
+  assert.ok(html.includes('action="/join"'), 'the form is shown again');
+  assert.match(html, /at least 12 characters/i);
+
+  const retry = await fetch(
+    `${base()}/join`,
+    postForm({ token: value, email: 'filip@example.com', password: 'a-perfectly-fine-password' })
+  );
+  assert.equal(retry.status, 303, 'the invite must survive a rejected password');
+});
+
+test('the API session minted by a JSON redeem carries a project role too', async () => {
+  const { value } = await mintInvite();
+  const redeem = await fetch(
+    `${base()}/join`,
+    postJson({ token: value, email: 'api@example.com', password: 'a-perfectly-fine-password' })
+  );
+  assert.equal(redeem.status, 201);
+  const { token } = await redeem.json();
+  assert.equal(verifyToken(dataDir, token, SECRET).role, 'member');
+});
+
+test("a cross-site form post cannot redeem into a visitor's browser", async () => {
+  const { value } = await mintInvite({ email: 'filip@example.com' });
+  const res = await fetch(
+    `${base()}/join`,
+    postForm(
+      { token: value, email: 'filip@example.com', password: 'a-perfectly-fine-password' },
+      { 'Sec-Fetch-Site': 'cross-site' }
+    )
+  );
+  assert.equal(res.status, 403);
+  // ...and the invite is untouched.
+  assert.equal((await fetch(`${base()}/join/${value}`)).status, 200);
+});
+
+test('a dead link opened in a browser is a page in plain words, not JSON', async () => {
+  const res = await fetch(`${base()}/join/inv_definitely-not-real`, { headers: asBrowser });
+  assert.equal(res.status, 410);
+  assert.match(res.headers.get('content-type'), /text\/html/);
+  const html = await res.text();
+  assert.match(html, /isn&#39;t valid/i);
+  assert.ok(!html.includes('"ok"'));
+});

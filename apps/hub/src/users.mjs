@@ -45,7 +45,7 @@ const SCRYPT_KEYLEN = 32;
 const SCRYPT_MAXMEM = 64 * 1024 * 1024;
 
 const ROLES = new Set(['admin', 'member']);
-const MIN_PASSWORD_LENGTH = 12;
+export const MIN_PASSWORD_LENGTH = 12;
 
 /** One open Database handle per dataDir (native init is expensive). */
 const dbCache = new Map();

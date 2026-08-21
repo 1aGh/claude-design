@@ -19,6 +19,7 @@
 
 import { randomBytes } from 'node:crypto';
 
+import { readForm, setSessionCookie } from './browser-auth.mjs';
 import { authenticateForMode, cloudIdentityStrict } from './cloud-identity.mjs';
 import {
   createInvite,
@@ -28,8 +29,10 @@ import {
   redeemInvite,
   revokeInvite,
 } from './invites.mjs';
+import { joinPage } from './join-page.mjs';
 import { isRevoked } from './revocations.mjs';
 import { isReadOnlyRole, projectRoleForAccount } from './role-matrix.mjs';
+import { servicePage } from './studio-door.mjs';
 
 import {
   addToken,
@@ -243,12 +246,27 @@ export async function handleAuthRoutes(ctx) {
   // Retired under strict cloud identity (Phase 23 B6): every door into a
   // cloud cell is the control plane's — a hub-local invite would mint exactly
   // the local credential strict exists to end. One message, both verbs.
-  if (cloudIdentityStrict() && (path === '/join' || path.startsWith('/join/'))) {
-    respondJson(410, {
-      ok: false,
-      error:
-        'Invitations for this workspace are sent from its Maude Cloud dashboard now. Ask whoever runs the project to add you there.',
+  // TWO CLIENTS, ONE DOOR. A browser navigation (`Accept: text/html`) gets a
+  // page it can read and a form it can submit; an API caller (the desktop, a
+  // script, the tests) gets the JSON it always got. The split is the same one
+  // the studio door makes on its sign-in verdict — a fetch() handed a page
+  // shows nothing, a person handed JSON reads `{"ok":true,…}` and stops. Which
+  // is exactly what the invited teammate saw for the first year of this route.
+  const wantsHtml = (ctx.request?.headers?.accept ?? '').includes('text/html');
+  const respondPage = (status, html) => {
+    ctx.response.writeHead(status, {
+      'content-type': 'text/html; charset=utf-8',
+      'cache-control': 'no-store',
+      'x-content-type-options': 'nosniff',
     });
+    ctx.response.end(html);
+  };
+
+  if (cloudIdentityStrict() && (path === '/join' || path.startsWith('/join/'))) {
+    const error =
+      'Invitations for this workspace are sent from its Maude Cloud dashboard now. Ask whoever runs the project to add you there.';
+    if (wantsHtml) respondPage(410, servicePage('Not here', error));
+    else respondJson(410, { ok: false, error });
     return true;
   }
 
@@ -260,7 +278,23 @@ export async function handleAuthRoutes(ctx) {
     const value = decodeURIComponent(path.slice('/join/'.length));
     const check = peekInvite(dataDir, value);
     if (!check.ok) {
-      respondJson(410, { ok: false, reason: check.reason, error: inviteProblem(check.reason) });
+      if (wantsHtml)
+        respondPage(
+          410,
+          servicePage('This invitation no longer works', inviteProblem(check.reason))
+        );
+      else
+        respondJson(410, { ok: false, reason: check.reason, error: inviteProblem(check.reason) });
+      return true;
+    }
+    if (wantsHtml) {
+      // The welcome page. It carries the token ONLY as the form's hidden
+      // field, so the redeem travels in a POST body — never a URL the browser
+      // then navigates away from.
+      respondPage(
+        200,
+        joinPage({ token: value, workspace: ctx.publicUrl ?? null, email: check.invite.email })
+      );
       return true;
     }
     respondJson(200, {
@@ -278,14 +312,43 @@ export async function handleAuthRoutes(ctx) {
   // POST /join — redeem. A POST because a token in a URL the browser then
   // navigates away from lands in Referer headers and in every proxy log on the
   // way.
+  //
+  // Two bodies, one redeem: `application/json` from an API caller (answered
+  // with a bearer token), `application/x-www-form-urlencoded` from the landing
+  // page's form (answered with the SAME session the self-hosted sign-in door
+  // sets — a `maude_studio` cookie — and a redirect into the studio at `/`).
   if (method === 'POST' && path === '/join') {
     if (ctx.checkRateLimit && !ctx.checkRateLimit(ctx.request)) {
       ctx.respondRateLimited();
       return true;
     }
+    const contentType = String(ctx.request?.headers?.['content-type'] ?? '').toLowerCase();
+    const isForm = contentType.startsWith('application/x-www-form-urlencoded');
+
+    // A form POST creates an account and sets a cookie — a cross-site page
+    // must not be able to do that to a visitor (login CSRF: the attacker's
+    // invite redeemed into the victim's browser). Browsers say where a
+    // navigation came from; an honest form submit is `same-origin`.
+    if (isForm) {
+      const site = String(ctx.request?.headers?.['sec-fetch-site'] ?? '').toLowerCase();
+      if (site === 'cross-site') {
+        respondPage(403, servicePage('Not from here', 'Open the invitation link directly.'));
+        return true;
+      }
+    }
+
     let body;
     try {
-      body = await readJsonBody(ctx.request);
+      if (isForm) {
+        const form = await readForm(ctx.request);
+        body = {
+          token: form.get('token'),
+          email: form.get('email'),
+          password: form.get('password'),
+        };
+      } else {
+        body = await readJsonBody(ctx.request);
+      }
     } catch (err) {
       respondJson(400, { ok: false, error: err.message });
       return true;
@@ -297,25 +360,63 @@ export async function handleAuthRoutes(ctx) {
       createAccount: ({ email, password, role }) => createUser(dataDir, { email, password, role }),
     });
     if (!result.ok) {
-      respondJson(result.reason === 'account-failed' ? 400 : 410, {
-        ok: false,
-        reason: result.reason,
-        error: result.detail ?? inviteProblem(result.reason),
-      });
+      const status = result.reason === 'account-failed' ? 400 : 410;
+      const error = result.detail ?? inviteProblem(result.reason);
+      if (isForm) {
+        // A typo is a retry (the invite is untouched on `account-failed` /
+        // `email-required`), so the form comes back with the sentence above
+        // the button. A dead invite gets the plain page: no form, nothing to
+        // retry with.
+        const retryable = result.reason === 'account-failed' || result.reason === 'email-required';
+        const look = retryable ? peekInvite(dataDir, body?.token) : null;
+        if (look?.ok) {
+          respondPage(
+            status,
+            joinPage({
+              token: body.token,
+              workspace: ctx.publicUrl ?? null,
+              email: look.invite.email,
+              error,
+            })
+          );
+        } else {
+          respondPage(status, servicePage('This invitation no longer works', error));
+        }
+        return true;
+      }
+      respondJson(status, { ok: false, reason: result.reason, error });
       return true;
     }
 
     // Sign them straight in. The entire point is that they clicked a link and
     // are now working — a redeem that ends at a login form has reintroduced
     // the form it was built to remove.
-    const expiresAt = Date.now() + userTokenTtlMs();
+    //
+    // TRANSLATED, and STORED (the v0.55.0 lesson, applied here late): `user.role`
+    // is an ACCOUNT role; the session carries a PROJECT role, and
+    // `browserSession` treats a token without one as no session at all. Until
+    // 2026-08-21 this door minted without it — a freshly invited member held a
+    // token every HTTP write surface answered with 401.
+    const projectRole = projectRoleForAccount(result.user.role);
+    const ttlMs = isForm ? 12 * 3600_000 : userTokenTtlMs();
+    const expiresAt = Date.now() + ttlMs;
     const minted = addToken(dataDir, {
-      label: mintLabel(),
+      label: isForm ? `studio-${randomBytes(4).toString('hex')}` : mintLabel(),
       scope: '*',
       owner: result.user.email,
       expiresAt,
+      role: projectRole,
+      readOnly: isReadOnlyRole(projectRole),
     });
     ctx.pushActivity?.({ type: 'invite-redeem', user: result.user.email, doc: result.invite.id });
+    if (isForm) {
+      // THE STUDIO IS `/` (DDR-209). Same cookie, same TTL, same landing as
+      // `/studio/signin` — one session type for both doors.
+      setSessionCookie(ctx.response, minted.value, ttlMs / 1000);
+      ctx.response.writeHead(303, { location: '/', 'cache-control': 'no-store' });
+      ctx.response.end();
+      return true;
+    }
     respondJson(201, {
       ok: true,
       token: minted.value,

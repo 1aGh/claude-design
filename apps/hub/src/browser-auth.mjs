@@ -52,7 +52,7 @@ export function cookieValue(request, name) {
   return null;
 }
 
-function setSessionCookie(response, token, maxAgeSeconds) {
+export function setSessionCookie(response, token, maxAgeSeconds) {
   response.setHeader('set-cookie', [
     `${BROWSER_SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${Math.max(0, Math.floor(maxAgeSeconds))}`,
   ]);
@@ -455,7 +455,7 @@ export async function handleBrowserAuth({
   return true;
 }
 
-async function readForm(request, max = 8 * 1024) {
+export async function readForm(request, max = 8 * 1024) {
   const chunks = [];
   let size = 0;
   for await (const chunk of request) {

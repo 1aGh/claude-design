@@ -20,8 +20,9 @@
 //     the value simply never reaches a log statement.
 //   • Responses are `no-store`, so it does not sit in a browser cache.
 //
-// The `/join/<token>` GET exists only to serve a landing page that hands the
-// token to the desktop app. It never redeems, so a crawler, a link preview
+// The `/join/<token>` GET only LOOKS — a browser gets the welcome page
+// (`join-page.mjs`: one form, redeemed by POST into a studio session cookie);
+// an API caller gets JSON. It never redeems, so a crawler, a link preview
 // bot, or a corporate scanner that follows the link cannot burn the invite —
 // which is otherwise a very ordinary way for an invite to arrive already used.
 
