@@ -183,6 +183,41 @@ jobs:
           MAUDE_RENDER_VERSION: ${{ github.ref_name }}
         run: npx wrangler deploy --var MAUDE_RENDER_VERSION:"$MAUDE_RENDER_VERSION"
 
+      - name: Roll the container instances to the just-deployed image
+        # `wrangler deploy` reconciles the container CONFIG but does NOT restart
+        # the running instances — Cloudflare keeps serving the previous image
+        # until a rolling replacement is forced. So /_health kept reporting the
+        # prior version and the verify below timed out on EVERY release (the
+        # container-roll gap the fleet runbook flags for cells applies here too).
+        # Force a rolling replacement to the config wrangler just wrote, then
+        # verify. Uses the Cloudflare API directly — wrangler has no
+        # instance-level roll, and the containers token carries Cloudchamber:Write.
+        if: ${{ github.ref_type == 'tag' }}
+        env:
+          CF_TOKEN: ${{ secrets.MAUDE_CONTAINERS_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          API="https://api.cloudflare.com/client/v4/accounts/$ACCOUNT/containers/applications"
+          AUTH="Authorization: Bearer $CF_TOKEN"
+          APP=$(curl -sf -H "$AUTH" "$API" | jq -r '.result[] | select(.name|test("maude-render")) | .id' | head -1)
+          if [ -z "$APP" ]; then echo "::error::maude-render container application not found"; exit 1; fi
+          CFG=$(curl -sf -H "$AUTH" "$API/$APP" | jq '.result.configuration')
+          echo "rolling maude-render ($APP) to $(echo "$CFG" | jq -r '.image')"
+          BODY=$(jq -n --argjson cfg "$CFG" '{
+            description: "release rollout to the just-deployed image",
+            strategy: "rolling", step_percentage: 100, kind: "full_auto",
+            target_configuration: {
+              image: $cfg.image,
+              vcpu: ($cfg.vcpu // 0.5),
+              memory_mib: ($cfg.memory_mib // 4096),
+              disk: { size_mb: ($cfg.disk.size_mb // 8000) },
+              observability: { logs: { enabled: true } }
+            }
+          }')
+          OK=$(curl -sf -X POST -H "$AUTH" -H "content-type: application/json" -d "$BODY" "$API/$APP/rollouts" | jq -r '.success')
+          [ "$OK" = "true" ] || { echo "::error::rollout request was not accepted"; exit 1; }
+          echo "rollout accepted — instances replacing"
+
       - name: Verify the service answers at the release version
         if: ${{ github.ref_type == 'tag' }}
         run: |
