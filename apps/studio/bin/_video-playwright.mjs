@@ -63,6 +63,24 @@ if (!url) {
 
 const timeoutMs = Number(timeout) * 1000;
 const deviceScaleFactor = Math.max(1, Math.min(4, Number(scale) || 1));
+
+// Hard self-kill — the whole shim, not just individual Playwright calls, has a
+// wall-clock ceiling. `launchChromium` has NO timeout, and on headless Linux
+// `--enable-gpu` can hang Chromium at GPU-process init before a single log line
+// — a silent wedge that ate the full 600s render budget with nothing to show.
+// This guarantees the process EXITS with a diagnostic instead of hanging, so
+// the render worker (and the export gate) fail fast and legibly. Generous
+// enough for a slow software encode; well under any job/test budget.
+const HARD_KILL_MS = Math.max(timeoutMs, 150_000);
+const hardKill = setTimeout(() => {
+  console.error(
+    `_video-playwright: HARD TIMEOUT after ${HARD_KILL_MS}ms — exiting. The render did not ` +
+      `complete (see the last stage logged above; on headless Linux this is usually the video ` +
+      `encoder or GPU init). gpu=${process.env.MAUDE_CAPTURE_GPU === '1' ? 'on' : 'off'}.`
+  );
+  process.exit(7);
+}, HARD_KILL_MS);
+hardKill.unref?.();
 // `--audio` is presence-checked (Object.fromEntries maps a bare flag to '1'), so
 // absence of the flag entirely (not passed) still defaults to audio ON — video.ts
 // always passes an explicit '0'/'1'.
@@ -122,7 +140,9 @@ async function evalWithTimeout(page, fn, arg, ms, stage) {
 // something to smuggle in behind a perf flag. Opt in with MAUDE_CAPTURE_GPU=1.
 const gpuArgs =
   process.env.MAUDE_CAPTURE_GPU === '1' ? ['--enable-gpu', '--ignore-gpu-blocklist'] : [];
+console.error(`_video-playwright: launching chromium (gpu=${gpuArgs.length ? 'on' : 'off'}, format=${format})`);
 const browser = await launchChromium(gpuArgs.length ? { args: gpuArgs } : undefined);
+console.error('_video-playwright: browser launched');
 try {
   const ctx = await browser.newContext({
     serviceWorkers: 'block',
@@ -132,6 +152,44 @@ try {
   const page = await ctx.newPage();
   await page.goto(url, { waitUntil: 'load', timeout: timeoutMs });
   await page.evaluate(() => document.fonts.ready);
+  console.error('_video-playwright: page loaded');
+
+  // UNCONDITIONAL WebCodecs capability probe — logged for every video render
+  // regardless of which encode path runs, so the render worker's log always
+  // names what this headless box can actually encode. This is THE fact that
+  // differs between a mac dev machine and headless Linux/the cloud worker, and
+  // the answer decides whether video needs a different encoder entirely. Bounded
+  // so a hung isConfigSupported (seen on some headless builds) can't wedge here.
+  try {
+    const caps = await evalWithTimeout(
+      page,
+      async () => {
+        const probe = async (codec) => {
+          try {
+            if (typeof VideoEncoder?.isConfigSupported !== 'function') return 'no-webcodecs';
+            const r = await VideoEncoder.isConfigSupported({ codec, width: 320, height: 180 });
+            return r?.supported ? 'yes' : 'no';
+          } catch (e) {
+            return `err:${e?.name || 'x'}`;
+          }
+        };
+        return {
+          avc: await probe('avc1.42001f'),
+          vp9: await probe('vp09.00.10.08'),
+          vp8: await probe('vp8'),
+          av1: await probe('av01.0.04M.08'),
+        };
+      },
+      undefined,
+      15_000,
+      'isConfigSupported probe'
+    );
+    console.error(
+      `_video-playwright: webcodecs caps avc=${caps.avc} vp9=${caps.vp9} vp8=${caps.vp8} av1=${caps.av1}`
+    );
+  } catch (e) {
+    console.error(`_video-playwright: cap probe failed: ${e instanceof Error ? e.message : e}`);
+  }
 
   // Resolve the target artboard handle. Priority: explicit --selector (from the
   // export scope Target) → --artboard id → first artboard. `--widen` climbs to
@@ -462,44 +520,6 @@ async function frameStepCapture({
     const libSrc = readFileSync(encodeLib, 'utf8');
     await addScriptCspSafe(page, { content: libSrc, type: 'module', name: 'encode-lib' });
     await page.waitForFunction(() => typeof window.__maudeEnc === 'object', { timeout: timeoutMs });
-    // WebCodecs capability probe — the ONE thing that differs between a mac dev
-    // machine (H.264 present, mp4 in 2 s) and headless Linux/the cloud render
-    // worker, where an unconfigured encoder makes `startVideo` hang forever with
-    // no error (the encode `page.evaluate` has no Playwright timeout). Logging
-    // isConfigSupported here turns "the video export never returned" into a
-    // named, actionable line in the render log.
-    if (!isGif) {
-      try {
-        const caps = await evalWithTimeout(
-          page,
-          async ({ w, h }) => {
-            const probe = async (codec) => {
-              try {
-                if (typeof VideoEncoder?.isConfigSupported !== 'function') return 'no-webcodecs';
-                const r = await VideoEncoder.isConfigSupported({ codec, width: w, height: h });
-                return r?.supported ? 'yes' : 'no';
-              } catch (e) {
-                return `err:${e?.name || 'x'}`;
-              }
-            };
-            return {
-              avc: await probe('avc1.42001f'),
-              vp9: await probe('vp09.00.10.08'),
-              vp8: await probe('vp8'),
-              av1: await probe('av01.0.04M.08'),
-            };
-          },
-          { w: outW, h: outH },
-          15_000,
-          'isConfigSupported probe'
-        );
-        console.error(
-          `webcodecs caps @ ${outW}×${outH}: avc=${caps.avc} vp9=${caps.vp9} vp8=${caps.vp8} av1=${caps.av1} (gpu=${gpuArgs.length ? 'on' : 'off'})`
-        );
-      } catch (e) {
-        console.error(`webcodecs cap probe failed: ${e instanceof Error ? e.message : e}`);
-      }
-    }
     // Bound the encoder start: on headless Linux without a working WebCodecs
     // encoder this promise never resolves, so a wall-clock cap converts the hang
     // into a fast, diagnostic failure instead of consuming the whole render
