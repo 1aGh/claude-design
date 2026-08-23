@@ -100,7 +100,6 @@ import {
 import {
   createFilesPoke,
   dropCtlAwareness,
-  FILES_CTL_DOC,
   isFilesCtlDoc,
   withoutCtlPersistence,
 } from './files-ctl.mjs';
