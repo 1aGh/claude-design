@@ -394,3 +394,103 @@ describe('browser-lane capture hygiene (CSS filter on images)', () => {
     { timeout: 60_000 }
   );
 });
+
+describe('browser-lane capture hygiene (paint dom-to-svg cannot express)', () => {
+  test(
+    'a repeating-linear-gradient clipped to a polygon survives as SVG paint',
+    async () => {
+      // The alligators "Sash": a diagonal yellow stripe band clipped to the
+      // top-right corner triangle. dom-to-svg matches `linear-gradient` only
+      // and drops `clip-path`, so the element vanished from every dom-to-svg
+      // lane while the screenshot lanes kept it. capture-core substitutes an
+      // equivalent inline <svg> (spreadMethod="repeat" + <clipPath>) for the
+      // duration of the serialization.
+      const [iife, core] = await Promise.all([
+        getBrowserBundle('dom-to-svg', 'domToSvg'),
+        getCaptureCoreBundle(),
+      ]);
+      const server = Bun.serve({
+        port: 0,
+        fetch() {
+          return new Response(
+            `<!doctype html><body style="margin:0"><div class="dc-world">
+             <article data-dc-screen="b1" style="position:absolute;left:0;top:0;width:240px;height:240px;background:#f1efe8">
+               <div aria-hidden="true" style="position:absolute;top:0;right:0;width:120px;height:120px;
+                 background:repeating-linear-gradient(-45deg,#ffcd00 0 14px,transparent 14px 28px);
+                 clip-path:polygon(100% 0,0 0,100% 100%)"></div>
+             </article></div></body>`,
+            { headers: { 'content-type': 'text/html' } }
+          );
+        },
+      });
+      const { launchChromium } = (await import('../bin/_pw-launch.mjs')) as {
+        launchChromium: () => Promise<{
+          newContext: (o: unknown) => Promise<{ newPage: () => Promise<unknown> }>;
+          close: () => Promise<void>;
+        }>;
+      };
+      const browser = await launchChromium();
+      try {
+        const ctx = await browser.newContext({});
+        // biome-ignore lint/suspicious/noExplicitAny: playwright page surface
+        const page: any = await ctx.newPage();
+        await page.goto(`http://127.0.0.1:${server.port}`, { waitUntil: 'load' });
+        await page.addScriptTag({ path: iife });
+        await page.addScriptTag({ path: core, type: 'module' });
+        await page.waitForFunction(
+          () => !!(window as never as Record<string, unknown>).__maudeCaptureCore
+        );
+        const verdict = await page.evaluate(async () => {
+          // biome-ignore lint/suspicious/noExplicitAny: injected globals
+          const w = window as any;
+          const core = w.__maudeCaptureCore;
+          const target = document.querySelector('[data-dc-screen]') as Element;
+          const svg: string = await core.svgForElement(target, w.domToSvg);
+          // The live element must be back to its CSS paint afterwards.
+          const sash = target.querySelector('div[aria-hidden]') as HTMLElement;
+          const restored =
+            getComputedStyle(sash).backgroundImage.startsWith('repeating-linear-gradient(') &&
+            !sash.querySelector('svg');
+          const blob: Blob = await core.rasterizeSvg(svg, 1);
+          const img = new Image();
+          const url = URL.createObjectURL(blob);
+          await new Promise<void>((ok, ko) => {
+            img.onload = () => ok();
+            img.onerror = () => ko(new Error('decode'));
+            img.src = url;
+          });
+          const c = document.createElement('canvas');
+          c.width = 240;
+          c.height = 240;
+          const g = c.getContext('2d') as CanvasRenderingContext2D;
+          g.drawImage(img, 0, 0);
+          // Sample a diagonal run across the top-right triangle: with stripes
+          // present, SOME of those pixels are yellow; none are if the band
+          // vanished. And the bottom-left corner (outside the clip) stays bg.
+          let yellow = 0;
+          for (let i = 0; i < 40; i += 1) {
+            const [r, gg, b] = g.getImageData(235 - i, 5 + i, 1, 1).data;
+            if (r > 230 && gg > 180 && gg < 225 && b < 60) yellow += 1;
+          }
+          const [br, bg, bb] = g.getImageData(20, 220, 1, 1).data;
+          return {
+            hasRepeat: svg.includes('spreadMethod="repeat"'),
+            hasClip: svg.includes('<clipPath'),
+            yellow,
+            corner: [br, bg, bb],
+            restored,
+          };
+        });
+        expect(verdict.hasRepeat).toBe(true);
+        expect(verdict.hasClip).toBe(true);
+        expect(verdict.yellow).toBeGreaterThan(5);
+        expect(verdict.corner).toEqual([241, 239, 232]);
+        expect(verdict.restored).toBe(true);
+      } finally {
+        await browser.close();
+        server.stop(true);
+      }
+    },
+    { timeout: 60_000 }
+  );
+});

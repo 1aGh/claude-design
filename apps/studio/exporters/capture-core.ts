@@ -171,6 +171,261 @@ function effectiveBg(node: Element): string | null {
   return null;
 }
 
+// ── paint polyfills for dom-to-svg ──────────────────────────────────────────
+//
+// dom-to-svg reconstructs CSS paint as SVG primitives and has no equivalent for
+// two things design systems lean on for signature decoration: a
+// `repeating-linear-gradient` (it matches `linear-gradient` only) and a
+// `clip-path: polygon()` (it opens a stacking context and drops the clip). The
+// alligators "Sash" — a diagonal yellow stripe band, clipped to a corner
+// triangle — is both at once, and vanished from every dom-to-svg lane (SVG
+// everywhere, browser PNG, PPTX deck) while the screenshot lanes kept it.
+//
+// SVG has exact analogues: <linearGradient spreadMethod="repeat"> and
+// <clipPath>. So for a LEAF decorative element (no element children — the only
+// shape where substituting the paint cannot re-layout anything) we insert an
+// equivalent inline <svg> for the duration of elementToSVG — dom-to-svg copies
+// inline SVG verbatim — and restore the element right after. Synchronous,
+// bracketing a synchronous call: the live canvas never paints the substitute.
+
+interface ParsedStop {
+  color: string;
+  px: number;
+}
+interface ParsedRepeatingGradient {
+  angleDeg: number;
+  stops: ParsedStop[];
+}
+
+/** Split on top-level commas (colors carry commas inside `rgb(...)`). */
+function splitTopLevel(s: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let cur = '';
+  for (const ch of s) {
+    if (ch === '(') depth += 1;
+    if (ch === ')') depth -= 1;
+    if (ch === ',' && depth === 0) {
+      out.push(cur.trim());
+      cur = '';
+    } else cur += ch;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
+/** Parse a COMPUTED `repeating-linear-gradient(...)` (stops already expanded
+ * to `<color> <px|%>` pairs by the engine). `null` for anything else. */
+function parseRepeatingLinearGradient(
+  value: string,
+  w: number,
+  h: number
+): ParsedRepeatingGradient | null {
+  const m = /^repeating-linear-gradient\((.*)\)$/.exec(value.trim());
+  if (!m) return null;
+  const parts = splitTopLevel(m[1] ?? '');
+  if (!parts.length) return null;
+  let angleDeg = 180;
+  let first = parts[0] ?? '';
+  const angle = /^(-?[\d.]+)deg$/.exec(first);
+  const corner = Math.atan2(w, h) * (180 / Math.PI);
+  const keyword: Record<string, number> = {
+    'to top': 0,
+    'to right': 90,
+    'to bottom': 180,
+    'to left': 270,
+    'to top right': corner,
+    'to right top': corner,
+    'to top left': 360 - corner,
+    'to left top': 360 - corner,
+    'to bottom right': 180 - corner,
+    'to right bottom': 180 - corner,
+    'to bottom left': 180 + corner,
+    'to left bottom': 180 + corner,
+  };
+  if (angle) {
+    angleDeg = Number.parseFloat(angle[1] ?? '180');
+    parts.shift();
+  } else if (first in keyword) {
+    angleDeg = keyword[first] as number;
+    parts.shift();
+  }
+  first = '';
+  // Gradient-line length per CSS Images: |w·sin a| + |h·cos a|.
+  const rad = (angleDeg * Math.PI) / 180;
+  const lineLen = Math.abs(w * Math.sin(rad)) + Math.abs(h * Math.cos(rad));
+  const stops: ParsedStop[] = [];
+  for (const part of parts) {
+    const sm = /^(.*?)\s+(-?[\d.]+)(px|%)$/.exec(part);
+    if (!sm) return null; // a stop without a position — not the computed form
+    const px =
+      sm[3] === '%'
+        ? (Number.parseFloat(sm[2] ?? '0') / 100) * lineLen
+        : Number.parseFloat(sm[2] ?? '0');
+    stops.push({ color: (sm[1] ?? '').trim(), px });
+  }
+  if (stops.length < 2) return null;
+  return { angleDeg, stops };
+}
+
+/** `polygon(...)` of a computed clip-path → absolute points in the box. */
+function parsePolygonClip(value: string, w: number, h: number): string | null {
+  const m = /^polygon\((.*)\)$/.exec(value.trim());
+  if (!m) return null;
+  const pts: string[] = [];
+  for (const pair of splitTopLevel(m[1] ?? '')) {
+    const [xs, ys] = pair.split(/\s+/);
+    if (!xs || !ys) return null;
+    const len = (v: string, ref: number) =>
+      v.endsWith('%') ? (Number.parseFloat(v) / 100) * ref : Number.parseFloat(v);
+    const x = len(xs, w);
+    const y = len(ys, h);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    pts.push(`${x},${y}`);
+  }
+  return pts.length >= 3 ? pts.join(' ') : null;
+}
+
+let polyfillSeq = 0;
+
+/**
+ * Substitute unsupported paint on leaf elements under `target` with inline
+ * SVG; returns the undo. Call immediately before `elementToSVG`, undo
+ * immediately after.
+ */
+export function applyPaintPolyfills(target: Element): () => void {
+  const undos: Array<() => void> = [];
+  const NS = 'http://www.w3.org/2000/svg';
+  const candidates: HTMLElement[] = [];
+  const consider = (el: Element) => {
+    if (!(el instanceof HTMLElement)) return;
+    if (el.children.length > 0) return; // leaf only
+    const cs = getComputedStyle(el);
+    const hasRepeating = cs.backgroundImage.startsWith('repeating-linear-gradient(');
+    const hasPolygon = cs.clipPath.startsWith('polygon(');
+    if (hasRepeating || hasPolygon) candidates.push(el);
+  };
+  consider(target);
+  for (const el of target.querySelectorAll('*')) consider(el);
+
+  for (const el of candidates) {
+    const cs = getComputedStyle(el);
+    const w = el.clientWidth;
+    const h = el.clientHeight;
+    if (!w || !h) continue;
+    polyfillSeq += 1;
+    const uid = `maude-pp-${polyfillSeq}`;
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('width', String(w));
+    svg.setAttribute('height', String(h));
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('data-maude-paint-polyfill', '1');
+    svg.style.cssText =
+      'position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;display:block';
+    const defs = document.createElementNS(NS, 'defs');
+    svg.appendChild(defs);
+
+    let fill: string | null = null;
+    let paintNode: Element | null = null;
+    const grad = parseRepeatingLinearGradient(cs.backgroundImage, w, h);
+    if (grad) {
+      const rad = (grad.angleDeg * Math.PI) / 180;
+      const dx = Math.sin(rad);
+      const dy = -Math.cos(rad);
+      const lineLen = Math.abs(w * dx) + Math.abs(h * Math.cos(rad));
+      const cx = w / 2;
+      const cy = h / 2;
+      const sx = cx - (dx * lineLen) / 2;
+      const sy = cy - (dy * lineLen) / 2;
+      const firstPx = grad.stops[0]?.px ?? 0;
+      const lastPx = grad.stops[grad.stops.length - 1]?.px ?? firstPx + 1;
+      const period = Math.max(0.01, lastPx - firstPx);
+      const lg = document.createElementNS(NS, 'linearGradient');
+      lg.setAttribute('id', `${uid}-g`);
+      lg.setAttribute('gradientUnits', 'userSpaceOnUse');
+      lg.setAttribute('spreadMethod', 'repeat');
+      lg.setAttribute('x1', String(sx + dx * firstPx));
+      lg.setAttribute('y1', String(sy + dy * firstPx));
+      lg.setAttribute('x2', String(sx + dx * lastPx));
+      lg.setAttribute('y2', String(sy + dy * lastPx));
+      for (const st of grad.stops) {
+        const stop = document.createElementNS(NS, 'stop');
+        stop.setAttribute('offset', String((st.px - firstPx) / period));
+        stop.setAttribute('stop-color', st.color);
+        lg.appendChild(stop);
+      }
+      defs.appendChild(lg);
+      fill = `url(#${uid}-g)`;
+    } else if (isOpaque(cs.backgroundColor) && cs.backgroundImage === 'none') {
+      fill = cs.backgroundColor;
+    }
+    const bgUrl = /^url\(["']?([^"')]+)["']?\)$/.exec(cs.backgroundImage)?.[1];
+    if (!fill && bgUrl) {
+      // A clipped background IMAGE (the camo corner): <image> with the cover
+      // mapping; the inliner embeds it like every other <image>.
+      const im = document.createElementNS(NS, 'image');
+      im.setAttribute('href', bgUrl);
+      im.setAttribute('xlink:href', bgUrl);
+      im.setAttribute('x', '0');
+      im.setAttribute('y', '0');
+      im.setAttribute('width', String(w));
+      im.setAttribute('height', String(h));
+      im.setAttribute(
+        'preserveAspectRatio',
+        cs.backgroundSize === 'cover'
+          ? 'xMidYMid slice'
+          : cs.backgroundSize === 'contain'
+            ? 'xMidYMid meet'
+            : 'none'
+      );
+      paintNode = im;
+    } else if (fill) {
+      const rect = document.createElementNS(NS, 'rect');
+      rect.setAttribute('x', '0');
+      rect.setAttribute('y', '0');
+      rect.setAttribute('width', String(w));
+      rect.setAttribute('height', String(h));
+      rect.setAttribute('fill', fill);
+      paintNode = rect;
+    }
+    if (!paintNode) continue;
+
+    const poly = parsePolygonClip(cs.clipPath, w, h);
+    if (poly) {
+      const cp = document.createElementNS(NS, 'clipPath');
+      cp.setAttribute('id', `${uid}-c`);
+      cp.setAttribute('clipPathUnits', 'userSpaceOnUse');
+      const pg = document.createElementNS(NS, 'polygon');
+      pg.setAttribute('points', poly);
+      cp.appendChild(pg);
+      defs.appendChild(cp);
+      paintNode.setAttribute('clip-path', `url(#${uid}-c)`);
+    }
+    svg.appendChild(paintNode);
+
+    // Swap: hide the CSS paint dom-to-svg would mis-render, mount the SVG.
+    const prev = {
+      backgroundImage: el.style.backgroundImage,
+      backgroundColor: el.style.backgroundColor,
+      position: el.style.position,
+    };
+    el.style.backgroundImage = 'none';
+    if (fill && fill === cs.backgroundColor) el.style.backgroundColor = 'transparent';
+    if (cs.position === 'static') el.style.position = 'relative';
+    el.appendChild(svg);
+    undos.push(() => {
+      svg.remove();
+      el.style.backgroundImage = prev.backgroundImage;
+      el.style.backgroundColor = prev.backgroundColor;
+      el.style.position = prev.position;
+    });
+  }
+  return () => {
+    for (const u of undos.reverse()) u();
+  };
+}
+
 export interface SvgCaptureOptions {
   /** Capture the enclosing `[data-dc-screen]` rather than the element itself. */
   widenToArtboard?: boolean;
@@ -508,7 +763,15 @@ async function serializeCapture(
 
   const bg = effectiveBg(target);
   const fillColor = bg ? toSrgb(bg) : null;
-  const svgDoc = api.elementToSVG(target);
+  // Bracket the synchronous serialization ONLY — the substitute paint must
+  // never be on screen across an await.
+  const undoPaint = applyPaintPolyfills(target);
+  let svgDoc: XMLDocument;
+  try {
+    svgDoc = api.elementToSVG(target);
+  } finally {
+    undoPaint();
+  }
   const root = svgDoc.documentElement;
   if (fillColor) {
     const NS = 'http://www.w3.org/2000/svg';
@@ -652,6 +915,7 @@ const core = {
   waitForCaptureAssets,
   inlineCaptureResources,
   stripChromeNodes,
+  applyPaintPolyfills,
   CAPTURE_HIDDEN_SELECTORS,
 };
 

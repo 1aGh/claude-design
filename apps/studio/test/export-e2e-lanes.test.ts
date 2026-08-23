@@ -54,6 +54,37 @@ export default function ExportE2E() {
 }
 `;
 
+/** The shape that refused on the desktop and silently degraded on the worker:
+ * `<Audio>` reached through a barrel that re-exports it from `remotion`. */
+const AUDIO_BARREL_TSX = `export { Audio } from "remotion";
+`;
+const VIDEO_AUDIO_TSX = `import { DesignCanvas, DCSection, DCArtboard, VideoComp } from "@maude/canvas-lib";
+import { AbsoluteFill, useCurrentFrame } from "remotion";
+import { Audio } from "./_audio-barrel";
+
+const W = 320, H = 180, FPS = 12, TOTAL = 12;
+function Clip() {
+  const f = useCurrentFrame();
+  return (
+    <AbsoluteFill style={{ background: "#132038", color: "#f2efe6" }}>
+      <Audio src="assets/pic.png" />
+      <div style={{ fontSize: 48 }}>{f}</div>
+    </AbsoluteFill>
+  );
+}
+export default function VideoAudioE2E() {
+  return (
+    <DesignCanvas>
+      <DCSection id="va" title="Video+Audio E2E">
+        <DCArtboard id="clip-audio" label="Clip · audio" width={W} height={H}>
+          <VideoComp component={Clip} durationInFrames={TOTAL} fps={FPS} width={W} height={H} />
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+`;
+
 /** One A6 print artboard with 3 mm bleed — the print-PDF path (BleedBox /
  * TrimBox / marks) is only reachable from a `kind="print"` artboard. */
 const PRINT_TSX = `import { DesignCanvas, DCSection, DCArtboard } from "@maude/canvas-lib";
@@ -109,6 +140,8 @@ function makeExportSandbox() {
   writeFileSync(join(box.designRoot, 'ui', 'e2e-export.tsx'), CANVAS_TSX);
   writeFileSync(join(box.designRoot, 'ui', 'e2e-video.tsx'), VIDEO_TSX);
   writeFileSync(join(box.designRoot, 'ui', 'e2e-print.tsx'), PRINT_TSX);
+  writeFileSync(join(box.designRoot, 'ui', '_audio-barrel.tsx'), AUDIO_BARREL_TSX);
+  writeFileSync(join(box.designRoot, 'ui', 'e2e-video-audio.tsx'), VIDEO_AUDIO_TSX);
   return box;
 }
 
@@ -633,6 +666,50 @@ describe('export E2E — worker lane, real render service, real artifact', () =>
           });
           await page.waitForSelector('[data-testid="export-submit"]', { timeout: 15_000 });
         }
+        // The <Audio>-from-'remotion' guard must refuse on the WORKER exactly as
+        // it does on the desktop. It reads the canvas source, which the worker
+        // does not have — so the cell resolves the finding and ships it in the
+        // job. Before that, the worker ran the frame-step fallback ~40× slower
+        // and delivered a MUTED file: the precise silent degrade the guard
+        // exists to prevent (found hands-on on the local cell, 2026-08-23).
+        await page.evaluate(() => {
+          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        });
+        await page
+          .waitForSelector('[data-testid="export-submit"]', { state: 'detached', timeout: 5_000 })
+          .catch(() => {});
+        await page.click('[data-testid="canvas-row-ui-e2e-video-audio"]', { timeout: 30_000 });
+        await page.waitForSelector(
+          '[data-testid="canvas-frame"][data-path$="e2e-video-audio.tsx"]',
+          { timeout: 30_000 }
+        );
+        {
+          const deadline = Date.now() + 15_000;
+          for (;;) {
+            const act = (await (await fetch(`http://localhost:${studioPort}/_active`)).json()) as {
+              active?: string | null;
+            };
+            if ((act.active ?? '').endsWith('e2e-video-audio.tsx')) break;
+            if (Date.now() > deadline)
+              throw new Error('active canvas never became e2e-video-audio');
+            await Bun.sleep(250);
+          }
+        }
+        const r = await fetch(`http://localhost:${studioPort}/_api/export-jobs`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', origin: `http://localhost:${studioPort}` },
+          body: JSON.stringify({
+            format: 'mp4',
+            scope: 'artboard',
+            options: { artboardId: 'clip-audio' },
+          }),
+        });
+        expect(r.status).toBe(202);
+        const refused = await waitForJob(studioPort, 'mp4', 120_000, seenJobs);
+        expect(refused.status).toBe('failed');
+        expect(refused.error ?? '').toContain("mounts <Audio> from 'remotion'");
+        // And the reason names the barrel, like the desktop message does.
+        expect(refused.error ?? '').toContain('_audio-barrel');
       } finally {
         await browser?.close().catch(() => {});
         render?.kill();

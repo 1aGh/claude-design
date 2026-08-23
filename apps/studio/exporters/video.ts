@@ -30,7 +30,29 @@ import {
   type ExportResult,
 } from './index.ts';
 import type { Target } from './scope.ts';
-import { audioRefusalMessage, scanUnsupportedMedia } from './unsupported-media.ts';
+import {
+  audioRefusalMessage,
+  scanUnsupportedMedia,
+  type UnsupportedFinding,
+} from './unsupported-media.ts';
+
+/**
+ * `options.unsupportedMedia` — the cell's pre-resolved `scanUnsupportedMedia`
+ * findings for a remote job, or null when absent (local lane: scan the disk).
+ * Shape-checked: it crosses the cell→worker HTTP boundary.
+ */
+function shippedUnsupportedMedia(options: ExportOptions): UnsupportedFinding[] | null {
+  const raw = (options as { unsupportedMedia?: unknown }).unsupportedMedia;
+  if (!Array.isArray(raw)) return null;
+  return raw.filter(
+    (f): f is UnsupportedFinding =>
+      !!f &&
+      typeof f === 'object' &&
+      ((f as UnsupportedFinding).element === 'Audio' ||
+        (f as UnsupportedFinding).element === 'OffthreadVideo') &&
+      typeof (f as UnsupportedFinding).sourceFile === 'string'
+  );
+}
 
 // DDR-045: resolve via DEV_SERVER_ROOT, never `import.meta.dir`. See _runtime.ts.
 const VIDEO_PLAYWRIGHT = exportShimPath('_video-playwright.mjs');
@@ -75,8 +97,16 @@ async function runVideo(
   // via a muted file is pure waste. GIF is silent by format, so it is exempt.
   let preStamped: ExportDegradation | undefined;
   if (format !== 'gif' && options.allowUnsupportedMedia !== true) {
+    // The scan reads the canvas SOURCE, which only the process holding the
+    // checkout has. On the render worker (DDR-230: no tenant files) the read
+    // fails quietly — an empty finding list — and the export went on to do
+    // EXACTLY what this guard exists to prevent: renderMediaOnWeb rejected
+    // <Audio>, the frame-step fallback ran ~40× slower and shipped a muted
+    // file. So the cell resolves the findings up front and ships them in the
+    // job (`options.unsupportedMedia`, exporters/jobs.ts), same as printProps.
     const canvasAbs = path.resolve(ctx.repoRoot, el.file);
-    for (const finding of scanUnsupportedMedia(canvasAbs)) {
+    const findings = shippedUnsupportedMedia(options) ?? scanUnsupportedMedia(canvasAbs);
+    for (const finding of findings) {
       if (finding.element === 'Audio' && options.audio !== false) {
         // Refuse. A vanished music bed is worse than an export that did not run.
         throw new Error(audioRefusalMessage(finding, el.file));

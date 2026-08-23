@@ -49,6 +49,7 @@ import {
   resolveRenderService,
 } from './remote.ts';
 import { type ResolveScopeArgs, resolveScope, type Target } from './scope.ts';
+import { scanUnsupportedMedia } from './unsupported-media.ts';
 
 /** Extended shape of the old Phase 6.5 T10 history entry — additive fields only. */
 export interface ExportHistoryEntry {
@@ -226,6 +227,17 @@ class Semaphore {
 
 function isFinished(job: ExportJob): boolean {
   return job.status === 'done' || job.status === 'failed';
+}
+
+/** The cell-side `scanUnsupportedMedia` for a remote video job — the first
+ * element target's canvas (video renders one artboard). */
+function readUnsupportedMediaFor(targets: Target[], repoRoot: string | undefined) {
+  if (!repoRoot) return [];
+  const t = targets.find((x) => x.kind === 'element');
+  if (!t || t.kind !== 'element') return [];
+  const abs = path.resolve(repoRoot, t.file);
+  if (!abs.startsWith(path.resolve(repoRoot) + path.sep)) return [];
+  return scanUnsupportedMedia(abs);
 }
 
 /**
@@ -432,7 +444,17 @@ export function createExportJobQueue(bus: Bus, designRoot: string): ExportJobQue
                       ...args.options,
                       printProps: readPrintPropsFor(remoteTargets, args.resolve.repoRoot),
                     }
-                  : args.options,
+                  : VIDEO_FORMATS.has(args.format)
+                    ? {
+                        ...args.options,
+                        // The <Audio>/<OffthreadVideo> pre-flight reads the canvas
+                        // source — same "only the cell has the checkout" rule.
+                        unsupportedMedia: readUnsupportedMediaFor(
+                          remoteTargets,
+                          args.resolve.repoRoot
+                        ),
+                      }
+                    : args.options,
               canvas: args.remoteCanvas ?? { origin: '' },
               // resolveRenderService() is non-null on the `remote` lane by
               // construction (the lane IS the presence of MAUDE_RENDER_URL).

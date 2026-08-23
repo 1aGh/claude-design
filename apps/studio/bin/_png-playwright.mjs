@@ -157,22 +157,38 @@ try {
       width: Math.max(1, Math.ceil(rect.width)),
       height: Math.max(1, Math.ceil(rect.height)),
     });
+    // Anchor the CAPTURED ELEMENT at (0,0), not just its artboard. For a
+    // selection capture the element sits at an offset INSIDE the pinned
+    // artboard (padding, layout), while the viewport was just sized to the
+    // ELEMENT — so a clip at the element's rect ran past the viewport edge
+    // and Playwright refused with "Clipped area is either empty or outside
+    // the resulting image". The canvas page doesn't scroll (the world plane
+    // owns overflow), so the old scrollIntoView was a no-op there; shifting
+    // the pinned artboard by the element's offset is deterministic.
     await widenedHandle.evaluate((el) => {
-      el.scrollIntoView({ block: 'start', inline: 'start' });
+      const r = el.getBoundingClientRect();
+      const ab = el.closest('[data-dc-screen]') ?? el;
+      if (r.left !== 0 || r.top !== 0) {
+        ab.style.left = `${parseFloat(ab.style.left || '0') - r.left}px`;
+        ab.style.top = `${parseFloat(ab.style.top || '0') - r.top}px`;
+      }
       window.scrollTo(0, 0);
     });
-    // After scroll, recompute rect — it's now anchored near (0,0).
     const finalRect = await widenedHandle.evaluate((el) => {
       const r = el.getBoundingClientRect();
       return { x: r.left, y: r.top, width: r.width, height: r.height };
     });
+    // Clamp to the viewport — a clip must never extend past it.
+    const vp = page.viewportSize();
+    const clipX = Math.min(Math.max(0, Math.floor(finalRect.x)), Math.max(0, vp.width - 1));
+    const clipY = Math.min(Math.max(0, Math.floor(finalRect.y)), Math.max(0, vp.height - 1));
     await page.screenshot({
       path: target,
       clip: {
-        x: Math.max(0, Math.floor(finalRect.x)),
-        y: Math.max(0, Math.floor(finalRect.y)),
-        width: Math.max(1, Math.ceil(finalRect.width)),
-        height: Math.max(1, Math.ceil(finalRect.height)),
+        x: clipX,
+        y: clipY,
+        width: Math.max(1, Math.min(Math.ceil(finalRect.width), vp.width - clipX)),
+        height: Math.max(1, Math.min(Math.ceil(finalRect.height), vp.height - clipY)),
       },
     });
     written.push(target);
