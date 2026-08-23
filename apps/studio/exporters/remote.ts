@@ -250,6 +250,10 @@ export async function renderRemotely(args: {
   }
   if (!res.ok) {
     const detail = (await res.text().catch(() => '')) || `${res.status}`;
+    // Surface the worker's failure reason on the STUDIO side — the worker's own
+    // stderr buffers under render load and is lost when the test kills it, so
+    // this is the only reliable window into WHY a render 500'd.
+    console.error(`[remote] ${format} FAILED ${res.status}: ${detail.slice(0, 800)}`);
     throw new Error(`render service refused the job: ${detail}`);
   }
   // Sanitize the filename BEFORE it can reach `Bun.write` in jobs.ts — the
