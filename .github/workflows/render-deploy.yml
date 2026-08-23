@@ -196,25 +196,41 @@ jobs:
         # until a rolling replacement is forced. So /_health kept reporting the
         # prior version and the verify below timed out on EVERY release (the
         # container-roll gap the fleet runbook flags for cells applies here too).
-        # Force a rolling replacement to the config wrangler just wrote, then
-        # verify. Uses the Cloudflare API directly — wrangler has no
-        # instance-level roll, and the containers token carries Cloudchamber:Write.
+        # Force a rolling replacement, then verify. Uses the Cloudflare API
+        # directly — wrangler has no instance-level roll, and the containers
+        # token carries Cloudchamber:Write.
+        #
+        # TARGET THE RELEASE IMAGE EXPLICITLY, never the read-back
+        # `configuration.image`. That field reflects the last SUCCESSFULLY
+        # ROLLED config, not what `wrangler deploy` just wrote — on this fleet
+        # it sat pinned at an OLD tag (v1.0.4) across v1.0.5/6/7, so a rollout
+        # that re-used `$cfg.image` rolled the container straight back to the
+        # stale image while /_health still reported the new version from the
+        # `--var` (the version string tracks the env, NOT the running image).
+        # Net effect: the proxy-header fix built into v1.0.6 never actually ran
+        # in prod — exports kept timing out — until a manual roll to the tag's
+        # image. Rolling to the DECLARED image (steps.image.outputs.image, i.e.
+        # the wrangler.toml tag) is what makes the verify below mean "the new
+        # bits are live," not "the env var changed."
         if: ${{ github.ref_type == 'tag' }}
         env:
           CF_TOKEN: ${{ secrets.MAUDE_CONTAINERS_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
           ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TARGET_IMAGE: ${{ steps.image.outputs.image }}
         run: |
           API="https://api.cloudflare.com/client/v4/accounts/$ACCOUNT/containers/applications"
           AUTH="Authorization: Bearer $CF_TOKEN"
           APP=$(curl -sf -H "$AUTH" "$API" | jq -r '.result[] | select(.name|test("maude-render")) | .id' | head -1)
           if [ -z "$APP" ]; then echo "::error::maude-render container application not found"; exit 1; fi
+          # Preserve sizing from the live config, but OVERRIDE the image with the
+          # release target (the whole point of the roll).
           CFG=$(curl -sf -H "$AUTH" "$API/$APP" | jq '.result.configuration')
-          echo "rolling maude-render ($APP) to $(echo "$CFG" | jq -r '.image')"
-          BODY=$(jq -n --argjson cfg "$CFG" '{
+          echo "rolling maude-render ($APP) to $TARGET_IMAGE (config still reports $(echo "$CFG" | jq -r '.image'))"
+          BODY=$(jq -n --argjson cfg "$CFG" --arg image "$TARGET_IMAGE" '{
             description: "release rollout to the just-deployed image",
             strategy: "rolling", step_percentage: 100, kind: "full_auto",
             target_configuration: {
-              image: $cfg.image,
+              image: $image,
               vcpu: ($cfg.vcpu // 0.5),
               memory_mib: ($cfg.memory_mib // 4096),
               disk: { size_mb: ($cfg.disk.size_mb // 8000) },
@@ -223,7 +239,7 @@ jobs:
           }')
           OK=$(curl -sf -X POST -H "$AUTH" -H "content-type: application/json" -d "$BODY" "$API/$APP/rollouts" | jq -r '.success')
           [ "$OK" = "true" ] || { echo "::error::rollout request was not accepted"; exit 1; }
-          echo "rollout accepted — instances replacing"
+          echo "rollout accepted — instances replacing with $TARGET_IMAGE"
 
       - name: Verify the service answers at the release version
         if: ${{ github.ref_type == 'tag' }}
