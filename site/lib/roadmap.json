@@ -1,18 +1,7 @@
 {
-  "generated": "2026-08-21T00:00:00.000Z",
+  "generated": "2026-08-24T00:00:00.000Z",
   "currentPhase": null,
   "phases": [
-    {
-      "id": "feature-hybrid-export-browser-images",
-      "title": "Feature: hybrid-export-browser-images",
-      "status": "done",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/archive/feature-hybrid-export-browser-images.md",
-      "archived": true,
-      "phaseKey": null
-    },
     {
       "id": "phase-1-contribute-infra-changesets",
       "title": "Phase 1: Contribute infrastructure + Changesets bootstrap",
@@ -2146,6 +2135,17 @@
       "planPath": ".ai/plans/archive/phase-6-comments-presentation-export.md",
       "archived": true,
       "phaseKey": "6"
+    },
+    {
+      "id": "feature-hybrid-export-browser-images",
+      "title": "Feature: hybrid-export-browser-images",
+      "status": "done",
+      "shipTarget": null,
+      "date": "2026-08-24",
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-hybrid-export-browser-images.md",
+      "archived": true,
+      "phaseKey": null
     },
     {
       "id": "feature-goal-unattended-pipelines",
