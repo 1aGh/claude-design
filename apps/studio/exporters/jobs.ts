@@ -26,6 +26,7 @@
 import { readFileSync } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
+import { readAllArtboardPrintProps } from '../canvas-edit.ts';
 
 import type { Bus } from '../context.ts';
 import { resolveRenderLane } from '../workspace-mode.ts';
@@ -47,7 +48,7 @@ import {
   renderRemotely,
   resolveRenderService,
 } from './remote.ts';
-import { type ResolveScopeArgs, resolveScope } from './scope.ts';
+import { type ResolveScopeArgs, resolveScope, type Target } from './scope.ts';
 
 /** Extended shape of the old Phase 6.5 T10 history entry — additive fields only. */
 export interface ExportHistoryEntry {
@@ -227,6 +228,33 @@ function isFinished(job: ExportJob): boolean {
   return job.status === 'done' || job.status === 'failed';
 }
 
+/**
+ * `{ [repoRelativeCanvasFile]: { [artboardId]: print } }` for every canvas an
+ * element target names — what exporters/pdf.ts reads as `options.printProps`
+ * when it renders on the worker. Read from the cell's own checkout; a canvas
+ * that won't parse or has no print artboard contributes nothing.
+ */
+function readPrintPropsFor(
+  targets: Target[],
+  repoRoot: string | undefined
+): Record<string, Record<string, Record<string, unknown>>> {
+  const out: Record<string, Record<string, Record<string, unknown>>> = {};
+  if (!repoRoot) return out;
+  for (const t of targets) {
+    if (t.kind !== 'element' || out[t.file]) continue;
+    const abs = path.resolve(repoRoot, t.file);
+    // Stay under the checkout — `file` is client-influenced (selection.file).
+    if (!abs.startsWith(path.resolve(repoRoot) + path.sep)) continue;
+    try {
+      const props = readAllArtboardPrintProps(abs, readFileSync(abs, 'utf8'));
+      if (Object.keys(props).length) out[t.file] = props;
+    } catch {
+      /* unreadable canvas — the adapter treats it as non-print, same as local */
+    }
+  }
+  return out;
+}
+
 export function createExportJobQueue(bus: Bus, designRoot: string): ExportJobQueue {
   const jobsDir = path.join(designRoot, '_export-jobs');
   const historyPath = path.join(designRoot, '_export-history.json');
@@ -384,18 +412,27 @@ export function createExportJobQueue(bus: Bus, designRoot: string): ExportJobQue
         job.startedAt = new Date().toISOString();
         emit(job);
 
+        // Scope resolves HERE, against the cell's own checkout — Target is
+        // pure data, and the render service holds no tenant store to resolve
+        // against (DDR-230 §1).
+        const remoteTargets = dispatchRemote
+          ? await resolveScope({ scope: args.scope, ...args.resolve, options: args.options })
+          : [];
         const res = dispatchRemote
           ? await renderRemotely({
               format: args.format,
-              // Scope resolves HERE, against the cell's own checkout — Target
-              // is pure data, and the render service holds no tenant store to
-              // resolve against (DDR-230 §1).
-              targets: await resolveScope({
-                scope: args.scope,
-                ...args.resolve,
-                options: args.options,
-              }),
-              options: args.options,
+              targets: remoteTargets,
+              // Same rule for anything ELSE the adapter would read off disk: a
+              // print artboard's `print` prop (bleed, paper) lives in the canvas
+              // source, which only this process has. Resolve it here and ship
+              // it as data, or the worker's PDF silently loses its boxes/marks.
+              options:
+                args.format === 'pdf'
+                  ? {
+                      ...args.options,
+                      printProps: readPrintPropsFor(remoteTargets, args.resolve.repoRoot),
+                    }
+                  : args.options,
               canvas: args.remoteCanvas ?? { origin: '' },
               // resolveRenderService() is non-null on the `remote` lane by
               // construction (the lane IS the presence of MAUDE_RENDER_URL).

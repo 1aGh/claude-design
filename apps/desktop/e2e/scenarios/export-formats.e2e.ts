@@ -23,12 +23,53 @@ import { waitForSidecar } from '../helpers/sidecar';
  * (a real file dialog is not DOM, and driving one would need computer-use).
  */
 
-/** Formats this scenario exports, with a recogniser for the produced bytes. */
-const FORMATS: Array<{ id: string; magic: number[]; label: string }> = [
-  { id: 'png', magic: [0x89, 0x50, 0x4e, 0x47], label: 'PNG' },
-  { id: 'svg', magic: [], label: 'SVG' },
-  { id: 'pdf', magic: [0x25, 0x50, 0x44, 0x46], label: 'PDF' },
+/** Formats this scenario exports, with a recogniser for the produced bytes and
+ * the fixture canvas each renders from. `zip` is the only format the `local`
+ * lane shares byte-for-byte with a workspace (browser-free, in-process). */
+const FORMATS: Array<{
+  id: string;
+  label: string;
+  canvas: 'export' | 'video';
+  scope?: string;
+  magic?: number[];
+  magicText?: { at: number; is: string };
+}> = [
+  { id: 'png', label: 'PNG', canvas: 'export', magic: [0x89, 0x50, 0x4e, 0x47] },
+  { id: 'svg', label: 'SVG', canvas: 'export' },
+  { id: 'pdf', label: 'PDF', canvas: 'export', magic: [0x25, 0x50, 0x44, 0x46] },
+  { id: 'html', label: 'HTML', canvas: 'export', magic: [0x50, 0x4b, 0x03, 0x04] },
+  {
+    id: 'pptx',
+    label: 'PPTX',
+    canvas: 'export',
+    scope: 'canvas-as-separate',
+    magic: [0x50, 0x4b, 0x03, 0x04],
+  },
+  {
+    id: 'zip',
+    label: 'ZIP',
+    canvas: 'export',
+    scope: 'project-raw',
+    magic: [0x50, 0x4b, 0x03, 0x04],
+  },
+  { id: 'mp4', label: 'MP4', canvas: 'video', magicText: { at: 4, is: 'ftyp' } },
+  { id: 'gif', label: 'GIF', canvas: 'video', magicText: { at: 0, is: 'GIF8' } },
 ];
+
+/** Open a fixture canvas from the tree and wait for its frame. */
+async function openCanvas(slug: 'export' | 'video'): Promise<void> {
+  const row = await $(`[data-testid="canvas-row-ui-${slug}"]`);
+  await row.waitForExist({ timeout: 30_000 });
+  await row.click();
+  const frame = await $('[data-testid="canvas-frame"]');
+  await frame.waitForExist({ timeout: 30_000 });
+  await browser.waitUntil(
+    async () =>
+      (await frame.getAttribute('data-path')) ===
+      `.design/ui/${slug === 'export' ? 'Export' : 'Video'}.tsx`,
+    { timeout: 30_000, timeoutMsg: `canvas ${slug} never became the active frame` }
+  );
+}
 
 /** Open the Export dialog. ⌘⇧E is a shell `window` listener, and the canvas
  * iframe holds focus once mounted, so dispatch on the shell window directly —
@@ -88,7 +129,7 @@ async function waitForJob(format: string, ignore: string[], timeoutMs = 240_000)
 describe('export-formats (native-desktop)', () => {
   before(() => startReport('export-formats (native-desktop)'));
 
-  it('exports PNG, SVG and PDF from the bundled app, and the files are real', async () => {
+  it('exports every format from the bundled app, and the files are real', async () => {
     expect(await isNativeShell()).toBe(true);
     const url = await waitForSidecar();
     expect(url).toMatch(/^http:\/\/(localhost|127\.0\.0\.1):\d+/);
@@ -96,29 +137,29 @@ describe('export-formats (native-desktop)', () => {
     const list = await $('[data-testid="canvas-list"]');
     await list.waitForDisplayed({ timeout: 60_000 });
 
-    // The export fixture — a canvas that carries an image asset, so a dropped
-    // asset is observable (Smoke.tsx has none).
-    const row = await $('[data-testid="canvas-row-ui-export"]');
-    await row.waitForExist({ timeout: 30_000 });
-    await row.click();
-    const frame = await $('[data-testid="canvas-frame"]');
-    await frame.waitForExist({ timeout: 30_000 });
-    expect(await frame.getAttribute('data-path')).toBe('.design/ui/Export.tsx');
-    await capture('export-fixture-open');
-
+    let open: 'export' | 'video' | null = null;
     for (const format of FORMATS) {
+      // The export fixture carries an image asset, so a dropped asset is
+      // observable (Smoke.tsx has none); the video fixture is the smallest
+      // comp the video adapters accept.
+      if (open !== format.canvas) {
+        await openCanvas(format.canvas);
+        open = format.canvas;
+        await capture(`fixture-open-${format.canvas}`);
+      }
       const before = await existingJobIds();
       await openExportDialog();
       await (await $(`[data-testid="export-format-${format.id}"]`)).click();
-      await browser.execute(() => {
+      const wantScope = format.scope ?? 'artboard';
+      await browser.execute((want: string) => {
         const sel = document.querySelector(
           '[data-testid="export-scope"]'
         ) as HTMLSelectElement | null;
-        if (sel && Array.from(sel.options).some((o) => o.value === 'artboard')) {
-          sel.value = 'artboard';
+        if (sel && Array.from(sel.options).some((o) => o.value === want)) {
+          sel.value = want;
           sel.dispatchEvent(new Event('change', { bubbles: true }));
         }
-      });
+      }, wantScope);
       await capture(`export-dialog-${format.id}`);
       await (await $('[data-testid="export-submit"]')).click();
 
@@ -135,12 +176,18 @@ describe('export-formats (native-desktop)', () => {
         return {
           size: buf.byteLength,
           head: Array.from(buf.slice(0, 4)),
+          head8: Array.from(buf.slice(0, 8)),
           text: new TextDecoder().decode(buf.slice(0, 200_000)),
         };
       }, job.id as string);
 
       expect(probe.size).toBeGreaterThan(500);
-      if (format.magic.length) expect(probe.head).toEqual(format.magic);
+      if (format.magic) expect(probe.head).toEqual(format.magic);
+      if (format.magicText) {
+        const { at, is } = format.magicText;
+        const got = String.fromCharCode(...probe.head8.slice(at, at + is.length));
+        expect(got).toBe(is);
+      }
 
       if (format.id === 'svg') {
         // The two DDR-231 Phase 2 defects, asserted on the reference lane's own

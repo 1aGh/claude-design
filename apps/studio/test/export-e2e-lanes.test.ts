@@ -54,6 +54,52 @@ export default function ExportE2E() {
 }
 `;
 
+/** One A6 print artboard with 3 mm bleed — the print-PDF path (BleedBox /
+ * TrimBox / marks) is only reachable from a `kind="print"` artboard. */
+const PRINT_TSX = `import { DesignCanvas, DCSection, DCArtboard } from "@maude/canvas-lib";
+
+export default function PrintE2E() {
+  return (
+    <DesignCanvas>
+      <DCSection id="p" title="Print E2E">
+        <DCArtboard id="flyer" label="Flyer · A6 print" kind="print" print={{ paper: "a6", bleedMm: 3 }} width={397} height={559}>
+          <div style={{ padding: 16, background: "#fff", color: "#111", height: "100%" }}>
+            <h2 style={{ margin: 0 }}>Print flyer</h2>
+          </div>
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+`;
+
+/** A 12-frame, 320×180 video comp — the smallest thing the video adapters
+ * accept, so the worker-lane mp4 test measures the LANE, not the render. */
+const VIDEO_TSX = `import { DesignCanvas, DCSection, DCArtboard, VideoComp } from "@maude/canvas-lib";
+import { AbsoluteFill, useCurrentFrame } from "remotion";
+
+const W = 320, H = 180, FPS = 12, TOTAL = 12;
+function Clip() {
+  const f = useCurrentFrame();
+  return (
+    <AbsoluteFill style={{ background: "#132038", color: "#f2efe6", justifyContent: "center", alignItems: "center" }}>
+      <div style={{ fontSize: 48, transform: \`translateX(\${f * 6}px)\` }}>{f}</div>
+    </AbsoluteFill>
+  );
+}
+export default function VideoE2E() {
+  return (
+    <DesignCanvas>
+      <DCSection id="v" title="Video E2E">
+        <DCArtboard id="clip" label="Clip · 320×180" width={W} height={H}>
+          <VideoComp component={Clip} durationInFrames={TOTAL} fps={FPS} width={W} height={H} />
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+`;
+
 /** Build a sandbox whose canvas has BOTH defect surfaces: editor chrome (the
  * artboard label is rendered by canvas-lib itself) and a real image asset. */
 function makeExportSandbox() {
@@ -61,6 +107,8 @@ function makeExportSandbox() {
   mkdirSync(join(box.designRoot, 'assets'), { recursive: true });
   writeFileSync(join(box.designRoot, 'assets', 'pic.png'), PNG_8PX);
   writeFileSync(join(box.designRoot, 'ui', 'e2e-export.tsx'), CANVAS_TSX);
+  writeFileSync(join(box.designRoot, 'ui', 'e2e-video.tsx'), VIDEO_TSX);
+  writeFileSync(join(box.designRoot, 'ui', 'e2e-print.tsx'), PRINT_TSX);
   return box;
 }
 
@@ -75,7 +123,11 @@ interface PwPage {
   evaluate<T>(fn: (...a: never[]) => T, arg?: unknown): Promise<T>;
   waitForFunction(fn: (...a: never[]) => unknown, arg?: unknown, o?: unknown): Promise<unknown>;
   on(e: string, fn: (x: unknown) => void): void;
-  frames(): Array<{ url(): string; waitForSelector(s: string, o?: unknown): Promise<unknown> }>;
+  frames(): Array<{
+    url(): string;
+    waitForSelector(s: string, o?: unknown): Promise<unknown>;
+    click(s: string, o?: unknown): Promise<void>;
+  }>;
 }
 interface PwDownload {
   suggestedFilename(): string;
@@ -319,8 +371,9 @@ async function bootRenderService(port: number, canvasOrigin: string, secret: str
   throw new Error('render service did not start');
 }
 
-/** Poll the job ledger until this format's job finishes, then return it. */
-async function waitForJob(port: number, format: string, timeoutMs: number) {
+/** Poll the job ledger until a job for this format that is NOT in `seen`
+ * finishes, then return it. `seen` lets one format run under several scopes. */
+async function waitForJob(port: number, format: string, timeoutMs: number, seen: Set<string>) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const { history } = (await (
@@ -328,16 +381,19 @@ async function waitForJob(port: number, format: string, timeoutMs: number) {
     ).json()) as {
       history: Array<{ id: string; format: string; status: string; error?: string }>;
     };
-    const job = history.find((h) => h.format === format);
-    if (job) return job;
+    const job = history.find((h) => h.format === format && !seen.has(h.id));
+    if (job) {
+      seen.add(job.id);
+      return job;
+    }
     await Bun.sleep(500);
   }
-  throw new Error(`no ${format} job finished within ${timeoutMs}ms`);
+  throw new Error(`no new ${format} job finished within ${timeoutMs}ms`);
 }
 
 describe('export E2E — worker lane, real render service, real artifact', () => {
   test(
-    'PDF and HTML render on maude-render and come back as real files',
+    'every worker-lane format renders on maude-render and comes back as a real file',
     async () => {
       const box = makeExportSandbox();
       const studioPort = nextPort();
@@ -381,24 +437,170 @@ describe('export E2E — worker lane, real render service, real artifact', () =>
         // These enqueue a background JOB rather than downloading in-page (the
         // notification center owns completion), so drive the real dialog to
         // submit and then assert the artifact the job produced.
-        for (const format of ['pdf', 'html'] as const) {
-          await page.click(`[data-testid="export-format-${format}"]`);
-          await page.selectOption('[data-testid="export-scope"]', 'artboard');
-          await page.click('[data-testid="export-submit"]');
-          const job = await waitForJob(studioPort, format, 240_000);
+        //
+        // pdf + html are worker-ONLY formats. png/svg/pptx are here too because
+        // the worker is the browser lane's automatic FALLBACK on a remote-lane
+        // workspace (a capture failure degrades to the jobs lane) — a live
+        // path, and worker-lane SVG was failing 100% before Phase 2 without a
+        // single test noticing. The dialog routes these through the browser
+        // lane when it can, so they are posted to the job route directly.
+        const WORKER_FORMATS = [
+          { format: 'pdf', scope: 'artboard', viaDialog: true },
+          { format: 'html', scope: 'artboard', viaDialog: true },
+          { format: 'png', scope: 'artboard', viaDialog: false },
+          { format: 'svg', scope: 'artboard', viaDialog: false },
+          { format: 'pptx', scope: 'canvas-as-separate', viaDialog: false },
+          // The two scopes the browser lane does NOT take (it captures the
+          // active artboard only) — they ride the worker on every workspace.
+          { format: 'png', scope: 'selection', viaDialog: false, selector: 'h1' },
+          { format: 'png', scope: 'canvas-as-separate', viaDialog: false },
+          // Print PDF — bleed + crop/registration marks. The geometry has a
+          // pure pdf-lib golden gate (test/pdf-print-boxes.test.ts); this is
+          // the end-to-end proof that the dialog's options reach the adapter
+          // and a real render carries the boxes.
+          {
+            format: 'pdf',
+            scope: 'artboard',
+            viaDialog: false,
+            artboardId: 'flyer',
+            pdfPrint: { includeBleed: true, marks: { crop: true, registration: true } },
+          },
+          // Video — the lane that was blocked 100% by the canvas-origin CSP
+          // until bin/_pw-launch.mjs addScriptCspSafe (DDR-232 §3). Posted
+          // against the video fixture's artboard; the dialog would do the same.
+          { format: 'mp4', scope: 'artboard', viaDialog: false, artboardId: 'clip' },
+          { format: 'webm', scope: 'artboard', viaDialog: false, artboardId: 'clip' },
+          { format: 'gif', scope: 'artboard', viaDialog: false, artboardId: 'clip' },
+        ] as const;
+        const seenJobs = new Set<string>();
+        let openCanvasSlug = 'e2e-export';
+        for (const entry of WORKER_FORMATS) {
+          const { format, scope, viaDialog } = entry;
+          const artboardId = 'artboardId' in entry ? entry.artboardId : undefined;
+          const selector = 'selector' in entry ? entry.selector : undefined;
+          const pdfPrint = 'pdfPrint' in entry ? entry.pdfPrint : undefined;
+          const wantCanvas =
+            artboardId === 'clip'
+              ? 'e2e-video'
+              : artboardId === 'flyer'
+                ? 'e2e-print'
+                : 'e2e-export';
+          if (artboardId && wantCanvas !== openCanvasSlug) {
+            openCanvasSlug = wantCanvas;
+            // Renders target the ACTIVE canvas's artboard — switch to the
+            // fixture this entry needs. The dialog's scrim is still up from
+            // the last submit and would swallow the tree click; dismiss it.
+            await page.evaluate(() => {
+              window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            });
+            await page.waitForSelector('[data-testid="export-submit"]', {
+              state: 'detached',
+              timeout: 5_000,
+            });
+            await page.click(`[data-testid="canvas-row-ui-${wantCanvas}"]`, { timeout: 30_000 });
+            await page.waitForSelector(
+              `[data-testid="canvas-frame"][data-path$="${wantCanvas}.tsx"]`,
+              { timeout: 30_000 }
+            );
+            // The job resolves its targets against the SERVER's `_active.json`,
+            // which the shell updates asynchronously after the tab switch — a
+            // job posted before it lands renders the previous canvas.
+            const activeDeadline = Date.now() + 15_000;
+            for (;;) {
+              const act = (await (
+                await fetch(`http://localhost:${studioPort}/_active`)
+              ).json()) as {
+                active?: string | null;
+              };
+              const activeFile = act.active ?? '';
+              if (activeFile.endsWith(`${wantCanvas}.tsx`)) break;
+              if (Date.now() > activeDeadline)
+                throw new Error(
+                  `server active canvas never became ${wantCanvas} (is ${activeFile})`
+                );
+              await Bun.sleep(250);
+            }
+          }
+          if (viaDialog) {
+            await page.click(`[data-testid="export-format-${format}"]`);
+            await page.selectOption('[data-testid="export-scope"]', scope);
+            await page.click('[data-testid="export-submit"]');
+          } else {
+            const r = await fetch(`http://localhost:${studioPort}/_api/export-jobs`, {
+              method: 'POST',
+              headers: {
+                'content-type': 'application/json',
+                origin: `http://localhost:${studioPort}`,
+              },
+              body: JSON.stringify({
+                format,
+                scope,
+                options: {
+                  ...(artboardId ? { artboardId } : {}),
+                  ...(selector ? { selection: { selector } } : {}),
+                  ...(pdfPrint ? { pdfPrint } : {}),
+                },
+              }),
+            });
+            expect(r.status).toBe(202);
+          }
+          const job = await waitForJob(studioPort, format, 300_000, seenJobs);
           expect(`${format}: ${job.status} ${job.error ?? ''}`).toBe(`${format}: done `);
           const bytes = new Uint8Array(
             await (
               await fetch(`http://localhost:${studioPort}/_api/export-jobs/download?id=${job.id}`)
             ).arrayBuffer()
           );
+          const head4 = Array.from(bytes.slice(0, 4));
           if (format === 'pdf') {
             expect(new TextDecoder().decode(bytes.slice(0, 5))).toBe('%PDF-');
+            if (pdfPrint) {
+              // The print path sets BleedBox + TrimBox INSIDE MediaBox and
+              // draws the marks as vector content; a PDF that skipped it has
+              // only a MediaBox. Read the page dict through pdf-lib — it writes
+              // page objects into compressed object streams, so the keys are
+              // not greppable in the raw bytes.
+              const { PDFDocument, PDFName } = await import('pdf-lib');
+              const doc = await PDFDocument.load(bytes);
+              const page = doc.getPage(0);
+              expect(page.node.get(PDFName.of('TrimBox'))).toBeDefined();
+              expect(page.node.get(PDFName.of('BleedBox'))).toBeDefined();
+              const media = page.getMediaBox();
+              const trim = page.getTrimBox();
+              // Trim strictly inside media — the bleed + marks slug is real.
+              expect(trim.width).toBeLessThan(media.width);
+              expect(trim.height).toBeLessThan(media.height);
+            }
+          } else if (format === 'png' && scope === 'canvas-as-separate') {
+            // N artboards → one zip of PNGs; a single artboard → the bare PNG
+            // (png.ts). The export fixture has one, so the bare form is right.
+            expect(head4).toEqual([0x89, 0x50, 0x4e, 0x47]);
+          } else if (format === 'png') {
+            expect(head4).toEqual([0x89, 0x50, 0x4e, 0x47]);
+          } else if (format === 'svg') {
+            const svg = new TextDecoder().decode(bytes);
+            // The worker runs the SAME capture spine the browser lane runs —
+            // so it is held to the same artifact contract.
+            expect(svg).not.toContain('dc-artboard-label');
+            expect(svg).not.toContain('Board A');
+            expect(svg.match(/(?:xlink:)?href="https?:\/\/[^"]+"/g) ?? []).toEqual([]);
+            expect(svg).toContain('data:image/png');
+          } else if (format === 'mp4') {
+            // ISO BMFF — `ftyp` box at offset 4.
+            expect(new TextDecoder().decode(bytes.slice(4, 8))).toBe('ftyp');
+          } else if (format === 'webm') {
+            // EBML header.
+            expect(head4).toEqual([0x1a, 0x45, 0xdf, 0xa3]);
+          } else if (format === 'gif') {
+            expect(new TextDecoder().decode(bytes.slice(0, 4))).toBe('GIF8');
           } else {
-            // html exports as a zip of pages — PK\x03\x04.
-            expect(Array.from(bytes.slice(0, 4))).toEqual([0x50, 0x4b, 0x03, 0x04]);
+            // html exports as a zip of pages, pptx IS a zip — PK\x03\x04.
+            expect(head4).toEqual([0x50, 0x4b, 0x03, 0x04]);
           }
-          expect(bytes.byteLength).toBeGreaterThan(500);
+          // A `selection` of one <h1> is legitimately a tiny PNG; everything
+          // else in this loop is a whole artboard or a container.
+          expect(bytes.byteLength).toBeGreaterThan(scope === 'selection' ? 100 : 500);
+          if (!viaDialog) continue;
           // Re-open the dialog for the next format (submitting closes it).
           await page.evaluate(() => {
             window.dispatchEvent(

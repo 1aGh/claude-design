@@ -324,3 +324,36 @@ describe('pdf-print-boxes — applyPageFit (non-print artboard scale-to-paper)',
     expect(doc.getPage(0).getSize()).toEqual({ width: 100, height: 100 });
   });
 });
+
+// DDR-232 follow-up — the WORKER-lane print gap. pdf.ts read the artboard's
+// `print` prop from the canvas source ON DISK; the render worker holds no
+// checkout (DDR-230 §1), so every cloud print PDF silently came back with no
+// BleedBox/TrimBox and no marks — the fall-through was "not a print artboard".
+// The cell now resolves every print artboard's prop up front
+// (readAllArtboardPrintProps) and ships it in the job as `options.printProps`.
+describe('readAllArtboardPrintProps — what the cell ships to the worker', () => {
+  const SRC = `import { DesignCanvas, DCSection, DCArtboard } from "@maude/canvas-lib";
+export default function C() {
+  return (
+    <DesignCanvas>
+      <DCSection id="s" title="t">
+        <DCArtboard id="screen" width={400} height={300}><div/></DCArtboard>
+        <DCArtboard id="flyer" kind="print" print={{ paper: "a6", bleedMm: 3 }} width={397} height={559}><div/></DCArtboard>
+        <DCArtboard id="poster" kind="print" print={{ paper: "a3" }} width={1123} height={1587}><div/></DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+`;
+  test('collects every print artboard by id and skips screen artboards', async () => {
+    const { readAllArtboardPrintProps } = await import('../canvas-edit.ts');
+    const props = readAllArtboardPrintProps('/x/c.tsx', SRC);
+    expect(Object.keys(props).sort()).toEqual(['flyer', 'poster']);
+    expect(props.flyer).toEqual({ paper: 'a6', bleedMm: 3 });
+    expect(props.poster).toEqual({ paper: 'a3' });
+  });
+  test('an unparsable canvas contributes nothing rather than throwing', async () => {
+    const { readAllArtboardPrintProps } = await import('../canvas-edit.ts');
+    expect(readAllArtboardPrintProps('/x/c.tsx', 'export default <<<')).toEqual({});
+  });
+});

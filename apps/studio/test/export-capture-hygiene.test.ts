@@ -24,8 +24,14 @@
 // has no network asset to fail on).
 
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { getBrowserBundle, getCaptureCoreBundle } from '../exporters/_browser-bundles.ts';
+
+/** A real (tiny, latin-subset, OFL) woff2 — the test is about the `@font-face`
+ * `src` becoming a `data:` URI, not about glyph coverage. */
+const WOFF2 = readFileSync(join(import.meta.dir, 'fixtures', 'tiny-subset.woff2'));
 
 /** 1×1 red PNG — small enough to inline in the fixture host verbatim. */
 const PNG_1PX = Buffer.from(
@@ -216,6 +222,81 @@ describe('browser-lane capture hygiene (chrome + assets)', () => {
           return await w.__maudeCaptureCore.svgForElement(target, w.domToSvg);
         });
         expect(svg).toContain('data:image/png');
+      } finally {
+        await browser.close();
+        server.stop(true);
+      }
+    },
+    { timeout: 60_000 }
+  );
+});
+
+describe('browser-lane capture hygiene (webfonts)', () => {
+  test(
+    '@font-face sources are embedded — from a <link> stylesheet AND an inline <style>',
+    async () => {
+      // Fonts are the classic silent fidelity killer (DDR-231 SHIPPER's top
+      // risk): an SVG whose @font-face still points at the serving origin
+      // renders in a fallback face everywhere but the live page, and nothing
+      // errors. Two declaration shapes, because dom-to-svg only copies the
+      // first on its own (it needs a stylesheet href to absolutize `src`) —
+      // the second is what capture-core's appendInlineFontFaces carries over.
+      const [iife, core] = await Promise.all([
+        getBrowserBundle('dom-to-svg', 'domToSvg'),
+        getCaptureCoreBundle(),
+      ]);
+      const server = Bun.serve({
+        port: 0,
+        fetch(req) {
+          const { pathname } = new URL(req.url);
+          if (pathname === '/f.woff2')
+            return new Response(WOFF2, { headers: { 'content-type': 'font/woff2' } });
+          if (pathname === '/linked.css')
+            return new Response(
+              '@font-face{font-family:"LinkedFace";src:url(/f.woff2) format("woff2")}',
+              { headers: { 'content-type': 'text/css' } }
+            );
+          return new Response(
+            `<!doctype html><html><head><link rel="stylesheet" href="/linked.css">
+             <style>@font-face{font-family:"InlineFace";src:url("/f.woff2") format("woff2")}</style>
+             </head><body style="margin:0"><div class="dc-world">
+             <article data-dc-screen="b1" style="position:absolute;left:0;top:0;width:320px;height:120px;background:#123;color:#fff">
+               <p style="font-family:LinkedFace,serif">Linked</p>
+               <p style="font-family:InlineFace,serif">Inline</p>
+             </article></div></body></html>`,
+            { headers: { 'content-type': 'text/html' } }
+          );
+        },
+      });
+      const { launchChromium } = (await import('../bin/_pw-launch.mjs')) as {
+        launchChromium: () => Promise<{
+          newContext: (o: unknown) => Promise<{ newPage: () => Promise<unknown> }>;
+          close: () => Promise<void>;
+        }>;
+      };
+      const browser = await launchChromium();
+      try {
+        const ctx = await browser.newContext({});
+        // biome-ignore lint/suspicious/noExplicitAny: playwright page surface
+        const page: any = await ctx.newPage();
+        await page.goto(`http://127.0.0.1:${server.port}`, { waitUntil: 'load' });
+        await page.addScriptTag({ path: iife });
+        await page.addScriptTag({ path: core, type: 'module' });
+        await page.waitForFunction(
+          () => !!(window as never as Record<string, unknown>).__maudeCaptureCore
+        );
+        const svg: string = await page.evaluate(async () => {
+          // biome-ignore lint/suspicious/noExplicitAny: injected globals
+          const w = window as any;
+          const target = document.querySelector('[data-dc-screen]') as Element;
+          return await w.__maudeCaptureCore.svgForElement(target, w.domToSvg);
+        });
+        const faces = svg.match(/@font-face[^}]*}/g) ?? [];
+        const families = faces.map((f) => /font-family:\s*"?([^;"]+)"?/.exec(f)?.[1]?.trim());
+        expect(families.sort()).toEqual(['InlineFace', 'LinkedFace']);
+        for (const face of faces) expect(face).toContain('data:font/woff2;base64,');
+        // No font source may still point at the serving origin.
+        expect(svg.match(/url\(["']?https?:[^)]*\)/g) ?? []).toEqual([]);
       } finally {
         await browser.close();
         server.stop(true);

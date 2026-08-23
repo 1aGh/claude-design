@@ -386,6 +386,7 @@ export async function inlineCaptureResources(
   // dom-to-svg puts the captured stylesheet there. Without this the SVG falls
   // back to a system font the moment it leaves the serving origin, which is
   // the classic silent fidelity killer.
+  appendInlineFontFaces(root);
   await Promise.all(
     Array.from(root.querySelectorAll('style')).map(async (styleEl) => {
       const css = styleEl.textContent ?? '';
@@ -486,6 +487,49 @@ async function serializeCapture(
   let out = new XMLSerializer().serializeToString(svgDoc);
   out = out.replace(/(?:oklch|oklab|lch|lab|color)\([^)]*\)/gi, (m) => toSrgb(m) || m);
   return out;
+}
+
+/**
+ * Carry over `@font-face` rules dom-to-svg drops.
+ *
+ * dom-to-svg copies `@font-face` into the output ONLY from stylesheets that
+ * have an `href` (it needs one to absolutize relative `src` URLs) — a rule
+ * declared in an inline `<style>` is skipped outright, so a canvas whose font
+ * arrives that way renders in a fallback face everywhere but the live page.
+ * Append those rules, `src` made absolute against the document, so the
+ * `url()` inliner below treats them like every other font.
+ */
+function appendInlineFontFaces(root: Element): void {
+  const doc = root.ownerDocument;
+  const styleEl = root.querySelector('style');
+  if (!styleEl) return;
+  const extra: string[] = [];
+  for (const sheet of Array.from(document.styleSheets)) {
+    if (sheet.href) continue; // dom-to-svg already copied these
+    let rules: CSSRuleList;
+    try {
+      rules = sheet.cssRules;
+    } catch {
+      continue; // cross-origin sheet — unreadable, and not ours to embed
+    }
+    for (const rule of Array.from(rules)) {
+      if (rule.type !== CSSRule.FONT_FACE_RULE) continue;
+      const text = rule.cssText.replace(
+        /url\(\s*(['"]?)([^)'"]+)\1\s*\)/g,
+        (_m, q: string, u: string) => {
+          try {
+            return `url(${q}${new URL(u, document.baseURI).href}${q})`;
+          } catch {
+            return _m;
+          }
+        }
+      );
+      extra.push(text);
+    }
+  }
+  if (!extra.length) return;
+  void doc;
+  styleEl.textContent = `${styleEl.textContent ?? ''}\n${extra.join('\n')}`;
 }
 
 /** Parse the root viewBox (or width/height) out of a serialized SVG. */

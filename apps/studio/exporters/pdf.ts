@@ -65,6 +65,20 @@ export function artboardIdFromCssPath(cssPath: string): string | null {
   return m ? (m[1] as string) : null;
 }
 
+/**
+ * `options.printProps` — `{ [repoRelativeCanvasFile]: { [artboardId]: print } }`,
+ * attached by the cell when the job dispatches to the render worker
+ * (exporters/jobs.ts). Shape-checked here because it crosses a trust boundary
+ * (the job body reaches the worker over HTTP); anything else is ignored.
+ */
+function shippedPrintProps(
+  options: ExportOptions
+): Record<string, Record<string, Record<string, unknown>>> | null {
+  const raw = (options as { printProps?: unknown }).printProps;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  return raw as Record<string, Record<string, Record<string, unknown>>>;
+}
+
 /** Resolve a client-supplied `sourceFile` (from `options.selection.file`, a
  *  main-origin but caller-controlled string — see scope.ts's `readHints`)
  *  against `repoRoot`, rejecting anything that escapes it — mirrors
@@ -423,7 +437,13 @@ export async function run(
         const pageIndex = out.getPageCount();
         out.addPage(page);
         let printProp: Record<string, unknown> | null = null;
-        if (w.artboardId) {
+        // The cell ships the print props inside a REMOTE job (it has the
+        // checkout; this process may not — DDR-230). Prefer them; fall back to
+        // reading the source on disk for the local lane.
+        const shipped = shippedPrintProps(options);
+        if (w.artboardId && shipped) {
+          printProp = shipped[w.sourceFile]?.[w.artboardId] ?? null;
+        } else if (w.artboardId) {
           const abs = resolveSourceFileUnderRoot(ctx.repoRoot, w.sourceFile);
           if (abs) {
             let text = sourceCache.get(abs);

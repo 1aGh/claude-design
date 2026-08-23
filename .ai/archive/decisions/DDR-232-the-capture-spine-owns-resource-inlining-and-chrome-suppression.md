@@ -50,7 +50,7 @@ output (an empty `<g>` still carried the artboard title as `aria-label`) and dan
 `aria-owns` idrefs scrubbed. `test/canvas-hide-chrome.test.ts` fails if the two copies
 disagree in either direction.
 
-### 3. A capture shim reuses the page's own spine before injecting its own.
+### 3. A capture shim reuses the page's own spine — or injects CSP-safely — never inline.
 
 The render worker always loads the canvas from the CANVAS origin, whose shell CSP is
 `script-src 'self' 'sha256-…'`. `page.addScriptTag({path|content})` injects an INLINE
@@ -104,10 +104,15 @@ download for bytes the cell never held.
   `/_api/export-assemble` was not in the read-only allowlist (a viewer could not export
   a deck at all), and the single-artboard capture branch matched `pptx`, making the
   dedicated deck branch unreachable and silently degrading it to the worker.
-- **Open:** worker-lane video is still blocked by §3's CSP wall. It cannot reuse the
-  in-page spine (the canvas runtime does not ship the encoder), so it needs a CSP-safe
-  injection — `addInitScript` hoisted ahead of `goto` is the candidate. Deliberately
-  not shipped unverified: it needs a video-comp fixture and a real render first.
+- **Video, second pass (same day):** reproduced on a 12-frame fixture with the exact
+  production error, then fixed with `addScriptCspSafe` (`bin/_pw-launch.mjs`): the
+  bundle is served at a same-origin virtual URL via Playwright request interception and
+  added as `<script src>` — CSP checks the URL's origin (`'self'`), and as a real module
+  script it still resolves the shell importmap the render lib needs (it externalizes
+  `remotion`). `addInitScript` was measured and rejected: it runs before the importmap
+  exists. Worker mp4 renders un-degraded (fast path, not the muted fallback); mp4/webm/gif
+  are in the worker e2e, mp4/gif in the native e2e. The OOM hypothesis was never the
+  first fault.
 
 ## Alternatives rejected
 

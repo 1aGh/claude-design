@@ -233,21 +233,13 @@ Three layers, because the bug needed all three: (a) `exporters/format-scopes.ts`
 - **Do**: Apply the fix the T1 reproduction points to (validBody rejection root cause). If it's empty targets, fix scope resolution on the remote path; if it's a canvas.origin gap, fix the wiring; if html's zip-shape confuses the worker, handle it. Land a fail-first test with the exact repro'd job body.
 - **Validate**: pdf + html export a real file from the workspace lane locally; the render service accepts and returns bytes.
 
-### Task 5: FIX worker MP4 robustness (from the T1 repro) ⚠️ 2026-08-23 — DIAGNOSED, NOT FIXED
+### Task 5: FIX worker MP4 robustness (from the T1 repro) ✅ 2026-08-23 (second pass)
 
-**The OOM hypothesis is unproven and probably not the first problem.** Worker-lane video is blocked before it can run out of anything: `_video-playwright.mjs` injects both the render lib and the encode lib with `page.addScriptTag({ content })` — an INLINE script — and the render worker always loads the canvas from the CANVAS origin, whose shell CSP is `script-src 'self' 'sha256-…'`. Measured, not assumed (probe against a page with that exact CSP):
+**Reproduced, then fixed — and the OOM hypothesis was wrong.** A 12-frame 320×180 `<VideoComp>` fixture on the worker lane failed with exactly the production text: `renderMediaOnWeb failed (page.addScriptTag: Executing inline script violates the following Content Security Policy directive …); falling back to frame-step screenshot capture — video export failed on both paths`. Both video paths inject their in-page lib (`render-lib`, `encode-lib`) with an INLINE `addScriptTag`, and the render worker always loads the canvas from the canvas origin, whose shell CSP refuses that. Nothing to do with memory.
 
-| injection | result |
-| --- | --- |
-| `addScriptTag({content})` — what the video shim does | **blocked**: "Executing inline script violates the following Content Security Policy directive" |
-| `addInitScript({content})` — pre-navigation | works (CDP-level, not CSP-checked) |
-| `page.evaluate` | works (CDP-level) |
+**Fix — `addScriptCspSafe` in `bin/_pw-launch.mjs`:** the bundle is served at a same-origin virtual URL through Playwright request interception (`page.route` → `fulfill`) and added as `<script src>`. CSP is checked against the script URL's origin, which is `'self'`, so it passes — and because it is a real module script in the document, bare specifiers still resolve through the shell's importmap, which the render lib REQUIRES (it externalizes `remotion` to share the page's instance, DDR-148). Measured first on a page with that exact CSP shape: route-fulfilled module + importmap specifier → resolves; `addInitScript` → cannot (runs before the importmap exists). **No CSP relaxed.** On the main origin (desktop), where the CSP is env-gated off, it is simply equivalent to the inline injection it replaces.
 
-This is the same wall that made worker-lane **SVG fail 100%**, which T4 fixed by preferring the page's own already-loaded capture core. Video cannot use that trick: the canvas runtime does not ship the encoder (`window.__maudeEnc` exists only because the shim injects it), so the fix has to be a CSP-safe injection instead — `addInitScript` hoisted ahead of `goto` is the candidate, subject to the bundles being classic-script-safe (they are injected as `type: 'module'` today).
-
-**Deliberately not shipped in this pass.** The change is small but unverifiable without a video-comp fixture and a real multi-minute render, and this plan's own T1 rule is repro-first. Shipping an unverified edit to the video path would be exactly the guessing the rule exists to prevent. Next session: build a minimal `<VideoComp>` fixture, reproduce the failure on the worker lane, apply the injection fix, and only THEN revisit whether a `standard-1` container is also too small.
-- **Do**: Address the container Chromium crash — ensure the DDR-157 frame-step fallback + render-sized job timeout actually engage in the worker, and that the `standard-1` container has (or is given) the resources a 1080p comp needs, or the comp is capped to what fits. Human-readable failure if it genuinely can't.
-- **Validate**: a short real video comp exports mp4 from the workspace lane locally without a target-closed crash.
+Result: mp4 via the worker → valid ISO BMFF, **not degraded** (took the fast renderMediaOnWeb path, not the muted fallback). mp4 + webm + gif are in the worker e2e; the desktop e2e exports mp4 + gif from the bundled app.
 
 ### Task 6: FIX PPTX browser-lane UX ✅ 2026-08-23
 `captureDeckViaBrowser` gained an `onAssemble` phase callback (the status used to sit on "Capturing 10/10…" through the whole in-cell composition), the dialog now ends on an explicit `Saved <name> to your downloads.` instead of closing itself, and browser-lane exports are recorded in the shared ledger — new `POST /_api/export-history` + `recordBrowserExport` on the job queue, with a `deliveredInBrowser` flag so no UI offers a download for bytes the cell never held. Closes the Phase-1 deviation "browser captures don't write export-history".
@@ -269,6 +261,10 @@ This is the same wall that made worker-lane **SVG fail 100%**, which T4 fixed by
 - **Validate**: `pnpm test:e2e:desktop` exports every format from the native app and asserts fidelity; green.
 
 ### Task 9: Fidelity reconciliation + regression pin ✅ 2026-08-23
+**PPTX fidelity decision:** the editable (svg2pptx, Python) deck is a developer opt-in — it is installed in neither the render image nor the packaged `.app` nor this machine, so every lane a user reaches produces the SAME raster PNG deck from the same `assemblePngDeck` at the same 3× scale. The contract holds; the asymmetry would only appear for a developer who installs svg2pptx locally, which is documented in `pptx.ts`'s header and stays an opt-in rather than a lane divergence. Not adding Python to the render image.
+
+**Font inlining** now has a test (link-stylesheet AND inline-`<style>` `@font-face` → `data:font/woff2`); dom-to-svg drops the inline-`<style>` case on its own, `capture-core.appendInlineFontFaces` carries it over.
+
 The Phase-1 gate compared two captures in the SAME engine on a fixture with no chrome and no network asset, which is why it was green through both live defects. It now has company: `test/export-capture-hygiene.test.ts` runs against a REAL HTTP origin (the only way #2 reproduces at all) with a chrome-bearing, asset-bearing artboard. The same three invariants — no editor chrome, no remote `http(s)` refs, assets present as `data:` — are now asserted on the delivered artifact in all three lanes: browser (web e2e), worker (web e2e), desktop (native e2e). The `_shell.html` ↔ `capture-chrome.ts` drift tripwire closes the loop on the selector list.
 - **Do**: Make the T6 fidelity gate realistic — add a token-gated-asset fixture and a chrome-bearing fixture so it would have caught #1 and #2. Assert all three lanes produce matching artifacts for the same canvas.
 - **Validate**: full suite green; the three lanes' outputs match within the fidelity threshold on the shared fixtures.
@@ -284,3 +280,20 @@ The Phase-1 gate compared two captures in the SAME engine on a fixture with no c
 3. The browser-lane export UX shows progress + completion (no silent modal close).
 4. Automated cross-platform tests (agent-browser + desktop-e2e) assert export fidelity on BOTH platforms and gate CI.
 5. The T6 fidelity gate is extended so it would have caught the chrome + token-gated-asset divergences.
+
+## Coverage matrix (end of Phase 2, second pass — e2e on real bytes)
+
+| format | browser lane (web e2e) | worker lane (web e2e) | desktop (native e2e) |
+| --- | --- | --- | --- |
+| png | ✅ artboard | ✅ artboard · selection · canvas-as-separate | ✅ |
+| svg | ✅ artboard | ✅ | ✅ |
+| pptx | ✅ deck (in-cell assemble) | ✅ | ✅ |
+| pdf | — (worker-only) | ✅ artboard + **print** (bleed, crop/registration marks → TrimBox/BleedBox asserted via pdf-lib) | ✅ |
+| html | — (worker-only) | ✅ | ✅ |
+| mp4 / webm / gif | — (worker-only) | ✅ all three (CSP-safe injection) | ✅ mp4 · gif |
+| zip | in-cell (lane-free) | — | ✅ |
+| canva | refused by design | refused by design | ✅ |
+
+**Found by the print-PDF e2e, fixed in the same pass:** a cloud print PDF silently lost its BleedBox/TrimBox and marks — `pdf.ts` read the artboard's `print` prop from the canvas source ON DISK, and the render worker holds no checkout (DDR-230 §1), so the fall-through was "not a print artboard". The cell now resolves every print artboard's prop up front (`readAllArtboardPrintProps`) and ships it in the job as `options.printProps`; the adapter prefers that over disk. Verified fail-first (revert the cell side → no TrimBox).
+
+Every artifact is asserted on bytes (magic) and, for SVG, on the capture contract (no editor chrome, no remote refs, assets + fonts embedded). Remaining gap is not a format: it is a **live** re-test on the cloud fleet after a release — the fleet only moves on a tag, and `/_health`'s version string does not prove what is running (memory `maude-render-version-string-not-image`).

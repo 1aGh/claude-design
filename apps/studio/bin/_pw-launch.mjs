@@ -165,3 +165,51 @@ export function assertRenderOutputSizeOk(widthCss, heightCss, deviceScaleFactor,
     process.exit(1);
   }
 }
+
+/**
+ * Inject a JS bundle into a page whose CSP refuses inline scripts.
+ *
+ * `page.addScriptTag({ content | path })` writes an INLINE `<script>`, which the
+ * canvas origin's shell CSP (`script-src 'self' 'sha256-…'`) refuses outright —
+ * and the render worker (DDR-230) always loads the canvas from that origin, so
+ * every shim that injected this way failed there (worker-lane SVG, then mp4 /
+ * webm / gif: "Executing inline script violates the following Content Security
+ * Policy directive"). See DDR-232 §3.
+ *
+ * This serves the bundle at a SAME-ORIGIN virtual URL through Playwright
+ * request interception and adds it as `<script src>`. CSP is enforced on the
+ * script's URL origin, which is `'self'`, so it passes — and because the tag is
+ * a real module script in the document, bare specifiers still resolve through
+ * the shell's importmap (the render lib NEEDS that: it externalizes `remotion`
+ * to share the page's instance, DDR-148). Measured, not assumed: a route-
+ * fulfilled module under the exact CSP shape resolves an importmap specifier;
+ * `addInitScript` cannot (it runs before the importmap exists).
+ *
+ * No CSP is relaxed. On the main origin (desktop), where the CSP is env-gated
+ * off, this is simply equivalent to the inline injection it replaces.
+ *
+ * @param {import('playwright').Page} page
+ * @param {{ content: string, type?: 'module' | undefined, name?: string, timeout?: number }} opts
+ */
+let injectedSeq = 0;
+export async function addScriptCspSafe(page, { content, type, name = 'lib', timeout }) {
+  const origin = new URL(page.url()).origin;
+  injectedSeq += 1;
+  const url = `${origin}/__maude-inject/${injectedSeq}-${name}.js`;
+  // `page.route` is per-URL; route each bundle exactly once and unroute after so
+  // a long-lived page (the frame-step loop) carries no stale handlers.
+  await page.route(url, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'text/javascript; charset=utf-8',
+      headers: { 'cache-control': 'no-store' },
+      body: content,
+    })
+  );
+  try {
+    await page.addScriptTag({ url, ...(type ? { type } : {}) });
+  } finally {
+    await page.unroute(url).catch(() => {});
+  }
+  void timeout;
+}

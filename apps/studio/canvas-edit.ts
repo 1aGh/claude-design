@@ -4181,6 +4181,39 @@ export function readArtboardPrintProp(
 }
 
 /**
+ * Every print artboard's `print` prop in a canvas, keyed by artboard id.
+ *
+ * The per-id reader above is what the PDF adapter uses when it has the checkout
+ * on disk. A render worker (DDR-230) does NOT — it holds no tenant files by
+ * design — so the cell resolves these up front and ships them inside the job
+ * (`options.printProps`, exporters/jobs.ts). Until it did, a cloud print PDF
+ * silently came back with no BleedBox/TrimBox and no marks: the adapter's
+ * `readFileSync` failed against the worker's empty scratch root and the
+ * fall-through was "not a print artboard" (DDR-232 follow-up, found by the
+ * worker-lane export E2E).
+ */
+export function readAllArtboardPrintProps(
+  canvasAbsPath: string,
+  source: string
+): Record<string, Record<string, unknown>> {
+  const out: Record<string, Record<string, unknown>> = {};
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) return out;
+  for (const ab of collectJsxByTag(parsed.program, 'DCArtboard')) {
+    const id = getStringAttr(ab.openingElement, 'id');
+    if (!id || getStringAttr(ab.openingElement, 'kind') !== 'print') continue;
+    const attr = findAttribute(ab.openingElement, 'print');
+    if (attr?.value?.type !== 'JSXExpressionContainer') continue;
+    const expr = attr.value.expression as AnyNode | undefined;
+    if (!expr) continue;
+    const resolved = resolveValueNode(parsed.program, expr);
+    if (resolved?.type !== 'ObjectExpression') continue;
+    out[id] = objectExpressionToPlain(resolved);
+  }
+  return out;
+}
+
+/**
  * Delete the `<DCArtboard id="…">` whose `id` prop equals `artboardId` — the
  * artboard counterpart of applyDeleteElement (an artboard is addressed by its id
  * PROP, since the rendered `<article data-dc-screen>` has no data-cd-id; same

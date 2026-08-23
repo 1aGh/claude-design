@@ -181,9 +181,10 @@ jobs:
     # into the file and dropped every photo. This job boots a real
     # workspace-shaped studio and a real maude-render, drives the real Export
     # dialog in Chromium, and asserts the BYTES that come back — for the browser
-    # lane (png/svg/pptx) and the worker lane (pdf/html).
+    # lane (png/svg/pptx) and the worker lane (pdf incl. print boxes, html,
+    # png/svg/pptx as the fallback path, and mp4/webm/gif).
     #
-    # It is fast (~10 s of test time) and it is the only check that looks at a
+    # It is fast (~30 s of test time) and it is the only check that looks at a
     # finished artifact, so it blocks — unlike the full studio suite below,
     # whose clean-CI health is still unmeasured.
     name: Export lanes E2E (browser + worker)

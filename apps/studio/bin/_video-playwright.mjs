@@ -25,7 +25,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { assertRenderOutputSizeOk, launchChromium } from './_pw-launch.mjs';
+import { addScriptCspSafe, assertRenderOutputSizeOk, launchChromium } from './_pw-launch.mjs';
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, cur, i, all) => {
@@ -166,7 +166,7 @@ try {
     try {
       const t0 = Date.now();
       const libSrc = readFileSync(renderLib, 'utf8');
-      await page.addScriptTag({ content: libSrc, type: 'module' });
+      await addScriptCspSafe(page, { content: libSrc, type: 'module', name: 'render-lib' });
       await page.waitForFunction(() => typeof window.__maudeRenderVideo__ === 'function', {
         timeout: timeoutMs,
       });
@@ -421,7 +421,7 @@ async function frameStepCapture({
   const isGif = format === 'gif';
   if (encoding) {
     const libSrc = readFileSync(encodeLib, 'utf8');
-    await page.addScriptTag({ content: libSrc, type: 'module' });
+    await addScriptCspSafe(page, { content: libSrc, type: 'module', name: 'encode-lib' });
     await page.waitForFunction(() => typeof window.__maudeEnc === 'object', { timeout: timeoutMs });
     const started = await page.evaluate(
       async ({ width, height, fps, isGif, gifColors, fmt }) => {
