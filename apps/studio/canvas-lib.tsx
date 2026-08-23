@@ -124,6 +124,15 @@ import {
   diffLayoutPositions,
 } from './commands/move-artboards-command.ts';
 import { scopedCdSelector, selectorIndex, shortText } from './dom-selection.ts';
+import {
+  type DomToSvgApi,
+  pinArtboard,
+  rasterizeSvg,
+  resetWorldPlane,
+  restoreArtboard,
+  restoreWorldPlane,
+  svgForElement,
+} from './exporters/capture-core.ts';
 // Photo editor (feature-photo-editor) — schema.ts is DEPENDENCY-FREE (no pixi),
 // so this static import is safe and adds zero bundle cost. The WebGL compositor
 // (photo/pipeline.ts, which imports pixi.js) is loaded via a DYNAMIC import
@@ -1787,8 +1796,120 @@ export function DesignCanvas(props: DesignCanvasProps) {
 }
 DesignCanvas.displayName = 'DesignCanvas';
 
+// DDR-231 (hybrid export lanes) — the workspace `browser` export lane.
+//
+// In workspace mode the studio shell cannot capture the canvas itself: the
+// iframe is a separate (untrusted, DDR-054) origin, unreachable by DOM from
+// the shell. So the SHELL ASKS and the CANVAS CAPTURES — this bridge listens
+// for an `export-capture` postMessage from the embedding parent, renders the
+// requested artboards through the shared capture spine (capture-core.ts — the
+// same code the playwright SVG shim injects, DDR-231's single-spine rule) and
+// replies with per-artboard Blobs (structured-clonable across the origin
+// split). dom-to-svg loads LAZILY through the importmap (`dom-to-svg` runtime
+// bundle — the pixi.js pattern), so a canvas that never exports pays zero
+// bundle cost.
+//
+// Capture mutates live DOM (world zoom reset + artboard pinned to origin) and
+// restores everything afterwards — the member is looking at this plane. The
+// shell overlays a veil during capture to cover the brief reflow.
+function useExportCaptureBridge() {
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.parent === window) return;
+    let busy = false;
+    const onMsg = (e: MessageEvent) => {
+      // Only the embedding shell may drive capture — a message from any other
+      // window (a nested iframe, an opened popup) is ignored outright.
+      if (e.source !== window.parent) return;
+      const m = e.data as {
+        dgn?: string;
+        id?: unknown;
+        format?: unknown;
+        artboardIds?: unknown;
+        scale?: unknown;
+      } | null;
+      if (!m || m.dgn !== 'export-capture' || typeof m.id !== 'string') return;
+      const requestId = m.id;
+      const reply = (msg: Record<string, unknown>) => {
+        try {
+          window.parent.postMessage(msg, '*');
+        } catch {
+          /* parent gone — nothing to deliver to */
+        }
+      };
+      if (busy) {
+        reply({
+          dgn: 'export-capture-error',
+          id: requestId,
+          message: 'a capture is already running on this canvas',
+        });
+        return;
+      }
+      busy = true;
+      const format = m.format === 'svg' ? 'svg' : 'png';
+      const scale = Math.max(1, Math.min(8, Number(m.scale) || 1));
+      const wanted = Array.isArray(m.artboardIds)
+        ? m.artboardIds.filter((s): s is string => typeof s === 'string')
+        : null;
+      void (async () => {
+        const savedWorld = resetWorldPlane();
+        try {
+          const all = Array.from(document.querySelectorAll('[data-dc-screen]'));
+          const targets = wanted?.length
+            ? all.filter((el) => wanted.includes(el.getAttribute('data-dc-screen') ?? ''))
+            : all;
+          if (!targets.length) throw new Error('no artboards matched the capture request');
+          const api = (await import('dom-to-svg')) as unknown as DomToSvgApi;
+          const items: { name: string; type: string; blob: Blob }[] = [];
+          for (let i = 0; i < targets.length; i += 1) {
+            const el = targets[i] as Element;
+            const abId = el.getAttribute('data-dc-screen') || `artboard-${i + 1}`;
+            const prevPos = pinArtboard(el);
+            try {
+              const svg = await svgForElement(el, api);
+              if (format === 'svg') {
+                items.push({
+                  name: `${abId}.svg`,
+                  type: 'image/svg+xml',
+                  blob: new Blob([svg], { type: 'image/svg+xml' }),
+                });
+              } else {
+                items.push({
+                  name: `${abId}.png`,
+                  type: 'image/png',
+                  blob: await rasterizeSvg(svg, scale),
+                });
+              }
+            } finally {
+              restoreArtboard(el, prevPos);
+            }
+            reply({
+              dgn: 'export-capture-progress',
+              id: requestId,
+              current: i + 1,
+              total: targets.length,
+            });
+          }
+          reply({ dgn: 'export-capture-done', id: requestId, items });
+        } catch (err) {
+          reply({
+            dgn: 'export-capture-error',
+            id: requestId,
+            message: err instanceof Error ? err.message : String(err),
+          });
+        } finally {
+          restoreWorldPlane(savedWorld);
+          busy = false;
+        }
+      })();
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+}
+
 function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
   ensureEngineStyles();
+  useExportCaptureBridge();
 
   const hostRef = useRef<HTMLDivElement | null>(null);
   const worldRef = useRef<HTMLDivElement | null>(null);

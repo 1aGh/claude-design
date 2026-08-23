@@ -327,14 +327,22 @@ describe('pruneForWorkspace — how a cell can boot at all', () => {
       '/_api/export-jobs': 'j',
       '/_api/export-jobs/download': 'd',
       '/_api/export-history': 'h',
+      // DDR-231 — the browser lane's assemble half: pure data (client-captured
+      // PNGs) → PptxGenJS in-cell; nothing evaluates, same class as zip.
+      '/_api/export-assemble': 'a',
+      // DDR-231 T7 — warm-up ping: proxies GET /_health to the render service
+      // so the container wakes while the member is still picking options.
+      '/_api/export-warmup': 'w',
       '/_api/export-next-phase-surprise': 'f',
       '/_health': 'ok',
     };
     const { routes, removed } = pruneForWorkspace(table);
     expect(Object.keys(routes).sort()).toEqual([
+      '/_api/export-assemble',
       '/_api/export-history',
       '/_api/export-jobs',
       '/_api/export-jobs/download',
+      '/_api/export-warmup',
       '/_health',
     ]);
     expect(removed).toEqual(['/_api/export', '/_api/export-next-phase-surprise']);

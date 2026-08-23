@@ -183,6 +183,15 @@ test('the export JOBS lane is served, the synchronous render is not (render-work
   // Download is a GET-only handler — POST is a method refusal, not a grant.
   assert.equal(decide('POST', '/_api/export-jobs/download', 'viewer').allow, false);
   assert.equal(decide('GET', '/_api/export-history', 'viewer').allow, true);
+  // DDR-231 — the browser lane's assemble half: the member's browser captured
+  // the PNGs, the cell only composes the deck (pure JS over pure data — the
+  // zip containment class). POST because it takes work; `export` capability,
+  // all roles. GET is a method refusal on the handler, not a grant.
+  assert.equal(decide('POST', '/_api/export-assemble', 'viewer').allow, true);
+  assert.equal(decide('POST', '/_api/export-assemble', 'member').allow, true);
+  assert.equal(decide('GET', '/_api/export-assemble', 'viewer').allow, false);
+  // DDR-231 T7 — the warm-up ping is a harmless read (proxied /_health).
+  assert.equal(decide('GET', '/_api/export-warmup', 'viewer').allow, true);
   // The synchronous render stays refused for everyone — a cloud render is a job.
   assert.equal(decide('POST', '/_api/export', 'owner').reason, 'refused');
 });

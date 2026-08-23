@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "instant-exports-in-your-browser",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Instant exports, right in your browser",
+      "summary": "In a hosted workspace, PNG and SVG of the artboard you're looking at — and the whole PPTX deck — now export straight from your browser in seconds. No render service, no waiting for a container to wake up. Video and PDF still render on the service, which now warms up the moment you open the export dialog.",
+      "surface": "design-ui"
+    },
+    {
       "id": "cloud-exports-actually-arrive",
       "version": "1.0.6",
       "date": "2026-08-23",

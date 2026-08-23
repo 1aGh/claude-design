@@ -169,15 +169,29 @@ export async function renderRemotely(args: {
     ...options,
     timeoutSec: Math.max(Number((options as { timeoutSec?: number }).timeoutSec) || 0, 60),
   };
-  const res = await fetch(`${service.url}/render`, {
-    method: 'POST',
-    signal,
-    headers: {
-      'content-type': 'application/json',
-      authorization: `Bearer ${service.secret}`,
-    },
-    body: JSON.stringify({ format, targets, options: remoteOptions, canvas }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${service.url}/render`, {
+      method: 'POST',
+      signal,
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${service.secret}`,
+      },
+      body: JSON.stringify({ format, targets, options: remoteOptions, canvas }),
+    });
+  } catch (err) {
+    if (signal?.aborted) throw err;
+    // DDR-231 T7 — the member sees this in the export dialog / notification
+    // center: name the LIKELY cause (a sleeping container waking) instead of
+    // leaking a bare fetch error.
+    throw new Error(
+      'The render service didn’t answer — it may still be waking up. Try the export again in a minute.'
+    );
+  }
+  if (res.status === 503) {
+    throw new Error('The render service is busy with other exports right now — try again shortly.');
+  }
   if (!res.ok) {
     const detail = (await res.text().catch(() => '')) || `${res.status}`;
     throw new Error(`render service refused the job: ${detail}`);

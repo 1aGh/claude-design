@@ -12,7 +12,7 @@ import path from 'node:path';
 
 import JSZip from 'jszip';
 
-import { getBrowserBundle } from './_browser-bundles.ts';
+import { getBrowserBundle, getCaptureCoreBundle } from './_browser-bundles.ts';
 import { exportShimPath, runShim } from './_runtime.ts';
 import {
   canvasShellUrl,
@@ -32,6 +32,7 @@ async function captureSvg(
   outDir: string,
   timeoutSec: number,
   bundlePath: string,
+  corePath: string,
   hooks?: ExportHooks
 ): Promise<string[]> {
   const args = [
@@ -42,6 +43,8 @@ async function captureSvg(
     target.cssPath,
     '--bundle-path',
     bundlePath,
+    '--core-path',
+    corePath,
     '--timeout',
     String(timeoutSec),
   ];
@@ -82,13 +85,24 @@ export async function run(
     throw new Error('svg adapter requires element targets (got file-tree)');
   }
   const timeoutSec = (options.timeoutSec as number | undefined) ?? 12;
-  const bundlePath = await getBrowserBundle('dom-to-svg', 'domToSvg');
+  const [bundlePath, corePath] = await Promise.all([
+    getBrowserBundle('dom-to-svg', 'domToSvg'),
+    getCaptureCoreBundle(),
+  ]);
   const tmp = mkdtempSync(path.join(tmpdir(), 'maude-svg-'));
 
   try {
     const written: string[] = [];
     for (let i = 0; i < elementTargets.length; i += 1) {
-      const paths = await captureSvg(elementTargets[i], ctx, tmp, timeoutSec, bundlePath, hooks);
+      const paths = await captureSvg(
+        elementTargets[i],
+        ctx,
+        tmp,
+        timeoutSec,
+        bundlePath,
+        corePath,
+        hooks
+      );
       written.push(...paths);
       hooks?.onProgress?.({ current: i + 1, total: elementTargets.length });
     }

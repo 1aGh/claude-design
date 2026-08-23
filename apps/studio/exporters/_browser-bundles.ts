@@ -71,6 +71,36 @@ async function buildIife(entry: string, globalName: string, cachePath: string): 
 }
 
 /**
+ * DDR-231 (hybrid export lanes) — bundle the SHARED capture spine
+ * (`capture-core.ts`) for injection into the playwright SVG shim's page. The
+ * module's top-level side effect assigns `window.__maudeCaptureCore`; the shim
+ * injects it as a module script next to the dom-to-svg IIFE and calls the SAME
+ * functions the canvas runtime's export-capture bridge imports directly —
+ * one source, two hosts (the single-spine rule).
+ */
+let captureCoreReady: Promise<string> | null = null;
+export function getCaptureCoreBundle(): Promise<string> {
+  if (captureCoreReady) return captureCoreReady;
+  const entry = path.join(DEV_SERVER_ROOT, 'exporters', 'capture-core.ts');
+  captureCoreReady = (async () => {
+    const built = await Bun.build({
+      entrypoints: [entry],
+      target: 'browser',
+      format: 'esm',
+      minify: true,
+      conditions: ['browser', 'import'],
+    });
+    if (!built.success) {
+      throw new Error(`capture-core bundle failed: ${built.logs.map((l) => l.message).join('; ')}`);
+    }
+    const first = built.outputs[0];
+    if (!first) throw new Error('capture-core bundle produced no outputs');
+    return writeHashedBundle(await first.text(), 'maude-capture-core');
+  })();
+  return captureCoreReady;
+}
+
+/**
  * DDR-148 — build the in-page video encoder (`video-encode-lib.ts`) to a
  * self-contained browser ESM module cached under the OS temp dir. It imports
  * mediabunny + gifenc (both INLINED — no externals) and assigns

@@ -87,18 +87,20 @@ Fresh, or an existing repository URL to seed from.
 
 ### 5b · Exports (the render sidecar)
 
-Ask whether people will export finished work (PNG, PDF, PPTX, video) **from
-the hosted studio in a browser**. If yes → add `--render`: it deploys the
-`maude-render` sidecar, the one container in the stack that carries a browser
-(DDR-230). The hub itself stays browser-free either way — that is a security
-invariant, not an omission.
+Ask whether people will export **video (MP4/WebM/GIF), PDF, or
+multi-artboard scopes** from the hosted studio in a browser. PNG/SVG of the
+active artboard and the PPTX deck need NO sidecar — they capture in the
+member's own browser (DDR-231) — so don't sell `--render` for those. If yes →
+add `--render`: it deploys the `maude-render` sidecar, the one container in
+the stack that carries a browser (DDR-230). The hub itself stays browser-free
+either way — that is a security invariant, not an omission.
 
 Say the trade honestly, in both directions:
 
-- **Without it** nothing breaks silently: rendered formats are disabled in the
-  export dialog with the reason, ZIP export and everything else still works,
-  and the desktop app exports everything. It can be added later by re-running
-  `workspace-up` with `--render`.
+- **Without it** nothing breaks silently: PNG/SVG of the active artboard, the
+  PPTX deck, ZIP and handoff all work; video/PDF are disabled in the export
+  dialog with the reason, and the desktop app exports everything. It can be
+  added later by re-running `workspace-up` with `--render`.
 - **With it** the sidecar runs alongside the hub, unreachable from outside
   (compose-network only), holds no hub secret and no data volume, and refuses
   to boot if a secret variable reaches it. It costs the memory of an idle

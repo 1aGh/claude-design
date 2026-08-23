@@ -84,10 +84,13 @@ try {
   // failure, so the success path and desktop output are unchanged.
   const diag = [];
   page.on('console', (m) => {
-    if (m.type() === 'error' || m.type() === 'warning') diag.push(`console.${m.type()}: ${m.text()}`);
+    if (m.type() === 'error' || m.type() === 'warning')
+      diag.push(`console.${m.type()}: ${m.text()}`);
   });
   page.on('pageerror', (e) => diag.push(`pageerror: ${e.message}`));
-  page.on('requestfailed', (r) => diag.push(`requestfailed: ${r.url()} — ${r.failure()?.errorText ?? '?'}`));
+  page.on('requestfailed', (r) =>
+    diag.push(`requestfailed: ${r.url()} — ${r.failure()?.errorText ?? '?'}`)
+  );
   try {
     await page.goto(url, { waitUntil: 'load', timeout: timeoutMs });
   } catch (e) {

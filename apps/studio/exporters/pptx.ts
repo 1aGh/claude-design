@@ -269,30 +269,47 @@ function pngArgsFor(target: ElementTarget, url: string, outDir: string): string[
 
 // ─── PNG fallback deck ────────────────────────────────────────────────────────
 
-async function buildPngDeck(pngPaths: string[]): Promise<Uint8Array> {
+/**
+ * DDR-231 (hybrid export lanes) — the browser-free half of the PNG deck,
+ * working on BYTES so the workspace assemble route (`/_api/export-assemble`)
+ * can feed it captures made in the MEMBER's browser: the client's
+ * export-capture bridge rasterizes the artboards, this composes the .pptx
+ * in-cell with PptxGenJS (pure JS — same containment class as zip). The
+ * desktop path below ({@link buildPngDeck}) is a thin file-reading wrapper,
+ * so both hosts share one composition (the single-spine rule).
+ *
+ * @param captureScale the deviceScale the PNGs were rendered at — slide
+ *   dimensions normalise back to artboard inches through it.
+ */
+export async function assemblePngDeck(
+  images: Uint8Array[],
+  captureScale: number
+): Promise<Uint8Array> {
   const JSZip = (await import('jszip')).default;
-  // Slide size from the first PNG (px → inches); contain-fit the rest.
-  const dims = pngPaths.map((p) => {
+  // Slide size from the largest PNG (px → inches); contain-fit the rest.
+  const dims = images.map((bytes) => {
     // PNG IHDR: width @ byte 16, height @ 20 (big-endian).
-    const b = readFileSync(p);
-    return { w: b.readUInt32BE(16), h: b.readUInt32BE(20), p };
+    const b = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    if (b.length < 24 || b.readUInt32BE(0) !== 0x89504e47) {
+      throw new Error('assemblePngDeck: not a PNG');
+    }
+    return { w: b.readUInt32BE(16), h: b.readUInt32BE(20), b };
   });
   const maxW = Math.max(...dims.map((d) => d.w));
   const maxH = Math.max(...dims.map((d) => d.h));
-  // The PNGs are FALLBACK_SCALE× the artboard; normalise to artboard inches.
-  const slideW = maxW / SCREEN_DPI / FALLBACK_SCALE;
-  const slideH = maxH / SCREEN_DPI / FALLBACK_SCALE;
+  const slideW = maxW / SCREEN_DPI / captureScale;
+  const slideH = maxH / SCREEN_DPI / captureScale;
   const pptx = new PptxGenJS();
   pptx.defineLayout({ name: 'MAUDE_ARTBOARD', width: slideW, height: slideH });
   pptx.layout = 'MAUDE_ARTBOARD';
   for (const d of dims) {
     const slide = pptx.addSlide();
-    const nativeW = d.w / SCREEN_DPI / FALLBACK_SCALE;
-    const nativeH = d.h / SCREEN_DPI / FALLBACK_SCALE;
+    const nativeW = d.w / SCREEN_DPI / captureScale;
+    const nativeH = d.h / SCREEN_DPI / captureScale;
     const scale = Math.min(slideW / nativeW, slideH / nativeH);
     const w = nativeW * scale;
     const h = nativeH * scale;
-    const dataUri = `data:image/png;base64,${readFileSync(d.p).toString('base64')}`;
+    const dataUri = `data:image/png;base64,${d.b.toString('base64')}`;
     slide.addImage({ data: dataUri, x: (slideW - w) / 2, y: (slideH - h) / 2, w, h });
   }
   const buf = new Uint8Array((await pptx.write({ outputType: 'nodebuffer' })) as Uint8Array);
@@ -308,6 +325,13 @@ async function buildPngDeck(pngPaths: string[]): Promise<Uint8Array> {
     zip.file('[Content_Types].xml', ct);
   }
   return zip.generateAsync({ type: 'uint8array' });
+}
+
+async function buildPngDeck(pngPaths: string[]): Promise<Uint8Array> {
+  return assemblePngDeck(
+    pngPaths.map((p) => new Uint8Array(readFileSync(p))),
+    FALLBACK_SCALE
+  );
 }
 
 export async function run(

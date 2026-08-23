@@ -70,6 +70,14 @@ export const STUDIO_ROUTES = Object.freeze({
   // render service; without one the studio refuses with a remedy (lane `none`).
   '/_api/export-jobs': { safe: 'read', unsafe: 'export' },
   '/_api/export-jobs/download': { safe: 'export', unsafe: null },
+  // DDR-231 — the browser lane's assemble half: the member's browser captured
+  // the artboard PNGs (canvas-lib export-capture bridge), this composes the
+  // .pptx in-cell with PptxGenJS — pure JS over pure data, the zip containment
+  // class. POST because it takes work; `export` is an all-roles capability.
+  '/_api/export-assemble': { safe: null, unsafe: 'export' },
+  // DDR-231 T7 — warm-up ping: a proxied render-service /_health GET so the
+  // container wakes while the member is still picking options. Read-class.
+  '/_api/export-warmup': { safe: 'read', unsafe: null },
   '/_api/assets': { safe: 'read', unsafe: null },
   '/_api/footage': { safe: 'read', unsafe: null },
   '/_api/comp-clips': { safe: 'read', unsafe: null },

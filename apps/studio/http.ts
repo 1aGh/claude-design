@@ -4425,6 +4425,102 @@ export function createHttp(
       });
     },
 
+    '/_api/export-warmup': async (req: Request) => {
+      // DDR-231 T7 — wake the render service while the member is still picking
+      // export options: the dialog fires this on open (remote lane only), so
+      // by the time a video/PDF job lands the multi-GB Chromium container is
+      // already booting instead of starting cold. Proxies GET /_health — no
+      // job body, no secret in the response, nothing evaluates.
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      if (!isTrustedRequestHost(req))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      const serviceUrl = process.env.MAUDE_RENDER_URL;
+      if (!serviceUrl) return Response.json({ ok: false, lane: resolveRenderLane() });
+      try {
+        const r = await fetch(`${serviceUrl.replace(/\/+$/, '')}/_health`, {
+          signal: AbortSignal.timeout(8_000),
+        });
+        const body = (await r.json().catch(() => null)) as { ok?: boolean } | null;
+        return Response.json(
+          { ok: Boolean(body?.ok), lane: 'remote' },
+          { headers: { 'Cache-Control': 'no-store' } }
+        );
+      } catch {
+        // A timeout here usually MEANS the container is waking — that is the
+        // point of the ping; report it calmly.
+        return Response.json(
+          { ok: false, waking: true, lane: 'remote' },
+          { headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+    },
+
+    '/_api/export-assemble': async (req: Request) => {
+      // DDR-231 (hybrid export lanes) — the browser lane's ASSEMBLE half. The
+      // member's browser captured the artboard PNGs (canvas-lib's
+      // export-capture bridge — the only place the pixels exist in a
+      // workspace); this composes them into a .pptx deck with PptxGenJS —
+      // pure JS over pure data, the same containment class as zip: no tenant
+      // TSX evaluates here and no browser enters the image. MAIN-ORIGIN ONLY
+      // (absent from CANVAS_SAFE_API + the canvas-origin routes map) and
+      // CSRF-gated like its jobs siblings.
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!isTrustedRequestHost(req))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      // Byte cap BEFORE parsing: 50 artboards at 3× are tens of MB; 96 MB sits
+      // under Bun's global maxRequestBodySize (~108 MB) so formData() can't be
+      // pushed past it, and still fits a large deck (PptxGenJS base64-encodes
+      // every image → memory ~3× input). REQUIRE an honest content-length: a
+      // chunked / absent-length body would otherwise skip this fast-reject and
+      // buffer up to Bun's ceiling before the loop below could stop it
+      // (adversarial pass). formData() itself is still Bun-capped as a backstop.
+      const MAX_ASSEMBLE_BYTES = 96 * 1024 * 1024;
+      const declared = Number(req.headers.get('content-length'));
+      if (!Number.isFinite(declared) || declared <= 0)
+        return new Response('content-length required', { status: 411 });
+      if (declared > MAX_ASSEMBLE_BYTES)
+        return new Response('assembly payload too large', { status: 413 });
+      const form = await req.formData().catch(() => null);
+      if (!form) return new Response('multipart form body required', { status: 400 });
+      if (form.get('format') !== 'pptx')
+        return new Response('unsupported assemble format', { status: 400 });
+      const scale = Math.max(1, Math.min(8, Number(form.get('scale')) || 1));
+      const images: Uint8Array[] = [];
+      let total = 0;
+      for (const [key, value] of form.entries()) {
+        if (key !== 'image') continue;
+        // Bun's FormData typings collapse the entry value; runtime-check the
+        // Blob shape instead of trusting the declared union.
+        const file = value as unknown;
+        if (!(file instanceof Blob)) continue;
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        total += bytes.byteLength;
+        if (images.length >= 100 || total > MAX_ASSEMBLE_BYTES)
+          return new Response('assembly payload too large', { status: 413 });
+        images.push(bytes);
+      }
+      if (!images.length) return new Response('no images to assemble', { status: 400 });
+      try {
+        const { assemblePngDeck } = await import('./exporters/pptx.ts');
+        const body = await assemblePngDeck(images, scale);
+        const name = String(form.get('name') || 'export').replace(/[^A-Za-z0-9._-]/g, '_');
+        return new Response(body as unknown as BodyInit, {
+          status: 200,
+          headers: {
+            'Content-Type':
+              'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            'Content-Disposition': `attachment; filename="${name}.pptx"`,
+            'Cache-Control': 'no-store',
+          },
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return new Response(`deck assembly failed: ${msg}`, { status: 422 });
+      }
+    },
+
     // feature-ai-media-generation (DDR-16x) — the background AI-media generation
     // job queue. The privileged sibling of /_api/export-jobs: MAIN-ORIGIN ONLY
     // (absent from CANVAS_SAFE_API + startCanvasServer's routes — the untrusted

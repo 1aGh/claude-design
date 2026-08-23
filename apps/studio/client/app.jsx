@@ -28,6 +28,14 @@ import { sizingModeOf, sizingModePatch } from '../sizing-mode.ts';
 // above (a type-only SyncStatusSnapshot import that Bun erases).
 import { syncPresentation } from '../sync/presentation.ts';
 import { canvasUrl } from './canvas-url.js';
+import {
+  BROWSER_CAPTURE_FORMATS,
+  BROWSER_SERVABLE_FORMATS,
+  browserCaptureEligible,
+  captureDeckViaBrowser,
+  captureScale,
+  sanitizeCapturedItem,
+} from './export-lane.js';
 import { TreeRowMenu, useRowMenu } from './tree-row-menu.jsx';
 import { useTreeDrag } from './use-tree-drag.js';
 import ChatPanel from './panels/ChatPanel.jsx';
@@ -1530,6 +1538,21 @@ function AssetPicker({
   );
 }
 
+// Direct download for a browser-lane capture. export-center's autoDownloadBlob
+// fetches a JOB's bytes — a browser capture has no job, just the Blob.
+function downloadCapturedBlob(name, blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name || 'export';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Revoke on a delay — an immediate revoke can race the download start in
+  // some engines (the click only queues the fetch of the object URL).
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
 function ExportDialog({
   mode,
   initialScope,
@@ -1539,22 +1562,27 @@ function ExportDialog({
   activeArtboardId = null,
   selection = null,
   exportLane = 'local',
+  onBrowserCapture = null,
   onClose,
 }) {
   // feature-cloud-export-render-workers — on a cell with no render service
   // (`lane === 'none'`), formats that render through a browser are offered
   // disabled-with-a-reason instead of firing a request the proxy 404s. ZIP
   // (JSZip over project files) and the AI-handoff card (clipboard copy) need
-  // no browser and stay live in every lane.
+  // no browser — and DDR-231's browser lane keeps png/svg live in every
+  // workspace lane too (captured by the member's own browser, no service).
   const laneBlocked = useCallback(
     (c) =>
-      (exportLane === 'none' && !c.handoff && c.format !== 'zip') ||
+      (exportLane === 'none' &&
+        !c.handoff &&
+        c.format !== 'zip' &&
+        !BROWSER_SERVABLE_FORMATS.has(c.format)) ||
       // Canva bundles project files the render service can't reach — desktop only
       // in every workspace lane (exporters/remote.ts REMOTE_UNSUPPORTED_FORMATS).
       (exportLane !== 'local' && c.format === 'canva'),
     [exportLane]
   );
-  const [sel, setSel] = useState(mode === 'handoff' ? 'shadcn' : exportLane === 'none' ? 'zip' : 'png');
+  const [sel, setSel] = useState(mode === 'handoff' ? 'shadcn' : 'png');
   const [scope, setScope] = useState(
     initialScope && EXPORT_SCOPE_LABELS[initialScope] ? initialScope : 'artboard'
   );
@@ -1605,6 +1633,15 @@ function ExportDialog({
   useEffect(() => {
     if (validScopes.length && !validScopes.includes(scope)) setScope(validScopes[0]);
   }, [validScopes, scope]);
+
+  // DDR-231 T7 — wake the render service the moment the dialog opens on a
+  // remote-lane workspace: the multi-GB Chromium container starts booting
+  // while the member is still picking format/scope, so a video/PDF job lands
+  // on a warm (or at least warming) service instead of a cold one.
+  useEffect(() => {
+    if (exportLane !== 'remote') return;
+    fetch('/_api/export-warmup').catch(() => {});
+  }, [exportLane]);
 
   const loadRecent = useCallback(() => {
     fetch('/_api/export-history')
@@ -1678,6 +1715,90 @@ function ExportDialog({
     // the in-canvas dialog's captureScopeHints.
     if (activeArtboardId) options.artboardId = activeArtboardId;
     if (selection?.selector) options.selection = selection;
+    // DDR-231 — the browser lane: in a workspace, png/svg of the active
+    // artboard is captured by the member's OWN browser (the canvas already
+    // renders here) — instant, no fleet wake. Everything else continues to
+    // the jobs lane below.
+    const browserEligible =
+      browserCaptureEligible({
+        exportLane,
+        format: card.format,
+        scope,
+        artboardId: options.artboardId,
+      }) && typeof onBrowserCapture === 'function';
+    if (browserEligible) {
+      try {
+        const capScale = captureScale(options);
+        setStatus({ ok: true, msg: 'Capturing…' });
+        const items = await onBrowserCapture({
+          format: card.format,
+          artboardIds: [options.artboardId],
+          scale: capScale,
+          onProgress: (current, total) =>
+            setStatus({ ok: true, msg: `Capturing ${current}/${total}…` }),
+        });
+        if (!items || !items.length) throw new Error('capture returned nothing');
+        // Sanitize before writing to disk — the capture bridge shares a window
+        // with tenant TSX, which can forge a reply (DDR-231 security pass).
+        for (const it of items) {
+          const safe = sanitizeCapturedItem(it, card.format);
+          downloadCapturedBlob(safe.name, safe.blob);
+        }
+        setBusy(false);
+        onClose();
+        return;
+      } catch (err) {
+        if (exportLane !== 'remote') {
+          setStatus({ ok: false, msg: `Capture failed: ${(err && err.message) || err}` });
+          setBusy(false);
+          return;
+        }
+        // A render service exists — degrade to the slower jobs lane instead of
+        // a dead end (and the fallback keeps the worker path exercised).
+      }
+    }
+    // DDR-231 — the pptx deck: capture every artboard as PNG in THIS browser,
+    // compose in-cell (/_api/export-assemble — the zip containment class).
+    if (
+      browserCaptureEligible({ exportLane, format: card.format, scope }) &&
+      card.format === 'pptx' &&
+      typeof onBrowserCapture === 'function'
+    ) {
+      try {
+        setStatus({ ok: true, msg: 'Capturing artboards…' });
+        const deckName =
+          activePath && activePath !== SYSTEM_TAB
+            ? basename(activePath).replace(/\.[^.]+$/, '')
+            : 'export';
+        const { filename, blob } = await captureDeckViaBrowser({
+          capture: onBrowserCapture,
+          name: deckName,
+          onProgress: (current, total) =>
+            setStatus({ ok: true, msg: `Capturing ${current}/${total}…` }),
+        });
+        downloadCapturedBlob(filename, blob);
+        setBusy(false);
+        onClose();
+        return;
+      } catch (err) {
+        if (exportLane !== 'remote') {
+          setStatus({ ok: false, msg: `Deck export failed: ${(err && err.message) || err}` });
+          setBusy(false);
+          return;
+        }
+        // Render service available — degrade to the jobs lane below.
+      }
+    }
+    if (exportLane === 'none' && BROWSER_CAPTURE_FORMATS.has(card.format)) {
+      // Without a render service the browser can only capture what it renders:
+      // the active artboard. Other scopes have nowhere to run.
+      setStatus({
+        ok: false,
+        msg: 'Without the render service this workspace exports PNG/SVG of the active artboard only — switch Scope to “Active artboard”, or ask your admin to add maude-render.',
+      });
+      setBusy(false);
+      return;
+    }
     try {
       // feature-background-export-notification-center — enqueue and close
       // immediately; the menubar notification center owns status, progress,
@@ -1745,10 +1866,11 @@ function ExportDialog({
           </div>
           {exportLane === 'none' && (
             <div className="st-dialog-note" data-testid="export-lane-note">
-              Rendered exports (PNG, PDF, video…) need the render service, which this
-              workspace doesn&apos;t have configured. ZIP and AI handoff still work here —
-              for everything else use the desktop app, or ask your admin to add the
-              <code> maude-render</code> service (see the self-hosting docs).
+              PNG and SVG of the active artboard — and the PPTX deck — export right
+              here in your browser; ZIP and AI handoff work too. PDF, video and other
+              multi-artboard exports need the render service, which this workspace
+              doesn&apos;t have configured — use the desktop app, or ask your admin to
+              add the <code> maude-render</code> service (see the self-hosting docs).
             </div>
           )}
           {!card.handoff && (
@@ -10286,6 +10408,58 @@ function App() {
     [activePath]
   );
 
+  // DDR-231 (hybrid export lanes) — ask the active canvas iframe to capture
+  // its own artboards (canvas-lib's useExportCaptureBridge) and hand back the
+  // blobs. The shell can't reach the cross-origin canvas DOM, and the sandbox
+  // omits allow-downloads, so this is the division of labour: the CANVAS
+  // captures (it renders the pixels), the SHELL downloads. Resolves with
+  // [{ name, type, blob }]; rejects on canvas error or timeout.
+  const browserCaptureSeq = useRef(0);
+  const captureFromCanvas = useCallback(
+    ({ format, artboardIds = null, scale = 1, onProgress, timeoutMs = 120_000 }) =>
+      new Promise((resolve, reject) => {
+        const el = activePath ? iframesRef.current.get(activePath) : null;
+        if (!el || !el.contentWindow) {
+          reject(new Error('no active canvas to capture'));
+          return;
+        }
+        const cw = el.contentWindow;
+        browserCaptureSeq.current += 1;
+        const id = `cap-${Date.now().toString(36)}-${browserCaptureSeq.current}`;
+        let settled = false;
+        const finish = (fn, arg) => {
+          if (settled) return;
+          settled = true;
+          window.removeEventListener('message', onMsg);
+          clearTimeout(timer);
+          fn(arg);
+        };
+        const onMsg = (e) => {
+          // Only answers from the iframe we asked — a message with a matching
+          // id from any other window is ignored.
+          if (e.source !== cw) return;
+          const m = e.data;
+          if (!m || m.id !== id) return;
+          if (m.dgn === 'export-capture-progress') onProgress?.(m.current, m.total);
+          else if (m.dgn === 'export-capture-done')
+            finish(resolve, Array.isArray(m.items) ? m.items : []);
+          else if (m.dgn === 'export-capture-error')
+            finish(reject, new Error(m.message || 'capture failed'));
+        };
+        const timer = setTimeout(
+          () => finish(reject, new Error('capture timed out — the canvas did not answer')),
+          timeoutMs
+        );
+        window.addEventListener('message', onMsg);
+        try {
+          cw.postMessage({ dgn: 'export-capture', id, format, artboardIds, scale }, '*');
+        } catch (err) {
+          finish(reject, err);
+        }
+      }),
+    [activePath]
+  );
+
   // ── feature-photo-editor — the Photo tab's three channels ─────────────────
   // (1) live preview: broadcast the edit DOWN to the active canvas iframe, whose
   //     canvas-lib `PhotoPreviewBridge` bakes the composite and swaps it directly
@@ -13006,6 +13180,52 @@ function App() {
           if (source) source.postMessage({ dgn: 'export-result', id, ...msg }, replyOrigin);
         } catch {}
       };
+      // DDR-231 — the browser lane, mirrored for the IN-CANVAS dialog: png/svg
+      // of a known artboard is captured by the asking canvas itself (the shell
+      // relays the request back over the export-capture bridge and downloads
+      // the blobs — the sandboxed iframe can't download, the shell can).
+      const opts = payload?.options || {};
+      const bridgedBrowserEligible = browserCaptureEligible({
+        exportLane: cfg.exportLane || 'local',
+        format: payload?.format,
+        scope: payload?.scope,
+        artboardId: opts.artboardId,
+      });
+      if (bridgedBrowserEligible) {
+        try {
+          if (payload.format === 'pptx') {
+            const { filename, blob } = await captureDeckViaBrowser({
+              capture: captureFromCanvas,
+              name: activePath ? activePath.replace(/^.*\//, '').replace(/\.[^.]+$/, '') : 'export',
+            });
+            downloadCapturedBlob(filename, blob);
+          } else {
+            const capScale = captureScale(opts);
+            const items = await captureFromCanvas({
+              format: payload.format,
+              artboardIds: [opts.artboardId],
+              scale: capScale,
+            });
+            if (!items || !items.length) throw new Error('capture returned nothing');
+            for (const it of items) {
+              const safe = sanitizeCapturedItem(it, payload.format);
+              downloadCapturedBlob(safe.name, safe.blob);
+            }
+          }
+          reply({ ok: true, browser: true });
+          return;
+        } catch {
+          if (cfg.exportLane !== 'remote') {
+            reply({
+              ok: false,
+              error:
+                'Capturing in the browser failed and this workspace has no render service to fall back to — try again, or ask your admin to add maude-render.',
+            });
+            return;
+          }
+          // Render service available — degrade to the jobs lane below.
+        }
+      }
       // feature-cloud-export-render-workers — a workspace with no render
       // service can't produce browser-rendered formats; answer the in-canvas
       // dialog with the reason instead of relaying a request the proxy 404s.
@@ -13014,7 +13234,7 @@ function App() {
         reply({
           ok: false,
           error:
-            'This format needs the render service, which this workspace doesn’t have configured. ZIP still works here; for rendered formats use the desktop app or ask your admin to add maude-render.',
+            'This format needs the render service, which this workspace doesn’t have configured. PNG/SVG of the active artboard and the PPTX deck export straight from the browser; ZIP works too. For the rest use the desktop app or ask your admin to add maude-render.',
         });
         return;
       }
@@ -13068,6 +13288,7 @@ function App() {
     broadcastChrome,
     activePath,
     postToActiveCanvas,
+    captureFromCanvas,
   ]);
 
   // Tell the active canvas iframe to drop any persistent selection (canvas
@@ -15831,6 +16052,7 @@ function App() {
           activeArtboardId={selected?.artboardId ?? canvasActiveArtboard ?? null}
           selection={selected?.selector ? { selector: selected.selector, file: selected.file } : null}
           exportLane={cfg.exportLane || 'local'}
+          onBrowserCapture={captureFromCanvas}
           onClose={() => setExportDialog(null)}
         />
       )}

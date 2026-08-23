@@ -98,8 +98,21 @@ export const FORBIDDEN_ROUTE_PREFIXES: ReadonlyArray<{
     // The job lane: enqueue / list+stream / history. No evaluation happens
     // in-cell — browser formats dispatch to maude-render (exporters/jobs.ts
     // render lane), zip runs browser-free, and lane `none` refuses with a
-    // remedy. DDR amending DDR-209 A′1 records the contract.
-    except: ['/_api/export-jobs', '/_api/export-jobs/download', '/_api/export-history'],
+    // remedy. DDR-230 (amending DDR-209 A′1) records the contract.
+    // `/_api/export-assemble` (DDR-231): the browser lane's assemble half —
+    // the MEMBER's browser captured the artboard PNGs, the cell composes the
+    // deck with PptxGenJS (pure JS over pure data, the zip containment
+    // class). Nothing evaluates here either.
+    // `/_api/export-warmup` (DDR-231 T7): proxies GET /_health to the render
+    // service so the container wakes while the member picks export options —
+    // no job body, no evaluation, no secret in the response.
+    except: [
+      '/_api/export-jobs',
+      '/_api/export-jobs/download',
+      '/_api/export-history',
+      '/_api/export-assemble',
+      '/_api/export-warmup',
+    ],
   },
   {
     prefix: '/_api/generate',

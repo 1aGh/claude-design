@@ -36,11 +36,11 @@ When you are ready for something real, [`/design:hub-workspace`](/docs/commands-
 
 ## Exports from the browser: the render sidecar
 
-The hub image carries **no browser** — that is a security invariant (no tenant-authored code is ever evaluated next to your hub's secrets), not an omission. It means the hosted studio cannot, by itself, render a PNG, PDF, PPTX or video: those exports capture the canvas through a real Chromium.
+The hub image carries **no browser** — that is a security invariant (no tenant-authored code is ever evaluated next to your hub's secrets), not an omission. Since v1.0.7 that matters less than it used to: **PNG and SVG of the artboard you're looking at, and the PPTX deck, export straight from the member's own browser** — the canvas already renders there, so those clicks are instant and need no sidecar. What still needs a real Chromium on a server is **video (MP4/WebM/GIF), PDF, and multi-artboard PNG/SVG scopes**.
 
 Two honest options:
 
-- **Do nothing.** Rendered formats show up disabled in the export dialog with the reason; ZIP export and everything else works; the desktop app exports every format. Many teams never need more.
+- **Do nothing.** PNG/SVG of the active artboard, the PPTX deck, ZIP and AI handoff all work in the hosted studio; video/PDF show up disabled in the export dialog with the reason, and the desktop app exports every format. Many teams never need more.
 - **Add `--render`** to `workspace-up`. It deploys the **`maude-render` sidecar** — a separate container that holds the Chromium and nothing else: no hub secret, no volume, no public port (the hub reaches it over the compose network only), and a boot-time refusal if any known secret variable is present in its environment. Renders authenticate back to the hub with the same short-lived read-only capability a member's own browser holds.
 
 ```sh

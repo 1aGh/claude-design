@@ -23,5 +23,6 @@
   "@remotion_transitions_wipe.js": 1500,
   "@remotion_transitions_flip.js": 700,
   "@remotion_transitions_clock-wipe.js": 36000,
-  "@remotion_transitions_none.js": 300
+  "@remotion_transitions_none.js": 300,
+  "dom-to-svg.js": 78000
 }

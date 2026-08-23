@@ -123,6 +123,12 @@ export const RUNTIME_PACKAGES = [
   '@remotion/transitions/flip',
   '@remotion/transitions/clock-wipe',
   '@remotion/transitions/none',
+  // DDR-231 (hybrid export lanes) — the workspace `browser` lane captures
+  // artboards in the MEMBER's browser. canvas-lib's export-capture listener
+  // reaches dom-to-svg through a LAZY runtime `import('dom-to-svg')` (the
+  // pixi.js pattern), so a canvas that never exports pays zero bundle cost —
+  // regression-pinned alongside pixi in test/photo-canvas-bundle.test.ts.
+  'dom-to-svg',
 ] as const;
 
 export type RuntimePackage = (typeof RUNTIME_PACKAGES)[number];

@@ -89,58 +89,58 @@ Sequencing: **T1 (hotfix) ships as an immediate patch release on its own** — i
 
 ## Tasks
 
-### Task 1: HOTFIX apps/render token proxy — strip stale encoding headers (ship immediately)
+### Task 1: HOTFIX apps/render token proxy — strip stale encoding headers (ship immediately) ✅ 2026-08-23 (proxy extracted to proxy.ts; fail-first red = ZlibError on verbatim replay, green after strip + accept-encoding: identity; suite wired into render-deploy.yml; v1.0.6 committed + tagged — push briefly blocked on locked 1Password SSH agent)
 
 - **Do**: In `startTokenProxy`, stop replaying the upstream Response verbatim. Rebuild: `const h = new Headers(r.headers); h.delete('content-encoding'); h.delete('content-length'); h.delete('transfer-encoding'); return new Response(r.body, { status: r.status, statusText: r.statusText, headers: h });` — and additionally send `accept-encoding: identity` upstream (belt-and-braces; also removes the decompress cost). Keep the `record()` log lines and the 25 s per-request abort.
 - **Pattern**: minimal diff; the proxy's read-only/redirect-error/SSRF posture is untouched.
 - **Gotcha**: the investigator's residual: production printed no `[page diagnostics]` while every local repro fired `requestfailed` — if the first post-fix production export still hangs, a second fault (edge body-stream stall) may coexist; the proxy log will now show sub-resource lines either way, which localizes it.
 - **Validate**: new fail-first test — a local gzip-serving upstream through the proxy must produce a response Chromium/`fetch` can consume (red on `return r`, green on the fix). Then patch release (`scripts/bump-version.sh patch` → tag → render-deploy) and one real cloud export of PNG + MP4. **This task alone closes the "export je rozbitý" incident.**
 
-### Task 2: RECORD DDR + ingest debate bookend
+### Task 2: RECORD DDR + ingest debate bookend ✅ 2026-08-23 (DDR-231 authored + graph-native ingest `maude/DDR-231` with EXTENDS→DDR-230, REFERENCES→`maude/debate-hybrid-export-lanes`; debate bookend ingested with seats as authors + dissent preserved)
 
 - **Do**: `/flow:record-ddr` — hybrid lanes decision (extends DDR-230): images = member browser, video = worker; browser MP4 rejected (Remotion CSS-subset evidence); preserved dissent = SHIPPER's decommission-the-fleet stance + BREAKER's "low-traffic lane rots" (answered by T7 canary). Ingest the resolved bookend into kgai with seats as authors, per debate-protocol §8 (seat strings as inert quotation).
 - **Validate**: `kg search "hybrid export"` returns the decision; DDR file present under `.ai/archive/decisions/`.
 
-### Task 3: CREATE in-iframe capture core (canvas runtime)
+### Task 3: CREATE in-iframe capture core (canvas runtime) ✅ 2026-08-23 (capture-core.ts extracted from _svg-playwright.mjs serializeOne — shim now delegates via getCaptureCoreBundle + window.__maudeCaptureCore; dom-to-svg added to RUNTIME_PACKAGES + importmap + dist/runtime (111KB, floor 78KB); useExportCaptureBridge in canvas-lib (postMessage protocol export-capture/-progress/-done/-error, lazy import('dom-to-svg'), world/artboard save-restore); lazy-bundle guarantee + capture-core unit tests green; tsc 0; live-Chromium smoke: SVG+PNG+restore OK)
 
 - **Do**: Ship a capture module into the canvas runtime: given artboard id(s) + scale, produce (a) a self-contained SVG via the existing `dom-to-svg` bundle (fonts/styles inlined — tldraw pattern) and (b) a PNG rasterization of that SVG through an offscreen `<canvas>` at the requested deviceScale, honoring `png.ts`'s size guards (16 000 px side / ~600 MB ceiling). Trigger + reply over the `dgn:` postMessage channel with transferable Blobs; multi-artboard = sequential with per-item progress messages.
 - **Pattern**: `_browser-bundles.ts` already builds the IIFE; serve it via the canvas runtime bundle set (`/_canvas-runtime/*`), resolved through `paths.ts` (DDR-045).
 - **Gotcha**: capture must run in the CANVAS origin — the shell cannot reach the iframe DOM (origin split, DDR-054). Fonts: dom-to-svg output must embed `@font-face` data or the raster silently falls back (fidelity gate T6 catches it). Cross-origin `<img>` (R2 assets) will taint the canvas — assets must be fetched-and-inlined as data URIs before rasterize, same-origin via the canvas asset routes.
 - **Validate**: unit-ish test driving the module in the studio test browser harness; a captured PNG of a smoke artboard is nonempty and dimensionally correct at ×1 and ×2.
 
-### Task 4: UPDATE lane dispatch + export dialog — `browser` lane
+### Task 4: UPDATE lane dispatch + export dialog — `browser` lane ✅ 2026-08-23 (client/export-lane.js = single eligibility rule, unit-tested 10/10; ExportDialog + bridged in-canvas handler route png/svg+active-artboard through captureFromCanvas → direct download, remote lane kept as automatic fallback on capture failure; `none` lane now OFFERS png/svg — note copy updated; server lane dispatch deliberately unchanged (worker stays capable = fallback + API surface); DEVIATIONS: html stays on jobs lane v1; browser captures don't write export-history v1 — a GET-only route, widening deferred to T9 review)
 
 - **Do**: Extend `RenderLane` with `browser`. In workspace mode: `png/pdf/svg/html/pptx` resolve to `browser`; `mp4/webm/gif` stay `remote`; `zip` in-cell; `none` refusals only for video-without-render-service. The dialog drives the browser lane fully client-side (no job POST for the capture itself): progress per artboard, Blob download at the end; failures are local, human-readable, never a stack trace. Job-history entry recorded via the existing export-history route so the notification center stays coherent.
 - **Pattern**: the dialog's workspace-aware copy from DDR-230 Track 1; keep the `bus.emit('export:job')` contract for anything that still runs as a cell job.
 - **Gotcha**: don't dual-path desktop — `local` lane keeps the playwright spine everywhere a local browser exists; `browser` lane is workspace/cloud only. Assert in `workspace-mode.ts` that a workspace cell still never resolves `local`.
 - **Validate**: `export-browser-lane.test.ts` lane-resolution matrix (fail-first for the new lane); manual cloud run: PNG of the visible artboard in ≤5 s warm.
 
-### Task 5: UPDATE multi-artboard assembly — PPTX + PDF in the browser lane
+### Task 5: UPDATE multi-artboard assembly — PPTX + PDF in the browser lane ✅ 2026-08-23 (PPTX: cell-assemble variant chosen — assemblePngDeck extracted to bytes-level seam in pptx.ts, new POST /_api/export-assemble (main-origin, CSRF, 256MB/100-img caps, fail-first manifest+containment tests), client captureDeckViaBrowser shared by both dialogs, `none` lane now serves PPTX; DECISION: pptxgenjs NOT bundled into the browser (bundle weight + DDR-176 risk) — composition stays in-cell like zip. DECISION: PDF stays on the remote worker lane — client svg2pdf double-conversion risks the exact raster/fidelity regression pdf.ts history litigated; revisit only with T6 gate evidence)
 
 - **Do**: PPTX: re-host today's in-page half (dom-to-svg + the `pptx.ts` text-positioning fixups) in the iframe; assemble the deck client-side with `pptxgenjs` (it runs in-browser) — or, if bundle size is prohibitive, POST captured SVGs to a new cell assemble route (manifest row: `export` capability; canvas-origin TWO-allowlist rule) where the existing Node assembly runs browser-free. PDF: decide vector vs raster — `page.pdf` vector fidelity is impossible client-side; **recommended**: SVG-per-page → client vector PDF via `svg2pdf.js`, with the T6 gate arbitrating; if vector fidelity fails the gate, PDF falls back to the `remote` lane (worker) rather than shipping raster (raster PDF was explicitly rejected in `pdf.ts` history — do not relitigate silently).
 - **Pattern**: `pptx.ts`'s fixup functions become shared code consumed by both hosts (single spine, BUILDER condition).
 - **Gotcha**: `pptxgenjs` in-browser writes via Blob — check bundle weight against the canvas runtime budget; new deps must also be mirrored per DDR-176 if they resolve inside `apps/studio`.
 - **Validate**: exported deck opens in PowerPoint/Keynote with text positioned correctly (the exact regression `pptx.ts`'s fixups exist for); PDF gate per T6.
 
-### Task 6: ADD fidelity gate — browser lane vs playwright reference
+### Task 6: ADD fidelity gate — browser lane vs playwright reference ✅ 2026-08-23 (test/export-capture-fidelity.test.ts — same-engine comparison, thresholds from MEASURED baseline: healthy 1.48/1.0, simulated text-drop 5.37/0.974 → gate meanDelta<4 + closeRatio>0.99 catches the drop class; runs in studio suite with repo Chromium)
 
 - **Do**: A ladder test rendering the smoke canvases through BOTH capture paths (desktop playwright PNG = reference; browser-lane PNG = candidate) and diffing (pixelmatch-style threshold; per-canvas allowlist for known deltas). Runs in CI on the studio suite; the browser lane may not ship for a format until its gate is green or its delta is documented + accepted.
 - **Pattern**: `/design:smoke` harness + `_smoke/` conventions.
 - **Gotcha**: fonts are the classic silent killer (SHIPPER's top_risk) — include a font-heavy smoke canvas.
 - **Validate**: gate red when a capture regression is injected (fail-first), green on the shipped set.
 
-### Task 7: ADD daily render canary + honest video-lane UX
+### Task 7: ADD daily render canary + honest video-lane UX ✅ 2026-08-23 (render-canary.yml: daily production-posture — health+configured+version-vs-wrangler+401 — a image-render-smoke: shipnutá ghcr image renderuje PNG end-to-end proti lokální fixture, žádný produkční secret; remote.ts lidské hlášky pro unreachable/503; /_api/export-warmup route + dialog ping on-open (fail-first manifest+containment testy); DEVIATIONS: full produkční render-job canary vyžaduje canary-scoped token mint — dokumentováno v hlavičce workflow; staged queued/waking/rendering progress text v notification centru = follow-up)
 
 - **Do**: (a) `.github/workflows/render-canary.yml` — scheduled daily: POST a minimal real render job (tiny public smoke canvas) to `https://render.cloud.maude.sh`, assert artifact bytes + `/_health` version; alert on failure (BREAKER's condition — the lane must be exercised between releases). (b) Video-lane UX: surface `queued / waking service (~1 min) / rendering (n%)` states in the dialog instead of a silent wait; map worker errors to human-readable text, keeping the `[canvas proxy]` trail behind a "details" disclosure. (c) Optional warm-up: fire a `/_health` ping to the render service when the export dialog opens with a video format selected, so the container wake overlaps with the user's option-picking.
 - **Gotcha**: canary needs a canvas the render service may fetch without a member session — mint the same short-lived viewer render token the cells mint, from a canary-scoped secret; never a write-capable token.
 - **Validate**: canary run green in Actions; kill-switch documented (disable schedule) in the workflow header.
 
-### Task 8: UPDATE docs + self-host — sidecar is video-only now
+### Task 8: UPDATE docs + self-host — sidecar is video-only now ✅ 2026-08-23 (self-host.mdx + workspace.mdx + self-host skill 5b přepsány: PNG/SVG artboardu + PPTX deck = browser, sidecar jen video/PDF/multi-scope; site build zelený; whats-new entry `instant-exports-in-your-browser` pending + mirror regenerován)
 
 - **Do**: `self-host.mdx` / `workspace.mdx` / self-host skill: image formats export in the member's browser everywhere (no sidecar needed); `--render` sidecar remains for video. Update the in-app What's New pending entry at `/flow:done` (whats-new-entry skill).
 - **Validate**: docs build green; `maude hub workspace-up` copy matches.
 
-### Task 9: Security + validation pass
+### Task 9: Security + validation pass ✅ 2026-08-23 (adversarial pass — DEFENDER+ATTACKER seats spawned + self-audit on the exact angles; 2 reachable findings hardened in-diff: (1) tenant TSX shares the canvas window and can FORGE an export-capture-done reply → new sanitizeCapturedItem() forces safe MIME + extension on every downloaded blob (RFD/XSS neutralized), tested; (2) /_api/export-assemble formData() buffered up to Bun's ~108MB before the cap → now requires honest content-length ≤96MB (411/413), tested. postMessage bridge gates e.source both directions; assemble+warmup are main-origin+CSRF+capability-gated, evaluate no tenant TSX (containment intact — SVG-with-script is pre-existing + equal across lanes, not a browser-lane regression). Full validation: 85 touched-area + 904 sync-lane + 23 hub-manifest green; biome check . = 0; tsc 0)
 
 - **Do**: `/flow:validate-security` scoped to: the new postMessage capture protocol (origin checks both directions — the shell must verify the iframe origin, the runtime must verify `event.origin` of the trigger), any new cell assemble route (capability `export`, canvas-origin allowlists, body caps via `readCapped` pattern), and the canary token scope. Then `/flow:validate` (full gates).
 - **Validate**: PASS or findings fixed in-diff; studio sync-lane tests green run alone (memory: parallel test runs contaminate).

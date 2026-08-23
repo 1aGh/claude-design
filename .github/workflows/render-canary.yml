@@ -1,0 +1,129 @@
+# maude-render daily canary (DDR-231 T7).
+#
+# WHY THIS EXISTS: the render lane is now LOW-TRAFFIC by design — images
+# export in the member's browser (DDR-231), so only video/PDF/batch jobs touch
+# the fleet. A lane nothing exercises rots silently; the service shipped FIVE
+# distinct outage classes (DO env caching, container-roll gap, verify race,
+# npm token, proxy header replay) before its first successful production
+# render, and every one was discovered by a member clicking Export. This
+# canary discovers them instead.
+#
+# Two independent checks:
+#   1. production-posture — the DEPLOYED service answers, is configured
+#      (secret + origins present), runs the version main's wrangler.toml
+#      declares, and refuses unauthenticated jobs. Catches: dead service,
+#      un-rolled container, lost secret, broken ingress.
+#   2. image-render-smoke — the SHIPPED ghcr image renders a real PNG job
+#      end-to-end (Chromium + exporter spine + token proxy) against a local
+#      fixture origin. Catches: image-level rot (broken Chromium, exporter
+#      regression, proxy bug) without touching production or any secret.
+#      (A local fixture can't reproduce edge-level behaviors like gzip
+#      compression — the proxy contract tests in apps/render/test cover that
+#      class at the unit level.)
+#
+# NO production render job is fired — that would need a per-tenant render
+# token minted from cell secrets, which do not belong in Actions. If a
+# canary-scoped mint endpoint ever exists, add lane 3 here.
+#
+# Kill-switch: disable this workflow in the Actions UI (or delete the
+# schedule block) — nothing else depends on it.
+
+on:
+  schedule:
+    - cron: '17 5 * * *' # daily, 05:17 UTC — off the busy hours
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  production-posture:
+    name: Production service posture
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Health, config and version
+        run: |
+          BODY=$(curl -sf --max-time 30 https://render.cloud.maude.sh/_health)
+          echo "health: $BODY"
+          echo "$BODY" | jq -e '.ok and .configured' >/dev/null || {
+            echo "::error::render service unhealthy or unconfigured: $BODY"; exit 1; }
+          WANT=$(grep -m1 '^image = ' apps/render/wrangler.toml | sed 's/.*:\(v[^"]*\)".*/\1/')
+          GOT=$(echo "$BODY" | jq -r '.version')
+          [ "$GOT" = "$WANT" ] || {
+            echo "::error::render service runs $GOT but main declares $WANT — a rollout did not land"; exit 1; }
+
+      - name: Unauthenticated jobs are refused
+        run: |
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
+            -X POST -H 'content-type: application/json' -d '{}' \
+            https://render.cloud.maude.sh/render)
+          [ "$CODE" = "401" ] || {
+            echo "::error::expected 401 for an unauthenticated job, got $CODE"; exit 1; }
+
+  image-render-smoke:
+    name: Shipped image renders a PNG end-to-end
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Log in to ghcr
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Serve a fixture canvas origin
+        run: |
+          mkdir -p /tmp/fixture
+          cat > /tmp/fixture/_canvas-shell.html <<'HTML'
+          <!doctype html><html><head><meta charset="utf-8"><title>canary</title></head>
+          <body style="margin:0">
+            <div class="dc-world">
+              <div data-dc-screen="canary" style="position:absolute;left:0;top:0;width:320px;height:200px;
+                   background:linear-gradient(120deg,#123,#345);color:#fff;font:16px sans-serif">
+                <div style="padding:24px">maude-render canary</div>
+              </div>
+            </div>
+          </body></html>
+          HTML
+          (cd /tmp/fixture && python3 -m http.server 8080 &) && sleep 1
+          curl -sf http://127.0.0.1:8080/_canvas-shell.html >/dev/null
+
+      - name: Boot the shipped image against the fixture
+        run: |
+          TAG=$(grep -m1 '^image = ' apps/render/wrangler.toml | sed 's/.*:\(v[^"]*\)".*/\1/')
+          echo "canarying ghcr.io/1agh/maude-render:$TAG"
+          docker run -d --name render --network host \
+            -e MAUDE_RENDER_SECRET=canary-secret \
+            -e MAUDE_RENDER_CANVAS_ORIGINS=http://127.0.0.1:8080 \
+            -e PORT=8790 \
+            "ghcr.io/1agh/maude-render:$TAG"
+          for i in $(seq 1 30); do
+            BODY=$(curl -s http://127.0.0.1:8790/_health || true)
+            if echo "$BODY" | jq -e '.ok and .configured' >/dev/null 2>&1; then
+              echo "service up: $BODY"; exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::the shipped image never came healthy"; docker logs render | tail -50; exit 1
+
+      - name: Render a PNG through the full spine
+        run: |
+          JOB='{"format":"png","targets":[{"kind":"element","cssPath":"[data-dc-screen]","canvasSlug":"canary","file":"canary.tsx"}],"options":{},"canvas":{"origin":"http://127.0.0.1:8080"}}'
+          CODE=$(curl -s -o /tmp/out.png -w '%{http_code}' --max-time 300 \
+            -X POST -H 'content-type: application/json' \
+            -H 'authorization: Bearer canary-secret' \
+            -d "$JOB" http://127.0.0.1:8790/render)
+          if [ "$CODE" != "200" ]; then
+            echo "::error::render returned $CODE: $(cat /tmp/out.png)"; docker logs render | tail -80; exit 1
+          fi
+          MAGIC=$(head -c 8 /tmp/out.png | xxd -p)
+          SIZE=$(wc -c < /tmp/out.png)
+          echo "artifact: ${SIZE} bytes, magic ${MAGIC}"
+          [ "$MAGIC" = "89504e470d0a1a0a" ] || { echo "::error::artifact is not a PNG"; exit 1; }
+          [ "$SIZE" -gt 1000 ] || { echo "::error::artifact suspiciously small"; exit 1; }

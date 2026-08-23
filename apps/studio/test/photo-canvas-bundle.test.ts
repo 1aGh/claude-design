@@ -59,3 +59,21 @@ describe('lazy-bundle guarantee — <PhotoLayer> keeps pixi out of the eager gra
     expect(js.includes('isDefaultEdit') || js.includes('PhotoLayer')).toBe(true);
   });
 });
+
+describe('lazy-bundle guarantee — the export-capture bridge keeps dom-to-svg out of the eager graph', () => {
+  // DDR-231: every canvas mounts useExportCaptureBridge (via DesignCanvas), so
+  // an EAGER dom-to-svg import would tax every canvas load with the ~110 KB
+  // bundle. Same fragility as pixi: canvas builds run `splitting: false`, and
+  // a refactor that turns the bridge's `await import('dom-to-svg')` static
+  // silently re-breaks this.
+  test('a plain canvas has NO eager `from "dom-to-svg"` import', async () => {
+    const js = await buildCanvas(CANVAS);
+    const eager = [...js.matchAll(/import\s[^;]*?from\s*["']dom-to-svg["']/g)];
+    expect(eager.length).toBe(0);
+  });
+
+  test('dom-to-svg is reachable only via a lazy runtime import("dom-to-svg")', async () => {
+    const js = await buildCanvas(CANVAS);
+    expect(/import\(\s*["']dom-to-svg["']\s*\)/.test(js)).toBe(true);
+  });
+});
