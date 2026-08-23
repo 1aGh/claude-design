@@ -13237,7 +13237,11 @@ function App() {
       // gate above just proved is `activePath`. Stamp it so scope resolution
       // never falls back to the server's (asynchronously written, possibly
       // stale) `_active.json` — same rule as the shell dialog's canvasFile.
-      if (payload?.options && activePath && activePath !== SYSTEM_TAB && !payload.options.canvasFile) {
+      // OVERWRITE, not fill-if-absent: the M1 gate above proved the sender IS
+      // the active canvas iframe (untrusted, DDR-054), so a canvasFile IT
+      // supplied must not survive — the bridged export renders the canvas it
+      // lives in, full stop (security review W2).
+      if (payload?.options && activePath && activePath !== SYSTEM_TAB) {
         payload.options.canvasFile = activePath;
       }
       const reply = (msg) => {

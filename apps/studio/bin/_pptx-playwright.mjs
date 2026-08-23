@@ -36,7 +36,10 @@ mkdirSync(dirname(out), { recursive: true });
 
 const browser = await launchChromium();
 try {
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const ctx = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    serviceWorkers: 'block',
+  });
   const page = await ctx.newPage();
   await page.goto(url, { waitUntil: 'networkidle', timeout: timeoutMs });
   await page.evaluate(() => document.fonts.ready);

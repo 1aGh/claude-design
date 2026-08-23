@@ -15,7 +15,7 @@
 // Scope is always `artboard`. No native binaries; the capture Chromium is the
 // same one every other exporter already uses (DDR-041).
 
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -35,6 +35,22 @@ import {
   scanUnsupportedMedia,
   type UnsupportedFinding,
 } from './unsupported-media.ts';
+
+/** Resolve a client-influenced canvas `file` to an absolute path inside the
+ * design root, following symlinks — .tsx/.html only. Mirrors jobs.ts's guard
+ * (security review F2). Returns null on any failure. */
+function safeCanvasAbs(repoRoot: string, designRoot: string, file: string): string | null {
+  if (!/\.(tsx|html)$/i.test(file)) return null;
+  try {
+    const designReal = realpathSync(path.resolve(designRoot));
+    // `file` is repo-relative (carries the `.design/` prefix) — resolve against
+    // repoRoot, require the realpath under designRoot.
+    const abs = realpathSync(path.resolve(repoRoot, file));
+    return abs === designReal || abs.startsWith(designReal + path.sep) ? abs : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * `options.unsupportedMedia` — the cell's pre-resolved `scanUnsupportedMedia`
@@ -104,8 +120,13 @@ async function runVideo(
     // <Audio>, the frame-step fallback ran ~40× slower and shipped a muted
     // file. So the cell resolves the findings up front and ships them in the
     // job (`options.unsupportedMedia`, exporters/jobs.ts), same as printProps.
-    const canvasAbs = path.resolve(ctx.repoRoot, el.file);
-    const findings = shippedUnsupportedMedia(options) ?? scanUnsupportedMedia(canvasAbs);
+    // `el.file` is client-influenced (canvasFile / selection.file). On the
+    // local/in-cell lane we scan it off disk — bound to the DESIGN root,
+    // realpath-checked (a `startsWith` prefix alone is escaped by an
+    // in-checkout symlink), .tsx/.html only (defender W1 / attacker F2).
+    const canvasAbs = safeCanvasAbs(ctx.repoRoot, ctx.designRoot, el.file);
+    const findings =
+      shippedUnsupportedMedia(options) ?? (canvasAbs ? scanUnsupportedMedia(canvasAbs) : []);
     for (const finding of findings) {
       if (finding.element === 'Audio' && options.audio !== false) {
         // Refuse. A vanished music bed is worse than an export that did not run.

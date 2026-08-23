@@ -14,7 +14,7 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { launchChromium } from './_pw-launch.mjs';
+import { launchChromium, safeArtboardFilename } from './_pw-launch.mjs';
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, cur, i, all) => {
@@ -44,7 +44,10 @@ const timeoutMs = Number(timeout) * 1000;
 
 const browser = await launchChromium();
 try {
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const ctx = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    serviceWorkers: 'block',
+  });
   const page = await ctx.newPage();
   await page.goto(url, { waitUntil: 'load', timeout: timeoutMs });
   await page.evaluate(() => document.fonts.ready);
@@ -101,7 +104,10 @@ try {
       const restore = await pinArtboard(handle);
       const html = await serializeOne(handle, false);
       await restore();
-      const target = join(outDir, `${id}.html`);
+      // Tenant-authored id (untrusted, DDR-054) — sanitize before it becomes a
+      // path segment, same as the png shim (security review F1: arbitrary-path
+      // write of attacker bytes via a `../`-laden data-dc-screen).
+      const target = join(outDir, safeArtboardFilename(id, i, 'html'));
       writeFileSync(target, html, 'utf8');
       written.push(target);
       console.log(`MAUDE_PROGRESS {"current":${i + 1},"total":${screens.length}}`);
@@ -227,6 +233,34 @@ async function serializeOne(locator, widenToArtboard) {
         }
       }
 
+      // Neutralize executable markup before serializing. The artboard is
+      // TENANT-authored (untrusted, DDR-054) and this file is opened LOCALLY by
+      // a member (file:// origin) — so a `<script>`, an `onerror=`, a
+      // `javascript:` href or a `<foreignObject>` in the canvas would run as
+      // the member on open (security review F1). Strip them from anything we
+      // serialize; a `script-src 'none'` CSP meta (below) is the belt to this
+      // braces. The clone is a throwaway — the live canvas is untouched.
+      const neutralize = (rootEl) => {
+        for (const el of Array.from(rootEl.querySelectorAll('script,foreignObject'))) el.remove();
+        const walk = rootEl.querySelectorAll('*');
+        for (const el of [rootEl, ...Array.from(walk)]) {
+          for (const attr of Array.from(el.attributes ?? [])) {
+            const name = attr.name.toLowerCase();
+            if (name.startsWith('on')) {
+              el.removeAttribute(attr.name);
+              continue;
+            }
+            if (
+              (name === 'href' || name === 'xlink:href' || name === 'src') &&
+              /^\s*javascript:/i.test(attr.value)
+            ) {
+              el.removeAttribute(attr.name);
+            }
+          }
+        }
+      };
+      neutralize(clone);
+
       // SVG defs the artboard references but does not CONTAIN — a design
       // system typically mounts its <filter>/<linearGradient>/<pattern> once
       // per canvas, outside any artboard. `outerHTML` of the artboard alone
@@ -238,7 +272,11 @@ async function serializeOne(locator, widenToArtboard) {
         )
       )) {
         if (target.contains(d)) continue;
-        defsHtml.push(d.outerHTML);
+        // A def can equally smuggle script (a <symbol>/<mask> wrapping a
+        // <foreignObject>) — clone + neutralize before taking its markup.
+        const dc = d.cloneNode(true);
+        neutralize(dc);
+        defsHtml.push(dc.outerHTML);
       }
       const defsBlock = defsHtml.length
         ? `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>${defsHtml.join('')}</defs></svg>`
@@ -260,13 +298,36 @@ async function serializeOne(locator, widenToArtboard) {
         const d = await toDataUrl(u);
         if (d) css = css.split(u).join(d);
       }
+      // BOUNDARY (security review F5): any `url(http(s)://…)` still here is a
+      // resource we could NOT inline (blocked/failed) — a tenant-authored
+      // beacon that would fire when a DIFFERENT user opens the file. Neutralize
+      // it to `url(about:blank)` rather than leave the phone-home in the CSS.
+      css = css.replace(/url\(\s*(['"]?)(https?:[^)'"]+)\1\s*\)/gi, 'url(about:blank)');
+      // Same for any element `src`/`href` the img/image loops left remote.
+      for (const el of Array.from(clone.querySelectorAll('[src],[href],[xlink\\:href]'))) {
+        for (const a of ['src', 'href', 'xlink:href']) {
+          const v = el.getAttribute(a);
+          if (v && /^\s*https?:/i.test(v)) el.removeAttribute(a);
+        }
+      }
 
+      const escapeHtml = (s) =>
+        String(s).replace(
+          /[&<>"']/g,
+          (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
+        );
+
+      // `script-src 'none'` is the belt to `neutralize()`'s braces — even if a
+      // sink is missed, the opened artifact executes no script. `object-src`
+      // blocks plugin embeds; the design still renders (it is static markup +
+      // inlined CSS/images). `document.title` is tenant-influenced — escape it.
       return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="script-src 'none'; object-src 'none'; base-uri 'none'" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${document.title || 'Maude export'}</title>
+<title>${escapeHtml(document.title || 'Maude export')}</title>
 <style>${css}</style>
 </head>
 <body>${defsBlock}${clone.outerHTML}</body>

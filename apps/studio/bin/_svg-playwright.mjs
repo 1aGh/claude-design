@@ -18,7 +18,7 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { launchChromium } from './_pw-launch.mjs';
+import { launchChromium, safeArtboardFilename } from './_pw-launch.mjs';
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, cur, i, all) => {
@@ -53,7 +53,10 @@ const timeoutMs = Number(timeout) * 1000;
 
 const browser = await launchChromium();
 try {
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const ctx = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    serviceWorkers: 'block',
+  });
   const page = await ctx.newPage();
   await page.goto(url, { waitUntil: 'load', timeout: timeoutMs });
   await page.evaluate(() => document.fonts.ready);
@@ -156,7 +159,11 @@ try {
       // Each multi handle is already a `[data-dc-screen]` artboard — no widen.
       const svg = await serializeOne(handle, false);
       await restore();
-      const target = join(outDir, `${id}.svg`);
+      // `id` is the tenant-authored `data-dc-screen` (untrusted, DDR-054) — a
+      // `../`-laden id in `join(outDir, `${id}.svg`)` is an arbitrary-path
+      // write of attacker bytes (security review F1). The png shim already
+      // routes through this; the svg/html siblings did not.
+      const target = join(outDir, safeArtboardFilename(id, i, 'svg'));
       writeFileSync(target, svg, 'utf8');
       written.push(target);
       console.log(`MAUDE_PROGRESS {"current":${i + 1},"total":${screens.length}}`);

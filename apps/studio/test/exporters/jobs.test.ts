@@ -288,3 +288,55 @@ describe('renderRemotely — no second timeout under the job timeout', () => {
     expect(call).toContain('timeout: false');
   });
 });
+
+// Security review F2 — a viewer flooding the browser-lane ledger must not evict
+// another member's real export bytes. `recordBrowserExport` fabricates a
+// `done` row stamped now (top of the sort); before the fix, `persistAndEvict`
+// ranked ALL finished jobs together, so 20 byteless browser rows pushed a real
+// job past HISTORY_DEPTH and `rm`'d its bytes — an append that was secretly a
+// delete primitive, reachable by the lowest-privilege role.
+describe('exporters/jobs — browser-lane rows never evict real job bytes (F2)', () => {
+  test('a real job stays downloadable after a flood of recordBrowserExport rows', async () => {
+    const { root } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port, { MAUDE_EXPORT_MAX_QUEUED: '30' });
+    try {
+      // A real completed export with bytes on disk.
+      const r0 = await fetch(`http://localhost:${port}/_api/export-jobs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ format: 'zip', scope: 'project-raw' }),
+      });
+      const { jobId } = (await r0.json()) as { jobId: string };
+      let done = false;
+      const deadline = Date.now() + 4000;
+      while (Date.now() < deadline && !done) {
+        const jobs = await listJobs(port);
+        done = jobs.find((j) => j.id === jobId)?.status === 'done';
+        if (!done) await Bun.sleep(15);
+      }
+      expect(done).toBe(true);
+      expect(
+        (await fetch(`http://localhost:${port}/_api/export-jobs/download?id=${jobId}`)).status
+      ).toBe(200);
+
+      // Flood: 30 browser-lane ledger rows (what a viewer POSTs), well past the
+      // 20-row cap — enough to have evicted the real job under the old logic.
+      for (let i = 0; i < 30; i += 1) {
+        const rr = await fetch(`http://localhost:${port}/_api/export-history`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', origin: `http://localhost:${port}` },
+          body: JSON.stringify({ format: 'png', scope: 'artboard', filename: `flood-${i}.png` }),
+        });
+        expect(rr.status).toBe(201);
+      }
+
+      // The real job's bytes must still be there.
+      const dl = await fetch(`http://localhost:${port}/_api/export-jobs/download?id=${jobId}`);
+      expect(dl.status).toBe(200);
+      expect((await dl.arrayBuffer()).byteLength).toBeGreaterThan(0);
+    } finally {
+      await killProc(proc);
+    }
+  });
+});

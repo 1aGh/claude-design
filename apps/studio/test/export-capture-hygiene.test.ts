@@ -494,3 +494,182 @@ describe('browser-lane capture hygiene (paint dom-to-svg cannot express)', () =>
     { timeout: 60_000 }
   );
 });
+
+describe('HTML export is inert (security review F1)', () => {
+  test(
+    'a canvas with <script>/onerror/javascript:/foreignObject exports as non-executable HTML',
+    async () => {
+      // The self-contained HTML file is opened LOCALLY by a member (file://
+      // origin). A tenant-authored canvas (untrusted, DDR-054) must not smuggle
+      // executable markup into it. Drive the real _html-playwright shim over a
+      // canvas-shaped page carrying every script sink, and assert the produced
+      // document is neutralized (no <script>, no on* handler, no javascript:,
+      // no <foreignObject>) AND carries a script-src 'none' CSP meta.
+      const server = Bun.serve({
+        port: 0,
+        fetch() {
+          return new Response(
+            `<!doctype html><html><head><title>x</title>
+             <script>window.__evil = 1</script></head>
+             <body style="margin:0"><div class="dc-world">
+               <article data-dc-screen="b1" style="position:absolute;left:0;top:0;width:200px;height:120px;background:#123">
+                 <img src="x" onerror="window.__evil=2">
+                 <a href="javascript:window.__evil=3">x</a>
+                 <svg><foreignObject><div onclick="window.__evil=4">x</div></foreignObject></svg>
+               </article>
+             </div></body></html>`,
+            { headers: { 'content-type': 'text/html' } }
+          );
+        },
+      });
+      const { spawn } = await import('bun');
+      const { mkdtempSync } = await import('node:fs');
+      const { tmpdir } = await import('node:os');
+      const { join } = await import('node:path');
+      const out = join(mkdtempSync(join(tmpdir(), 'maude-html-f1-')), 'out.html');
+      const shim = join(import.meta.dir, '..', 'bin', '_html-playwright.mjs');
+      const proc = spawn({
+        cmd: [
+          'node',
+          shim,
+          '--url',
+          `http://127.0.0.1:${server.port}`,
+          '--selector',
+          '[data-dc-screen="b1"]',
+          '--out',
+          out,
+          '--timeout',
+          '15',
+        ],
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      const code = await proc.exited;
+      server.stop(true);
+      expect(code).toBe(0);
+      const html = await Bun.file(out).text();
+      // Neutralized.
+      expect(html).not.toMatch(/<script[\s>]/i);
+      expect(html).not.toMatch(/\bon\w+\s*=/i);
+      expect(html).not.toMatch(/javascript:/i);
+      expect(html).not.toMatch(/<foreignobject/i);
+      // Belt: a CSP that forbids script even if a sink were missed.
+      expect(html).toMatch(/http-equiv="Content-Security-Policy"[^>]*script-src 'none'/i);
+    },
+    { timeout: 60_000 }
+  );
+});
+
+describe('security review — path traversal + remote-ref beacon', () => {
+  test(
+    'a `../`-laden data-dc-screen id cannot write outside the out-dir (F1, svg + html)',
+    async () => {
+      const { spawn } = await import('bun');
+      const { mkdtempSync, existsSync } = await import('node:fs');
+      const { tmpdir } = await import('node:os');
+      const { join } = await import('node:path');
+      // A canvas with two artboards whose ids are path-traversal payloads.
+      const server = Bun.serve({
+        port: 0,
+        fetch() {
+          return new Response(
+            `<!doctype html><body style="margin:0"><div class="dc-world">
+             <article data-dc-screen="../../ESCAPED-A" style="position:absolute;left:0;top:0;width:80px;height:60px;background:#123"></article>
+             <article data-dc-screen="../../ESCAPED-B" style="position:absolute;left:0;top:0;width:80px;height:60px;background:#345"></article>
+             </div></body>`,
+            { headers: { 'content-type': 'text/html' } }
+          );
+        },
+      });
+      const iife = await getBrowserBundle('dom-to-svg', 'domToSvg');
+      const core = await getCaptureCoreBundle();
+      try {
+        for (const [shim, ext, extraArgs] of [
+          ['_svg-playwright.mjs', 'svg', ['--bundle-path', iife, '--core-path', core]],
+          ['_html-playwright.mjs', 'html', []],
+        ] as const) {
+          const base = mkdtempSync(join(tmpdir(), 'maude-f1-'));
+          const outDir = join(base, 'out');
+          const proc = spawn({
+            cmd: [
+              'node',
+              join(import.meta.dir, '..', 'bin', shim),
+              '--url',
+              `http://127.0.0.1:${server.port}`,
+              '--selector',
+              '[data-dc-screen]',
+              '--multi',
+              '--out-dir',
+              outDir,
+              '--timeout',
+              '15',
+              ...extraArgs,
+            ],
+            stdout: 'pipe',
+            stderr: 'pipe',
+          });
+          expect(await proc.exited).toBe(0);
+          // The traversal target — `<base>/ESCAPED-A.<ext>` — must NOT exist.
+          expect(existsSync(join(base, `ESCAPED-A.${ext}`))).toBe(false);
+          expect(existsSync(join(base, `ESCAPED-B.${ext}`))).toBe(false);
+          // The sanitized files land INSIDE out-dir instead.
+          expect(existsSync(join(outDir, `artboard-1.${ext}`))).toBe(true);
+        }
+      } finally {
+        server.stop(true);
+      }
+    },
+    { timeout: 90_000 }
+  );
+
+  test('a remote background url the CSP blocks is dropped from the SVG, not left as a beacon (F5)', async () => {
+    const [iife, core] = await Promise.all([
+      getBrowserBundle('dom-to-svg', 'domToSvg'),
+      getCaptureCoreBundle(),
+    ]);
+    // The capture page pins connect-src 'self' (cspForCapture) — but here we
+    // assert the BOUNDARY: even without a CSP, a remote ref that fails to
+    // inline must be removed. Point at a black-hole host so the fetch fails.
+    const server = Bun.serve({
+      port: 0,
+      fetch() {
+        return new Response(
+          `<!doctype html><body style="margin:0"><div class="dc-world">
+           <article data-dc-screen="b1" style="position:absolute;left:0;top:0;width:200px;height:120px;background:#123">
+             <img src="http://127.0.0.1:1/beacon.png" width="40" height="40">
+           </article></div></body>`,
+          { headers: { 'content-type': 'text/html' } }
+        );
+      },
+    });
+    const { launchChromium } = (await import('../bin/_pw-launch.mjs')) as {
+      launchChromium: () => Promise<{
+        newContext: (o: unknown) => Promise<{ newPage: () => Promise<unknown> }>;
+        close: () => Promise<void>;
+      }>;
+    };
+    const browser = await launchChromium();
+    try {
+      const ctx = await browser.newContext({});
+      // biome-ignore lint/suspicious/noExplicitAny: playwright page surface
+      const page: any = await ctx.newPage();
+      await page.goto(`http://127.0.0.1:${server.port}`, { waitUntil: 'load' });
+      await page.addScriptTag({ path: iife });
+      await page.addScriptTag({ path: core, type: 'module' });
+      await page.waitForFunction(
+        () => !!(window as never as Record<string, unknown>).__maudeCaptureCore
+      );
+      const svg: string = await page.evaluate(async () => {
+        // biome-ignore lint/suspicious/noExplicitAny: injected globals
+        const w = window as any;
+        const target = document.querySelector('[data-dc-screen]') as Element;
+        return await w.__maudeCaptureCore.svgForElement(target, w.domToSvg);
+      });
+      expect(svg.match(/https?:\/\/127\.0\.0\.1:1/g) ?? []).toEqual([]);
+      expect(svg).not.toContain('beacon.png');
+    } finally {
+      await browser.close();
+      server.stop(true);
+    }
+  });
+});

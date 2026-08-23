@@ -73,6 +73,7 @@ try {
   // 1440x900 matches the canvas viewport the design tool uses everywhere;
   // exporters resize per-target before each shot to fit the artboard exactly.
   const ctx = await browser.newContext({
+    serviceWorkers: 'block',
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor,
   });

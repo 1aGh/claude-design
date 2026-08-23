@@ -23,7 +23,7 @@
 // pair had). The ledger is seeded from disk once at construction so history
 // survives a server restart even though job state itself doesn't.
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { readAllArtboardPrintProps } from '../canvas-edit.ts';
@@ -229,15 +229,47 @@ function isFinished(job: ExportJob): boolean {
   return job.status === 'done' || job.status === 'failed';
 }
 
+/**
+ * Resolve a client-influenced canvas `file` to an absolute path INSIDE the
+ * design root, following symlinks (security review F2). `file` originates from
+ * `options.canvasFile`/`selection.file` — a viewer picks it — so the floor is
+ * the DESIGN root (not the whole checkout: no `.git`/`.env`/sibling files), the
+ * containment is re-checked AFTER `realpathSync` (a `startsWith` string prefix
+ * alone is escaped by an in-checkout symlink), and only `.tsx`/`.html` canvas
+ * files are eligible. Returns null on any failure — the reader then contributes
+ * nothing, exactly as an unreadable canvas does.
+ */
+function safeCanvasAbs(
+  repoRoot: string | undefined,
+  designRoot: string | undefined,
+  file: string
+): string | null {
+  if (!repoRoot || !designRoot) return null;
+  if (!/\.(tsx|html)$/i.test(file)) return null;
+  let designReal: string;
+  let abs: string;
+  try {
+    designReal = realpathSync(path.resolve(designRoot));
+    // `file` is REPO-relative (it carries the `.design/` prefix) — resolve
+    // against repoRoot, then require the realpath sits under the DESIGN root.
+    abs = realpathSync(path.resolve(repoRoot, file));
+  } catch {
+    return null;
+  }
+  return abs === designReal || abs.startsWith(designReal + path.sep) ? abs : null;
+}
+
 /** The cell-side `scanUnsupportedMedia` for a remote video job — the first
  * element target's canvas (video renders one artboard). */
-function readUnsupportedMediaFor(targets: Target[], repoRoot: string | undefined) {
-  if (!repoRoot) return [];
+function readUnsupportedMediaFor(
+  targets: Target[],
+  repoRoot: string | undefined,
+  designRoot: string | undefined
+) {
   const t = targets.find((x) => x.kind === 'element');
   if (!t || t.kind !== 'element') return [];
-  const abs = path.resolve(repoRoot, t.file);
-  if (!abs.startsWith(path.resolve(repoRoot) + path.sep)) return [];
-  return scanUnsupportedMedia(abs);
+  const abs = safeCanvasAbs(repoRoot, designRoot, t.file);
+  return abs ? scanUnsupportedMedia(abs) : [];
 }
 
 /**
@@ -248,15 +280,14 @@ function readUnsupportedMediaFor(targets: Target[], repoRoot: string | undefined
  */
 function readPrintPropsFor(
   targets: Target[],
-  repoRoot: string | undefined
+  repoRoot: string | undefined,
+  designRoot: string | undefined
 ): Record<string, Record<string, Record<string, unknown>>> {
   const out: Record<string, Record<string, Record<string, unknown>>> = {};
-  if (!repoRoot) return out;
   for (const t of targets) {
     if (t.kind !== 'element' || out[t.file]) continue;
-    const abs = path.resolve(repoRoot, t.file);
-    // Stay under the checkout — `file` is client-influenced (selection.file).
-    if (!abs.startsWith(path.resolve(repoRoot) + path.sep)) continue;
+    const abs = safeCanvasAbs(repoRoot, designRoot, t.file);
+    if (!abs) continue;
     try {
       const props = readAllArtboardPrintProps(abs, readFileSync(abs, 'utf8'));
       if (Object.keys(props).length) out[t.file] = props;
@@ -347,21 +378,36 @@ export function createExportJobQueue(bus: Bus, designRoot: string): ExportJobQue
     const history = deriveHistory();
     await Bun.write(historyPath, JSON.stringify(history, null, 2));
 
-    // Evict bytes (+ the in-memory record) for anything that rolled past the
-    // cap, or aged out, whichever comes first.
-    const finished = Array.from(jobs.values())
-      .filter(isFinished)
-      .sort((a, b) => (b.finishedAt ?? '').localeCompare(a.finishedAt ?? ''));
     const now = Date.now();
-    const stale = finished.filter((j, i) => {
+
+    // BYTE eviction is ranked among jobs that HAVE bytes on disk — never driven
+    // by browser-lane rows. A `deliveredInBrowser` row (recordBrowserExport)
+    // holds no bytes and is reachable by a viewer, so counting it toward the
+    // FIFO-`HISTORY_DEPTH` window would let a viewer flood fake rows and push a
+    // real member's not-yet-downloaded PDF/video past the cap — deleting its
+    // bytes (security review F2: an append that was secretly a delete
+    // primitive). The two concerns are now separate: the ledger above is a
+    // display list; this is GC of real artifacts only.
+    const withBytes = Array.from(jobs.values())
+      .filter((j) => isFinished(j) && !j.deliveredInBrowser && j.filename)
+      .sort((a, b) => (b.finishedAt ?? '').localeCompare(a.finishedAt ?? ''));
+    const staleBytes = withBytes.filter((j, i) => {
       if (i >= HISTORY_DEPTH) return true;
       const finishedAt = j.finishedAt ? Date.parse(j.finishedAt) : Number.NaN;
       return Number.isFinite(finishedAt) && now - finishedAt > MAX_JOB_AGE_MS;
     });
-    for (const job of stale) {
+    for (const job of staleBytes) {
       jobs.delete(job.id);
       await rm(path.join(jobsDir, job.id), { recursive: true, force: true }).catch(() => {});
     }
+
+    // In-memory record eviction for the byte-free rows (browser-lane +
+    // aged/over-cap finished jobs whose bytes are already gone) — bound the Map
+    // so the ledger's own history depth caps memory. No disk to remove.
+    const byteless = Array.from(jobs.values())
+      .filter((j) => isFinished(j) && (j.deliveredInBrowser || !j.filename))
+      .sort((a, b) => (b.finishedAt ?? '').localeCompare(a.finishedAt ?? ''));
+    for (const job of byteless.slice(HISTORY_DEPTH)) jobs.delete(job.id);
   }
 
   function enqueue(args: EnqueueArgs): { id: string; result: Promise<ExportResult> } {
@@ -442,7 +488,11 @@ export function createExportJobQueue(bus: Bus, designRoot: string): ExportJobQue
                 args.format === 'pdf'
                   ? {
                       ...args.options,
-                      printProps: readPrintPropsFor(remoteTargets, args.resolve.repoRoot),
+                      printProps: readPrintPropsFor(
+                        remoteTargets,
+                        args.resolve.repoRoot,
+                        args.resolve.designRoot
+                      ),
                     }
                   : VIDEO_FORMATS.has(args.format)
                     ? {
@@ -451,7 +501,8 @@ export function createExportJobQueue(bus: Bus, designRoot: string): ExportJobQue
                         // source — same "only the cell has the checkout" rule.
                         unsupportedMedia: readUnsupportedMediaFor(
                           remoteTargets,
-                          args.resolve.repoRoot
+                          args.resolve.repoRoot,
+                          args.resolve.designRoot
                         ),
                       }
                     : args.options,

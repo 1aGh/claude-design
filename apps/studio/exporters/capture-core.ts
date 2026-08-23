@@ -521,6 +521,18 @@ export function stripChromeNodes(root: Element): void {
   }
 }
 
+/**
+ * Remove any `<image>` element still pointing at a remote `http(s)` URL after
+ * inlining — a beacon the capture CSP blocked from embedding but that would
+ * fire on open. Data URIs and in-document `#fragment` refs are kept.
+ */
+export function dropRemoteRefs(root: Element): void {
+  for (const node of Array.from(root.querySelectorAll('image'))) {
+    const href = node.getAttribute('xlink:href') ?? node.getAttribute('href') ?? '';
+    if (/^\s*https?:/i.test(href)) node.remove();
+  }
+}
+
 const isEmbeddable = (href: string | null): href is string =>
   !!href && !href.startsWith('data:') && !href.startsWith('#');
 
@@ -802,6 +814,12 @@ async function serializeCapture(
   } catch {
     /* best-effort — a missing resource beats a missing primitive */
   }
+  // BOUNDARY, not a fixture assertion (security review F5): any `<image>` whose
+  // href is STILL remote after inlining — a tenant `background:url(http://
+  // attacker/beacon)` the capture CSP refused to fetch — would fire when a
+  // DIFFERENT user opens the delivered file (outside any CSP). Drop it so the
+  // artifact carries no phone-home. A data:/#-fragment ref is fine.
+  dropRemoteRefs(root);
   let out = new XMLSerializer().serializeToString(svgDoc);
   out = out.replace(/(?:oklch|oklab|lch|lab|color)\([^)]*\)/gi, (m) => toSrgb(m) || m);
   return out;
@@ -916,6 +934,7 @@ const core = {
   inlineCaptureResources,
   stripChromeNodes,
   applyPaintPolyfills,
+  dropRemoteRefs,
   CAPTURE_HIDDEN_SELECTORS,
 };
 

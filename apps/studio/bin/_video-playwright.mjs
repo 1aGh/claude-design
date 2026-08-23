@@ -96,6 +96,7 @@ const gpuArgs =
 const browser = await launchChromium(gpuArgs.length ? { args: gpuArgs } : undefined);
 try {
   const ctx = await browser.newContext({
+    serviceWorkers: 'block',
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor,
   });

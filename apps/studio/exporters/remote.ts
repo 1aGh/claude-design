@@ -149,6 +149,41 @@ export class NoRenderServiceError extends Error {
  * artifact as a normal `ExportResult`. Degradation travels back as a JSON
  * header rather than a wrapped body so the artifact bytes stream unmodified.
  */
+/**
+ * Keys a render adapter legitimately consumes (grepped from `exporters/*.ts`
+ * `options.*` reads). Scope hints (`canvasFile`/`artboardId`/`selection`) are
+ * deliberately absent — the cell resolves scope into `targets` before dispatch,
+ * so the worker never needs them. `printProps`/`unsupportedMedia` are re-set by
+ * the cell AFTER this pick (jobs.ts), so they pass through here too.
+ */
+const REMOTE_OPTION_KEYS = new Set([
+  'scale',
+  'dpi',
+  'mode',
+  'raster',
+  'pageFit',
+  'pdfPrint',
+  'audio',
+  'allowUnsupportedMedia',
+  'timeoutSec',
+  'durationMs',
+  'fps',
+  'frameFormat',
+  'frames',
+  'gifColors',
+  'maxFrames',
+  'printProps',
+  'unsupportedMedia',
+]);
+
+function pickRemoteOptions(options: ExportOptions): ExportOptions {
+  const out: ExportOptions = {};
+  for (const [k, v] of Object.entries(options)) {
+    if (REMOTE_OPTION_KEYS.has(k)) out[k] = v;
+  }
+  return out;
+}
+
 export async function renderRemotely(args: {
   format: Format;
   targets: Target[];
@@ -165,8 +200,15 @@ export async function renderRemotely(args: {
   // sandbox on first access, so `_canvas-shell.html` can take far longer than
   // 8s to fire `load`. Give the remote path a generous floor (unless the
   // caller asked for more) so a cold-cell first render doesn't time out.
+  // ALLOWLIST what crosses to the worker (security review F3). `options` is a
+  // free-form bag the requesting member (a viewer, in a workspace) fills, and
+  // the worker is the fleet's least-trusted process (DDR-230) shared across
+  // tenants. Forward ONLY the keys the render adapters actually read — an
+  // unknown attacker key never reaches worker code, and the scope-only hints
+  // (canvasFile / artboardId / selection) that were already consumed cell-side
+  // to build `targets` don't leak the canvas path onward.
   const remoteOptions: ExportOptions = {
-    ...options,
+    ...pickRemoteOptions(options),
     timeoutSec: Math.max(Number((options as { timeoutSec?: number }).timeoutSec) || 0, 60),
   };
   let res: Response;

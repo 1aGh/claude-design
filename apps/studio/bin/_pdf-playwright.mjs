@@ -64,6 +64,7 @@ const deviceScaleFactor = Math.max(1, Math.min(8, Number(scale) || 1));
 const browser = await launchChromium();
 try {
   const ctx = await browser.newContext({
+    serviceWorkers: 'block',
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor,
   });
