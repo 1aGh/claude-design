@@ -126,7 +126,37 @@ export async function spawnShim(args: string[], opts: SpawnShimOptions): Promise
   };
   opts.signal?.addEventListener('abort', onAbort);
 
-  const stderrPromise = new Response(proc.stderr).text();
+  // Stream the shim's stderr LIVE to this process's stderr (prefixed) as well
+  // as buffering it for the exit-code error path. Buffering-only (the old
+  // `new Response(proc.stderr).text()`) hid every diagnostic until the child
+  // EXITED — so a shim that hung (a headless video encode that never resolves)
+  // produced total silence, and even on success the per-stage logs never
+  // surfaced. Live teeing makes the render worker's log show what a shim is
+  // doing while it does it, which is the only window CI/production has into it.
+  const shimTag = path.basename(args[0]).replace(/\.mjs$/, '');
+  const stderrPromise = (async () => {
+    let acc = '';
+    try {
+      const reader = proc.stderr.pipeThrough(new TextDecoderStream()).getReader();
+      let buf = '';
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        acc += value;
+        buf += value;
+        let nl = buf.indexOf('\n');
+        while (nl !== -1) {
+          process.stderr.write(`[${shimTag}] ${buf.slice(0, nl)}\n`);
+          buf = buf.slice(nl + 1);
+          nl = buf.indexOf('\n');
+        }
+      }
+      if (buf) process.stderr.write(`[${shimTag}] ${buf}\n`);
+    } catch {
+      /* stream closed mid-read — the buffered `acc` still feeds the error path */
+    }
+    return acc;
+  })();
   const stdoutLines: string[] = [];
   let buffer = '';
   const consumeLine = (line: string) => {

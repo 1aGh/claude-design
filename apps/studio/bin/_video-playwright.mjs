@@ -74,6 +74,35 @@ const frameFormat = frameFormatArg === 'jpeg' ? 'jpeg' : 'png';
 /** Wait a real turn of the event loop + a frame so a seek settles before shot. */
 const SETTLE_MS = 16;
 
+/**
+ * Run a `page.evaluate` with a hard wall-clock cap. A `page.evaluate` awaits its
+ * in-page promise with NO Playwright timeout, so a WebCodecs encoder that never
+ * resolves (headless Linux without a working encoder) hangs the whole render
+ * indefinitely. This races the evaluate against a timer and throws a NAMED
+ * error on overrun, so the shim exits (fail-fast + diagnostic) instead of
+ * wedging the render worker until the job timeout.
+ */
+async function evalWithTimeout(page, fn, arg, ms, stage) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new Error(
+            `encode stage "${stage}" did not resolve within ${ms}ms — headless WebCodecs ` +
+              `likely has no working video encoder (see the "webcodecs caps" line above).`
+          )
+        ),
+      ms
+    );
+  });
+  try {
+    return await Promise.race([page.evaluate(fn, arg), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // GPU opt-in, measured not assumed (2026-08-09, M-series mac, 1920x1080):
 //
 //   config                        h264 prefer-hardware   png        jpeg q90
@@ -176,7 +205,14 @@ try {
       const frameRange =
         Number.isFinite(explicitFrames) && explicitFrames > 0 ? [0, explicitFrames - 1] : null;
 
-      const rendered = await page.evaluate(
+      // Bound the whole-comp render: @remotion/web-renderer drives WebCodecs,
+      // which on headless Linux without a working encoder never resolves — a
+      // hang, not a throw, so the graceful frame-step fallback below never
+      // fires. A wall-clock cap turns that hang INTO a throw, which the catch
+      // converts into exactly that fallback (frame-step, muted) — the video
+      // still exports instead of wedging the render worker.
+      const rendered = await evalWithTimeout(
+        page,
         async ({ compId, container, scale, muted, frameRange, licenseKey }) => {
           return window.__maude_render_video__(compId, {
             container,
@@ -193,7 +229,9 @@ try {
           muted: !wantAudio,
           frameRange,
           licenseKey,
-        }
+        },
+        Math.min(timeoutMs, 90_000),
+        `renderMediaOnWeb(${format})`
       );
 
       writeFileSync(out, Buffer.from(rendered.b64, 'base64'));
@@ -424,7 +462,50 @@ async function frameStepCapture({
     const libSrc = readFileSync(encodeLib, 'utf8');
     await addScriptCspSafe(page, { content: libSrc, type: 'module', name: 'encode-lib' });
     await page.waitForFunction(() => typeof window.__maudeEnc === 'object', { timeout: timeoutMs });
-    const started = await page.evaluate(
+    // WebCodecs capability probe — the ONE thing that differs between a mac dev
+    // machine (H.264 present, mp4 in 2 s) and headless Linux/the cloud render
+    // worker, where an unconfigured encoder makes `startVideo` hang forever with
+    // no error (the encode `page.evaluate` has no Playwright timeout). Logging
+    // isConfigSupported here turns "the video export never returned" into a
+    // named, actionable line in the render log.
+    if (!isGif) {
+      try {
+        const caps = await evalWithTimeout(
+          page,
+          async ({ w, h }) => {
+            const probe = async (codec) => {
+              try {
+                if (typeof VideoEncoder?.isConfigSupported !== 'function') return 'no-webcodecs';
+                const r = await VideoEncoder.isConfigSupported({ codec, width: w, height: h });
+                return r?.supported ? 'yes' : 'no';
+              } catch (e) {
+                return `err:${e?.name || 'x'}`;
+              }
+            };
+            return {
+              avc: await probe('avc1.42001f'),
+              vp9: await probe('vp09.00.10.08'),
+              vp8: await probe('vp8'),
+              av1: await probe('av01.0.04M.08'),
+            };
+          },
+          { w: outW, h: outH },
+          15_000,
+          'isConfigSupported probe'
+        );
+        console.error(
+          `webcodecs caps @ ${outW}×${outH}: avc=${caps.avc} vp9=${caps.vp9} vp8=${caps.vp8} av1=${caps.av1} (gpu=${gpuArgs.length ? 'on' : 'off'})`
+        );
+      } catch (e) {
+        console.error(`webcodecs cap probe failed: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+    // Bound the encoder start: on headless Linux without a working WebCodecs
+    // encoder this promise never resolves, so a wall-clock cap converts the hang
+    // into a fast, diagnostic failure instead of consuming the whole render
+    // budget in silence.
+    const started = await evalWithTimeout(
+      page,
       async ({ width, height, fps, isGif, gifColors, fmt }) => {
         if (isGif) {
           window.__maudeEnc.startGif({ width, height, fps, maxColors: gifColors });
@@ -439,7 +520,9 @@ async function frameStepCapture({
         isGif,
         gifColors: Number(args.gifColors) || 256,
         fmt: format,
-      }
+      },
+      Math.min(timeoutMs, 45_000),
+      `startVideo(${format})`
     );
     console.error(`encoder: ${started.container} / ${started.codec} @ ${outW}×${outH}`);
   }
@@ -471,12 +554,15 @@ async function frameStepCapture({
     if (encoding) {
       const tEnc = Date.now();
       const b64 = shot.toString('base64');
-      await page.evaluate(
+      await evalWithTimeout(
+        page,
         async ({ b64, isGif, format }) => {
           if (isGif) return window.__maudeEnc.addGifFrame(b64);
           return window.__maudeEnc.addVideoFrame(b64, format);
         },
-        { b64, isGif, format: shotFormat }
+        { b64, isGif, format: shotFormat },
+        30_000,
+        `addFrame#${f}`
       );
       // NB: this stage is the double CDP crossing — the screenshot bytes go out
       // to node as base64 and straight back into the same page, to an encoder
@@ -513,10 +599,13 @@ async function frameStepCapture({
     result = { ...result, degraded: true, audioDropped: true, fallbackReason };
   }
   if (encoding) {
-    const enc = await page.evaluate(
+    const enc = await evalWithTimeout(
+      page,
       async ({ isGif }) =>
         isGif ? window.__maudeEnc.finishGif() : window.__maudeEnc.finishVideo(),
-      { isGif }
+      { isGif },
+      Math.min(timeoutMs, 45_000),
+      `finish(${format})`
     );
     writeFileSync(out, Buffer.from(enc.b64, 'base64'));
     result = { ...result, out, bytes: enc.bytes, container: enc.container, codec: enc.codec };

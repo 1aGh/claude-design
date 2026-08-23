@@ -410,6 +410,9 @@ async function bootRenderService(
       ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
         ? { PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
         : {}),
+      // NB: video-encode GPU is NOT special-cased here — the render service
+      // enables it for itself (apps/render/server.ts), so this gate exercises
+      // the SAME behavior production has instead of a test-only green.
     },
     stdout: 'pipe',
     stderr: 'pipe',

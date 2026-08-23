@@ -67,6 +67,19 @@ const OWN_SECRET_ALLOWED = new Set(['MAUDE_RENDER_SECRET']);
   }
 }
 
+// Video encode needs a GPU on this headless Linux worker, or the WebCodecs
+// encoder reports ACCELERATED_VIDEO_ENCODE disabled and never resolves — a mp4
+// export that hangs the whole render (proven on ubuntu CI: every non-video
+// format renders in ~1s, mp4 hung the full budget in silence). The video shim
+// (`apps/studio/bin/_video-playwright.mjs`) reads MAUDE_CAPTURE_GPU and adds
+// `--enable-gpu --ignore-gpu-blocklist`; on a machine with no real GPU that
+// resolves to SwiftShader software encode. It is OFF by default in the shim
+// (it slightly changes raster fidelity — a deliberate choice for the user's
+// OWN desktop), but the cloud worker is headless-by-definition and a rendered
+// video beats a hung one, so it opts IN here for every job it spawns (the shim
+// inherits this process's env). Set MAUDE_CAPTURE_GPU=0 to force it off.
+if (process.env.MAUDE_CAPTURE_GPU == null) process.env.MAUDE_CAPTURE_GPU = '1';
+
 const PORT = Number(process.env.PORT) || 8790;
 const SECRET = process.env.MAUDE_RENDER_SECRET ?? '';
 const ALLOWED_ORIGINS = (process.env.MAUDE_RENDER_CANVAS_ORIGINS ?? '')
