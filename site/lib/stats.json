@@ -1,5 +1,5 @@
 {
-  "version": "v1.0.6",
+  "version": "v1.0.7",
   "nodeRange": ">=20",
   "publishedDate": "2026-08-23",
   "contributors": 1,
@@ -96,8 +96,8 @@
     "hub/linking.mdx": "2026-08-18",
     "hub/people.mdx": "2026-08-18",
     "hub/pricing.mdx": "2026-05-28",
-    "hub/self-host.mdx": "2026-08-21",
-    "hub/workspace.mdx": "2026-08-21",
+    "hub/self-host.mdx": "2026-08-23",
+    "hub/workspace.mdx": "2026-08-23",
     "index.mdx": "2026-07-06",
     "legal/dpa.mdx": "2026-08-04",
     "legal/privacy.mdx": "2026-08-04",
