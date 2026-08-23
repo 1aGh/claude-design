@@ -34,6 +34,7 @@ import {
 } from '../studio/exporters/index.ts';
 import { BROWSER_FREE_FORMATS, REMOTE_UNSUPPORTED_FORMATS } from '../studio/exporters/remote.ts';
 import type { Target } from '../studio/exporters/scope.ts';
+import { startTokenProxy } from './proxy.ts';
 
 // ── boot assert — DDR-230 §1: nothing here worth stealing ────────────────────
 //
@@ -154,76 +155,6 @@ function validBody(b: unknown): b is RenderBody {
   const canvas = body.canvas as Record<string, unknown> | undefined;
   if (!canvas || typeof canvas.origin !== 'string' || !canvas.origin) return false;
   return true;
-}
-
-/**
- * Loopback proxy that injects the member's render token into every canvas
- * fetch. The adapters (and the playwright shims they spawn) are written
- * against a token-free loopback dev-server; pointing `ctx.serverOrigin` at
- * this proxy keeps them byte-identical while every upstream request carries
- * `?t=<token>` — the exact query parameter the member's own iframes use
- * (client/canvas-url.js). GET/HEAD only: the grant is read-only and so is
- * this hop.
- */
-function startTokenProxy(canvas: RenderBody['canvas']): {
-  origin: string;
-  stop: () => void;
-  log: () => string;
-} {
-  const upstreamBase = canvas.origin.replace(/\/+$/, '');
-  // Per-request diagnostics — surfaced in the render error so a stuck canvas
-  // load ("goto: Timeout") is debuggable from the export dialog rather than
-  // container logs we cannot read remotely.
-  const entries: string[] = [];
-  const record = (line: string) => {
-    if (entries.length < 60) entries.push(line);
-  };
-  const server = Bun.serve({
-    hostname: '127.0.0.1',
-    port: 0,
-    async fetch(req) {
-      if (req.method !== 'GET' && req.method !== 'HEAD') {
-        record(`${req.method} ${new URL(req.url).pathname} -> 405 (proxy read-only)`);
-        return new Response('read-only proxy', { status: 405 });
-      }
-      const url = new URL(req.url);
-      const upstream = new URL(`${upstreamBase}${url.pathname}${url.search}`);
-      if (canvas.token) upstream.searchParams.set('t', canvas.token);
-      const t0 = performance.now();
-      try {
-        const r = await fetch(upstream, {
-          method: req.method,
-          // Per-request ceiling: a single canvas sub-resource must not hang the
-          // whole render. On timeout this throws, is logged, and 504s that one
-          // resource instead of letting the browser wait out the goto timeout.
-          signal: AbortSignal.timeout(25_000),
-          // A redirect is the second SSRF lane (security-review): a 3xx from the
-          // canvas origin to `http://169.254.169.254/…` would be followed by
-          // default. The canvas surface never legitimately redirects, so refuse.
-          redirect: 'error',
-          headers: {
-            accept: req.headers.get('accept') ?? '*/*',
-            // Selects the hub's capability-gated canvas LANE when host-based
-            // detection can't (a self-hosted sidecar reaching the hub over the
-            // compose network). Selection only — authorization is still the `t`
-            // capability; without it this header opens nothing.
-            'x-maude-canvas-origin': '1',
-          },
-        });
-        record(`${url.pathname} -> ${r.status} (${Math.round(performance.now() - t0)}ms)`);
-        return r;
-      } catch (e) {
-        const why = e instanceof Error ? e.name || e.message : String(e);
-        record(`${url.pathname} -> ERR ${why} (${Math.round(performance.now() - t0)}ms)`);
-        return new Response(`proxy upstream error: ${why}`, { status: 504 });
-      }
-    },
-  });
-  return {
-    origin: `http://127.0.0.1:${server.port}`,
-    stop: () => server.stop(true),
-    log: () => entries.join(' | '),
-  };
 }
 
 // ── tiny single-lane queue — one Chromium at a time per instance ─────────────

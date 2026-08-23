@@ -54,10 +54,17 @@ jobs:
           bun-version-file: .bun-version
 
       - name: Parse-check the service
-        # No test suite lives in apps/render (its logic is the studio's
-        # exporters, tested there); this catches a syntax/import break before
-        # the expensive image build does.
+        # The service's export logic is the studio's exporters (tested there);
+        # this catches a syntax/import break before the expensive image build.
         run: bun build apps/render/server.ts --target=bun --no-bundle > /dev/null
+
+      - name: Token-proxy contract tests
+        # Pins the header-normalization contract (hybrid-export T1): the proxy
+        # must never replay Bun-fetch's decompressed-body-with-stale-headers
+        # Response — the bug that made every v1.0.x export die as goto:Timeout.
+        # Deliberately tests apps/render/proxy.ts standalone: server.ts's boot
+        # assert exits under credential-shaped env (GITHUB_TOKEN on runners).
+        run: bun test apps/render/test
 
       - name: Read the image tag from wrangler.toml
         id: image
