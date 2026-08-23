@@ -232,7 +232,10 @@ export async function renderRemotely(args: {
       },
       body: JSON.stringify({ format, targets, options: remoteOptions, canvas }),
     };
+    const postStart = Date.now();
+    console.error(`[remote] POST ${format} → ${service.url}/render`);
     res = await fetch(`${service.url}/render`, init);
+    console.error(`[remote] ${format} responded ${res.status} in ${Date.now() - postStart}ms`);
   } catch (err) {
     if (signal?.aborted) throw err;
     // DDR-231 T7 — the member sees this in the export dialog / notification

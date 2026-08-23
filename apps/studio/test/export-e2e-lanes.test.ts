@@ -683,11 +683,18 @@ describe('export E2E — worker lane, real render service, real artifact', () =>
           }
           console.log(`[worker-lane] ✓ ${label} in ${Math.round((Date.now() - fmtStart) / 1000)}s`);
           expect(`${format}: ${job.status} ${job.error ?? ''}`).toBe(`${format}: done `);
-          const bytes = new Uint8Array(
-            await (
-              await fetch(`http://localhost:${studioPort}/_api/export-jobs/download?id=${job.id}`)
-            ).arrayBuffer()
-          );
+          // Bounded — a done job whose artifact download stalls must not hang
+          // the whole test (it did, on the mp4 download, masking where the
+          // NEXT format actually stood).
+          const dl = await fetch(
+            `http://localhost:${studioPort}/_api/export-jobs/download?id=${job.id}`,
+            { signal: AbortSignal.timeout(60_000) }
+          ).catch((e) => {
+            throw new Error(
+              `${label} download stalled: ${e instanceof Error ? e.message : e}\n[render tail]\n${render.tail()}`
+            );
+          });
+          const bytes = new Uint8Array(await dl.arrayBuffer());
           const head4 = Array.from(bytes.slice(0, 4));
           if (format === 'pdf') {
             expect(new TextDecoder().decode(bytes.slice(0, 5))).toBe('%PDF-');
