@@ -13,6 +13,7 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { CAPTURE_HIDDEN_SELECTORS } from '../exporters/capture-chrome.ts';
 import { DEV_SERVER_ROOT } from '../paths.ts';
 
 const SHELL_HTML_PATH = join(
@@ -55,4 +56,33 @@ describe('_shell.html #canvas-hide-chrome covers every overlay mount class', () 
       expect(block.includes(selector)).toBe(true);
     });
   }
+});
+
+// DDR-231 Phase 2 T2 — the SECOND consumer. The browser lane captures the live
+// canvas (it never navigates to `?hide-chrome=1`), so it applies the same
+// suppression from `exporters/capture-chrome.ts`. Two copies of a selector list
+// drift; this is the tripwire that makes them fail loudly instead. Same shape
+// as the `isMaudeRuntimeState` / `isRuntimeStateRel` agreement pin.
+describe('capture-chrome.ts agrees with the _shell.html block', () => {
+  const shellHtml = readFileSync(SHELL_HTML_PATH, 'utf8');
+  const block =
+    shellHtml.match(/<style id="canvas-hide-chrome"[^>]*>([\s\S]*?)<\/style>/)?.[1] ?? '';
+
+  /** Selectors declared in the shell's style block, comments stripped. */
+  const shellSelectors = block
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\{[\s\S]*$/, '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  test('every shell selector is in CAPTURE_HIDDEN_SELECTORS', () => {
+    const ours = new Set(CAPTURE_HIDDEN_SELECTORS);
+    expect(shellSelectors.filter((s) => !ours.has(s))).toEqual([]);
+  });
+
+  test('every CAPTURE_HIDDEN_SELECTORS entry is in the shell block', () => {
+    const theirs = new Set(shellSelectors);
+    expect(CAPTURE_HIDDEN_SELECTORS.filter((s) => !theirs.has(s))).toEqual([]);
+  });
 });

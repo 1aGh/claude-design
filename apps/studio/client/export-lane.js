@@ -42,10 +42,17 @@ export function browserCaptureEligible({ exportLane, format, scope, artboardId }
  * 3× mirrors the desktop PNG-deck fallback's FALLBACK_SCALE (crisp in
  * non-vector viewers).
  *
- * @param {{ capture: Function, name?: string, scale?: number, onProgress?: Function }} args
+ * @param {{ capture: Function, name?: string, scale?: number, onProgress?: Function,
+ *           onAssemble?: Function }} args
  * @returns {Promise<{ filename: string, blob: Blob }>}
  */
-export async function captureDeckViaBrowser({ capture, name = 'export', scale = 3, onProgress }) {
+export async function captureDeckViaBrowser({
+  capture,
+  name = 'export',
+  scale = 3,
+  onProgress,
+  onAssemble,
+}) {
   const items = await capture({
     format: 'png',
     artboardIds: null,
@@ -59,6 +66,9 @@ export async function captureDeckViaBrowser({ capture, name = 'export', scale = 
   fd.set('scale', String(scale));
   fd.set('name', name);
   for (const it of items) fd.append('image', it.blob, it.name);
+  // Composition is a distinct, non-instant phase — tell the caller so the
+  // status stops claiming the capture is still running.
+  onAssemble?.();
   const r = await fetch('/_api/export-assemble', { method: 'POST', body: fd });
   if (!r.ok) throw new Error((await r.text()) || `deck assembly failed (${r.status})`);
   const disp = r.headers.get('content-disposition') || '';
@@ -153,4 +163,29 @@ export async function sanitizeCapturedItems(items, format) {
  */
 export function captureScale(options = {}) {
   return Math.max(1, Math.min(8, options.dpi ? options.dpi / 96 : options.scale || 1));
+}
+
+/**
+ * Record a browser-lane export in the cell's ledger so it shows up in the
+ * Recent tab and the notification center like every other export.
+ *
+ * DDR-231 Phase 2 T6: the browser lane produces the file in the member's own
+ * browser, so there is no job to complete and nothing wrote a history row —
+ * the reported symptom was "the modal just closes and I see nothing in the
+ * export dialog". Best-effort by design: the member already HAS the file, so a
+ * failed ledger write must never surface as a failed export.
+ *
+ * @param {{ format: string, scope: string, filename: string }} entry
+ * @returns {Promise<void>}
+ */
+export async function recordBrowserExport(entry) {
+  try {
+    await fetch('/_api/export-history', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(entry),
+    });
+  } catch {
+    /* the file is already saved — the ledger is a convenience, not the export */
+  }
 }

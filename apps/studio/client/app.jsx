@@ -12,6 +12,11 @@ import { createRoot } from 'react-dom/client';
 // import that Bun erases), so this pulls only string constants into the client
 // bundle — no React, no input-router. See the tool-cursor handler below.
 import { resolveToolCursor } from '../canvas-cursors.ts';
+import {
+  defaultScopeForFormat,
+  isScopeValidForFormat,
+  validScopesForFormat,
+} from '../exporters/format-scopes.ts';
 // feature-3-web-artboards T5 — the single source (grid-track-handles.ts) for
 // the Inspector's Grid-section track parser/serializer, shared with the
 // on-canvas gutter-drag overlay so both edit the SAME track-list shape.
@@ -35,6 +40,7 @@ import {
   captureDeckViaBrowser,
   captureScale,
   sanitizeCapturedItems,
+  recordBrowserExport,
 } from './export-lane.js';
 import { TreeRowMenu, useRowMenu } from './tree-row-menu.jsx';
 import { useTreeDrag } from './use-tree-drag.js';
@@ -1175,18 +1181,6 @@ const EXPORT_SCOPE_LABELS = {
   'canvas-as-separate': 'Canvas · artboards separate',
   'project-raw': 'Whole project (raw)',
 };
-const EXPORT_VALID_SCOPES = {
-  png: ['selection', 'artboard', 'canvas-as-separate'],
-  pdf: ['selection', 'artboard', 'canvas-as-separate'],
-  svg: ['selection', 'artboard', 'canvas-as-separate'],
-  html: ['artboard', 'canvas-as-separate'],
-  pptx: ['canvas-as-separate'],
-  mp4: ['artboard'],
-  gif: ['artboard'],
-  webm: ['artboard'],
-  canva: ['canvas-as-separate'],
-  zip: ['project-raw'],
-};
 const PNG_SCALES = [
   { value: 1, label: '1× (native)' },
   { value: 2, label: '2× (retina)' },
@@ -1583,8 +1577,17 @@ function ExportDialog({
     [exportLane]
   );
   const [sel, setSel] = useState(mode === 'handoff' ? 'shadcn' : 'png');
-  const [scope, setScope] = useState(
-    initialScope && EXPORT_SCOPE_LABELS[initialScope] ? initialScope : 'artboard'
+  // DDR-231 Phase 2 T4 — seed from the shared table, and only honour an
+  // incoming hint the CHOSEN FORMAT can actually render. A hint the format
+  // can't take (a context menu's `project-raw`, a re-run of a zip history
+  // entry) used to survive into the request and reach the render service as
+  // an unrenderable file-tree target: "invalid render job".
+  // The dialog opens on the PNG card; the format-change effect below re-seeds
+  // the scope whenever the member picks another one.
+  const [scope, setScope] = useState(() =>
+    initialScope && isScopeValidForFormat('png', initialScope)
+      ? initialScope
+      : defaultScopeForFormat('png')
   );
   const [scale, setScale] = useState(2);
   // feature-2-print-artboards T4/T6 — PNG resolution (folds scale + dpi, see
@@ -1608,7 +1611,7 @@ function ExportDialog({
   const [status, setStatus] = useState(null); // { ok, msg }
   const [recent, setRecent] = useState([]);
   const card = EXPORT_CARDS.find((c) => c.id === sel) || EXPORT_CARDS[0];
-  const validScopes = card.handoff ? [] : EXPORT_VALID_SCOPES[card.format] || ['artboard'];
+  const validScopes = card.handoff ? [] : validScopesForFormat(card.format);
   // Long-comp tiers (feature-enhanced-video-editing Task 1). 900 frames is the
   // safe tier (the frame-step fallback runs ~2.5 s/frame and 1080p captures
   // have died from memory pressure above it); 3600 is the server's default cap
@@ -1629,10 +1632,13 @@ function ExportDialog({
   const exportOverCap = card.temporal && exportCompFrames > EXPORT_DEFAULT_CAP;
 
   // Keep the scope valid for the chosen format (pptx/zip etc. only allow a
-  // subset) — mirrors VALID_SCOPES_PER_FORMAT in the in-canvas dialog.
+  // subset). Both dialogs and the server now read one table
+  // (exporters/format-scopes.ts) — see DDR-231 Phase 2 T4.
   useEffect(() => {
-    if (validScopes.length && !validScopes.includes(scope)) setScope(validScopes[0]);
-  }, [validScopes, scope]);
+    if (validScopes.length && !validScopes.includes(scope)) {
+      setScope(defaultScopeForFormat(card.format));
+    }
+  }, [validScopes, scope, card.format]);
 
   // DDR-231 T7 — wake the render service the moment the dialog opens on a
   // remote-lane workspace: the multi-GB Chromium container starts booting
@@ -1719,13 +1725,23 @@ function ExportDialog({
     // artboard is captured by the member's OWN browser (the canvas already
     // renders here) — instant, no fleet wake. Everything else continues to
     // the jobs lane below.
+    // NOTE the format gate. `browserCaptureEligible` answers for the whole
+    // browser lane, pptx included — but this branch is the SINGLE-ARTBOARD
+    // capture that downloads what the bridge returns verbatim. Without the
+    // gate, a pptx export fell in here, asked the bridge for a "pptx" (which it
+    // renders as PNG), and died in `sanitizeCapturedItems` on "not a valid
+    // pptx" — silently degrading to the worker lane, which is why the deck
+    // arrived minutes later with none of the browser lane's fixes in it. The
+    // dedicated deck branch below was unreachable. Found by the T7 export E2E.
     const browserEligible =
+      BROWSER_CAPTURE_FORMATS.has(card.format) &&
       browserCaptureEligible({
         exportLane,
         format: card.format,
         scope,
         artboardId: options.artboardId,
-      }) && typeof onBrowserCapture === 'function';
+      }) &&
+      typeof onBrowserCapture === 'function';
     if (browserEligible) {
       try {
         const capScale = captureScale(options);
@@ -1742,8 +1758,18 @@ function ExportDialog({
         // caps count/bytes, sniffs magic, forces name+MIME.
         const safeItems = await sanitizeCapturedItems(items, card.format);
         for (const it of safeItems) downloadCapturedBlob(it.name, it.blob);
+        // DDR-231 Phase 2 T6 — the export is DONE and the member should see
+        // that, in the dialog and in the ledger. Phase 1 closed the modal the
+        // instant the download was handed off, so a browser-lane export left
+        // no trace anywhere ("v exports dialog nic nevidim").
+        for (const it of safeItems) {
+          await recordBrowserExport({ format: card.format, scope, filename: it.name });
+        }
         setBusy(false);
-        onClose();
+        setStatus({
+          ok: true,
+          msg: `Saved ${safeItems.map((it) => it.name).join(', ')} to your downloads.`,
+        });
         return;
       } catch (err) {
         if (exportLane !== 'remote') {
@@ -1773,10 +1799,17 @@ function ExportDialog({
           name: deckName,
           onProgress: (current, total) =>
             setStatus({ ok: true, msg: `Capturing ${current}/${total}…` }),
+          // Composition happens in-cell AFTER the last capture, and it is not
+          // instant for a 10-slide deck. Without this the status sat on
+          // "Capturing 10/10…" through the whole assemble step and the deck
+          // then appeared out of nowhere — the reported "modal closes, nothing
+          // happens, and after a while it downloads by itself".
+          onAssemble: () => setStatus({ ok: true, msg: 'Assembling deck…' }),
         });
         downloadCapturedBlob(filename, blob);
+        await recordBrowserExport({ format: card.format, scope, filename });
         setBusy(false);
-        onClose();
+        setStatus({ ok: true, msg: `Saved ${filename} to your downloads.` });
         return;
       } catch (err) {
         if (exportLane !== 'remote') {
@@ -1844,6 +1877,10 @@ function ExportDialog({
               <button
                 type="button"
                 key={c.id}
+                // Stable hooks for the export E2E harnesses (agent-browser web
+                // + desktop-e2e native) — data-testid convention, DDR-231
+                // Phase 2 T7/T8.
+                data-testid={`export-format-${c.id}`}
                 className={'st-fmt' + (c.id === sel ? ' is-on' : '')}
                 disabled={laneBlocked(c)}
                 title={
@@ -1878,6 +1915,7 @@ function ExportDialog({
               </label>
               <select
                 id="st-export-scope"
+                data-testid="export-scope"
                 className="st-select"
                 value={scope}
                 onChange={(e) => setScope(e.target.value)}
@@ -2060,12 +2098,14 @@ function ExportDialog({
             <div
               className={'callout ' + (status.ok ? 'callout--success' : 'callout--error')}
               style={{ fontSize: 12 }}
+              data-testid="export-status"
+              data-ok={status.ok ? '1' : '0'}
             >
               {status.msg}
             </div>
           )}
           {recent.length > 0 && (
-            <div className="st-export-recent">
+            <div className="st-export-recent" data-testid="export-recent">
               <div className="st-rp-hd">Recent</div>
               {recent.map((h, i) => (
                 <div className="st-export-recent-row" key={i}>
@@ -2083,7 +2123,13 @@ function ExportDialog({
           <button type="button" className="btn btn--ghost" onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className="btn btn--primary" disabled={busy} onClick={doExport}>
+          <button
+            type="button"
+            className="btn btn--primary"
+            data-testid="export-submit"
+            disabled={busy}
+            onClick={doExport}
+          >
             <StIcon name="download" size={14} />
             {card.handoff
               ? 'Copy handoff command'

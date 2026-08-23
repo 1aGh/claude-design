@@ -6,7 +6,7 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, unlinkSync, watch } from 'node:fs';
-import { dirname, join, posix, relative, resolve, sep } from 'node:path';
+import { basename, dirname, join, posix, relative, resolve, sep } from 'node:path';
 // Ownership mutations live with the CLI on purpose — see /_api/sync/ownership.
 import { adoptToHub, detachToRepo, ownershipState } from '../../cli/lib/design-ownership.mjs';
 import {
@@ -39,6 +39,7 @@ import type { Context } from './context.ts';
 import { reloadConfig } from './context.ts';
 import { buildDebugBundle } from './debug-bundle.ts';
 import { probeSetupReadiness } from './design-setup-readiness.ts';
+import { isScopeValidForFormat, scopeRefusalMessage } from './exporters/format-scopes.ts';
 import { type Format, isFormat, isScope, type Scope } from './exporters/index.ts';
 import { type ExportJobQueue, ExportQueueFullError } from './exporters/jobs.ts';
 import type { ActiveJsonShape } from './exporters/scope.ts';
@@ -399,6 +400,19 @@ export const READ_ONLY_ALLOWED_WRITES = new Set([
   '/_api/export', // "look, comment and download" — the cell allows /api/export too
   '/_api/export-jobs',
   '/_api/export-jobs/download',
+  // DDR-231 Phase 2 T6 — the browser lane's ledger row. A viewer may already
+  // EXPORT (the two entries above), so recording that they did is the same
+  // class of write: it touches no project state, only the recent-exports list.
+  // Refusing it here while allowing the export produced exactly the reported
+  // symptom for viewers — a file downloads and nothing anywhere says so.
+  '/_api/export-history',
+  // …and the deck's composition half. The member's own browser captured the
+  // PNGs; this route only packs bytes they already hold into a .pptx and hands
+  // it back — it writes no project state. Missing from this list, a VIEWER's
+  // PPTX export captured every artboard and then died on a 403 with the dialog
+  // still saying "Capturing 10/10" (found by the T7 export E2E, which runs
+  // unauthenticated and therefore as a viewer).
+  '/_api/export-assemble',
   '/_api/report', // bug reports are about Maude, not the project
   '/_api/report-fallback',
   // Cloud Phase 27 — COMMENT IS THE ONE WRITE A VIEWER HOLDS. The role matrix
@@ -4292,12 +4306,49 @@ export function createHttp(
     },
 
     '/_api/export-history': async (req: Request) => {
-      // Phase 6.5 T10 — read-only recent-exports feed for the dialog's
-      // Recent tab. Writes happen as a side-effect of job completion
-      // (exporters/jobs.ts persistAndEvict) rather than this handler.
-      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
-      const history = exportJobs.loadHistory();
-      return Response.json({ history }, { headers: { 'Cache-Control': 'no-store' } });
+      // Phase 6.5 T10 — recent-exports feed for the dialog's Recent tab. For a
+      // JOB, the write happens as a side-effect of completion (exporters/
+      // jobs.ts persistAndEvict), not here.
+      //
+      // DDR-231 Phase 2 T6 — the browser lane has no job: the member's own
+      // browser captures the artboard and saves the file, and this process
+      // never sees the bytes. Phase 1 therefore left those exports INVISIBLE —
+      // "v exports dialog nic nevidim" — so the POST exists to record one in
+      // the same ledger. It stores a name and a timestamp, never a payload.
+      if (req.method === 'GET') {
+        const history = exportJobs.loadHistory();
+        return Response.json({ history }, { headers: { 'Cache-Control': 'no-store' } });
+      }
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      // Same gates as every other write here: CSRF + DNS-rebinding. This route
+      // is MAIN-ORIGIN only (absent from CANVAS_SAFE_API + the canvas server's
+      // routes map) — the canvas iframe reaches it through the shell bridge.
+      if (!isTrustedRequestHost(req))
+        return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const body = await readJson<{ format?: unknown; scope?: unknown; filename?: unknown }>(
+        req,
+        4 * 1024
+      );
+      if (!body) return new Response('body required', { status: 400 });
+      if (!isFormat(body.format)) return new Response('unknown or missing format', { status: 400 });
+      if (!isScope(body.scope)) return new Response('unknown or missing scope', { status: 400 });
+      // The name is chosen in the browser, where tenant TSX shares the window
+      // (DDR-231 F1) — reduce it to a bare, charset-limited basename before it
+      // reaches the ledger that agents and future sessions read back.
+      const raw = typeof body.filename === 'string' ? body.filename : '';
+      const filename = basename(raw)
+        .replace(/[^A-Za-z0-9._-]/g, '')
+        .slice(0, 255);
+      if (!filename || /^\.+$/.test(filename))
+        return new Response('filename required', { status: 400 });
+      const entry = exportJobs.recordBrowserExport({
+        format: body.format,
+        scope: body.scope,
+        filename,
+      });
+      return Response.json(entry, { status: 201, headers: { 'Cache-Control': 'no-store' } });
     },
 
     '/_api/export': async (req: Request) => {
@@ -4323,6 +4374,14 @@ export function createHttp(
       if (!body) return new Response('body required', { status: 400 });
       if (!isFormat(body.format)) return new Response('unknown or missing format', { status: 400 });
       if (!isScope(body.scope)) return new Response('unknown or missing scope', { status: 400 });
+      // DDR-231 Phase 2 T4 — the PAIR, not just each half. `pdf` + `project-raw`
+      // is two individually-valid values that resolve to a `file-tree` target,
+      // which the render service refuses as `invalid render job` — a refusal
+      // that named neither the field nor the remedy. Reproduced locally against
+      // a real maude-render; see test/export-format-scope-coherence.test.ts.
+      if (!isScopeValidForFormat(body.format, body.scope)) {
+        return new Response(scopeRefusalMessage(body.format, body.scope), { status: 400 });
+      }
       const format = body.format;
       const scope = body.scope;
       try {
@@ -4376,6 +4435,14 @@ export function createHttp(
       if (!body) return new Response('body required', { status: 400 });
       if (!isFormat(body.format)) return new Response('unknown or missing format', { status: 400 });
       if (!isScope(body.scope)) return new Response('unknown or missing scope', { status: 400 });
+      // DDR-231 Phase 2 T4 — the PAIR, not just each half. `pdf` + `project-raw`
+      // is two individually-valid values that resolve to a `file-tree` target,
+      // which the render service refuses as `invalid render job` — a refusal
+      // that named neither the field nor the remedy. Reproduced locally against
+      // a real maude-render; see test/export-format-scope-coherence.test.ts.
+      if (!isScopeValidForFormat(body.format, body.scope)) {
+        return new Response(scopeRefusalMessage(body.format, body.scope), { status: 400 });
+      }
       try {
         const { id, result } = exportJobs.enqueue(
           buildExportArgs(req, { format: body.format, scope: body.scope, options: body.options })

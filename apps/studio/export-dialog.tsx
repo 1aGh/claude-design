@@ -26,6 +26,11 @@ import {
   useState,
 } from 'react';
 
+import {
+  defaultScopeForFormat,
+  isScopeValidForFormat,
+  validScopesForFormat,
+} from './exporters/format-scopes.ts';
 import { useSelectionSetOptional } from './use-selection-set.tsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -228,16 +233,6 @@ const SCOPE_META: Record<Scope, { label: string; description: string }> = {
   },
 };
 
-const VALID_SCOPES_PER_FORMAT: Record<Format, Scope[]> = {
-  png: ['selection', 'artboard', 'canvas-as-separate'],
-  pdf: ['selection', 'artboard', 'canvas-as-separate'],
-  svg: ['selection', 'artboard', 'canvas-as-separate'],
-  html: ['artboard', 'canvas-as-separate'],
-  pptx: ['canvas-as-separate'],
-  canva: ['canvas-as-separate'],
-  zip: ['project-raw'],
-};
-
 export interface ExportHistoryEntry {
   format: Format;
   scope: Scope;
@@ -435,7 +430,13 @@ export function ExportDialogProvider({ children }: { children: ReactNode }): Rea
     await loadHistory();
     const last = history[0];
     if (!last) return;
-    await submit(last.format, last.scope, last.options ?? {});
+    // ⌘⇧E replays a history entry verbatim. An entry whose (format, scope)
+    // pair is no longer legal — or never was — would otherwise be re-sent as
+    // an unrenderable job; fall back to that format's default scope.
+    const scope = isScopeValidForFormat(last.format, last.scope)
+      ? last.scope
+      : defaultScopeForFormat(last.format);
+    await submit(last.format, scope, last.options ?? {});
   }, [history, loadHistory, submit]);
 
   const ctxValue = useMemo<ExportDialogValue>(
@@ -528,16 +529,20 @@ const DialogShell = (() => {
 
     useEffect(() => {
       if (!openState) return;
+      const next = openState.format ?? format;
       if (openState.format) setFormat(openState.format);
-      if (openState.scope) setScope(openState.scope);
-    }, [openState]);
-
-    // Keep the scope valid against the chosen format.
-    useEffect(() => {
-      const valid = VALID_SCOPES_PER_FORMAT[format];
-      if (!valid.includes(scope)) {
-        setScope(valid[0] ?? 'artboard');
+      // DDR-231 Phase 2 T4 — a hint the incoming FORMAT can't render (a
+      // context menu's `project-raw`, a re-opened zip entry) must not be
+      // adopted: it resolves to a file-tree target the render service refuses.
+      if (openState.scope && isScopeValidForFormat(next, openState.scope)) {
+        setScope(openState.scope);
       }
+    }, [openState, format]);
+
+    // Keep the scope valid against the chosen format — one shared table,
+    // exporters/format-scopes.ts (DDR-231 Phase 2 T4).
+    useEffect(() => {
+      if (!isScopeValidForFormat(format, scope)) setScope(defaultScopeForFormat(format));
     }, [format, scope]);
 
     if (!openState) {
@@ -575,7 +580,7 @@ const DialogShell = (() => {
               value={scope}
               onChange={(e) => setScope(e.target.value as Scope)}
             >
-              {VALID_SCOPES_PER_FORMAT[format].map((s) => (
+              {validScopesForFormat(format).map((s) => (
                 <option key={s} value={s}>
                   {SCOPE_META[s].label}
                 </option>

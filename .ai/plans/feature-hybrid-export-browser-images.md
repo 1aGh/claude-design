@@ -158,3 +158,129 @@ Sequencing: **T1 (hotfix) ships as an immediate patch release on its own** — i
 4. Daily canary exercises the video lane in production; a red canary is visible in Actions.
 5. Fidelity gate green (or documented accepted deltas) for every browser-lane format.
 6. DDR recorded + debate bookend ingested; docs updated; What's New entry pending.
+
+---
+
+# Phase 2 — Unify export fidelity across all three lanes + cross-platform automated tests
+
+> Added 2026-08-23 after the first live cloud test on `alligators.cloud.maude.sh` (v1.0.7). Phase 1 shipped the lanes but the browser lane and the worker lane both DIVERGE from the desktop's tuned output. The desktop `local` lane is the fidelity reference ("desktop máme vyladěné"); the goal of Phase 2 is that **all three lanes produce the SAME artifact, and that this is proven by automated tests on BOTH platforms (agent-browser for the web/cloud lanes, desktop-e2e for the native app) — no more manual-only verification.**
+
+## Problem (observed on the live v1.0.7 fleet, evidence attached)
+
+**Browser lane (png/svg/pptx) — confirmed from the downloaded `post-lokace.svg`:**
+
+1. **Artboard chrome leaks into the export.** The captured SVG contains `<g class="dc-artboard-label" aria-label="Artboard Lokace týdne · IG Post · 1:1">` — the editor's artboard title bar. The desktop path loads the shell with `?hide-chrome=1` (a `<style id="canvas-hide-chrome">` block in `_shell.html` that `display:none`s `.dc-artboard-label`, `.dc-mm`, `.dc-participants`, snap guides, comment pins, etc.). The browser lane captures the LIVE canvas DOM directly, so none of that chrome is hidden. **The capture must apply the same hide-chrome suppression before serializing.**
+2. **Assets are NOT inlined → broken/blurry images.** Every `<image>` in the SVG kept a REMOTE href (`https://canvas-alligators.cloud.maude.sh/.design/system/alligators/assets/photos-cut/park-action-wide.jpg`), zero `data:` URIs. When the SVG is rasterized via `<img src=blob:svg>`, an SVG-as-image loads NO external resources → broken-image icons + partial/blurry render (see `post-lokace.png`). Root cause (high confidence): the cloud canvas assets require the capability `?t=<token>` (the live `<img>` loaded with it via the iframe URL), but `dom-to-svg`'s `inlineResources` fetches the BARE href without the token → 403/blocked → the `try/catch` in `capture-core.svgForElement` swallows it → href stays remote. On the desktop the assets are loopback and need no token, so `inlineResources` works — which is exactly why desktop is fine and the browser lane is not.
+3. **No wait for assets/fonts before capture.** Desktop waits for `load` + `document.fonts.ready` + artboard visible. The browser-lane bridge captures immediately, so even correctly-referenced images can be mid-load ("musí se počkat na obrázky a assety než se to stáhne").
+4. **PPTX UX is broken.** "Capturing 10/10" then the modal closes with nothing in the export dialog, then the file auto-downloads later with no feedback. Assets missing there too (same root cause as #2). Needs the same progress/completion UX the desktop notification-center gives.
+
+**Worker lane (pdf/html/mp4) — needs local reproduction to pin exactly:**
+
+5. **PDF + HTML both fail `render service refused the job: invalid render job`.** That string is `server.ts validBody` returning 400. All of format/targets/canvas.origin look valid for `artboard` scope (identical shape to mp4, which navigates), so the reason is not obvious from static reading — **T1 must reproduce the exact rejected job body locally.** Leading hypotheses: (a) `body.targets` resolves to `[]` for these formats in the remote path (validBody rejects empty), or (b) a format/target-shape mismatch specific to the html (zip-producing) / pdf (pdf-lib post-pass) adapters, or (c) `canvas.origin` empty for the non-temporal path. Do NOT guess-fix — repro first.
+6. **MP4 fails `goto: Target page, context or browser has been closed`** (was a 60s timeout in Phase 1, now a crash). The worker's Chromium died mid-navigation — likely the ~3GB image + a heavy video comp exceeding the `standard-1` (0.5 vCPU / 4 GiB) container's memory, or a renderer OOM. Needs repro against the render image locally + a resource/robustness fix (frame-step fallback already exists — DDR-157 — verify it triggers in the worker).
+
+**Cross-cutting:** the three lanes have drifted because only the desktop path had real tests. Phase 1's fidelity gate (T6) compares browser-capture vs the playwright reference IN THE SAME ENGINE, so it did NOT catch the token-gated-asset divergence (loopback fixture has no token) or the chrome leak (fixture has no `.dc-artboard-label`). **The fix is end-to-end tests against a realistic cloud-shaped setup on both platforms.**
+
+## Solution
+
+**Single fidelity contract, three hosts.** The desktop `local` lane is the reference. Both other lanes must match it:
+
+- **Browser lane** gains the desktop's pre-capture discipline, in `capture-core` (shared spine, so the fix lands once): (a) suppress chrome (reuse the `_shell.html` `#canvas-hide-chrome` selector list — factor it into a shared const both the shell CSS and the capture consume, so they can't drift), (b) await fonts + every in-artboard `<img>` `.decode()`/`.complete`, (c) inline assets WITHOUT the token problem — for already-loaded same-origin images, draw the live `HTMLImageElement` to a canvas and `toDataURL()` (no fetch, no token, no taint) as the primary path, falling back to `inlineResources` only for what's not a decoded `<img>`. Verify a captured artifact has zero remote `http(s)://` refs.
+- **Worker lane** is repro'd and fixed per T1/T6 above; PDF/HTML must actually render, MP4 must survive (or degrade via the frame-step fallback) inside the container's resources.
+- **PPTX browser UX** routed through the same notification-center status the desktop uses (progress → done → download), no silent modal close.
+
+**Automated cross-platform tests are the deliverable, not an afterthought:**
+
+- **Web/cloud lanes → `agent-browser`** driving a real dev-server in a workspace-shaped config (token-gated canvas origin) that exercises the browser lane end-to-end and asserts the artifact: no `.dc-artboard-label` text, no remote asset refs, images present (non-broken), correct dimensions.
+- **Native app → `desktop-e2e`** (WebdriverIO + `@wdio/tauri-service`, `apps/desktop/e2e/`) driving the real Export dialog in the bundled app and asserting the produced file for every format.
+- Both run in CI; a lane may not be called "fixed" until its cross-platform test is green.
+
+## Tasks
+
+### Task 1: REPRODUCE every failure locally — the evidence base before any fix ✅ 2026-08-23
+
+**Findings — two of the six hypotheses in the Problem section were WRONG; the real causes are worse and simpler.**
+
+| # | Hypothesis in the plan | What the reproduction showed |
+| --- | --- | --- |
+| 1 | chrome leaks (no hide-chrome in the browser lane) | **Confirmed.** `useExportCaptureBridge` never applies suppression; `.dc-artboard-label` is a CHILD of `[data-dc-screen]`, so it serializes. Red test first. |
+| 2 | assets not inlined because the cloud `?t=` token isn't on `inlineResources`' fetch | **WRONG — and the truth is bigger.** Reproduced on a plain SAME-ORIGIN localhost fixture with no token at all. dom-to-svg 0.12.2 WRITES image URLs to `xlink:href` and READS them back as `element.href.baseVal` (the SVG2 attribute), which is `''` — so its own `assert(url,'No URL passed')` throws for EVERY image, and it catches and `console.error`s its own failure. **Image inlining has never worked in this lane, on any host, cloud or not.** Desktop PNG looked fine only because it comes from a playwright screenshot, not dom-to-svg. |
+| 3 | no wait for assets/fonts | **Confirmed.** Red test with a deliberately stalled image. |
+| 4 | PPTX UX (silent modal close, no ledger row) | **Confirmed** in code: `downloadCapturedBlob` → `onClose()`, no status for the in-cell assemble phase, and the browser lane wrote no history entry at all. |
+| 5 | pdf/html `invalid render job` — "leading hypotheses: empty targets / origin gap / adapter shape" | **REPRODUCED exactly, none of those.** `POST /_api/export-jobs {format:'pdf', scope:'project-raw'}` → `render service refused the job: invalid render job`. The route validates `isFormat` and `isScope` INDEPENDENTLY, never the pair; `project-raw` resolves to a `file-tree` target; the render service refuses file-tree targets (correctly — it holds no checkout). The scope table lived in the two dialogs and in NEITHER server. |
+| 6 | mp4 target-closed = container OOM | **Not reproducible locally** (ample RAM). Left for T5, honestly unverified. |
+
+**Plus one defect nobody had reported, found by running the lane end-to-end:** worker-lane **SVG and PPTX were failing 100%** with `page.addScriptTag: Executing inline script violates the following Content Security Policy directive`. The render worker always loads the canvas from the CANVAS origin, whose strict shell CSP (`script-src 'self' 'sha256-…'`) refuses playwright's inline injection — and `server.ts` ignores `?hide-chrome=1` for CSP selection, so the capture CSP never applied there.
+
+**Harness:** workspace-shaped studio (`MAUDE_WORKSPACE_MODE=1` + `MAUDE_RENDER_URL`) against a real local `maude-render`. All five worker formats now verified end-to-end locally: png ✅ pdf ✅ html ✅ svg ✅ pptx ✅.
+- **Do**: Stand up a workspace-shaped dev-server locally (token-gated canvas origin, `MAUDE_RENDER_URL` pointing at a local `maude-render` container built from the release Dockerfile) so all three lanes are exercisable off-cloud. Capture the EXACT rejected job body for pdf/html (`render service refused the job: invalid render job`), the mp4 container crash, and a browser-lane png/svg with the chrome + asset defects. Save the reproductions as fixtures the later tasks assert against.
+- **Gotcha**: the desktop `local` lane hides all of this (no validBody, loopback assets) — the repro MUST be the workspace/remote+browser shape, not `npm run start` on this repo.
+- **Validate**: each of the 6 problems reproduced locally with a captured artifact/log; hypotheses in the Problem section confirmed or replaced with the real cause.
+
+### Task 2: FIX browser-lane chrome suppression (shared with the shell) ✅ 2026-08-23
+Selector list extracted to `exporters/capture-chrome.ts` (single source), applied by `capture-core` in BOTH hosts, and the hidden nodes are now STRIPPED from the output (an empty `<g>` still carried the artboard title as `aria-label`) with dangling `aria-owns` idrefs scrubbed. `test/canvas-hide-chrome.test.ts` gained a two-way drift tripwire against the `_shell.html` block — verified fail-first by deleting one selector.
+- **Do**: Factor the `_shell.html` `#canvas-hide-chrome` selector list into a single shared constant; `capture-core` applies it (hide/remove those nodes on a clone, or toggle a class) before `elementToSVG`. Never re-list the selectors in two places (they drifted once already — see the `_shell.html` comment about `.dc-mini-map` vs `.dc-mm`).
+- **Validate**: a captured artboard SVG/PNG contains no `.dc-artboard-label` / `.dc-mm` / `.dc-participants` / snap-guide / comment-pin nodes; unit + the T6 fixture extended with a chrome-bearing artboard.
+
+### Task 3: FIX browser-lane asset inlining + load-wait ✅ 2026-08-23
+`capture-core` no longer calls dom-to-svg's broken `inlineResources` at all. New `inlineCaptureResources` embeds every `<image>` and every `url()` in the emitted `<style>`: **fetch first** (keeps original bytes + MIME, so a vector logo stays vector), **decoded-`<img>` → canvas → `toDataURL()` as fallback** (no network, so it survives a credentialed or opaque-origin fetch refusal). `waitForCaptureAssets` awaits `document.fonts.ready` + every in-target `<img>` decode, bounded. Both hrefs (`href` + `xlink:href`) are written so no consumer misses the embed.
+- **Do**: In `capture-core`: before serialize, `await document.fonts.ready` and await every in-target `<img>` `.decode()` (or `.complete` + a bounded timeout). For inlining, add a canvas→`toDataURL()` path for decoded same-origin `<img>`/`<image>` (no fetch, no token), keeping `inlineResources` as the fallback. Assert the output has zero remote `http(s)` refs.
+- **Gotcha**: cross-origin images without CORS taint the canvas → `toDataURL` throws; guard and fall back (and document that a genuinely cross-origin asset stays a remote ref, which the token-gated same-origin case is NOT). Background-image URLs (not just `<img>`) may also need handling — check the DS specimens.
+- **Validate**: the `post-lokace` artboard exports with the map photo + logo embedded as `data:` URIs and renders identically to the desktop PNG (pixel-diff under the T6 threshold, now with assets).
+
+### Task 4: FIX worker PDF + HTML (from the T1 repro) ✅ 2026-08-23
+Three layers, because the bug needed all three: (a) `exporters/format-scopes.ts` is now the ONE scope table — both dialogs import it, and the three-way duplication (which had already drifted: the in-canvas copy was missing mp4/webm/gif) is gone; (b) `/_api/export` + `/_api/export-jobs` reject an incoherent pair with a sentence naming the remedy; (c) the render service's `validBody` became `rejectReason`, so its 400 names the field instead of one opaque string. Also fixed the CSP defect T1 surfaced: the SVG shim now PREFERS the page's own `__maudeCaptureCore` + importmap `dom-to-svg` and only injects as a fallback — no CSP was relaxed, and the worker now runs literally the same capture code the member's browser runs.
+- **Do**: Apply the fix the T1 reproduction points to (validBody rejection root cause). If it's empty targets, fix scope resolution on the remote path; if it's a canvas.origin gap, fix the wiring; if html's zip-shape confuses the worker, handle it. Land a fail-first test with the exact repro'd job body.
+- **Validate**: pdf + html export a real file from the workspace lane locally; the render service accepts and returns bytes.
+
+### Task 5: FIX worker MP4 robustness (from the T1 repro) ⚠️ 2026-08-23 — DIAGNOSED, NOT FIXED
+
+**The OOM hypothesis is unproven and probably not the first problem.** Worker-lane video is blocked before it can run out of anything: `_video-playwright.mjs` injects both the render lib and the encode lib with `page.addScriptTag({ content })` — an INLINE script — and the render worker always loads the canvas from the CANVAS origin, whose shell CSP is `script-src 'self' 'sha256-…'`. Measured, not assumed (probe against a page with that exact CSP):
+
+| injection | result |
+| --- | --- |
+| `addScriptTag({content})` — what the video shim does | **blocked**: "Executing inline script violates the following Content Security Policy directive" |
+| `addInitScript({content})` — pre-navigation | works (CDP-level, not CSP-checked) |
+| `page.evaluate` | works (CDP-level) |
+
+This is the same wall that made worker-lane **SVG fail 100%**, which T4 fixed by preferring the page's own already-loaded capture core. Video cannot use that trick: the canvas runtime does not ship the encoder (`window.__maudeEnc` exists only because the shim injects it), so the fix has to be a CSP-safe injection instead — `addInitScript` hoisted ahead of `goto` is the candidate, subject to the bundles being classic-script-safe (they are injected as `type: 'module'` today).
+
+**Deliberately not shipped in this pass.** The change is small but unverifiable without a video-comp fixture and a real multi-minute render, and this plan's own T1 rule is repro-first. Shipping an unverified edit to the video path would be exactly the guessing the rule exists to prevent. Next session: build a minimal `<VideoComp>` fixture, reproduce the failure on the worker lane, apply the injection fix, and only THEN revisit whether a `standard-1` container is also too small.
+- **Do**: Address the container Chromium crash — ensure the DDR-157 frame-step fallback + render-sized job timeout actually engage in the worker, and that the `standard-1` container has (or is given) the resources a 1080p comp needs, or the comp is capped to what fits. Human-readable failure if it genuinely can't.
+- **Validate**: a short real video comp exports mp4 from the workspace lane locally without a target-closed crash.
+
+### Task 6: FIX PPTX browser-lane UX ✅ 2026-08-23
+`captureDeckViaBrowser` gained an `onAssemble` phase callback (the status used to sit on "Capturing 10/10…" through the whole in-cell composition), the dialog now ends on an explicit `Saved <name> to your downloads.` instead of closing itself, and browser-lane exports are recorded in the shared ledger — new `POST /_api/export-history` + `recordBrowserExport` on the job queue, with a `deliveredInBrowser` flag so no UI offers a download for bytes the cell never held. Closes the Phase-1 deviation "browser captures don't write export-history".
+- **Do**: Route the browser-lane pptx (and png/svg) through the same status surface the desktop uses (progress in the notification center / dialog, explicit completion, then download) instead of closing the modal silently and auto-downloading later.
+- **Validate**: exporting a 10-artboard deck shows continuous progress and a clear completion; asset-complete deck.
+
+### Task 7: ADD agent-browser cross-lane e2e (web/cloud) ✅ 2026-08-23
+`apps/studio/test/export-e2e-lanes.test.ts` — boots a real workspace-shaped studio, opens the REAL Export dialog in Chromium, clicks Export, catches the download and asserts the BYTES. Browser lane (png/svg/pptx, lane `none` so nothing can silently fall back to the worker) + worker lane (pdf/html against a real spawned `maude-render`). Verified fail-first: with the fixes reverted it fails with `aria-label="Artboard …"` and `xlink:href="http://…/assets/pic.png"` — the exact shape of the user's `post-lokace.svg`. Wired into CI as a **required** job (`export-lanes` in `quality.yml`), ~10 s.
+
+**It immediately earned its keep — two more Phase-1 defects nobody had reported:**
+1. `/_api/export-assemble` was missing from the read-only allowlist, so a **viewer could not export a PPTX deck at all**: every artboard captured, then a 403, with the dialog still reading "Capturing 10/10".
+2. The single-artboard capture branch in `app.jsx` matched `pptx` too, asked the bridge for a "pptx", and died in `sanitizeCapturedItems` — silently degrading to the worker lane. **The dedicated deck branch was unreachable**, which is why the reported deck arrived minutes later, from the worker, with none of the browser lane's fixes in it.
+- **Do**: An `agent-browser` scenario against the workspace-shaped local server that, for each browser-lane format (png/svg/pptx) AND each worker-lane format (pdf/html/mp4 via a local render container), performs the export from the real Export dialog and asserts the artifact: no chrome text, no remote refs, images present, right dimensions/format. Wire into CI.
+- **Validate**: the scenario is red against today's code (chrome + assets) and green after T2–T6.
+
+### Task 8: ADD desktop-e2e export coverage (native) ✅ 2026-08-23
+`apps/desktop/e2e/scenarios/export-formats.e2e.ts` — exports PNG, SVG and PDF from the bundled `.app` and asserts the produced files. DOM-driven only; the artifact is read back over the sidecar's own HTTP API from inside the webview, which keeps the assertion off the native save panel (no computer-use). New fixture `ui/Export.tsx` + `assets/pic.png` — deliberately separate from `Smoke.tsx` (other scenarios assert its DOM) and deliberately carrying an image, since neither defect is observable on a canvas with no picture in it. The dialog testids (`export-format-<id>`, `export-scope`, `export-submit`, `export-status`, `export-recent`) landed in the same change. **Run and green against a real build** (`tauri build --debug` → 1 passing, 8.2 s).
+- **Do**: Extend `apps/desktop/e2e/` (WebdriverIO + `@wdio/tauri-service`) with an export scenario that drives the bundled app's Export dialog for every format and asserts the saved file. Add the `data-testid`s the scenario needs to the export dialog in the same change.
+- **Validate**: `pnpm test:e2e:desktop` exports every format from the native app and asserts fidelity; green.
+
+### Task 9: Fidelity reconciliation + regression pin ✅ 2026-08-23
+The Phase-1 gate compared two captures in the SAME engine on a fixture with no chrome and no network asset, which is why it was green through both live defects. It now has company: `test/export-capture-hygiene.test.ts` runs against a REAL HTTP origin (the only way #2 reproduces at all) with a chrome-bearing, asset-bearing artboard. The same three invariants — no editor chrome, no remote `http(s)` refs, assets present as `data:` — are now asserted on the delivered artifact in all three lanes: browser (web e2e), worker (web e2e), desktop (native e2e). The `_shell.html` ↔ `capture-chrome.ts` drift tripwire closes the loop on the selector list.
+- **Do**: Make the T6 fidelity gate realistic — add a token-gated-asset fixture and a chrome-bearing fixture so it would have caught #1 and #2. Assert all three lanes produce matching artifacts for the same canvas.
+- **Validate**: full suite green; the three lanes' outputs match within the fidelity threshold on the shared fixtures.
+
+## Validation
+- Every fix is fail-first (repro fixture red → green).
+- `agent-browser` (web) + `desktop-e2e` (native) export scenarios green in CI for all formats.
+- A live re-test on `alligators.cloud.maude.sh` matches the desktop output: no chrome, assets embedded, pdf/html/mp4 succeed.
+
+## Acceptance Criteria
+1. Browser-lane png/svg/pptx export with NO artboard chrome and ALL assets embedded, matching the desktop artifact.
+2. Worker-lane pdf/html/mp4 export a real file (no "invalid render job", no target-closed crash) from a cloud workspace.
+3. The browser-lane export UX shows progress + completion (no silent modal close).
+4. Automated cross-platform tests (agent-browser + desktop-e2e) assert export fidelity on BOTH platforms and gate CI.
+5. The T6 fidelity gate is extended so it would have caught the chrome + token-gated-asset divergences.

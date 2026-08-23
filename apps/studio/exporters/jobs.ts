@@ -63,6 +63,13 @@ export interface ExportHistoryEntry {
   error?: string;
   /** Present when the export produced less than was asked for (e.g. muted mp4). */
   degraded?: ExportDegradation;
+  /**
+   * DDR-231 Phase 2 T6 — the browser lane captured and saved this export in
+   * the member's OWN browser; the cell holds no bytes for it. Present so the
+   * Recent tab and the notification center can list it without offering a
+   * download that would 404.
+   */
+  deliveredInBrowser?: boolean;
 }
 
 export type ExportJobStatus = 'queued' | 'running' | 'done' | 'failed';
@@ -87,6 +94,9 @@ export interface ExportJob {
    * RCA `issue-mp4-audio-export-html5audio-silent-degrade`.
    */
   degraded?: ExportDegradation;
+  /** DDR-231 browser lane — produced and saved in the member's own browser;
+   * this process stores no bytes for it. See {@link ExportHistoryEntry}. */
+  deliveredInBrowser?: boolean;
 }
 
 export interface EnqueueArgs {
@@ -111,6 +121,12 @@ export type DownloadResult =
 
 export interface ExportJobQueue {
   enqueue(args: EnqueueArgs): { id: string; result: Promise<ExportResult> };
+  /**
+   * Record an export the MEMBER'S BROWSER produced and saved (DDR-231 browser
+   * lane) so it appears in the same ledger every other export does. No bytes
+   * are kept — the file never passed through this process.
+   */
+  recordBrowserExport(args: { format: Format; scope: Scope; filename: string }): ExportHistoryEntry;
   get(id: string): ExportJob | undefined;
   list(): ExportJob[];
   loadHistory(): ExportHistoryEntry[];
@@ -283,6 +299,7 @@ export function createExportJobQueue(bus: Bus, designRoot: string): ExportJobQue
         // A muted mp4 must not look like a clean one in the ledger either — the
         // history entry is what a later session (or an agent) reads back.
         degraded: j.degraded,
+        deliveredInBrowser: j.deliveredInBrowser,
       }));
   }
 
@@ -438,6 +455,38 @@ export function createExportJobQueue(bus: Bus, designRoot: string): ExportJobQue
     enqueue,
     get: (id) => jobs.get(id),
     list: () => Array.from(jobs.values()).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    recordBrowserExport({ format, scope, filename }) {
+      const now = new Date().toISOString();
+      const job: ExportJob = {
+        id: crypto.randomUUID(),
+        format,
+        scope,
+        options: {},
+        status: 'done',
+        createdAt: now,
+        startedAt: now,
+        finishedAt: now,
+        filename,
+        deliveredInBrowser: true,
+      };
+      jobs.set(job.id, job);
+      emit(job);
+      // Fire-and-forget: the member already HAS the file, so a slow ledger
+      // write must not gate their UI, and a failed one must not fail an export
+      // that already succeeded.
+      void persistAndEvict().catch(() => {});
+      return {
+        id: job.id,
+        format,
+        scope,
+        filename,
+        at: now,
+        status: 'done',
+        startedAt: now,
+        finishedAt: now,
+        deliveredInBrowser: true,
+      };
+    },
     loadHistory: deriveHistory,
     async getBytes(id) {
       const job = jobs.get(id);

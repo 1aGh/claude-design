@@ -124,6 +124,7 @@ import {
   diffLayoutPositions,
 } from './commands/move-artboards-command.ts';
 import { scopedCdSelector, selectorIndex, shortText } from './dom-selection.ts';
+import { applyCaptureChrome } from './exporters/capture-chrome.ts';
 import {
   type DomToSvgApi,
   pinArtboard,
@@ -1860,6 +1861,11 @@ function useExportCaptureBridge() {
         : null;
       void (async () => {
         const savedWorld = resetWorldPlane();
+        // Hold the chrome suppression across the WHOLE batch. `svgForElement`
+        // applies it per target too (ref-counted), but a 10-artboard deck would
+        // otherwise add and remove the style ten times — ten forced reflows,
+        // and the member watching the canvas sees the chrome flicker.
+        const releaseChrome = applyCaptureChrome(document);
         try {
           const all = Array.from(document.querySelectorAll('[data-dc-screen]'));
           const targets = wanted?.length
@@ -1905,6 +1911,7 @@ function useExportCaptureBridge() {
             message: err instanceof Error ? err.message : String(err),
           });
         } finally {
+          releaseChrome();
           restoreWorldPlane(savedWorld);
           busy = false;
         }

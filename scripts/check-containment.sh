@@ -262,20 +262,29 @@ if [ -f "apps/hub/src/canvas/routes.mjs" ] && ! grep -qF "renderDisabled" "apps/
   fail=1
 fi
 
-# ---- 4. the export except-list stays exactly the DDR-230 three --------------
+# ---- 4. the export except-list stays exactly what the DDRs sanctioned -------
 #
 # DDR-230 introduced the ONE escape from a forbidden prefix: exact paths on the
 # `/_api/export` entry's `except` list (the job lane — enqueue/list/stream,
-# nothing evaluates in-cell). A FOURTH entry appearing here is a containment
+# nothing evaluates in-cell). A NEW entry appearing here is a containment
 # decision, not a convenience — it must arrive with its own DDR, so it is a red
 # build until this list is updated deliberately.
+#
+# DDR-231 (hybrid export lanes) added the browser lane's two halves, and the
+# pin was NOT updated with them — so this gate has been failing on main since
+# that change shipped in v1.0.7. Both are the zip containment class (pure JS
+# over pure data; nothing evaluates tenant TSX):
+#   /_api/export-assemble — composes a deck from PNGs the MEMBER'S browser
+#     captured and already holds.
+#   /_api/export-warmup   — proxies GET /_health to the render service so the
+#     container wakes while the member picks options. No job body, no secret.
 EXCEPT_ACTUAL=$(node -e "
   const s = require('fs').readFileSync('$MODULE', 'utf8');
   const m = s.match(/except:\s*\[([^\]]*)\]/g) ?? [];
   const paths = m.flatMap((x) => [...x.matchAll(/'([^']+)'/g)].map((g) => g[1]));
   console.log(paths.sort().join(','));
 ")
-EXCEPT_EXPECTED="/_api/export-history,/_api/export-jobs,/_api/export-jobs/download"
+EXCEPT_EXPECTED="/_api/export-assemble,/_api/export-history,/_api/export-jobs,/_api/export-jobs/download,/_api/export-warmup"
 if [ "$EXCEPT_ACTUAL" != "$EXCEPT_EXPECTED" ]; then
   echo "FAIL: the forbidden-prefix except-list changed (DDR-230)." >&2
   echo "      expected: $EXCEPT_EXPECTED" >&2

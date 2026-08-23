@@ -143,18 +143,41 @@ interface RenderBody {
   canvas: { origin: string; token?: string; tokensCssRel?: string; componentsCssRel?: string };
 }
 
-function validBody(b: unknown): b is RenderBody {
-  if (!b || typeof b !== 'object') return false;
+/**
+ * Why a job was refused, or `null` when it is renderable.
+ *
+ * NAMED, not boolean (DDR-231 Phase 2 T4). Every rejection used to collapse
+ * into one opaque `invalid render job`, and a live cloud PDF/HTML failure was
+ * therefore un-diagnosable from the artifact the member saw — pinning it took
+ * a local reproduction of the whole lane. The cell now refuses an incoherent
+ * (format, scope) pair before dispatch, so anything arriving here is already a
+ * bug in a caller; this reason is how the NEXT one names itself in one line.
+ *
+ * Says which field and why, never what the value was: the body is attacker-
+ * influenced and the response crosses back to the cell.
+ */
+function rejectReason(b: unknown): string | null {
+  if (!b || typeof b !== 'object') return 'body must be a JSON object';
   const body = b as Record<string, unknown>;
-  if (!isFormat(body.format)) return false;
-  if (BROWSER_FREE_FORMATS.has(body.format) || REMOTE_UNSUPPORTED_FORMATS.has(body.format))
-    return false; // zip renders in-cell; canva is desktop-only — neither belongs here
-  if (!Array.isArray(body.targets) || body.targets.length === 0) return false;
+  if (!isFormat(body.format)) return 'unknown format';
+  // zip renders in-cell; canva is desktop-only — neither belongs here.
+  if (BROWSER_FREE_FORMATS.has(body.format)) return 'this format renders in-cell, not here';
+  if (REMOTE_UNSUPPORTED_FORMATS.has(body.format))
+    return 'this format cannot be rendered by the render service';
+  if (!Array.isArray(body.targets)) return 'targets must be an array';
+  if (body.targets.length === 0)
+    return 'no targets resolved — the cell found nothing to render for this scope';
   // file-tree targets carry repo paths this process cannot (and must not) read.
-  if (!body.targets.every((t) => (t as Target)?.kind === 'element')) return false;
+  if (!body.targets.every((t) => (t as Target)?.kind === 'element'))
+    return 'targets must all be element targets — a file-tree scope (project-raw) cannot render here';
   const canvas = body.canvas as Record<string, unknown> | undefined;
-  if (!canvas || typeof canvas.origin !== 'string' || !canvas.origin) return false;
-  return true;
+  if (!canvas || typeof canvas.origin !== 'string' || !canvas.origin)
+    return 'canvas.origin is required';
+  return null;
+}
+
+function validBody(b: unknown): b is RenderBody {
+  return rejectReason(b) === null;
 }
 
 // ── tiny single-lane queue — one Chromium at a time per instance ─────────────
@@ -187,7 +210,9 @@ async function handleRender(req: Request): Promise<Response> {
   } catch {
     return new Response('invalid JSON', { status: 400 });
   }
-  if (!validBody(parsed)) return new Response('invalid render job', { status: 400 });
+  const reason = rejectReason(parsed);
+  if (reason || !validBody(parsed))
+    return new Response(`invalid render job: ${reason ?? 'unknown'}`, { status: 400 });
   const body = parsed;
   if (!originAllowed(body.canvas.origin)) {
     return new Response(

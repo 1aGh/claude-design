@@ -73,15 +73,41 @@ try {
       world.style.transform = 'none';
     }
   });
-  // Inject dom-to-svg (IIFE — attaches `window.domToSvg`) and the SHARED
-  // capture spine (module — attaches `window.__maudeCaptureCore`). The core is
-  // the SAME source the canvas runtime's export-capture bridge imports
-  // (exporters/capture-core.ts, DDR-231 single-spine): the serializer logic
-  // must never be re-inlined here — it forked once and the browser lane would
-  // silently drift from this shim.
-  await page.addScriptTag({ path: bundlePath });
-  await page.addScriptTag({ path: corePath, type: 'module' });
-  await page.waitForFunction(() => !!window.__maudeCaptureCore, { timeout: timeoutMs });
+  // Get dom-to-svg (`window.domToSvg`) and the SHARED capture spine
+  // (`window.__maudeCaptureCore`) into the page. The core is the SAME source
+  // the canvas runtime's export-capture bridge imports (exporters/
+  // capture-core.ts, DDR-231 single-spine): the serializer logic must never be
+  // re-inlined here — it forked once and the browser lane would silently drift
+  // from this shim.
+  //
+  // PREFER WHAT THE PAGE ALREADY HAS (DDR-231 Phase 2 T4). A real canvas
+  // bundles capture-core through canvas-lib, so `__maudeCaptureCore` is
+  // already set, and `dom-to-svg` resolves through the shell's importmap.
+  // `addScriptTag({path})` injects an INLINE script, which the canvas origin's
+  // strict shell CSP (`script-src 'self' 'sha256-…'`) refuses outright — so on
+  // the render-worker lane, where the canvas is ALWAYS loaded from the canvas
+  // origin, every SVG export died with "Executing inline script violates the
+  // following Content Security Policy directive". Reaching for the in-page
+  // copy first fixes that lane without relaxing anyone's CSP, and makes the
+  // worker run literally the same code the member's browser runs.
+  const reuse = await page.evaluate(async () => {
+    const w = window;
+    if (!w.domToSvg) {
+      try {
+        w.domToSvg = await import('dom-to-svg');
+      } catch {
+        /* no importmap on this page — the injection fallback below covers it */
+      }
+    }
+    return !!w.__maudeCaptureCore && !!w.domToSvg;
+  });
+  if (!reuse) {
+    await page.addScriptTag({ path: bundlePath });
+    await page.addScriptTag({ path: corePath, type: 'module' });
+  }
+  await page.waitForFunction(() => !!window.__maudeCaptureCore && !!window.domToSvg, {
+    timeout: timeoutMs,
+  });
 
   const written = [];
 

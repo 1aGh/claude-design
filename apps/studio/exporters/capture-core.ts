@@ -18,12 +18,20 @@
 // with zero shims. Loaded as a side-effect module: assigns
 // `window.__maudeCaptureCore` so the shim can reach it without an importmap.
 
+import { applyCaptureChrome, CAPTURE_HIDDEN_SELECTORS } from './capture-chrome.ts';
+
 /** The subset of dom-to-svg the capture uses (IIFE `window.domToSvg` in the
  * shim host; `await import('dom-to-svg')` through the importmap in the canvas
  * runtime host). */
 export interface DomToSvgApi {
   elementToSVG(el: Element): XMLDocument;
-  inlineResources(el: Element): Promise<void>;
+  /**
+   * Present on the module but NOT used — dom-to-svg 0.12.2's own inlining is
+   * broken for images (it writes `xlink:href`, reads `href.baseVal`). Kept in
+   * the type so the shape of the injected module still documents itself; the
+   * working implementation is {@link inlineCaptureResources}.
+   */
+  inlineResources?(el: Element): Promise<void>;
 }
 
 // Raster ceilings — mirrored from bin/_png-playwright.mjs (feature-2-print-
@@ -166,6 +174,246 @@ function effectiveBg(node: Element): string | null {
 export interface SvgCaptureOptions {
   /** Capture the enclosing `[data-dc-screen]` rather than the element itself. */
   widenToArtboard?: boolean;
+  /**
+   * Ceiling on the pre-capture asset wait AND on each resource inline, in ms.
+   * A stalled asset must delay a capture, never hang it.
+   */
+  assetTimeoutMs?: number;
+}
+
+const DEFAULT_ASSET_TIMEOUT_MS = 10_000;
+
+const withTimeout = <T>(p: Promise<T>, ms: number, fallback: T): Promise<T> =>
+  Promise.race([p, new Promise<T>((r) => setTimeout(() => r(fallback), ms))]);
+
+/** Resolve once an `<img>` has finished loading — successfully or not. */
+function imageSettled(img: HTMLImageElement): Promise<void> {
+  if (img.complete) return img.decode().catch(() => {});
+  return new Promise<void>((resolve) => {
+    const done = () => {
+      img.removeEventListener('load', done);
+      img.removeEventListener('error', done);
+      resolve();
+    };
+    img.addEventListener('load', done);
+    img.addEventListener('error', done);
+  }).then(() => img.decode().catch(() => {}));
+}
+
+/**
+ * Wait for the things a capture silently drops if it races them: webfonts, and
+ * every `<img>` inside the target.
+ *
+ * The playwright hosts get this for free — they navigate and wait for `load`
+ * before evaluating. The browser lane captures a LIVE canvas whose images may
+ * still be in flight ("musí se počkat na obrázky a assety"), so the wait has to
+ * live in the shared spine instead of in one host's navigation options.
+ *
+ * Bounded: a broken or hanging asset costs `timeoutMs` and then the capture
+ * proceeds without it. A late image beats no export.
+ */
+export async function waitForCaptureAssets(
+  target: Element,
+  timeoutMs: number = DEFAULT_ASSET_TIMEOUT_MS
+): Promise<void> {
+  const doc = target.ownerDocument ?? document;
+  const waits: Promise<unknown>[] = [];
+  const fonts = (doc as Document & { fonts?: FontFaceSet }).fonts;
+  if (fonts?.ready) waits.push(fonts.ready.catch(() => {}));
+  const imgs: HTMLImageElement[] = [];
+  if (target instanceof HTMLImageElement) imgs.push(target);
+  for (const img of target.querySelectorAll('img')) imgs.push(img);
+  for (const img of imgs) waits.push(imageSettled(img));
+  await withTimeout(
+    Promise.all(waits).then(() => undefined),
+    timeoutMs,
+    undefined
+  );
+}
+
+/**
+ * Drop the serialized remains of hidden editor chrome.
+ *
+ * `applyCaptureChrome` makes the chrome render nothing, but dom-to-svg still
+ * emits an (empty) `<g>` for a `display:none` element, carrying its class and
+ * `aria-label` — so the artboard's title text survived into the file as
+ * metadata even once it stopped painting. Nothing downstream wants it: it is
+ * an editor affordance, not design content.
+ */
+export function stripChromeNodes(root: Element): void {
+  const removedIds = new Set<string>();
+  for (const selector of CAPTURE_HIDDEN_SELECTORS) {
+    // ids are rewritten during serialization — class/attribute selectors are
+    // the ones that survive, and they cover every entry that can appear here.
+    if (selector.startsWith('#')) continue;
+    for (const node of Array.from(root.querySelectorAll(selector))) {
+      const id = node.getAttribute('id');
+      if (id) removedIds.add(id);
+      node.remove();
+    }
+  }
+  if (!removedIds.size) return;
+  // dom-to-svg mirrors the DOM's accessibility tree onto the output, so the
+  // artboard still points at the label it no longer contains. Leave no dangling
+  // idref: it is invalid ARIA, and it is how the label's name survived the
+  // node's removal.
+  for (const owner of Array.from(root.querySelectorAll('[aria-owns]'))) {
+    const kept = (owner.getAttribute('aria-owns') ?? '')
+      .split(/\s+/)
+      .filter((id) => id && !removedIds.has(id));
+    if (kept.length) owner.setAttribute('aria-owns', kept.join(' '));
+    else owner.removeAttribute('aria-owns');
+  }
+}
+
+const isEmbeddable = (href: string | null): href is string =>
+  !!href && !href.startsWith('data:') && !href.startsWith('#');
+
+/** Read whichever href attribute dom-to-svg happened to write. */
+function readHref(el: Element): string | null {
+  return el.getAttribute('xlink:href') ?? el.getAttribute('href');
+}
+
+/** Write BOTH, so every downstream consumer sees the embedded bytes. */
+function writeHref(el: Element, value: string): void {
+  el.setAttribute('xlink:href', value);
+  el.setAttribute('href', value);
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('failed to read resource blob'));
+    reader.onload = () => resolve(String(reader.result));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/** Fetch a resource and return it as a `data:` URI — original bytes, original
+ * MIME (so an SVG logo stays vector). Same-origin by construction for canvas
+ * assets, so the browser attaches whatever credential the live `<img>` used. */
+async function dataUrlByFetch(url: string, timeoutMs: number): Promise<string | null> {
+  try {
+    const res = await withTimeout(fetch(url), timeoutMs, null as Response | null);
+    if (!res?.ok) return null;
+    return await blobToDataUrl(await res.blob());
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Last-resort inline: repaint an ALREADY-DECODED `<img>` through a canvas.
+ * No network, so it survives a resource the capture context may not re-fetch
+ * (a credentialed URL, an opaque-origin document, a revoked object URL). A
+ * cross-origin bitmap without CORS taints the canvas and `toDataURL` throws —
+ * caught, and the ref is left remote rather than emitting a wrong picture.
+ */
+function dataUrlFromDecodedImage(img: HTMLImageElement): string | null {
+  if (!img.naturalWidth || !img.naturalHeight) return null;
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0);
+    return canvas.toDataURL('image/png');
+  } catch {
+    return null;
+  }
+}
+
+/** Index the live `<img>` elements by the URL they actually loaded. */
+function liveImagesByUrl(target: Element): Map<string, HTMLImageElement> {
+  const map = new Map<string, HTMLImageElement>();
+  const add = (img: HTMLImageElement) => {
+    for (const u of [img.currentSrc, img.src]) if (u) map.set(u, img);
+  };
+  if (target instanceof HTMLImageElement) add(target);
+  for (const img of target.querySelectorAll('img')) add(img);
+  return map;
+}
+
+/**
+ * Embed every external resource the serialized SVG still points at.
+ *
+ * WHY THIS EXISTS INSTEAD OF `domToSvg.inlineResources` (the DDR-231 Phase 2
+ * root cause): dom-to-svg 0.12.2 WRITES image URLs to `xlink:href` but READS
+ * them back as `element.href.baseVal`, which reflects the SVG2 `href`
+ * attribute. In a document built with `createElementNS` that is `''`, so its
+ * own `assert(url, 'No URL passed')` throws for every image — and it catches
+ * its own error and `console.error`s it. The result was an export whose
+ * `<image>` refs all stayed remote, with zero `data:` URIs and no thrown error
+ * anywhere: broken pictures in the SVG, and NOTHING in the PNG, because an
+ * SVG-as-image loads no external resources at all. It never worked; the desktop
+ * looked fine only because its PNG comes from a real screenshot, not this path.
+ *
+ * Order is deliberate — `fetch` first (keeps the original bytes and MIME, so a
+ * vector logo stays vector), decoded-`<img>` repaint second (no network, so it
+ * still works where the fetch is refused).
+ */
+export async function inlineCaptureResources(
+  root: Element,
+  target: Element,
+  timeoutMs: number = DEFAULT_ASSET_TIMEOUT_MS
+): Promise<void> {
+  const live = liveImagesByUrl(target);
+  const cache = new Map<string, string | null>();
+  const resolve = async (url: string): Promise<string | null> => {
+    const hit = cache.get(url);
+    if (hit !== undefined) return hit;
+    let out = await dataUrlByFetch(url, timeoutMs);
+    if (!out) {
+      const img = live.get(url);
+      if (img) out = dataUrlFromDecodedImage(img);
+    }
+    cache.set(url, out);
+    return out;
+  };
+
+  const images = Array.from(root.querySelectorAll('image'));
+  await Promise.all(
+    images.map(async (node) => {
+      const href = readHref(node);
+      if (!isEmbeddable(href)) return;
+      const dataUrl = await resolve(new URL(href, document.baseURI).href);
+      if (dataUrl) writeHref(node, dataUrl);
+    })
+  );
+
+  // `@font-face` (and any other `url()`) inside the emitted <style> blocks —
+  // dom-to-svg puts the captured stylesheet there. Without this the SVG falls
+  // back to a system font the moment it leaves the serving origin, which is
+  // the classic silent fidelity killer.
+  await Promise.all(
+    Array.from(root.querySelectorAll('style')).map(async (styleEl) => {
+      const css = styleEl.textContent ?? '';
+      const urls = new Set<string>();
+      for (const m of css.matchAll(/url\(\s*(['"]?)([^)'"]+)\1\s*\)/g)) {
+        const raw = m[2]?.trim();
+        if (isEmbeddable(raw ?? null)) urls.add(raw as string);
+      }
+      if (!urls.size) return;
+      const pairs = await Promise.all(
+        Array.from(urls, async (u) => {
+          let abs: string;
+          try {
+            abs = new URL(u, document.baseURI).href;
+          } catch {
+            return [u, null] as const;
+          }
+          return [u, await resolve(abs)] as const;
+        })
+      );
+      let next = css;
+      for (const [original, dataUrl] of pairs) {
+        if (!dataUrl) continue;
+        next = next.split(original).join(dataUrl);
+      }
+      styleEl.textContent = next;
+    })
+  );
 }
 
 /**
@@ -181,7 +429,26 @@ export async function svgForElement(
   opts: SvgCaptureOptions = {}
 ): Promise<string> {
   const target = opts.widenToArtboard ? (el.closest('[data-dc-screen]') ?? el) : el;
+  const timeoutMs = opts.assetTimeoutMs ?? DEFAULT_ASSET_TIMEOUT_MS;
+  // Editor chrome OFF before anything is measured: the shim host gets this from
+  // `?hide-chrome=1`, the live-canvas host has no navigation to carry it, and
+  // hiding the artboard's `.dc-artboard-label` header also reflows the body
+  // into its space — so it must precede getComputedStyle, not follow it.
+  const releaseChrome = applyCaptureChrome(target.ownerDocument ?? document);
+  try {
+    return await serializeCapture(target, api, timeoutMs);
+  } finally {
+    releaseChrome();
+  }
+}
+
+async function serializeCapture(
+  target: Element,
+  api: DomToSvgApi,
+  timeoutMs: number
+): Promise<string> {
   const toSrgb = makeToSrgb();
+  await waitForCaptureAssets(target, timeoutMs);
 
   const bg = effectiveBg(target);
   const fillColor = bg ? toSrgb(bg) : null;
@@ -208,8 +475,11 @@ export async function svgForElement(
   // base64-embeds fonts + images so the SVG is portable outside the serving
   // origin — and, for the raster path, so the <img> decode is self-contained
   // (an SVG-as-image loads NO external resources; a data: font/image does).
+  // `api.inlineResources` is deliberately NOT used — see inlineCaptureResources.
+  void api;
+  stripChromeNodes(root);
   try {
-    await api.inlineResources(root);
+    await inlineCaptureResources(root, target, timeoutMs);
   } catch {
     /* best-effort — a missing resource beats a missing primitive */
   }
@@ -280,6 +550,10 @@ const core = {
   svgForElement,
   svgDimensions,
   rasterizeSvg,
+  waitForCaptureAssets,
+  inlineCaptureResources,
+  stripChromeNodes,
+  CAPTURE_HIDDEN_SELECTORS,
 };
 
 export type CaptureCore = typeof core;

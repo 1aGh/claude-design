@@ -173,6 +173,65 @@ jobs:
       - name: Site build (validates fumadocs MDX + Next compile)
         run: pnpm --filter @maude/site build
 
+  export-lanes:
+    # REQUIRED. DDR-231 Phase 2 T7 — the end-to-end export gate.
+    #
+    # Every export check that existed before this one tested a LAYER, and all of
+    # them were green while a real cloud export shipped the artboard's title bar
+    # into the file and dropped every photo. This job boots a real
+    # workspace-shaped studio and a real maude-render, drives the real Export
+    # dialog in Chromium, and asserts the BYTES that come back — for the browser
+    # lane (png/svg/pptx) and the worker lane (pdf/html).
+    #
+    # It is fast (~10 s of test time) and it is the only check that looks at a
+    # finished artifact, so it blocks — unlike the full studio suite below,
+    # whose clean-CI health is still unmeasured.
+    name: Export lanes E2E (browser + worker)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --no-frozen-lockfile
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install (apps/studio, own bun.lock per DDR-009)
+        run: cd apps/studio && bun install --frozen-lockfile
+
+      # The capture + render paths drive a real browser. The npm package and its
+      # ~150 MB binary are separate installs (see bin/_pw-launch.mjs), and only
+      # the binary makes these tests meaningful.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Export lanes E2E + capture hygiene
+        # Same dist clobber guard as the sync lane: a `bun test` run in this tree
+        # has been observed regenerating the committed release bundles.
+        run: |
+          git diff --quiet -- apps/studio/dist/ \
+            || { echo "::error::apps/studio/dist/ was already dirty before the tests ran"; exit 1; }
+          cd apps/studio && bun test \
+            test/export-e2e-lanes.test.ts \
+            test/export-capture-hygiene.test.ts \
+            test/export-capture-fidelity.test.ts \
+            test/export-format-scope-coherence.test.ts \
+            --timeout 600000
+          cd .. && git diff --quiet -- apps/studio/dist/ || {
+            echo "::error::apps/studio/dist/ was modified by the test run — the committed release bundles were clobbered."
+            git --no-pager diff --stat -- apps/studio/dist/
+            exit 1
+          }
+
   studio-suite:
     # NON-BLOCKING ON PURPOSE. The full apps/studio suite (~337 files, ~4400
     # tests) has never run in any workflow, so its true health on clean
