@@ -148,10 +148,26 @@ async function runVideo(
   // silent format), so it never needs the render-lib bundle; mp4/webm build it
   // alongside the frame-step encode-lib (the shim decides per-target at runtime
   // whether the artboard has a registered comp to hand the renderer).
-  const [lib, renderLib] = await Promise.all([
-    getEncodeLibBundle(),
-    format === 'gif' ? Promise.resolve(null) : getWebRendererBundle(),
-  ]);
+  // These Bun.build calls happen BEFORE the render shim spawns. On the headless
+  // render worker a mp4 job hung here in total silence (no shim ever launched,
+  // so the shim's own hard-kill never fired) — bound it so a stuck bundle build
+  // FAILS with a named reason instead of eating the whole render budget.
+  console.error(`[video] building bundles (format=${format})…`);
+  const bundleStart = Date.now();
+  const withTimeout = (p: Promise<unknown>, label: string, ms: number) =>
+    Promise.race([
+      p,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`${label} did not finish within ${ms}ms`)), ms)
+      ),
+    ]);
+  const [lib, renderLib] = (await Promise.all([
+    withTimeout(getEncodeLibBundle(), 'encode-lib bundle', 90_000),
+    format === 'gif'
+      ? Promise.resolve(null)
+      : withTimeout(getWebRendererBundle(), 'web-renderer bundle', 90_000),
+  ])) as [string, string | null];
+  console.error(`[video] bundles ready in ${Date.now() - bundleStart}ms`);
   const tmp = mkdtempSync(path.join(tmpdir(), 'maude-video-'));
   const outPath = path.join(tmp, `export.${format}`);
 

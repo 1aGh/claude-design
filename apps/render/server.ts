@@ -221,6 +221,9 @@ async function handleRender(req: Request): Promise<Response> {
     );
   }
 
+  console.error(
+    `[maude-render] job received: format=${body.format} targets=${body.targets?.length ?? 0}`
+  );
   const release = await acquireSlot();
   if (!release)
     return new Response('render service busy', { status: 503, headers: { 'retry-after': '10' } });
