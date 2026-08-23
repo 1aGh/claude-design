@@ -374,7 +374,20 @@ describe('export E2E — browser lane, real dialog, real artifact', () => {
  * ingress bearer (DDR-230 §1, enforced at boot), and a developer shell
  * routinely carries several.
  */
-async function bootRenderService(port: number, canvasOrigin: string, secret: string) {
+/** A booted render service plus a live view of what it logged — the CI hang
+ * this instrumentation exists for burned the whole 600 s budget in total
+ * silence because the child's piped output was never read. Now every render
+ * line is teed to this process's stderr (so a CI run shows the worker's real
+ * activity) AND kept in a rolling tail the test attaches to any failure. */
+interface RenderHandle {
+  kill(): void;
+  tail(): string;
+}
+async function bootRenderService(
+  port: number,
+  canvasOrigin: string,
+  secret: string
+): Promise<RenderHandle> {
   const { spawn } = await import('bun');
   const proc = spawn({
     cmd: ['bun', 'run', join(import.meta.dir, '..', '..', 'render', 'server.ts')],
@@ -384,24 +397,59 @@ async function bootRenderService(port: number, canvasOrigin: string, secret: str
       PORT: String(port),
       MAUDE_RENDER_SECRET: secret,
       MAUDE_RENDER_CANVAS_ORIGINS: canvasOrigin,
+      // The render worker resolves the SAME Chromium the studio uses. In a
+      // from-scratch env it must still be able to FIND it, or a headless render
+      // wedges with no error — so forward the browser-locating vars (never a
+      // credential; the DDR-230 boot guard refuses secret-shaped names).
+      ...(process.env.PLAYWRIGHT_BROWSERS_PATH
+        ? { PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH }
+        : {}),
+      ...(process.env.MAUDE_BROWSER_EXECUTABLE
+        ? { MAUDE_BROWSER_EXECUTABLE: process.env.MAUDE_BROWSER_EXECUTABLE }
+        : {}),
+      ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+        ? { PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
+        : {}),
     },
     stdout: 'pipe',
     stderr: 'pipe',
   });
+  // Pump both streams: tee to our stderr (CI visibility) and keep a rolling
+  // tail. Fire-and-forget — the loops end when the child's pipes close.
+  const logLines: string[] = [];
+  const pump = async (stream: ReadableStream<Uint8Array> | null) => {
+    if (!stream) return;
+    const dec = new TextDecoder();
+    for await (const chunk of stream as unknown as AsyncIterable<Uint8Array>) {
+      const text = dec.decode(chunk);
+      for (const line of text.split('\n')) {
+        if (!line) continue;
+        logLines.push(line);
+        if (logLines.length > 400) logLines.shift();
+        process.stderr.write(`[render] ${line}\n`);
+      }
+    }
+  };
+  void pump(proc.stdout as unknown as ReadableStream<Uint8Array>);
+  void pump(proc.stderr as unknown as ReadableStream<Uint8Array>);
+  const handle: RenderHandle = {
+    kill: () => proc.kill(),
+    tail: () => logLines.slice(-40).join('\n') || '(render logged nothing)',
+  };
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     try {
       const r = await fetch(`http://127.0.0.1:${port}/_health`, {
         signal: AbortSignal.timeout(300),
       });
-      if (r.ok) return proc;
+      if (r.ok) return handle;
     } catch {
       /* not up yet */
     }
     await Bun.sleep(100);
   }
   proc.kill();
-  throw new Error('render service did not start');
+  throw new Error(`render service did not start\n[render tail]\n${handle.tail()}`);
 }
 
 /** Poll the job ledger until a job for this format that is NOT in `seen`
@@ -409,15 +457,24 @@ async function bootRenderService(port: number, canvasOrigin: string, secret: str
 async function waitForJob(port: number, format: string, timeoutMs: number, seen: Set<string>) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const { history } = (await (
-      await fetch(`http://localhost:${port}/_api/export-history`)
-    ).json()) as {
-      history: Array<{ id: string; format: string; status: string; error?: string }>;
-    };
-    const job = history.find((h) => h.format === format && !seen.has(h.id));
-    if (job) {
-      seen.add(job.id);
-      return job;
+    try {
+      // Bounded fetch: a wedged studio must not hang this poll PAST the
+      // deadline — an unbounded `await fetch` here is exactly how a stuck job
+      // burned the whole 600 s test budget in silence instead of throwing.
+      const { history } = (await (
+        await fetch(`http://localhost:${port}/_api/export-history`, {
+          signal: AbortSignal.timeout(10_000),
+        })
+      ).json()) as {
+        history: Array<{ id: string; format: string; status: string; error?: string }>;
+      };
+      const job = history.find((h) => h.format === format && !seen.has(h.id));
+      if (job) {
+        seen.add(job.id);
+        return job;
+      }
+    } catch {
+      /* transient (abort / studio busy) — the deadline below is authoritative */
     }
     await Bun.sleep(500);
   }
@@ -438,7 +495,7 @@ describe('export E2E — worker lane, real render service, real artifact', () =>
         MAUDE_RENDER_URL: `http://127.0.0.1:${renderPort}`,
         MAUDE_RENDER_SECRET: secret,
       });
-      let render: { kill(): void } | null = null;
+      let render: RenderHandle | null = null;
       let browser: { close(): Promise<void> } | null = null;
       try {
         // The render worker fetches the canvas the way a member's browser
@@ -507,6 +564,13 @@ describe('export E2E — worker lane, real render service, real artifact', () =>
         ] as const;
         const seenJobs = new Set<string>();
         let openCanvasSlug = 'e2e-export';
+        // Keep the whole loop inside the outer 600 s test budget with headroom,
+        // and never spend it in silence: each format logs when it starts and
+        // how long its render took, and a stuck one throws WITH the render log
+        // tail rather than letting the bun-level timeout kill everything blind.
+        const workerStart = Date.now();
+        const WORKER_BUDGET_MS = 540_000;
+        let fmtIndex = 0;
         for (const entry of WORKER_FORMATS) {
           const { format, scope, viaDialog } = entry;
           const artboardId = 'artboardId' in entry ? entry.artboardId : undefined;
@@ -577,7 +641,28 @@ describe('export E2E — worker lane, real render service, real artifact', () =>
             });
             expect(r.status).toBe(202);
           }
-          const job = await waitForJob(studioPort, format, 300_000, seenJobs);
+          fmtIndex += 1;
+          const remaining = WORKER_BUDGET_MS - (Date.now() - workerStart);
+          const label = `${fmtIndex}/${WORKER_FORMATS.length} ${format}/${scope}`;
+          console.log(
+            `[worker-lane] → ${label} (${Math.round((Date.now() - workerStart) / 1000)}s in, ` +
+              `${Math.round(remaining / 1000)}s of budget left)`
+          );
+          if (remaining <= 5_000) {
+            throw new Error(
+              `worker-lane budget exhausted before ${label}\n[render tail]\n${render.tail()}`
+            );
+          }
+          const fmtStart = Date.now();
+          let job: { id: string; format: string; status: string; error?: string };
+          try {
+            job = await waitForJob(studioPort, format, Math.min(180_000, remaining), seenJobs);
+          } catch (e) {
+            throw new Error(
+              `${label} never finished: ${e instanceof Error ? e.message : e}\n[render tail]\n${render.tail()}`
+            );
+          }
+          console.log(`[worker-lane] ✓ ${label} in ${Math.round((Date.now() - fmtStart) / 1000)}s`);
           expect(`${format}: ${job.status} ${job.error ?? ''}`).toBe(`${format}: done `);
           const bytes = new Uint8Array(
             await (
