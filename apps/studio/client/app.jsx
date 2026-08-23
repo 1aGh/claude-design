@@ -1721,6 +1721,10 @@ function ExportDialog({
     // the in-canvas dialog's captureScopeHints.
     if (activeArtboardId) options.artboardId = activeArtboardId;
     if (selection?.selector) options.selection = selection;
+    // Which canvas FILE this dialog is exporting — the server's `_active.json`
+    // lags a tab switch, and a job resolved against the stale file renders the
+    // wrong canvas (with this dialog's artboardId, which then never matches).
+    if (activePath && activePath !== SYSTEM_TAB) options.canvasFile = activePath;
     // DDR-231 — the browser lane: in a workspace, png/svg of the active
     // artboard is captured by the member's OWN browser (the canvas already
     // renders here) — instant, no fleet wake. Everything else continues to
@@ -13229,6 +13233,13 @@ function App() {
     // Reply target for the export bridge: the canvas iframe's own origin.
     const replyOrigin = cfg?.canvasOrigin || window.location.origin;
     async function runBridgedExport(source, id, payload) {
+      // The in-canvas dialog exports the canvas it LIVES IN — which the M1
+      // gate above just proved is `activePath`. Stamp it so scope resolution
+      // never falls back to the server's (asynchronously written, possibly
+      // stale) `_active.json` — same rule as the shell dialog's canvasFile.
+      if (payload?.options && activePath && activePath !== SYSTEM_TAB && !payload.options.canvasFile) {
+        payload.options.canvasFile = activePath;
+      }
       const reply = (msg) => {
         try {
           if (source) source.postMessage({ dgn: 'export-result', id, ...msg }, replyOrigin);

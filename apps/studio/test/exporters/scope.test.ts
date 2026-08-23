@@ -257,3 +257,36 @@ describe('resolveScope — project-raw', () => {
     expect(targets).toEqual([]);
   });
 });
+
+// DDR-232 follow-up — the live dialog's canvas file beats the persisted
+// `_active.json`: a job submitted right after a tab switch used to resolve
+// against the PREVIOUS canvas (with the new canvas's artboardId — a selector
+// that never appears; a 60 s waitFor timeout on the worker).
+describe('canvasFile hint precedence', () => {
+  test('options.canvasFile wins over activeJson.active', async () => {
+    const targets = await resolveScope({
+      scope: 'artboard',
+      activeJson: { active: '.design/ui/stale-previous.tsx', selected: null },
+      designRoot: '/abs/.design',
+      options: { canvasFile: '.design/ui/the-open-one.tsx', artboardId: 'hero' },
+    });
+    expect(targets).toEqual([
+      {
+        kind: 'element',
+        cssPath: '[data-dc-screen="hero"]',
+        canvasSlug: 'ui-the-open-one',
+        file: '.design/ui/the-open-one.tsx',
+        widen: false,
+      },
+    ]);
+  });
+  test('canvasFile alone is enough — a null active no longer empties the job', async () => {
+    const targets = await resolveScope({
+      scope: 'artboard',
+      activeJson: { active: null, selected: null },
+      designRoot: '/abs/.design',
+      options: { canvasFile: '.design/ui/open.tsx', artboardId: 'a1' },
+    });
+    expect(targets.length).toBe(1);
+  });
+});

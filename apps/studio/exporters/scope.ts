@@ -73,6 +73,15 @@ export interface ExportScopeHints {
   selection?: { selector?: string; file?: string } | null;
   /** `data-dc-screen` id of the artboard to export for `scope=artboard`. */
   artboardId?: string | null;
+  /**
+   * The canvas FILE the dialog was exporting, captured at submit time. Wins
+   * over `activeJson.active`: the persisted `_active.json` is written
+   * asynchronously after a tab switch, so a job submitted right after opening
+   * another canvas rendered the PREVIOUS one — with the live `artboardId` of
+   * the new one, i.e. a selector that never appears (a 60 s waitFor timeout on
+   * the worker). The live dialog knows which file it is looking at; trust it.
+   */
+  canvasFile?: string | null;
 }
 
 export interface ResolveScopeArgs {
@@ -108,7 +117,9 @@ function readHints(options: Record<string, unknown> | undefined): ExportScopeHin
       : null;
   const artboardId =
     typeof options.artboardId === 'string' && options.artboardId ? options.artboardId : null;
-  return { selection, artboardId };
+  const canvasFile =
+    typeof options.canvasFile === 'string' && options.canvasFile ? options.canvasFile : null;
+  return { selection, artboardId, canvasFile };
 }
 
 const RAW_EXCLUDES = new Set([
@@ -207,11 +218,11 @@ export async function resolveScope(args: ResolveScopeArgs): Promise<Target[]> {
     return [{ kind: 'file-tree', paths }];
   }
 
-  const activeFile = activeJson.active;
+  const hints = readHints(args.options);
+  const activeFile = hints.canvasFile ?? activeJson.active;
   if (!activeFile) return [];
   const slug = slugify(activeFile, designRel);
   const sel = firstSelection(activeJson.selected);
-  const hints = readHints(args.options);
 
   if (scope === 'selection') {
     // Prefer the live submit-time snapshot over the persisted `_active.json`
