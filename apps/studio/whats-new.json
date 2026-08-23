@@ -3,8 +3,8 @@
   "entries": [
     {
       "id": "cloud-exports-actually-arrive",
-      "version": null,
-      "date": null,
+      "version": "1.0.6",
+      "date": "2026-08-23",
       "kind": "fix",
       "title": "Cloud exports actually arrive",
       "summary": "Exporting from a hosted or self-hosted workspace no longer times out after a long wait. The render service was mangling the page it captured before it ever loaded; that's fixed, so PNG, PDF, PPTX and video exports now finish and download like they should.",

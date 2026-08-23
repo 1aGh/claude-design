@@ -1,7 +1,7 @@
 {
-  "version": "v1.0.5",
+  "version": "v1.0.6",
   "nodeRange": ">=20",
-  "publishedDate": "2026-08-21",
+  "publishedDate": "2026-08-23",
   "contributors": 1,
   "plugins": {
     "design": {
