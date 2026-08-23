@@ -171,15 +171,26 @@ export async function renderRemotely(args: {
   };
   let res: Response;
   try {
-    res = await fetch(`${service.url}/render`, {
+    // Bun's `fetch` has its OWN default ceiling — 300 s — independent of the
+    // signal, and it rejects with a plain TimeoutError that the catch below
+    // read as "the service didn't answer". Every video job longer than five
+    // minutes failed that way (measured: 300 s exactly; `timeout: false`
+    // lifts it). The JOB timeout (exporters/jobs.ts jobTimeoutMs, sized to
+    // the frame count) is the governor here, through `signal`; the fetch
+    // must not carry a second, shorter one.
+    // `timeout` is a Bun extension the bundled RequestInit types don't declare
+    // (bun 1.3.3); the runtime honours it — see the measurement above.
+    const init: RequestInit & { timeout: false } = {
       method: 'POST',
       signal,
+      timeout: false,
       headers: {
         'content-type': 'application/json',
         authorization: `Bearer ${service.secret}`,
       },
       body: JSON.stringify({ format, targets, options: remoteOptions, canvas }),
-    });
+    };
+    res = await fetch(`${service.url}/render`, init);
   } catch (err) {
     if (signal?.aborted) throw err;
     // DDR-231 T7 — the member sees this in the export dialog / notification

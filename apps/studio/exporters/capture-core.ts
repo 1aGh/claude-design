@@ -309,7 +309,7 @@ async function dataUrlByFetch(url: string, timeoutMs: number): Promise<string | 
  * cross-origin bitmap without CORS taints the canvas and `toDataURL` throws —
  * caught, and the ref is left remote rather than emitting a wrong picture.
  */
-function dataUrlFromDecodedImage(img: HTMLImageElement): string | null {
+function dataUrlFromDecodedImage(img: HTMLImageElement, filter?: string): string | null {
   if (!img.naturalWidth || !img.naturalHeight) return null;
   try {
     const canvas = document.createElement('canvas');
@@ -317,11 +317,50 @@ function dataUrlFromDecodedImage(img: HTMLImageElement): string | null {
     canvas.height = img.naturalHeight;
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
+    if (filter) {
+      // Bake the element's CSS `filter` into the bitmap. Canvas 2D accepts the
+      // same grammar as CSS — including `url(#id)` against an SVG filter in
+      // THIS document — so a duotone/posterize treatment survives into the
+      // artifact. An engine that doesn't support it leaves `ctx.filter` at
+      // 'none'; detect that and report failure so the caller falls back to
+      // the unfiltered bytes rather than silently shipping a wrong picture.
+      ctx.filter = filter;
+      if (ctx.filter !== filter) return null;
+    }
     ctx.drawImage(img, 0, 0);
     return canvas.toDataURL('image/png');
   } catch {
     return null;
   }
+}
+
+/** The element's computed CSS `filter`, or null when it paints unfiltered. */
+function imageFilterOf(img: HTMLImageElement): string | null {
+  const f = getComputedStyle(img).filter;
+  return f && f !== 'none' ? f : null;
+}
+
+/**
+ * The SVG `preserveAspectRatio` equivalent of an <img>'s `object-fit` +
+ * `object-position`, or null for the default (`contain`-like `meet` at centre).
+ * `object-position` maps to the nine alignment keywords by thirds — exact for
+ * the keyword/percentage values designs use, approximate for arbitrary lengths.
+ */
+function preserveAspectRatioFor(img: HTMLImageElement): string | null {
+  const cs = getComputedStyle(img);
+  const fit = cs.objectFit;
+  if (fit === 'fill') return 'none';
+  const align = (pos: string, size: number): 'Min' | 'Mid' | 'Max' => {
+    const n = pos.endsWith('%') ? Number.parseFloat(pos) : (Number.parseFloat(pos) / size) * 100;
+    if (!Number.isFinite(n)) return 'Mid';
+    return n < 33.4 ? 'Min' : n > 66.6 ? 'Max' : 'Mid';
+  };
+  const [px = '50%', py = '50%'] = cs.objectPosition.split(/\s+/);
+  const x = align(px, img.clientWidth || 1);
+  const y = align(py, img.clientHeight || 1);
+  if (fit === 'cover') return `x${x}Y${y} slice`;
+  if (fit === 'contain' || fit === 'scale-down') return `x${x}Y${y} meet`;
+  return null; // `none` — no scaling; SVG has no exact analogue, keep default
 }
 
 /** Index the live `<img>` elements by the URL they actually loaded. */
@@ -363,11 +402,18 @@ export async function inlineCaptureResources(
   const resolve = async (url: string): Promise<string | null> => {
     const hit = cache.get(url);
     if (hit !== undefined) return hit;
-    let out = await dataUrlByFetch(url, timeoutMs);
-    if (!out) {
-      const img = live.get(url);
-      if (img) out = dataUrlFromDecodedImage(img);
-    }
+    const img = live.get(url);
+    // A FILTERED image (CSS `filter:` — a brand duotone, a posterize via an
+    // in-page SVG filter) must be baked, not fetched: dom-to-svg carries no
+    // `filter` onto its <image>, so the original bytes would render flat.
+    // DDR-232 follow-up — the cloud PNG/SVG/PPTX lost the photo treatment
+    // the desktop screenshot kept. Unfiltered images stay fetch-first (the
+    // original bytes and MIME; a vector logo stays vector).
+    const filter = img ? imageFilterOf(img) : null;
+    let out: string | null = null;
+    if (img && filter) out = dataUrlFromDecodedImage(img, filter);
+    if (!out) out = await dataUrlByFetch(url, timeoutMs);
+    if (!out && img) out = dataUrlFromDecodedImage(img);
     cache.set(url, out);
     return out;
   };
@@ -377,7 +423,16 @@ export async function inlineCaptureResources(
     images.map(async (node) => {
       const href = readHref(node);
       if (!isEmbeddable(href)) return;
-      const dataUrl = await resolve(new URL(href, document.baseURI).href);
+      const abs = new URL(href, document.baseURI).href;
+      // dom-to-svg writes an <img> as <image x y width height> and nothing
+      // else — `object-fit: cover` (every hero photo) therefore rendered
+      // LETTERBOXED under SVG's default `xMidYMid meet`. Carry the fit over.
+      const img = live.get(abs);
+      if (img && !node.hasAttribute('preserveAspectRatio')) {
+        const par = preserveAspectRatioFor(img);
+        if (par) node.setAttribute('preserveAspectRatio', par);
+      }
+      const dataUrl = await resolve(abs);
       if (dataUrl) writeHref(node, dataUrl);
     })
   );

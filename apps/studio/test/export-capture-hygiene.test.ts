@@ -305,3 +305,92 @@ describe('browser-lane capture hygiene (webfonts)', () => {
     { timeout: 60_000 }
   );
 });
+
+describe('browser-lane capture hygiene (CSS filter on images)', () => {
+  test(
+    'an <img> with a CSS filter is embedded with the filter BAKED IN',
+    async () => {
+      // The alligators "Duo" treatment: `filter: url(#poster5) contrast(…)`
+      // against an SVG filter mounted elsewhere in the page. dom-to-svg puts no
+      // `filter` on its <image>, so the original bytes rendered flat — the cloud
+      // PNG/SVG/PPTX lost the photo treatment the desktop screenshot kept.
+      const [iife, core] = await Promise.all([
+        getBrowserBundle('dom-to-svg', 'domToSvg'),
+        getCaptureCoreBundle(),
+      ]);
+      const server = Bun.serve({
+        port: 0,
+        fetch(req) {
+          const { pathname } = new URL(req.url);
+          if (pathname === '/photo.png')
+            return new Response(PNG_1PX, { headers: { 'content-type': 'image/png' } });
+          return new Response(
+            `<!doctype html><body style="margin:0">
+             <svg width="0" height="0" style="position:absolute"><filter id="poster5" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="0"/></filter></svg>
+             <div class="dc-world"><article data-dc-screen="b1" style="position:absolute;left:0;top:0;width:200px;height:120px;background:#123">
+               <img id="p" src="/photo.png" width="120" height="60" style="filter:url(#poster5) contrast(1.22);object-fit:cover">
+             </article></div></body>`,
+            { headers: { 'content-type': 'text/html' } }
+          );
+        },
+      });
+      const { launchChromium } = (await import('../bin/_pw-launch.mjs')) as {
+        launchChromium: () => Promise<{
+          newContext: (o: unknown) => Promise<{ newPage: () => Promise<unknown> }>;
+          close: () => Promise<void>;
+        }>;
+      };
+      const browser = await launchChromium();
+      try {
+        const ctx = await browser.newContext({});
+        // biome-ignore lint/suspicious/noExplicitAny: playwright page surface
+        const page: any = await ctx.newPage();
+        await page.goto(`http://127.0.0.1:${server.port}`, { waitUntil: 'load' });
+        await page.addScriptTag({ path: iife });
+        await page.addScriptTag({ path: core, type: 'module' });
+        await page.waitForFunction(
+          () => !!(window as never as Record<string, unknown>).__maudeCaptureCore
+        );
+        const verdict = await page.evaluate(async () => {
+          // biome-ignore lint/suspicious/noExplicitAny: injected globals
+          const w = window as any;
+          const target = document.querySelector('[data-dc-screen]') as Element;
+          const svg: string = await w.__maudeCaptureCore.svgForElement(target, w.domToSvg);
+          const href = /<image[^>]*href="(data:[^"]+)"/.exec(svg)?.[1] ?? null;
+          const par = /<image[^>]*preserveAspectRatio="([^"]+)"/.exec(svg)?.[1] ?? null;
+          if (!href) return { href: null, pixel: null, par };
+          // Decode the embedded bitmap and read its first pixel: the source is
+          // pure red (#ff0000); saturate(0) turns it grey — equal channels.
+          const img = new Image();
+          await new Promise<void>((ok, ko) => {
+            img.onload = () => ok();
+            img.onerror = () => ko(new Error('decode'));
+            img.src = href;
+          });
+          const c = document.createElement('canvas');
+          c.width = 1;
+          c.height = 1;
+          const g = c.getContext('2d') as CanvasRenderingContext2D;
+          g.drawImage(img, 0, 0);
+          return {
+            href: href.slice(0, 22),
+            pixel: Array.from(g.getImageData(0, 0, 1, 1).data),
+            par,
+          };
+        });
+        expect(verdict.href).toBe('data:image/png;base64,');
+        // `object-fit: cover` → SVG `slice`, or the photo letterboxes (the
+        // green side bands on every exported hero).
+        expect(verdict.par).toBe('xMidYMid slice');
+        const [r, g, b] = verdict.pixel as number[];
+        // Grey = the filter was baked. Red would mean the original bytes shipped.
+        expect(Math.abs(r - g)).toBeLessThan(8);
+        expect(Math.abs(g - b)).toBeLessThan(8);
+      } finally {
+        await browser.close();
+        server.stop(true);
+      }
+    },
+    { timeout: 60_000 }
+  );
+});

@@ -1,8 +1,9 @@
 // Phase 6.5 T5 — HTML adapter (standalone bundler).
 //
 // Renders the target through Playwright, emits a self-contained `index.html`
-// with all stylesheets inlined (fonts + remote images still referenced by
-// origin — full asset inlining is a follow-up). Output is always a ZIP per
+// with all stylesheets inlined and every asset (images, fonts, CSS url()s,
+// SVG defs) embedded as data: URIs — see bin/_html-playwright.mjs. Output is
+// always a ZIP per
 // plan T5 ("Always zipped (multi-file)"), even for a single artboard,
 // because the consuming workflow typically wants one bundle per export.
 

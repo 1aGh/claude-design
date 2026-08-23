@@ -267,3 +267,24 @@ describe('exporters/jobs — byte retrieval + eviction', () => {
     }
   });
 });
+
+// DDR-232 follow-up — the cloud video export that "didn't answer" after 4½
+// minutes. Bun's `fetch` carries its OWN default ceiling of 300 s, independent
+// of the AbortSignal, and rejects with a bare TimeoutError that renderRemotely's
+// catch reported as a waking service. `timeout: false` lifts it (measured:
+// a 315 s response then arrives; without it the same fetch rejects at 300 s
+// exactly). A behavioural test would take five minutes per run, so this pins
+// the source instead — remove the option and a real video job silently
+// re-inherits the ceiling.
+describe('renderRemotely — no second timeout under the job timeout', () => {
+  test("the render fetch disables Bun's default 300 s fetch ceiling", async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const src = readFileSync(join(import.meta.dir, '..', '..', 'exporters', 'remote.ts'), 'utf8');
+    const call = src.slice(
+      src.indexOf('${service.url}/render') - 600,
+      src.indexOf('${service.url}/render') + 200
+    );
+    expect(call).toContain('timeout: false');
+  });
+});

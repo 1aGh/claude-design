@@ -593,8 +593,27 @@ describe('export E2E — worker lane, real render service, real artifact', () =>
             expect(head4).toEqual([0x1a, 0x45, 0xdf, 0xa3]);
           } else if (format === 'gif') {
             expect(new TextDecoder().decode(bytes.slice(0, 4))).toBe('GIF8');
+          } else if (format === 'html') {
+            // A zip of pages — and each page must be SELF-CONTAINED: every
+            // image embedded, no `<base>` pointing at the worker's throwaway
+            // proxy origin (the cloud HTML export had no assets at all).
+            expect(head4).toEqual([0x50, 0x4b, 0x03, 0x04]);
+            const JSZip = (await import('jszip')).default;
+            const zip = await JSZip.loadAsync(bytes);
+            const pages = Object.keys(zip.files).filter((n) => n.endsWith('.html'));
+            expect(pages.length).toBeGreaterThan(0);
+            const html = await zip.file(pages[0] as string)?.async('string');
+            expect(html).toBeDefined();
+            expect(html as string).not.toContain('<base ');
+            expect(html as string).toContain('data:image/png');
+            expect((html as string).match(/src="https?:\/\/[^"]+"/g) ?? []).toEqual([]);
+            expect((html as string).match(/src="\/\.design\/[^"]+"/g) ?? []).toEqual([]);
+            // The CHROME ELEMENT is gone (a stylesheet rule naming the class
+            // may legitimately remain — every rule is inlined).
+            expect(html as string).not.toMatch(/<[a-z]+[^>]*class="[^"]*dc-artboard-label/);
+            expect(html as string).not.toContain('Board A · export fixture');
           } else {
-            // html exports as a zip of pages, pptx IS a zip — PK\x03\x04.
+            // pptx IS a zip — PK\x03\x04.
             expect(head4).toEqual([0x50, 0x4b, 0x03, 0x04]);
           }
           // A `selection` of one <h1> is legitimately a tiny PNG; everything
