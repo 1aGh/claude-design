@@ -498,6 +498,22 @@ describe('export E2E — worker lane, real render service, real artifact', () =>
         MAUDE_RENDER_URL: `http://127.0.0.1:${renderPort}`,
         MAUDE_RENDER_SECRET: secret,
       });
+      // Tee the STUDIO's stderr too — a video job can render in-process here
+      // (when the lane resolves local, or a remote dispatch degrades), and its
+      // render logs then live in THIS process, not the render worker's. Without
+      // this, a video hang on the studio side is as silent as the worker one was.
+      void (async () => {
+        try {
+          const dec = new TextDecoder();
+          for await (const chunk of proc.stderr as unknown as AsyncIterable<Uint8Array>) {
+            for (const line of dec.decode(chunk).split('\n')) {
+              if (line) process.stderr.write(`[studio] ${line}\n`);
+            }
+          }
+        } catch {
+          /* stream closed */
+        }
+      })();
       let render: RenderHandle | null = null;
       let browser: { close(): Promise<void> } | null = null;
       try {

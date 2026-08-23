@@ -439,6 +439,9 @@ export function createExportJobQueue(bus: Bus, designRoot: string): ExportJobQue
     // exercise the lanes without a reboot.
     const lane = resolveRenderLane();
     const dispatchRemote = lane !== 'local' && formatNeedsBrowser(args.format);
+    console.error(
+      `[jobs] ${args.format}: lane=${lane} dispatchRemote=${dispatchRemote} (renderUrl=${process.env.MAUDE_RENDER_URL ? 'set' : 'unset'})`
+    );
 
     const result = (async (): Promise<ExportResult> => {
       // Fail BEFORE taking a render slot: a job that can never render must not
