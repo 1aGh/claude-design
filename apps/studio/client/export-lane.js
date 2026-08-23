@@ -67,37 +67,79 @@ export async function captureDeckViaBrowser({ capture, name = 'export', scale = 
 }
 
 const SAFE_CAPTURE_MIME = { png: 'image/png', svg: 'image/svg+xml' };
+const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+// A forged reply can't be allowed to drive an unbounded number of downloads or
+// buffer an arbitrary blob into the member's browser (DDR-231 adversarial pass,
+// F1 caps). A png/svg export targets ONE artboard, so these are generous.
+export const MAX_CAPTURE_ITEMS = 64;
+export const MAX_CAPTURE_TOTAL_BYTES = 96 * 1024 * 1024;
 
-/**
- * DDR-231 security (adversarial pass) — the capture bridge lives in the CANVAS
- * iframe, and tenant-authored TSX executes in that same window. Tenant code can
- * therefore read the `export-capture` request and FORGE an
- * `export-capture-done` reply carrying an arbitrary blob + name that passes the
- * shell's `e.source` check. Before the shell writes any such blob to disk,
- * force a safe shape: a basename stripped to `[A-Za-z0-9._-]` with the format's
- * own extension, and the blob re-wrapped with the format's known MIME — so a
- * blob of HTML bytes labelled `image/png` (a reflected-file-download / local
- * XSS attempt) lands as an inert `.png`, never as an openable `.html`.
- *
- * @param {{ name?: string, blob: Blob }} item
- * @param {string} format 'png' | 'svg'
- * @returns {{ name: string, blob: Blob }}
- */
-export function sanitizeCapturedItem(item, format) {
-  const mime = SAFE_CAPTURE_MIME[format] || 'application/octet-stream';
+/** Safe download basename for a captured item: path-stripped, charset-limited,
+ * with the requested format's extension forced on. */
+function safeCaptureName(name, format) {
   const ext = format === 'svg' ? 'svg' : 'png';
-  const raw = typeof item?.name === 'string' ? item.name : '';
+  const raw = typeof name === 'string' ? name : '';
   let base = raw
     .replace(/^.*[\\/]/, '') // drop any path
     .replace(/[^A-Za-z0-9._-]/g, '_')
     .replace(new RegExp(`\\.${ext}$`, 'i'), '');
   if (!base || /^\.+$/.test(base)) base = 'artboard';
-  return {
-    name: `${base.slice(0, 200)}.${ext}`,
-    // Re-wrap so the download Content-Type is the format's MIME regardless of
-    // what the (untrusted) reply claimed.
-    blob: new Blob([item.blob], { type: mime }),
-  };
+  return `${base.slice(0, 200)}.${ext}`;
+}
+
+/** True iff `bytes` actually begins with the requested format's signature —
+ * PNG 8-byte magic, or SVG/XML text for svg. */
+function magicMatches(bytes, format) {
+  if (format === 'png') return PNG_MAGIC.every((b, i) => bytes[i] === b);
+  // svg: allow a leading BOM/whitespace, then `<svg` or `<?xml`.
+  const head = new TextDecoder('utf-8', { fatal: false })
+    .decode(bytes.slice(0, 64))
+    .replace(/^﻿/, '')
+    .trimStart()
+    .toLowerCase();
+  return head.startsWith('<svg') || head.startsWith('<?xml');
+}
+
+/**
+ * DDR-231 security (adversarial pass, F1) — the capture bridge lives in the
+ * CANVAS iframe, and tenant-authored TSX executes in that same window, so
+ * tenant code can FORGE an `export-capture-done` reply carrying arbitrary bytes
+ * + name that passes the shell's `e.source` check. Before the shell writes any
+ * of it to disk, treat the whole reply as untrusted DATA:
+ *   - cap the item count and total bytes (a forged reply must not drive 1000
+ *     downloads or buffer a giant blob);
+ *   - for each item, SNIFF the leading magic bytes and reject anything that
+ *     isn't actually the requested format (an HTML/exe payload disguised as a
+ *     `.png` is dropped, not merely relabelled);
+ *   - derive the filename from the request, not the reply, and force the
+ *     format's extension + MIME.
+ *
+ * @param {Array<{ name?: string, blob: Blob }>} items
+ * @param {string} format 'png' | 'svg'
+ * @returns {Promise<Array<{ name: string, blob: Blob }>>}
+ */
+export async function sanitizeCapturedItems(items, format) {
+  if (!Array.isArray(items) || !items.length) throw new Error('capture returned nothing');
+  if (items.length > MAX_CAPTURE_ITEMS)
+    throw new Error(`capture returned too many items (${items.length})`);
+  const mime = SAFE_CAPTURE_MIME[format] || 'application/octet-stream';
+  const out = [];
+  let total = 0;
+  for (const item of items) {
+    if (!(item?.blob instanceof Blob)) throw new Error('capture item is not a blob');
+    total += item.blob.size;
+    if (total > MAX_CAPTURE_TOTAL_BYTES) throw new Error('capture payload too large');
+    const head = new Uint8Array(await item.blob.slice(0, 64).arrayBuffer());
+    if (!magicMatches(head, format))
+      throw new Error(`capture item is not a valid ${format} — refusing to download`);
+    out.push({
+      name: safeCaptureName(item.name, format),
+      // Re-wrap so the download Content-Type is the format's MIME regardless of
+      // what the (untrusted) reply claimed.
+      blob: new Blob([item.blob], { type: mime }),
+    });
+  }
+  return out;
 }
 
 /**

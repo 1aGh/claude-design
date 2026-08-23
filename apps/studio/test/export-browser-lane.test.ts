@@ -8,8 +8,17 @@ import {
   BROWSER_CAPTURE_FORMATS,
   browserCaptureEligible,
   captureScale,
-  sanitizeCapturedItem,
+  MAX_CAPTURE_ITEMS,
+  sanitizeCapturedItems,
 } from '../client/export-lane.js';
+
+const PNG_1PX = Uint8Array.from(
+  atob(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+  ),
+  (c) => c.charCodeAt(0)
+);
+const pngBlob = () => new Blob([PNG_1PX], { type: 'image/png' });
 
 describe('browserCaptureEligible — who captures where', () => {
   const base = { format: 'png', scope: 'artboard', artboardId: 'board-1' };
@@ -59,32 +68,46 @@ describe('browserCaptureEligible — who captures where', () => {
   });
 });
 
-describe('sanitizeCapturedItem — the untrusted-reply neutralizer', () => {
-  test('a forged HTML blob named .png lands as an inert png (RFD/XSS neutralized)', () => {
-    const evil = {
-      name: 'invoice.png',
-      blob: new Blob(['<script>alert(1)</script>'], { type: 'text/html' }),
-    };
-    const safe = sanitizeCapturedItem(evil, 'png');
-    expect(safe.name).toBe('invoice.png');
-    expect(safe.blob.type).toBe('image/png');
+describe('sanitizeCapturedItems — the untrusted-reply neutralizer (F1)', () => {
+  test('a forged non-PNG blob named .png is REJECTED by magic sniffing', async () => {
+    const evil = [
+      { name: 'invoice.png', blob: new Blob(['<script>alert(1)</script>'], { type: 'image/png' }) },
+    ];
+    await expect(sanitizeCapturedItems(evil, 'png')).rejects.toThrow(/not a valid png/);
   });
 
-  test('a path-traversal / control-char name is stripped to a safe basename', () => {
-    const evil = { name: '../../etc/passwd\r\n.png', blob: new Blob(['x']) };
-    const safe = sanitizeCapturedItem(evil, 'png');
+  test('a real PNG passes and gets a path-stripped name + forced MIME', async () => {
+    const [safe] = await sanitizeCapturedItems(
+      [{ name: '../../etc/passwd\r\n.png', blob: pngBlob() }],
+      'png'
+    );
     expect(safe.name).not.toContain('/');
     expect(safe.name).not.toContain('..');
     expect(safe.name.endsWith('.png')).toBe(true);
+    expect(safe.blob.type).toBe('image/png');
   });
 
-  test('svg keeps its extension + MIME; empty/dot-only names fall back', () => {
-    expect(
-      sanitizeCapturedItem({ name: 'board.svg', blob: new Blob(['<svg/>']) }, 'svg').name
-    ).toBe('board.svg');
-    const fb = sanitizeCapturedItem({ name: '...', blob: new Blob(['x']) }, 'svg');
-    expect(fb.name).toBe('artboard.svg');
-    expect(fb.blob.type).toBe('image/svg+xml');
+  test('svg magic (<svg / <?xml) is accepted; other bytes rejected', async () => {
+    const [ok] = await sanitizeCapturedItems(
+      [{ name: 'b.svg', blob: new Blob(['<svg/>']) }],
+      'svg'
+    );
+    expect(ok.name).toBe('b.svg');
+    expect(ok.blob.type).toBe('image/svg+xml');
+    await expect(
+      sanitizeCapturedItems([{ name: 'x.svg', blob: new Blob(['not svg']) }], 'svg')
+    ).rejects.toThrow(/not a valid svg/);
+  });
+
+  test('too many items is refused (a forged reply cannot drive N downloads)', async () => {
+    const many = Array.from({ length: MAX_CAPTURE_ITEMS + 1 }, () => ({ blob: pngBlob() }));
+    await expect(sanitizeCapturedItems(many, 'png')).rejects.toThrow(/too many items/);
+  });
+
+  test('a non-blob item is refused', async () => {
+    await expect(
+      sanitizeCapturedItems([{ name: 'x.png', blob: 'not a blob' as unknown as Blob }], 'png')
+    ).rejects.toThrow(/not a blob/);
   });
 });
 

@@ -286,14 +286,25 @@ export async function assemblePngDeck(
   captureScale: number
 ): Promise<Uint8Array> {
   const JSZip = (await import('jszip')).default;
+  // The full 8-byte PNG signature (security L3 — 4 bytes let a `\x89PNG…`
+  // prefix on non-PNG bytes through) and a sane dimension ceiling (security
+  // F3 — the images arrive from the untrusted client; an IHDR claiming
+  // 2^31×2^31 would drive PptxGenJS's EMU geometry into overflow/garbage).
+  const PNG_SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  const MAX_DIM = 20000; // px — above any real artboard × 8× export scale
   // Slide size from the largest PNG (px → inches); contain-fit the rest.
   const dims = images.map((bytes) => {
     // PNG IHDR: width @ byte 16, height @ 20 (big-endian).
     const b = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    if (b.length < 24 || b.readUInt32BE(0) !== 0x89504e47) {
+    if (b.length < 24 || PNG_SIG.some((sig, i) => b[i] !== sig)) {
       throw new Error('assemblePngDeck: not a PNG');
     }
-    return { w: b.readUInt32BE(16), h: b.readUInt32BE(20), b };
+    const w = b.readUInt32BE(16);
+    const h = b.readUInt32BE(20);
+    if (w < 1 || h < 1 || w > MAX_DIM || h > MAX_DIM) {
+      throw new Error(`assemblePngDeck: implausible PNG dimensions ${w}×${h}`);
+    }
+    return { w, h, b };
   });
   const maxW = Math.max(...dims.map((d) => d.w));
   const maxH = Math.max(...dims.map((d) => d.h));

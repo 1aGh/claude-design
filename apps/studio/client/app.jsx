@@ -34,7 +34,7 @@ import {
   browserCaptureEligible,
   captureDeckViaBrowser,
   captureScale,
-  sanitizeCapturedItem,
+  sanitizeCapturedItems,
 } from './export-lane.js';
 import { TreeRowMenu, useRowMenu } from './tree-row-menu.jsx';
 import { useTreeDrag } from './use-tree-drag.js';
@@ -1737,13 +1737,11 @@ function ExportDialog({
           onProgress: (current, total) =>
             setStatus({ ok: true, msg: `Capturing ${current}/${total}…` }),
         });
-        if (!items || !items.length) throw new Error('capture returned nothing');
-        // Sanitize before writing to disk — the capture bridge shares a window
-        // with tenant TSX, which can forge a reply (DDR-231 security pass).
-        for (const it of items) {
-          const safe = sanitizeCapturedItem(it, card.format);
-          downloadCapturedBlob(safe.name, safe.blob);
-        }
+        // Validate before writing to disk — the capture bridge shares a window
+        // with tenant TSX, which can forge a reply (DDR-231 security pass, F1):
+        // caps count/bytes, sniffs magic, forces name+MIME.
+        const safeItems = await sanitizeCapturedItems(items, card.format);
+        for (const it of safeItems) downloadCapturedBlob(it.name, it.blob);
         setBusy(false);
         onClose();
         return;
@@ -13165,6 +13163,16 @@ function App() {
         // report status back to the iframe. Origin is already validated
         // (e.origin === expectedOrigin) above, so only the real canvas iframe
         // can ask — this is NOT a generic fetch proxy.
+        //
+        // DDR-231 security (M1): additionally require the request come from the
+        // ACTIVE canvas — captureFromCanvas + the browser-lane branch capture
+        // and auto-download `activePath`'s pixels regardless of who asked, so
+        // WITHOUT this gate a background (untrusted, DDR-054) same-origin canvas
+        // could `postMessage({dgn:'export-request'})` with no user gesture and
+        // force a silent download of whatever the user is currently looking at.
+        // Same one-liner every sibling mutating branch already uses.
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        if (e.source !== activeWin) return;
         void runBridgedExport(e.source, m.id, m.payload);
       } else if (m.dgn === 'export-history-request' && m.id) {
         // Same bridge for the dialog's Recent tab (/_api/export-history is
@@ -13206,11 +13214,8 @@ function App() {
               artboardIds: [opts.artboardId],
               scale: capScale,
             });
-            if (!items || !items.length) throw new Error('capture returned nothing');
-            for (const it of items) {
-              const safe = sanitizeCapturedItem(it, payload.format);
-              downloadCapturedBlob(safe.name, safe.blob);
-            }
+            const safeItems = await sanitizeCapturedItems(items, payload.format);
+            for (const it of safeItems) downloadCapturedBlob(it.name, it.blob);
           }
           reply({ ok: true, browser: true });
           return;

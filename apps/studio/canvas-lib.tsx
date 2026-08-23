@@ -1829,9 +1829,17 @@ function useExportCaptureBridge() {
       } | null;
       if (!m || m.dgn !== 'export-capture' || typeof m.id !== 'string') return;
       const requestId = m.id;
+      // DDR-231 security (L1): reply to the ASKING origin, never `'*'`. The
+      // done-message carries the rendered artboard blobs; a wildcard target
+      // would leak them to whatever page happens to be the parent if the
+      // shell's `frame-ancestors` CSP were ever absent (tests / misconfig).
+      // `e.origin` here is the embedding shell (we already gated
+      // `e.source === window.parent`); fall back to `'*'` only for an opaque
+      // `"null"` origin where a targeted post is impossible.
+      const replyOrigin = e.origin && e.origin !== 'null' ? e.origin : '*';
       const reply = (msg: Record<string, unknown>) => {
         try {
-          window.parent.postMessage(msg, '*');
+          window.parent.postMessage(msg, replyOrigin);
         } catch {
           /* parent gone — nothing to deliver to */
         }

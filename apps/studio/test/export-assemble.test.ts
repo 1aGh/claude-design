@@ -33,4 +33,21 @@ describe('assemblePngDeck — bytes in, deck out', () => {
       /not a PNG/
     );
   });
+
+  test('a \\x89PNG prefix on non-PNG bytes is caught by the full 8-byte signature (L3)', async () => {
+    // First 4 bytes match the old check, bytes 4-7 do not.
+    const fake = new Uint8Array(24);
+    fake.set([0x89, 0x50, 0x4e, 0x47, 0x00, 0x00, 0x00, 0x00], 0);
+    await expect(assemblePngDeck([fake], 3)).rejects.toThrow(/not a PNG/);
+  });
+
+  test('an implausible IHDR dimension is refused, not fed to the geometry math (F3)', async () => {
+    // Valid 8-byte sig + IHDR claiming 0x7fffffff × 0x7fffffff.
+    const bomb = new Uint8Array(24);
+    bomb.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+    const dv = new DataView(bomb.buffer);
+    dv.setUint32(16, 0x7fffffff);
+    dv.setUint32(20, 0x7fffffff);
+    await expect(assemblePngDeck([bomb], 3)).rejects.toThrow(/implausible PNG dimensions/);
+  });
 });

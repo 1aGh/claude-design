@@ -4434,6 +4434,11 @@ export function createHttp(
       if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
       if (!isTrustedRequestHost(req))
         return new Response('local request required (DNS-rebinding guard)', { status: 403 });
+      // Side-effecting GET (it triggers an outbound fetch that wakes/bills a
+      // container) → gate it like every other side-effecting GET, so a
+      // cross-site page a member visits can't fire it as a keep-warm
+      // amplification (DDR-231 security L2).
+      if (!sameOriginRead(req)) return new Response('cross-origin rejected', { status: 403 });
       const serviceUrl = process.env.MAUDE_RENDER_URL;
       if (!serviceUrl) return Response.json({ ok: false, lane: resolveRenderLane() });
       try {
