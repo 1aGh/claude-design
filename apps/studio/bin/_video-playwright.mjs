@@ -140,7 +140,9 @@ async function evalWithTimeout(page, fn, arg, ms, stage) {
 // something to smuggle in behind a perf flag. Opt in with MAUDE_CAPTURE_GPU=1.
 const gpuArgs =
   process.env.MAUDE_CAPTURE_GPU === '1' ? ['--enable-gpu', '--ignore-gpu-blocklist'] : [];
-console.error(`_video-playwright: launching chromium (gpu=${gpuArgs.length ? 'on' : 'off'}, format=${format})`);
+console.error(
+  `_video-playwright: launching chromium (gpu=${gpuArgs.length ? 'on' : 'off'}, format=${format})`
+);
 const browser = await launchChromium(gpuArgs.length ? { args: gpuArgs } : undefined);
 console.error('_video-playwright: browser launched');
 try {
