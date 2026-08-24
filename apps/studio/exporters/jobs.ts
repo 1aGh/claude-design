@@ -507,6 +507,16 @@ export function createExportJobQueue(bus: Bus, designRoot: string): ExportJobQue
                           args.resolve.repoRoot,
                           args.resolve.designRoot
                         ),
+                        // Ship the FULL frame-scaled render budget to the worker.
+                        // The cell sizes jobTimeoutMs to the frame count (a 704-
+                        // frame comp gets ~30 min), but the worker's shim caps
+                        // renderMediaOnWeb + its hard-kill on `options.timeoutSec`,
+                        // which defaulted to 60 s — so every real video fell back
+                        // to frame-step after 60 s and then hard-killed at 150 s,
+                        // long before a legitimate render could finish. Without
+                        // this the worker never knows the job it was handed is
+                        // allowed minutes, not seconds.
+                        timeoutSec: Math.ceil(jobTimeoutMs(args) / 1000),
                       }
                     : args.options,
               canvas: args.remoteCanvas ?? { origin: '' },

@@ -67,6 +67,17 @@ const OWN_SECRET_ALLOWED = new Set(['MAUDE_RENDER_SECRET']);
   }
 }
 
+// This worker is headless Linux, where @remotion/web-renderer's renderMediaOnWeb
+// never resolves (measured on the fleet + CI: it wedges even a 12-frame muted
+// comp, though WebCodecs itself works). Left on, it only burns its timeout and
+// falls to frame-step anyway. Tell the video shim to skip it and frame-step
+// directly — the path that WORKS here — so a real render gets the whole budget
+// instead of losing minutes to a doomed whole-comp attempt. Cloud video is thus
+// muted (audio rides renderMediaOnWeb); audio export stays a desktop capability.
+// Set MAUDE_RENDER_SKIP_WHOLE_COMP=0 to force the old behavior.
+if (process.env.MAUDE_RENDER_SKIP_WHOLE_COMP == null)
+  process.env.MAUDE_RENDER_SKIP_WHOLE_COMP = '1';
+
 const PORT = Number(process.env.PORT) || 8790;
 const SECRET = process.env.MAUDE_RENDER_SECRET ?? '';
 const ALLOWED_ORIGINS = (process.env.MAUDE_RENDER_CANVAS_ORIGINS ?? '')

@@ -237,7 +237,18 @@ try {
   // no renderMediaOnWeb container support (and no audio need); an artboard with
   // no registered comp (ordinary/CSS) has nothing for renderMediaOnWeb to render
   // — both fall through to the frame-step path below.
-  const useRenderer = !!renderLib && format !== 'gif' && !!compId;
+  //
+  // MAUDE_RENDER_SKIP_WHOLE_COMP=1 forces the frame-step path even for a
+  // registered comp. @remotion/web-renderer's renderMediaOnWeb never RESOLVES on
+  // the headless Linux render worker (measured on the cloud fleet AND CI — even
+  // a 12-frame comp and even muted; WebCodecs itself works, per the caps probe,
+  // so it is something in web-renderer's whole-comp pipeline that wedges). On
+  // that host it only ever burned the renderMediaOnWeb timeout and then fell to
+  // frame-step anyway — so the worker skips it and goes straight to the path
+  // that WORKS, reclaiming those minutes for the actual (muted) render. The
+  // desktop, where renderMediaOnWeb works and carries audio, leaves it on.
+  const skipWholeComp = process.env.MAUDE_RENDER_SKIP_WHOLE_COMP === '1';
+  const useRenderer = !skipWholeComp && !!renderLib && format !== 'gif' && !!compId;
 
   // When the whole-comp renderer path throws we DON'T fail the export. The most
   // common cause is a `RangeError: Maximum call stack size exceeded` from
