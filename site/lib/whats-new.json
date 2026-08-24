@@ -1,11 +1,11 @@
 {
-  "generated": "2026-08-23T00:00:00.000Z",
-  "version": "1.0.7",
+  "generated": "2026-08-24T00:00:00.000Z",
+  "version": "1.0.8",
   "entries": [
     {
       "id": "exports-match-what-you-see",
-      "version": null,
-      "date": null,
+      "version": "1.0.8",
+      "date": "2026-08-24",
       "kind": "improvement",
       "title": "Exports now match what you see",
       "summary": "Cloud and in-browser exports are now faithful to your canvas across every format — fonts, photo filters and duotones, gradients and full-bleed images all come through, and PNG, SVG, PPTX, PDF and HTML export fully self-contained. Video (MP4, WebM, GIF) now exports reliably from a hosted workspace too.",
