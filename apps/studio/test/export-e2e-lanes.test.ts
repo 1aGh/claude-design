@@ -458,30 +458,45 @@ async function bootRenderService(
 /** Poll the job ledger until a job for this format that is NOT in `seen`
  * finishes, then return it. `seen` lets one format run under several scopes. */
 async function waitForJob(port: number, format: string, timeoutMs: number, seen: Set<string>) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      // Bounded fetch: a wedged studio must not hang this poll PAST the
-      // deadline — an unbounded `await fetch` here is exactly how a stuck job
-      // burned the whole 600 s test budget in silence instead of throwing.
-      const { history } = (await (
-        await fetch(`http://localhost:${port}/_api/export-history`, {
-          signal: AbortSignal.timeout(10_000),
-        })
-      ).json()) as {
-        history: Array<{ id: string; format: string; status: string; error?: string }>;
-      };
-      const job = history.find((h) => h.format === format && !seen.has(h.id));
-      if (job) {
-        seen.add(job.id);
-        return job;
+  // Hard race, NOT a `Date.now() < deadline` loop: Bun's `fetch` does not
+  // reliably honour `AbortSignal.timeout` against a wedged server (measured —
+  // the studio's /_api/export-history stopped answering after a failed job and
+  // an "aborted" fetch hung anyway), so the loop's deadline check never re-ran
+  // and it ate the whole 600 s budget. A Promise.race against a real timer
+  // cannot be defeated by a stuck await.
+  const poll = (async () => {
+    for (;;) {
+      try {
+        const { history } = (await (
+          await fetch(`http://localhost:${port}/_api/export-history`, {
+            signal: AbortSignal.timeout(10_000),
+          })
+        ).json()) as {
+          history: Array<{ id: string; format: string; status: string; error?: string }>;
+        };
+        const job = history.find((h) => h.format === format && !seen.has(h.id));
+        if (job) {
+          seen.add(job.id);
+          return job;
+        }
+      } catch {
+        /* transient (abort / studio busy) — keep polling until the race fires */
       }
-    } catch {
-      /* transient (abort / studio busy) — the deadline below is authoritative */
+      await Bun.sleep(500);
     }
-    await Bun.sleep(500);
+  })();
+  let timer: ReturnType<typeof setTimeout>;
+  const bail = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`no new ${format} job finished within ${timeoutMs}ms`)),
+      timeoutMs
+    );
+  });
+  try {
+    return await Promise.race([poll, bail]);
+  } finally {
+    clearTimeout(timer);
   }
-  throw new Error(`no new ${format} job finished within ${timeoutMs}ms`);
 }
 
 describe('export E2E — worker lane, real render service, real artifact', () => {
