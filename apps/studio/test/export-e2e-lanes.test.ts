@@ -831,15 +831,25 @@ describe('export E2E — worker lane, real render service, real artifact', () =>
           }),
         });
         expect(r.status).toBe(202);
+        console.error('[worker-lane] audio mp4 posted (202) — waiting for the refusal');
         const refused = await waitForJob(studioPort, 'mp4', 120_000, seenJobs);
+        console.error(`[worker-lane] audio refusal seen: status=${refused.status}`);
         expect(refused.status).toBe('failed');
         expect(refused.error ?? '').toContain("mounts <Audio> from 'remotion'");
         // And the reason names the barrel, like the desktop message does.
         expect(refused.error ?? '').toContain('_audio-barrel');
+        console.error('[worker-lane] all assertions passed — entering teardown');
       } finally {
-        await browser?.close().catch(() => {});
+        // Bound teardown: a Playwright browser.close() that hangs after a long
+        // export batch must not turn a PASSED test into a 600s timeout. Race it
+        // against a timer; the process exits regardless.
+        await Promise.race([
+          browser?.close().catch(() => {}) ?? Promise.resolve(),
+          new Promise((r) => setTimeout(r, 10_000)),
+        ]);
         render?.kill();
         killProc(proc);
+        console.error('[worker-lane] teardown complete');
       }
     },
     { timeout: 600_000 }
