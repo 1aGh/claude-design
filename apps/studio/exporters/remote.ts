@@ -265,7 +265,16 @@ export async function renderRemotely(args: {
   const degradedHeader = res.headers.get('x-maude-degraded');
   if (degradedHeader) {
     try {
-      degraded = JSON.parse(degradedHeader) as ExportDegradation;
+      // base64 on the wire — the degradation reason is free text (it can carry
+      // an em-dash, quotes, any Unicode from a renderer error), and a raw JSON
+      // header value is restricted to Latin-1 with no control chars: a `—` in
+      // the reason made the worker's Response construction throw 500 and lose
+      // the whole (successful, degraded) render. Decode base64 first; fall back
+      // to raw JSON so a mixed-version worker/cell still parses.
+      const raw = /^[A-Za-z0-9+/=]+$/.test(degradedHeader)
+        ? Buffer.from(degradedHeader, 'base64').toString('utf8')
+        : degradedHeader;
+      degraded = JSON.parse(raw) as ExportDegradation;
     } catch {
       /* a malformed degradation note must not fail a real artifact */
     }

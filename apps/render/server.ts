@@ -251,7 +251,18 @@ async function handleRender(req: Request): Promise<Response> {
       headers: {
         'content-type': res.contentType,
         'x-maude-filename': res.filename,
-        ...(res.degraded ? { 'x-maude-degraded': JSON.stringify(res.degraded) } : {}),
+        // base64 — the degradation reason is free text (renderer errors carry
+        // em-dashes, quotes, any Unicode), and a raw JSON value in an HTTP
+        // header is Latin-1-only: a `—` in the reason threw "invalid header
+        // value" and 500'd an otherwise-SUCCESSFUL (degraded) render. The cell
+        // decodes it in remote.ts.
+        ...(res.degraded
+          ? {
+              'x-maude-degraded': Buffer.from(JSON.stringify(res.degraded), 'utf8').toString(
+                'base64'
+              ),
+            }
+          : {}),
       },
     });
   } catch (err) {
