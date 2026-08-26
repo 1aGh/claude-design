@@ -214,8 +214,22 @@ export async function probeReadiness(): Promise<ReadinessReport> {
   const authStatus =
     e2eForce === 'signed-out' ? { loggedIn: false } : claude ? await getClaudeAuthStatus() : null;
   const signedIn = !!authStatus?.loggedIn;
-  const offSubscription =
-    signedIn && authStatus?.apiProvider && authStatus.apiProvider !== 'firstParty';
+  // Issue #107 — a resolvable CLI whose auth status we could not READ is NOT
+  // the same as a signed-out one, and must not be reported as one. Claiming
+  // "not signed in" to a user who is signed in is a false accusation they
+  // can't argue with, and it routes them to a Sign-in button that can only
+  // dead-end (the poll re-runs the same failing probe until it times out).
+  // The probe's own tolerance for wrapper stdout noise now lives in probe.ts;
+  // this is the honest fallback for whatever noise that still can't read.
+  const authUnreadable = !!claude && e2eForce !== 'signed-out' && authStatus === null;
+  // Anything that is not an explicit `firstParty` counts as off-subscription,
+  // ABSENT included (attacker R2-3). The old `authStatus?.apiProvider &&`
+  // truthiness guard meant a metered user could suppress DDR-123's billing
+  // warning by OMITTING the field rather than forging `firstParty` — the exact
+  // outcome `narrowStatusTag`'s sentinel was written to prevent, reached through
+  // a different input shape. Over-warning is the safe direction here.
+  const offSubscription = signedIn && authStatus?.apiProvider !== 'firstParty';
+  const providerLabel = authStatus?.apiProvider ?? 'provider not reported';
   // DDR-166 Decision 5 — the settings-UI opt-out (prefs.rs `claude_auto_setup`,
   // DEFAULT ON) reaches the dev-server as an env var set fresh at each sidecar
   // spawn. Disabled → fall back to guide-only: no automated action offered,
@@ -226,21 +240,42 @@ export async function probeReadiness(): Promise<ReadinessReport> {
     id: 'claude',
     label: 'Claude Code (the `claude` CLI)',
     required: true,
-    status: claude && signedIn ? 'present' : 'missing',
+    status: claude && signedIn ? 'present' : authUnreadable ? 'unknown' : 'missing',
     detail: !claude
       ? 'Not found on PATH.'
       : signedIn
         ? offSubscription
-          ? `Signed in, but not on a Claude subscription (${authStatus?.apiProvider}) — AI editing may bill metered API usage.`
+          ? `Signed in, but not on a Claude subscription (${providerLabel}) — AI editing may bill metered API usage.`
           : `Signed in${authStatus?.subscriptionType ? ` · ${authStatus.subscriptionType}` : ''} — AI editing runs on your own Pro/Max subscription.`
-        : 'Installed, but not signed in.',
+        : authUnreadable
+          ? "Installed, but Maude couldn't read its sign-in state."
+          : 'Installed, but not signed in.',
     remediation: !claude
       ? 'Install Claude Code, then sign in. AI editing runs on your own Pro/Max subscription — never API billing.'
       : signedIn
         ? undefined
-        : 'Sign in to connect it to your Pro/Max subscription.',
+        : authUnreadable
+          ? // Deliberately does NOT interpolate the resolved path (attacker
+            // R2-2). This row carries a Copy affordance, and `copyFix` strips
+            // the backticks — so a path containing shell metacharacters would
+            // land on the clipboard inside a sentence the user is being told to
+            // paste. Worse, it would turn the possibly-hijacked binary that
+            // DDR-166 Decision 3 shows them precisely so they can DOUBT it into
+            // an instruction to run it. The path renders on its own line below.
+            'Maude ran `claude auth status --json` and could not read a status back. The usual cause is a version-manager shim or wrapper (mise, asdf, volta) fronting the real binary — check the path below, fix or quiet the wrapper, then Re-check.'
+          : 'Sign in to connect it to your Pro/Max subscription.',
     installCommand: !claude ? 'curl -fsSL https://claude.ai/install.sh | bash' : undefined,
-    action: !autoSetupEnabled ? undefined : !claude ? 'install' : !signedIn ? 'signin' : undefined,
+    // No Sign-in button when the status is unreadable: `pollForSignin` in
+    // ReadinessList.jsx polls THIS probe, so a button whose success signal we
+    // can't read can only ever end in "Sign-in timed out" (issue #107). The
+    // remediation text above is the actionable path in that state.
+    action: !autoSetupEnabled
+      ? undefined
+      : !claude
+        ? 'install'
+        : !signedIn && !authUnreadable
+          ? 'signin'
+          : undefined,
     resolvedPath: claude ?? undefined,
     resolvedViaMaude: !!claude && claude === process.env.MAUDE_CLAUDE_BIN,
   });

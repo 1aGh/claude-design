@@ -222,36 +222,281 @@ export interface ClaudeAuthStatus {
   subscriptionType?: string;
 }
 
+// A `claude` on PATH is not always the real binary. A version-manager shim
+// (mise, asdf, volta) or a corporate `bin` wrapper routinely fronts it, and
+// several of those print a banner to STDOUT before `exec`ing the real thing —
+// `stderr: 'ignore'` doesn't help, because the noise isn't on stderr.
+//
+// Issue #107: `~/.local/bin/claude` was a mise shim whose `mise use -g claude`
+// confirmation line landed ahead of the JSON. `JSON.parse(wholeStdout)` threw,
+// the blanket catch returned null, and the readiness gate told a signed-in user
+// they were signed OUT — then sent them to a Sign-in button that could only ever
+// end in "Sign-in timed out", because the 2 s poll re-ran the same deterministic
+// parse failure for 120 s.
+//
+// So: extract the JSON OBJECT from the blob rather than parsing the blob. This
+// widens nothing about what is TRUSTED — the binary was already resolved and
+// spawned by us, and the caller still narrows to three fields.
+//
+// The scan runs BACKWARDS from the end, and every giving-up path returns null
+// rather than a best guess. Both properties are security-review findings against
+// the first cut of this function (defender M1, attacker F1/F2), and they are the
+// same lesson twice: a parser that fails SOFT re-creates #107 through a new door.
+//   • Forwards + a candidate budget meant noise was scanned first and the real
+//     payload could fall outside the window — 99 bare `{}` in a 242-byte prefix
+//     pushed a genuine `loggedIn:false` out of scan range and let a forged
+//     `loggedIn:true` win, turning a fail-CLOSED `JSON.parse` throw into
+//     fail-OPEN. Backwards makes the budget bite on the noise side, where it
+//     belongs, and matches the actual invariant: a wrapper's banner is written
+//     BEFORE it execs, so the real payload is the LAST thing on stdout.
+//   • Truncation now keeps the TAIL, for the same reason. Slicing the head threw
+//     away the answer and kept the noise.
+//   • Returning "the last object that parsed at all" meant an NDJSON-logging
+//     wrapper's `{"level":"info",...}` became `loggedIn: !!undefined` → a
+//     confident false "not signed in", with the dead-end Sign-in button armed.
+//     An object with no `loggedIn` is not a status document; null is.
+
+/** Enough for any plausible banner + payload; a shim writes a line, not a stream. */
+const AUTH_STATUS_SCAN_LIMIT = 1 << 20;
+/** Bounds the candidate scan so a pathological blob of `{` can't become a CPU sink. */
+const AUTH_STATUS_MAX_CANDIDATES = 100;
+/** Wall clock for the whole read. The probe MUST resolve — see `readBounded`. */
+const AUTH_STATUS_TIMEOUT_MS = 5000;
+
+/** Index of the `}` closing the `{` at `from`, or -1. String- and escape-aware, so a brace inside a JSON string never miscounts. */
+function matchingBrace(text: string, from: number): number {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = from; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '{') depth++;
+    else if (ch === '}' && --depth === 0) return i;
+  }
+  return -1;
+}
+
+/**
+ * The last `{…}` in `out` that parses to an object carrying `loggedIn`, found by
+ * scanning `{` positions backwards from the end. Returns null when no such object
+ * is in range — including when the candidate budget runs out, which is a scan that
+ * did not finish, not a status that says "signed out". The caller must render null
+ * as "couldn't read", never as a claim about the user.
+ */
+function extractAuthStatusObject(out: string): Record<string, unknown> | null {
+  // Keep the TAIL on truncation: the payload trails the noise, so the end is the
+  // half worth having.
+  const text = out.length > AUTH_STATUS_SCAN_LIMIT ? out.slice(-AUTH_STATUS_SCAN_LIMIT) : out;
+  let tried = 0;
+  let start = text.lastIndexOf('{');
+  while (start !== -1 && ++tried <= AUTH_STATUS_MAX_CANDIDATES) {
+    const end = matchingBrace(text, start);
+    if (end !== -1) {
+      try {
+        const parsed: unknown = JSON.parse(text.slice(start, end + 1));
+        if (
+          typeof parsed === 'object' &&
+          parsed !== null &&
+          !Array.isArray(parsed) &&
+          'loggedIn' in (parsed as Record<string, unknown>)
+        ) {
+          return parsed as Record<string, unknown>;
+        }
+      } catch {
+        /* noise that merely looked like an object — keep walking backwards */
+      }
+    }
+    // `lastIndexOf(needle, -1)` clamps to 0 and would re-test index 0 for the
+    // whole remaining budget (round-2 defender L7) — stop instead.
+    if (start === 0) break;
+    start = text.lastIndexOf('{', start - 1);
+  }
+  return null;
+}
+
+/**
+ * Read `stream` to EOF, bounded by `timeoutMs` and by a `maxBytes` sliding TAIL
+ * window. Always returns whatever bytes it managed to collect — never null.
+ *
+ * Security-review finding (defender M2 / attacker F3): the previous
+ * `await new Response(proc.stdout).text()` resolves on pipe EOF, and `proc.kill()`
+ * signals only the DIRECT child. #107's proven root cause was a self-recursive
+ * wrapper, i.e. exactly the shape that leaves descendants holding fd 1 after the
+ * kill — so the read never completed, `probeReadiness()` never resolved, and
+ * `GET /_api/preflight` hung. The honest-unknown path this whole change exists to
+ * render was unreachable in its own headline scenario.
+ *
+ * Round-2 finding (defender L6): the first cut of this function returned null on
+ * BOTH bounds, throwing away a payload it was already holding. A signed-in user
+ * whose wrapper backgrounds anything at all — a daemon, an update check, a
+ * corporate agent — printed a perfectly good status, then lost AI editing to a
+ * deadline that fired on the still-open pipe. Honest, but the answer was in the
+ * buffer. Returning it cannot fabricate a status: `extractAuthStatusObject` still
+ * demands a parsed `loggedIn`-bearing object, so a partial or garbled tail is
+ * still null.
+ *
+ * The cap is a sliding window for the same reason the scan runs backwards — the
+ * payload trails the noise, so when we must drop bytes we drop the OLDEST. The
+ * drop is byte-exact, not chunk-granular (attacker R3-2).
+ *
+ * ACCEPTED TRADE, stated plainly because the round-2 docstring overclaimed
+ * (attacker R3-1): **the deadline path is no longer fail-closed.** This function
+ * cannot distinguish "this is all of stdout" from "this is the first 5 s of
+ * stdout", so a deadline landing mid-stream answers from whatever complete object
+ * precedes the cut — a stale status where round-2 code returned null. That is
+ * accepted, not overlooked: the alternative cost a signed-in user AI editing for
+ * the far more common backgrounding-wrapper shape, and forcing the stale answer
+ * requires controlling the writer's timing, which is the owner position — from
+ * there the binary can simply return whatever status it likes.
+ */
+async function readBounded(
+  stream: ReadableStream<Uint8Array>,
+  maxBytes: number,
+  timeoutMs: number
+): Promise<string> {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  const deadline = Date.now() + timeoutMs;
+  try {
+    for (;;) {
+      const left = deadline - Date.now();
+      if (left <= 0) break;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const expired = Symbol('expired');
+      const next = await Promise.race([
+        reader.read(),
+        new Promise<typeof expired>((resolve) => {
+          timer = setTimeout(() => resolve(expired), left);
+        }),
+      ]);
+      if (timer !== undefined) clearTimeout(timer);
+      if (next === expired) break;
+      if (next.done) break;
+      if (next.value?.byteLength) {
+        chunks.push(next.value);
+        total += next.value.byteLength;
+        // Bound memory DURING the read, not by materialising the whole blob and
+        // slicing after — a fast writer has no practical ceiling inside the
+        // timeout window otherwise.
+        // Byte-exact, one branch (attacker R3-2). Shifting whole chunks
+        // overshot by up to `sizeof(oldest chunk) - 1` — measured 262 144 B
+        // over-dropped for a 150-byte overflow against a real Bun pipe, so the
+        // effective window was as little as 75 % of the advertised cap, while
+        // the sibling single-chunk branch four lines away was byte-exact. Same
+        // window, two granularities, and the doc claimed the byte one.
+        while (total > maxBytes) {
+          const first = chunks[0];
+          if (!first) break;
+          const over = total - maxBytes;
+          if (first.byteLength <= over) {
+            chunks.shift();
+            total -= first.byteLength;
+          } else {
+            chunks[0] = first.subarray(over);
+            total -= over;
+          }
+        }
+      }
+    }
+  } finally {
+    try {
+      await reader.cancel();
+    } catch {
+      /* already closed */
+    }
+  }
+  const joined = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) {
+    joined.set(c, at);
+    at += c.byteLength;
+  }
+  // A dropped leading chunk can split a UTF-8 sequence; the decoder emits U+FFFD
+  // there, which the `{`-scan simply walks past.
+  return new TextDecoder().decode(joined);
+}
+
+/**
+ * Narrow a status tag for DISPLAY. Attacker F5: `apiProvider` is interpolated
+ * verbatim into the readiness row, so an unbounded, unsanitized value is
+ * arbitrary text inside a trusted system-status line. Anything that isn't a
+ * short identifier becomes the literal `unrecognized` — deliberately NOT
+ * `undefined`, which would read as "no provider" and silently suppress the
+ * metered-billing warning (`offSubscription` in readiness.ts tests `!== 'firstParty'`).
+ */
+function narrowStatusTag(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  return /^[A-Za-z0-9_-]{1,32}$/.test(value) ? value : 'unrecognized';
+}
+
 /**
  * Shells `claude auth status --json` and narrows the result to only the fields
  * ever trusted/exposed here. `email`/`orgId`/`orgName` are deliberately dropped
  * on read — never forwarded to a caller, never logged (security review finding:
  * raw-stdout-to-log is a real habit elsewhere in this codebase; the fix is to
  * never let the raw payload exist past this function).
+ *
+ * Returns null for BOTH "no CLI" and "couldn't read a status out of it" — see
+ * `readiness.ts`, which must not render the latter as a positive "not signed
+ * in" claim (issue #107).
  */
 export async function getClaudeAuthStatus(): Promise<ClaudeAuthStatus | null> {
   const bin = resolveClaudePath();
   if (!bin) return null;
   try {
-    const proc = Bun.spawn([bin, 'auth', 'status', '--json'], {
-      env: scrubAgentEnv(),
-      stdout: 'pipe',
-      stderr: 'ignore',
-    });
-    const timeout = setTimeout(() => proc.kill(), 5000);
-    const out = await new Response(proc.stdout).text();
-    await proc.exited;
-    clearTimeout(timeout);
-    const parsed: unknown = JSON.parse(out);
-    if (typeof parsed !== 'object' || parsed === null) return null;
-    const p = parsed as Record<string, unknown>;
+    // Whatever bytes arrived inside the deadline — possibly empty, possibly a
+    // truncated tail. `extractAuthStatusObject` is the only thing that decides
+    // whether that is a status document.
+    const p = extractAuthStatusObject(await readAuthStatusStdout(bin));
+    if (!p) return null;
     return {
-      loggedIn: !!p.loggedIn,
-      apiProvider: typeof p.apiProvider === 'string' ? p.apiProvider : undefined,
-      subscriptionType: typeof p.subscriptionType === 'string' ? p.subscriptionType : undefined,
+      // Strict `=== true`, not `!!` — a wrapper's `"loggedIn":"no"` or `:1` must
+      // not truthy-coerce into a sign-in (attacker F5's neighbour).
+      loggedIn: p.loggedIn === true,
+      apiProvider: narrowStatusTag(p.apiProvider),
+      subscriptionType: narrowStatusTag(p.subscriptionType),
     };
   } catch {
     return null;
+  }
+}
+
+/**
+ * Spawn + bounded read, kept in its own function so the `Bun.spawn` call stays
+ * inline with its literal options — that is what gives `proc.stdout` its precise
+ * `ReadableStream` type instead of the widened `number | ReadableStream | undefined`.
+ *
+ * Deliberately does NOT await `proc.exited`: a self-recursive wrapper's
+ * descendants can outlive the kill, and this function's contract is that it
+ * always resolves. The bounded read already has whatever bytes exist.
+ */
+async function readAuthStatusStdout(bin: string): Promise<string> {
+  const proc = Bun.spawn([bin, 'auth', 'status', '--json'], {
+    env: scrubAgentEnv(),
+    // A wrapper that prompts would otherwise block forever on a tty-less read.
+    stdin: 'ignore',
+    stdout: 'pipe',
+    stderr: 'ignore',
+  });
+  try {
+    return await readBounded(proc.stdout, AUTH_STATUS_SCAN_LIMIT, AUTH_STATUS_TIMEOUT_MS);
+  } finally {
+    // Best-effort reap on every path, including the deadline one. This kills the
+    // DIRECT child only — an orphaned descendant tree is a known residual, but it
+    // can no longer wedge the probe (see `readBounded`).
+    try {
+      proc.kill();
+    } catch {
+      /* already exited */
+    }
   }
 }
 
@@ -280,7 +525,14 @@ export async function probeAcpAvailabilityAuthed(): Promise<AcpAvailability> {
     return {
       ...base,
       available: false,
-      reason: 'Claude Code is installed but not signed in — sign in to connect.',
+      // `base.available` is true here, so the CLI DID resolve — a null status
+      // therefore means "we couldn't read it", not "signed out". Say so
+      // (issue #107): telling a signed-in user they aren't is a claim they
+      // have no way to act on, and it hides the real cause.
+      reason:
+        authStatus === null
+          ? "Claude Code is installed, but Maude couldn't read its sign-in state — check Help ▸ Check AI editing readiness."
+          : 'Claude Code is installed but not signed in — sign in to connect.',
     };
   }
   return base;

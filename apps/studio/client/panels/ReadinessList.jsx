@@ -292,7 +292,13 @@ function Row({ item, refresh }) {
             ) : null}
           </span>
         ) : null}
-        {item.action === 'signin' && item.resolvedPath ? (
+        {/* Shown whenever a path resolved — NOT only in the signin state. DDR-166
+            Decision 3 calls this binding ("so a pre-existing PATH-hijacked `claude`
+            isn't invisible to the one human capable of noticing it's wrong"), and
+            gating it on `action === 'signin'` hid it in the one state whose most
+            likely cause IS something unexpected fronting the binary (issue #107,
+            attacker finding F4). */}
+        {item.resolvedPath ? (
           <span className="rdy-fix-tx rdy-resolved-path">
             {item.resolvedViaMaude ? 'Installed by Maude: ' : 'Found on your PATH: '}
             <code>{item.resolvedPath}</code>

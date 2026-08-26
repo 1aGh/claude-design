@@ -139,6 +139,117 @@ describe('readiness — plugin auto-bootstrap (native, DDR-143/DDR-168)', () => 
   });
 });
 
+// Issue #107 — the `claude` row must never assert "not signed in" about a CLI
+// whose auth status it could not READ. That lie is what a mise-shim user hit:
+// signed in in the terminal, told otherwise by the app, and routed to a Sign-in
+// button whose poll re-ran the same failing probe until it timed out.
+describe('readiness — claude row, unreadable auth status (#107)', () => {
+  const claudeItem = async (bin: string) => {
+    const saved = process.env.MAUDE_CLAUDE_BIN;
+    process.env.MAUDE_CLAUDE_BIN = bin;
+    try {
+      return (await probeReadiness()).items.find((i) => i.id === 'claude')!;
+    } finally {
+      if (saved === undefined) delete process.env.MAUDE_CLAUDE_BIN;
+      else process.env.MAUDE_CLAUDE_BIN = saved;
+    }
+  };
+
+  test('resolvable CLI + unreadable status → unknown, not a "not signed in" claim', async () => {
+    // `sh` resolves as a binary but answers nothing useful to `auth status --json`.
+    const item = await claudeItem('/bin/sh');
+    expect(item.status).toBe('unknown');
+    expect(item.detail).not.toContain('not signed in');
+    expect(item.detail).toContain("couldn't read");
+  });
+
+  test('the remediation names the wrapper cause but keeps the path OUT of the copyable sentence', async () => {
+    const item = await claudeItem('/bin/sh');
+    expect(item.remediation ?? '').toMatch(/shim|wrapper/i);
+    // The row has a Copy affordance and `copyFix` strips backticks, so a path
+    // with shell metacharacters would ride onto the clipboard inside a sentence
+    // the user is told to paste — and it would turn the possibly-hijacked binary
+    // into an instruction to RUN it (attacker R2-2). It renders on its own line.
+    expect(item.remediation ?? '').not.toContain('/bin/sh');
+    // Nor does it coach an un-content-pinned PATH override at a confused user
+    // (attacker F4 — Maude would be clipboard-loading the incantation).
+    expect(item.remediation ?? '').not.toContain('MAUDE_CLAUDE_BIN');
+  });
+
+  test('the resolved path stays visible in the unknown state (DDR-166 Decision 3)', async () => {
+    // The row must still say WHICH binary it resolved — that display is the
+    // control against an invisible PATH hijack, and the unknown state is exactly
+    // where a hijack is most likely.
+    expect((await claudeItem('/bin/sh')).resolvedPath).toBe('/bin/sh');
+  });
+
+  test('no Sign-in button offered — its success signal is the probe that just failed', async () => {
+    expect((await claudeItem('/bin/sh')).action).toBeUndefined();
+  });
+
+  test('unknown still leaves the report not-ready (claude is a required item)', async () => {
+    const saved = process.env.MAUDE_CLAUDE_BIN;
+    process.env.MAUDE_CLAUDE_BIN = '/bin/sh';
+    try {
+      expect((await probeReadiness()).ready).toBe(false);
+    } finally {
+      if (saved === undefined) delete process.env.MAUDE_CLAUDE_BIN;
+      else process.env.MAUDE_CLAUDE_BIN = saved;
+    }
+  });
+
+  // Attacker R2-3 — a metered user could suppress DDR-123's billing warning by
+  // OMITTING apiProvider rather than forging 'firstParty'. Absent is not
+  // first-party; over-warning is the safe direction.
+  test('an absent apiProvider still trips the metered-billing warning', async () => {
+    const noisy = join(import.meta.dir, 'fixtures', 'noisy-claude-auth.mjs');
+    const saved = process.env.MAUDE_CLAUDE_BIN;
+    process.env.MAUDE_CLAUDE_BIN = noisy;
+    process.env.FAKE_CLAUDE_OUT = '{"loggedIn":true}'; // signed in, no provider field
+    try {
+      const item = (await probeReadiness()).items.find((i) => i.id === 'claude')!;
+      expect(item.status).toBe('present');
+      expect(item.detail).toContain('may bill metered API usage');
+      expect(item.detail).not.toContain('Pro/Max subscription.');
+    } finally {
+      delete process.env.FAKE_CLAUDE_OUT;
+      if (saved === undefined) delete process.env.MAUDE_CLAUDE_BIN;
+      else process.env.MAUDE_CLAUDE_BIN = saved;
+    }
+  });
+
+  test('an explicit firstParty still reads as on-subscription, with no warning', async () => {
+    const noisy = join(import.meta.dir, 'fixtures', 'noisy-claude-auth.mjs');
+    const saved = process.env.MAUDE_CLAUDE_BIN;
+    process.env.MAUDE_CLAUDE_BIN = noisy;
+    process.env.FAKE_CLAUDE_OUT =
+      '{"loggedIn":true,"apiProvider":"firstParty","subscriptionType":"max"}';
+    try {
+      const item = (await probeReadiness()).items.find((i) => i.id === 'claude')!;
+      expect(item.detail).toContain('Pro/Max subscription');
+      expect(item.detail).not.toContain('metered');
+    } finally {
+      delete process.env.FAKE_CLAUDE_OUT;
+      if (saved === undefined) delete process.env.MAUDE_CLAUDE_BIN;
+      else process.env.MAUDE_CLAUDE_BIN = saved;
+    }
+  });
+
+  test('a signed-out CLI is still reported as signed out, with the Sign-in action intact', async () => {
+    const saved = process.env.MAUDE_E2E_FORCE_CLAUDE_STATUS;
+    process.env.MAUDE_E2E_FORCE_CLAUDE_STATUS = 'signed-out';
+    try {
+      const item = (await probeReadiness()).items.find((i) => i.id === 'claude')!;
+      expect(item.status).toBe('missing');
+      expect(item.detail).toContain('not signed in');
+      expect(item.action).toBe('signin');
+    } finally {
+      if (saved === undefined) delete process.env.MAUDE_E2E_FORCE_CLAUDE_STATUS;
+      else process.env.MAUDE_E2E_FORCE_CLAUDE_STATUS = saved;
+    }
+  });
+});
+
 describe('readiness — resolveOnPath', () => {
   test('finds a binary that is on PATH', async () => {
     const hit = await resolveOnPath('sh');
