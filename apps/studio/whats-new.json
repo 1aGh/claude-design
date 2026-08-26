@@ -3,8 +3,8 @@
   "entries": [
     {
       "id": "canvas-media-plays-on-linux",
-      "version": null,
-      "date": null,
+      "version": "1.0.10",
+      "date": "2026-08-26",
       "kind": "fix",
       "title": "Canvas video and audio work on Linux",
       "summary": "Opening a canvas with video or audio on Linux could take the whole view down with no message — once because the GStreamer plugins it needs are optional on most distros, and again because the GPU video path faults on AMD graphics. The .deb now pulls those plugins in, Maude steers around the AMD fault by itself, and if the plugins are missing anyway it tells you, with the exact install command for your distro.",
@@ -13,8 +13,8 @@
     },
     {
       "id": "a-stopped-server-says-so",
-      "version": null,
-      "date": null,
+      "version": "1.0.10",
+      "date": "2026-08-26",
       "kind": "fix",
       "title": "A stopped server now says so",
       "summary": "If the server behind your project stopped for good, Maude used to leave the window sitting there — nothing loading, nothing saving, and no reason given. Now it tells you which project stopped, confirms your files on disk are untouched, and offers Try again. A one-off crash hours into a session also no longer counts against the give-up limit the way a genuine restart loop does.",
