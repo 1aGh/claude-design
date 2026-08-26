@@ -1,5 +1,25 @@
 # @1agh/maude
 
+## 1.0.11
+
+### Patch Changes
+
+- Rebuild the committed client bundle against the locked dependency tree.
+
+  `apps/studio/dist/client.bundle.js` and `dist/comment-mount.js` ship as
+  committed artifacts, and CI asserts they are byte-identical to what it builds
+  itself — the gate that exists because two releases went out with a desktop app
+  that opened to a blank window. The committed copies had drifted: they were
+  built against a `node_modules` that no longer matched `apps/studio/bun.lock`,
+  so a clean `bun install --frozen-lockfile` produced different bytes.
+
+  Nothing user-visible changes; the bundle is the same code compiled against the
+  dependency versions the lockfile actually pins. The drift went unnoticed
+  because the run that would have caught it was one of the many GitHub Actions
+  dropped during an incident, so v1.0.10 reached the fleet, the hub image and the
+  render service but was refused at the npm publish gate — correctly, since the
+  desktop build could not verify its own bundle.
+
 ## 1.0.10
 
 ### Patch Changes
