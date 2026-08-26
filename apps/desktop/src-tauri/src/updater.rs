@@ -138,16 +138,17 @@ async fn check_and_apply(handle: &AppHandle, interactive: bool) {
             }
         }
         Ok(None) => {
-            // Already up to date. Quiet for background checks; for a manual check the
-            // user expects confirmation that the click did something.
+            // Quiet for background checks; for a manual check the user expects
+            // feedback that the click did something. Linux .deb builds have no
+            // updater artifact, so `None` there does not verify currency.
             if interactive {
                 handle
                     .dialog()
-                    .message(format!(
-                        "Maude {} is the latest version.",
-                        env!("CARGO_PKG_VERSION")
+                    .message(up_to_date_message(
+                        std::env::consts::OS,
+                        env!("CARGO_PKG_VERSION"),
                     ))
-                    .title("You’re up to date")
+                    .title(up_to_date_title(std::env::consts::OS))
                     .kind(MessageDialogKind::Info)
                     .show(|_| {});
             }
@@ -158,6 +159,28 @@ async fn check_and_apply(handle: &AppHandle, interactive: bool) {
                 notify_check_failed(handle, &e.to_string());
             }
         }
+    }
+}
+
+/// Copy for an interactive check that did not find an updater artifact.
+///
+/// Linux ships as a `.deb`, not an AppImage updater target (see
+/// `build-desktop.yml`), so the updater's `None` response cannot establish that
+/// the installed version is current.
+fn up_to_date_message(os: &str, running_version: &str) -> String {
+    if os == "linux" {
+        "Automatic updates aren’t available for this Linux installation. Check the Maude releases page for a newer .deb."
+            .to_owned()
+    } else {
+        format!("Maude {running_version} is the latest version.")
+    }
+}
+
+fn up_to_date_title(os: &str) -> &'static str {
+    if os == "linux" {
+        "Update information"
+    } else {
+        "You’re up to date"
     }
 }
 
@@ -187,4 +210,30 @@ pub fn restart_to_update(app: AppHandle) {
     eprintln!("[maude] restart_to_update — killing sidecar and relaunching into the update");
     crate::sidecar::kill_server(&app);
     app.restart();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{up_to_date_message, up_to_date_title};
+
+    #[test]
+    fn linux_manual_check_explains_that_automatic_updates_are_unavailable() {
+        assert_eq!(
+            up_to_date_message("linux", "1.0.11"),
+            "Automatic updates aren’t available for this Linux installation. Check the Maude releases page for a newer .deb."
+        );
+    }
+
+    #[test]
+    fn supported_updater_targets_keep_the_latest_version_confirmation() {
+        assert_eq!(
+            up_to_date_message("darwin", "1.0.11"),
+            "Maude 1.0.11 is the latest version."
+        );
+    }
+
+    #[test]
+    fn linux_manual_check_does_not_use_an_up_to_date_title() {
+        assert_eq!(up_to_date_title("linux"), "Update information");
+    }
 }
