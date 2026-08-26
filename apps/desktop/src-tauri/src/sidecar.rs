@@ -7,9 +7,10 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Manager};
+use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
@@ -90,7 +91,17 @@ pub struct SidecarInstance {
     /// Respawn attempts for THIS instance (capped at MAX_RESTARTS). Per-instance
     /// rather than global: one project's crash-looping server must not exhaust
     /// another's restart budget.
+    ///
+    /// Counts a crash LOOP, not a lifetime crash total — see `spawned_at`.
     pub restarts: u32,
+    /// When the CURRENT child was spawned. Exists so `MAX_RESTARTS` can mean what
+    /// its give-up message claims ("crash-looped 3+ times") instead of "died three
+    /// times, ever". Before this the counter only ever reset when the user
+    /// switched away and back, so a single-project session that hit three
+    /// unrelated crashes hours apart — the observed shape of the Bun
+    /// divide-by-zero in maude-server, twice in one afternoon — retired the
+    /// project permanently even though every one of those crashes had recovered.
+    pub spawned_at: Instant,
     /// Monotonic tick of when this instance was last the DISPLAYED project —
     /// drives least-recently-shown eviction.
     pub last_shown: u64,
@@ -112,6 +123,12 @@ pub struct SidecarState {
 }
 
 const MAX_RESTARTS: u32 = 3;
+
+/// How long a child must stay up before its death counts as an ISOLATED crash
+/// rather than another turn of a loop. A crash loop is a server that cannot get
+/// through startup; anything that served real requests for a minute first was
+/// working, and the next crash starts a fresh budget.
+const HEALTHY_UPTIME: Duration = Duration::from_secs(60);
 
 /// How many project servers may run at once.
 ///
@@ -417,6 +434,7 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
             child: None,
             restarts: 0,
             last_shown: tick,
+            spawned_at: Instant::now(),
         });
         // CORRECTNESS (security-auditor A5) — `or_insert` overwrites an EXISTING
         // entry's `child`, and the first cut did exactly that: a racing second
@@ -427,6 +445,10 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
         // grace period.
         let displaced = entry.child.take();
         entry.child = Some(child);
+        // Re-stamp on EVERY spawn, not just the `or_insert` path — a respawn
+        // reuses the existing entry, and a stale `spawned_at` would make the new
+        // child look like it had already been up for the old one's lifetime.
+        entry.spawned_at = Instant::now();
         displaced
     };
     if let Some(old) = displaced {
@@ -481,8 +503,21 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
                         let mut pool = state.instances.lock().expect("sidecar mutex poisoned");
                         match pool.get_mut(&supervised_root) {
                             Some(inst) => {
-                                inst.restarts += 1;
+                                // A child that served for a while was not looping.
+                                // Its death opens a NEW budget instead of spending
+                                // the one some unrelated crash left behind hours
+                                // ago — otherwise `MAX_RESTARTS` silently means
+                                // "died three times, ever" and a long single-
+                                // project session retires itself.
+                                let uptime = inst.spawned_at.elapsed();
+                                inst.restarts = next_restart_count(inst.restarts, uptime);
                                 inst.child = None;
+                                eprintln!(
+                                    "[maude] dev-server was up {}s before it died — restart {}/{}",
+                                    uptime.as_secs(),
+                                    inst.restarts,
+                                    MAX_RESTARTS
+                                );
                                 inst.restarts
                             }
                             None => {
@@ -505,6 +540,7 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
                         // 3+ times, not "an untrusted probe answered idle" —
                         // see clear_project_fully's doc comment.
                         crate::notify::clear_project_fully(&app, &supervised_root);
+                        report_sidecar_gave_up(&app, &supervised_root);
                         break;
                     }
                     eprintln!("[maude] respawning dev-server (attempt {attempt}/{MAX_RESTARTS})");
@@ -520,6 +556,78 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
     });
 
     Ok(())
+}
+
+/// Restart-budget accounting: what this death costs the instance.
+///
+/// Extracted from the supervisor so the loop-vs-isolated distinction is unit-
+/// testable without a running app — the same reason `notify::transition_kind`
+/// exists apart from its poller.
+///
+/// A death after `HEALTHY_UPTIME` opens a fresh budget at 1 rather than spending
+/// the previous one. Returning 1 and not 0 is deliberate: this WAS a crash, and
+/// three more in quick succession from here must still reach the cap.
+fn next_restart_count(previous: u32, uptime: Duration) -> u32 {
+    if uptime >= HEALTHY_UPTIME {
+        1
+    } else {
+        previous + 1
+    }
+}
+
+/// The one place a user learns that their project's server is gone for good.
+///
+/// Until this existed, giving up was an `eprintln!` and nothing else — and an app
+/// launched from Finder, the Dock, or `gtk-launch` has no terminal to print to,
+/// which is the same reason `ServerLog` exists in the supervisor above. The window
+/// simply kept showing a page whose server had stopped answering: no error, no
+/// reason, no way back short of quitting. That is the same "it just goes blank and
+/// nothing says why" failure the Linux media crash (issue #105) was reported as,
+/// arrived at from a completely different direction.
+///
+/// A modal is the right weight here precisely because the app is already
+/// non-functional for this project — there is no work in progress left to
+/// interrupt. And "Try again" is not decoration: `spawn_for` re-inserts the pool
+/// entry with a fresh budget, so an isolated runtime crash (the Bun
+/// divide-by-zero seen twice in `maude-server`) becomes a recoverable blip
+/// instead of a relaunch.
+fn report_sidecar_gave_up(app: &AppHandle, project_root: &str) {
+    // The project's own directory name only — never its CONTENT. Same rule as
+    // notify.rs Decision D: the served project is untrusted (DDR-054), and this
+    // string lands in an OS-drawn dialog the user cannot inspect.
+    //
+    // Sanitized through the SAME function the notification path uses, not a
+    // hand-rolled equivalent: a directory name is chosen by whoever created the
+    // folder, so it can carry control characters or run to any length, and the
+    // fallback below widens that to a full path. Capping and stripping here
+    // costs nothing and keeps the two OS-facing surfaces honest about the same
+    // input.
+    let name = crate::notify::sanitize_notify_field(
+        &std::path::Path::new(project_root)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| project_root.to_string()),
+    );
+    let app2 = app.clone();
+    let root = project_root.to_string();
+    app.dialog()
+        .message(format!(
+            "Maude's server for \u{201c}{name}\u{201d} stopped {MAX_RESTARTS} times in a row and is no longer running, so this project can't load or save.\n\nYour files on disk are untouched."
+        ))
+        .title("Maude's server stopped")
+        .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(
+            "Try again".to_string(),
+            "Close".to_string(),
+        ))
+        .show(move |retry| {
+            if !retry {
+                return;
+            }
+            eprintln!("[maude] user asked to restart the dev-server for {root}");
+            if let Err(e) = spawn_for(&app2, &root) {
+                eprintln!("[maude] manual restart failed: {e}");
+            }
+        });
 }
 
 /// Switch the open project IN-PROCESS (File ▸ Open Project…): point the dev-server
@@ -820,5 +928,70 @@ pub fn kill_server(app: &AppHandle) {
             log_shutdown(&format!("[maude] quitting — stopping dev-server for {root}"));
             terminate(child);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_server_that_dies_during_startup_spends_the_budget() {
+        // The real crash-loop shape: never gets far enough to serve anything.
+        let mut n = 0;
+        for _ in 0..3 {
+            n = next_restart_count(n, Duration::from_millis(400));
+        }
+        assert_eq!(n, 3, "three fast deaths must reach MAX_RESTARTS");
+        assert!(next_restart_count(n, Duration::from_millis(400)) > MAX_RESTARTS);
+    }
+
+    #[test]
+    fn isolated_crashes_hours_apart_never_retire_the_project() {
+        // The observed bug: maude-server took a Bun divide-by-zero at 14:30 and
+        // again at 18:01, each time recovering fine. Under the old accounting a
+        // third such crash in the same session would have retired the project
+        // permanently — and silently.
+        let mut n = 0;
+        for _ in 0..10 {
+            n = next_restart_count(n, Duration::from_secs(3 * 3600));
+            assert!(
+                n <= MAX_RESTARTS,
+                "an isolated crash must never reach the cap"
+            );
+        }
+        assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn a_healthy_run_resets_the_budget_but_still_counts_as_one_crash() {
+        // Not 0 — a server that has just died is not in a clean state, and three
+        // more deaths from here still have to reach the cap.
+        assert_eq!(next_restart_count(3, HEALTHY_UPTIME), 1);
+    }
+
+    #[test]
+    fn the_threshold_is_inclusive() {
+        assert_eq!(next_restart_count(2, HEALTHY_UPTIME), 1);
+        assert_eq!(
+            next_restart_count(2, HEALTHY_UPTIME - Duration::from_millis(1)),
+            3
+        );
+    }
+
+    #[test]
+    fn a_recovered_loop_still_ends_in_give_up_if_it_resumes() {
+        // Two fast deaths, one long healthy run, then a fresh loop: the healthy
+        // run must not carry the old strikes forward, and the new loop must
+        // still be able to reach the cap on its own.
+        let mut n = next_restart_count(0, Duration::from_secs(1));
+        n = next_restart_count(n, Duration::from_secs(1));
+        assert_eq!(n, 2);
+        n = next_restart_count(n, Duration::from_secs(600));
+        assert_eq!(n, 1, "a healthy run clears the earlier strikes");
+        n = next_restart_count(n, Duration::from_secs(1));
+        n = next_restart_count(n, Duration::from_secs(1));
+        assert_eq!(n, 3);
+        assert!(next_restart_count(n, Duration::from_secs(1)) > MAX_RESTARTS);
     }
 }

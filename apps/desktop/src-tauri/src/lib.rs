@@ -15,6 +15,10 @@ mod app_state;
 mod crash_reporter;
 mod deep_link;
 mod keychain;
+// issue #105 — WebKitGTK's GStreamer media path is the one part of the shell that
+// can kill the renderer before the user sees a single pixel of their canvas.
+#[cfg(target_os = "linux")]
+mod linux_media;
 mod menu;
 mod notify;
 mod oauth;
@@ -421,6 +425,13 @@ pub(crate) fn write_minimal_design(dir: &std::path::Path) -> std::io::Result<()>
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // FIRST, before anything spawns a thread or a webview: WebKit reads
+    // WEBKIT_GST_DISABLE_GL_SINK in the WEB process, which inherits whatever
+    // environment we hold at webview-creation time, and `set_var` is only sound
+    // while we are still single-threaded. See linux_media.rs (issue #105).
+    #[cfg(target_os = "linux")]
+    linux_media::configure_env();
+
     let builder = tauri::Builder::default()
         // Single-instance MUST be registered first (DDR-106): a second launch
         // focuses the existing window rather than opening a duplicate.
@@ -541,6 +552,13 @@ pub fn run() {
             // setup is caught (and, only if opted in, written to a local file).
             prefs::init(&handle);
             crash_reporter::install(&handle);
+
+            // issue #105 — a canvas with audio/video hard-aborts the web process
+            // when no GStreamer audio sink is registered, and the user sees only
+            // a blank view. Say it out loud instead. Best-effort, non-blocking,
+            // and a no-op on a machine whose media stack is complete.
+            #[cfg(target_os = "linux")]
+            linux_media::warn_if_incomplete(&handle);
 
             // maude:// links (Phase 17). macOS delivers through the plugin;
             // the state is parked until the client asks for it.

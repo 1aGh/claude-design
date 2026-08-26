@@ -1,18 +1,18 @@
 ---
 title: Desktop app
-description: Install the Maude desktop app for macOS and Windows — canvas browser, git versioning, GitHub sign-in, and live collaboration, no terminal. Auto-updates in the background.
+description: Install the Maude desktop app for macOS, Windows and Linux — canvas browser, git versioning, GitHub sign-in, and live collaboration, no terminal. Auto-updates in the background.
 ---
 
 The **desktop app** is Maude with no terminal. Download it, sign in with GitHub, and start designing — everything the CLI does (canvas browser, git versioning, collaboration, AI editing) lives in the UI. It keeps itself up to date in the background.
 
 <Cards>
-  <Card title="Download Maude" href="/desktop" description="Platform-detected download for macOS and Windows." />
+  <Card title="Download Maude" href="/desktop" description="Platform-detected download for macOS, Windows and Linux." />
 </Cards>
 
 ## Install
 
-1. **[Download](/desktop)** the installer for your platform — `.dmg` (macOS) or `.msi` (Windows).
-2. Open it. On macOS, drag Maude to Applications; on Windows, run the installer.
+1. **[Download](/desktop)** the installer for your platform — `.dmg` (macOS), `.msi` (Windows) or `.deb` (Linux).
+2. Open it. On macOS, drag Maude to Applications; on Windows, run the installer; on Linux, `sudo apt install ./Maude_*.deb`.
 3. Launch Maude and **sign in with GitHub** (or open a local folder, or connect a team hub) in the onboarding wizard.
 4. You land in a working project. No terminal at any step.
 
@@ -22,8 +22,33 @@ The **desktop app** is Maude with no terminal. Download it, sign in with GitHub,
 | -------- | ------- | --------- |
 | macOS    | 13 Ventura (Intel or Apple Silicon) | `.dmg` |
 | Windows  | 10 (64-bit) | `.msi` |
+| Linux    | Debian 12 / Ubuntu 22.04 (64-bit), WebKitGTK 4.1 | `.deb` |
 
 Disk: ~250 MB. The optional AI editing pairs with a [Claude Code](/docs/design) you already have installed and runs on your own Pro/Max subscription — never API billing.
+
+### Media playback on Linux
+
+Linux renders canvases through WebKitGTK, which plays a canvas's audio and video through **GStreamer**. Installing the `.deb` with `apt` pulls the plugin packages in for you and there is nothing more to do.
+
+Installing any other way — a repackaged `.deb`, a distro package, an extracted tree — you need them yourself, because most distros ship them as *optional* dependencies of WebKitGTK. Without them a canvas containing audio or video takes the whole view down with no error message.
+
+<Callout type="warn" title="Install the GStreamer plugins">
+| Distro | Command |
+| ------ | ------- |
+| Arch / Omarchy | `sudo pacman -S --needed gst-plugins-good gst-plugins-bad gst-libav` |
+| Debian / Ubuntu | `sudo apt install gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav` |
+| Fedora | `sudo dnf install gstreamer1-plugins-good gstreamer1-plugins-bad-free gstreamer1-libav` |
+
+Maude checks for these at launch and posts a notification naming the command for your distro if they are missing.
+</Callout>
+
+**On AMD graphics**, Maude also sets `WEBKIT_GST_DISABLE_GL_SINK=1` for itself at startup. GStreamer's GL video sink asks Mesa's `radeonsi` driver for a colour-buffer format it rejects, and the pixel readback that follows faults — an upstream bug that kills the view a few seconds into playback. The workaround decodes video in software instead; the cost is some CPU. To opt out and keep the GL sink, set the variable yourself before launching:
+
+```sh
+WEBKIT_GST_DISABLE_GL_SINK=0 maude-desktop
+```
+
+Any value you set wins — Maude only fills it in when you have expressed no preference.
 
 ### What AI editing needs
 

@@ -17,7 +17,14 @@ cd "$ROOT"
 # npm pack --json is the supported machine-readable shape since npm 7.
 listing=$(npm pack --dry-run --json 2>/dev/null | node -e '
   const json = require("fs").readFileSync(0, "utf8");
-  for (const pkg of JSON.parse(json)) {
+  const parsed = JSON.parse(json);
+  // npm 7-10 emitted an ARRAY of package objects; npm 11 emits an OBJECT keyed
+  // by package name. Accept both — this gate runs on whatever npm the machine
+  // or the runner happens to have, and the array-only form failed closed with
+  // `JSON.parse is not a function or its return value is not iterable`, which
+  // reads like a syntax error rather than a shape change.
+  const pkgs = Array.isArray(parsed) ? parsed : Object.values(parsed);
+  for (const pkg of pkgs) {
     for (const f of pkg.files) console.log(f.path);
   }
 ')

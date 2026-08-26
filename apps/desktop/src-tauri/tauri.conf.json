@@ -44,6 +44,11 @@
     "targets": "all",
     "createUpdaterArtifacts": true,
     "externalBin": ["binaries/maude-server", "binaries/agent-browser", "binaries/maude"],
+    "linux": {
+      "deb": {
+        "depends": ["gstreamer1.0-plugins-good", "gstreamer1.0-plugins-bad", "gstreamer1.0-libav"]
+      }
+    },
     "macOS": {
       "entitlements": "entitlements.plist",
       "dmg": {

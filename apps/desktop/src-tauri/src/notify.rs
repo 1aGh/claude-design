@@ -90,7 +90,12 @@ const MAX_NOTIFICATIONS_PER_PROJECT_SESSION: u32 = 20;
 /// control characters are stripped.
 const MAX_NOTIFY_FIELD_LEN: usize = 200;
 
-fn sanitize_notify_field(s: &str) -> String {
+///
+/// `pub(crate)` because the sidecar's give-up dialog renders the same class of
+/// value (a project's own directory name) into the same class of surface (an
+/// OS-drawn box the user cannot inspect), and a second, subtly-different
+/// sanitizer is how the two drift apart.
+pub(crate) fn sanitize_notify_field(s: &str) -> String {
     let cleaned: String = s
         .chars()
         .filter(|c| !c.is_control() || *c == '\n' || *c == '\t')
@@ -200,6 +205,22 @@ fn send(app: &AppHandle, title: &str, body: &str) {
     if let Err(e) = app.notification().builder().title(title).body(body).show() {
         eprintln!("[maude] notify: failed to show notification: {e}");
     }
+}
+
+/// One-shot system notice from the native core — something about the MACHINE the
+/// user needs to know (issue #105's "no GStreamer audio sink, media will fail"),
+/// not something about a project or a chat.
+///
+/// Routed through `send` so the OS notifier keeps exactly one caller, and
+/// deliberately NOT through the cooldown/cap bookkeeping: those bound a repeating
+/// signal whose timing untrusted project state can steer. This is a fixed string
+/// with no project content in it, fired at most once per launch by our own
+/// startup path, so there is nothing for the throttle to protect against — and
+/// silently swallowing the one warning that explains a blank window would be the
+/// worse outcome.
+#[cfg(target_os = "linux")]
+pub(crate) fn send_system_notice(app: &AppHandle, title: &str, body: &str) {
+    send(app, title, body);
 }
 
 /// Webview-facing command (Task 6) — lets the CLIENT fire the same native
