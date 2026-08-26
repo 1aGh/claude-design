@@ -31,7 +31,11 @@ impl ServerLog {
         let dir = app.path().app_log_dir().ok()?;
         std::fs::create_dir_all(&dir).ok()?;
         let path = dir.join("server.log");
-        let file = std::fs::OpenOptions::new().create(true).append(true).open(&path).ok()?;
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .ok()?;
         let size = file.metadata().map(|m| m.len()).unwrap_or(0);
         Some(Self { file, size, dir })
     }
@@ -168,7 +172,10 @@ fn resolve_login_path() -> Option<String> {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let out = Command::new(&shell)
-            .args(["-ilc", "command printf '__MAUDE_PATH__%s__MAUDE_END__' \"$PATH\""])
+            .args([
+                "-ilc",
+                "command printf '__MAUDE_PATH__%s__MAUDE_END__' \"$PATH\"",
+            ])
             .stdin(Stdio::null())
             .stderr(Stdio::null())
             .output();
@@ -284,8 +291,12 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
     // claude) then sees the real PATH. Best-effort: on failure we leave PATH
     // untouched (no regression). The /_api/preflight readiness probe reports what's
     // still genuinely missing on top of this.
-    let base_path = resolve_login_path().unwrap_or_else(|| std::env::var("PATH").unwrap_or_default());
-    eprintln!("[maude] sidecar PATH ← login shell ({} entries)", base_path.split(':').count());
+    let base_path =
+        resolve_login_path().unwrap_or_else(|| std::env::var("PATH").unwrap_or_default());
+    eprintln!(
+        "[maude] sidecar PATH ← login shell ({} entries)",
+        base_path.split(':').count()
+    );
 
     // DDR-166 T0b / DDR-168 — expose the bundled `maude` CLI on the sidecar's
     // PATH so the ACP-spawned `claude`'s Bash-tool shell-outs (`maude design
@@ -320,7 +331,11 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
     // dev` the externalBin is triple-named in src-tauri/binaries (not next to the
     // exe), so this stays unset → the developer's global agent-browser is used.
     if let Some(ab) = std::env::current_exe().ok().and_then(|p| {
-        let exe = if cfg!(windows) { "agent-browser.exe" } else { "agent-browser" };
+        let exe = if cfg!(windows) {
+            "agent-browser.exe"
+        } else {
+            "agent-browser"
+        };
         p.parent().map(|d| d.join(exe))
     }) {
         if ab.is_file() {
@@ -339,7 +354,11 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
     // trying to resolve it itself. This is also literally the exact binary
     // already running as this sidecar, so it's always correct.
     if let Some(sb) = std::env::current_exe().ok().and_then(|p| {
-        let exe = if cfg!(windows) { "maude-server.exe" } else { "maude-server" };
+        let exe = if cfg!(windows) {
+            "maude-server.exe"
+        } else {
+            "maude-server"
+        };
         p.parent().map(|d| d.join(exe))
     }) {
         if sb.is_file() {
@@ -367,7 +386,10 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
     // (including respawn/switch_project), so a toggle takes effect on the
     // next project switch or app launch without needing extra plumbing.
     let auto_setup = crate::prefs::load(app).claude_auto_setup;
-    command = command.env("MAUDE_CLAUDE_AUTOSETUP_ENABLED", if auto_setup { "1" } else { "0" });
+    command = command.env(
+        "MAUDE_CLAUDE_AUTOSETUP_ENABLED",
+        if auto_setup { "1" } else { "0" },
+    );
 
     // Loopback GitHub-token bridge (DDR-108): the dev-server's /_api/github/*
     // endpoints fetch the keychain token from this endpoint at request time, with
@@ -393,7 +415,10 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
             resource_dir.join("studio"),
         ];
         if let Some(studio) = candidates.into_iter().find(|p| p.join("dist").exists()) {
-            command = command.env("MAUDE_DEV_SERVER_ROOT", studio.to_string_lossy().to_string());
+            command = command.env(
+                "MAUDE_DEV_SERVER_ROOT",
+                studio.to_string_lossy().to_string(),
+            );
             eprintln!("[maude] bundled runtime: {}", studio.display());
 
             // RCA G2 — point the bundled `maude` CLI at its staged pkgRoot. The
@@ -409,9 +434,13 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
             // the resource tree is NOT a sibling of the binary. Gated on the cli
             // anchor so we never point at a non-pkgRoot.
             if let Some(pkg_root) = studio.parent().and_then(|p| p.parent()) {
-                if pkg_root.join("cli").join("commands").join("design.mjs").exists() {
-                    command =
-                        command.env("MAUDE_PKG_ROOT", pkg_root.to_string_lossy().to_string());
+                if pkg_root
+                    .join("cli")
+                    .join("commands")
+                    .join("design.mjs")
+                    .exists()
+                {
+                    command = command.env("MAUDE_PKG_ROOT", pkg_root.to_string_lossy().to_string());
                     eprintln!("[maude] bundled pkgRoot: {}", pkg_root.display());
                 }
             }
@@ -547,6 +576,60 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
                     tokio::time::sleep(Duration::from_millis(500 * attempt as u64)).await;
                     if let Err(e) = spawn_for(&app, &supervised_root) {
                         eprintln!("[maude] respawn failed: {e}");
+                    } else {
+                        // The dead process took the webview's open WebSocket(s)
+                        // with it — sync status, active-canvas tracking, HMR —
+                        // and unlike `switch_project` this path never told the
+                        // webview to reconnect. Same URL, same port, but every
+                        // canvas-open action the frontend wires to that socket
+                        // hangs against a connection nothing is listening on
+                        // anymore. Re-navigate once the fresh child is up, so
+                        // the page reloads and reopens its sockets against the
+                        // new process — but only if the crashed root is still
+                        // what's on screen; the user may have switched projects
+                        // while this one was down, and we must not yank them
+                        // back to it.
+                        let app2 = app.clone();
+                        let root2 = supervised_root.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let design_root = std::path::Path::new(&root2).join(".design");
+                            match crate::server_json::wait_for_server(design_root, 120_000).await {
+                                Ok(url) => {
+                                    let still_shown = app2
+                                        .state::<SidecarState>()
+                                        .project_root
+                                        .lock()
+                                        .expect("sidecar mutex poisoned")
+                                        .clone()
+                                        == root2;
+                                    if !still_shown {
+                                        return;
+                                    }
+                                    match url.parse::<tauri::Url>() {
+                                        Ok(parsed)
+                                            if crate::server_json::is_loopback_url(&parsed) =>
+                                        {
+                                            if let Some(window) = app2.get_webview_window("main")
+                                            {
+                                                eprintln!(
+                                                    "[maude] dev-server recovered — reloading webview for {root2}"
+                                                );
+                                                if let Err(e) = window.navigate(parsed) {
+                                                    eprintln!("[maude] post-respawn navigate failed: {e}");
+                                                }
+                                            }
+                                        }
+                                        Ok(parsed) => eprintln!(
+                                            "[maude] refusing non-loopback navigate (DDR-109): {parsed}"
+                                        ),
+                                        Err(e) => eprintln!("[maude] invalid server url {url}: {e}"),
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("[maude] post-respawn: dev-server did not come back up: {e}")
+                                }
+                            }
+                        });
                     }
                     break; // a fresh task now drains the new child
                 }
@@ -801,7 +884,11 @@ fn has_running_chat(design_root: &std::path::Path) -> bool {
 /// explicitly. It re-trims on the next switch, once something goes idle.
 fn reap_instances(app: &AppHandle) {
     let state = app.state::<SidecarState>();
-    let current = state.project_root.lock().expect("sidecar mutex poisoned").clone();
+    let current = state
+        .project_root
+        .lock()
+        .expect("sidecar mutex poisoned")
+        .clone();
     loop {
         let candidates: Vec<String> = {
             let pool = state.instances.lock().expect("sidecar mutex poisoned");
@@ -888,7 +975,9 @@ fn terminate(child: CommandChild) {
         std::thread::sleep(Duration::from_millis(400));
     }
     let _ = child.kill();
-    log_shutdown(&format!("[maude] dev-server sidecar terminated (pid {pid})"));
+    log_shutdown(&format!(
+        "[maude] dev-server sidecar terminated (pid {pid})"
+    ));
 }
 
 /// Write a shutdown line WITHOUT the ability to panic.
@@ -925,7 +1014,9 @@ pub fn kill_server(app: &AppHandle) {
                 .collect()
         };
         for (root, child) in children {
-            log_shutdown(&format!("[maude] quitting — stopping dev-server for {root}"));
+            log_shutdown(&format!(
+                "[maude] quitting — stopping dev-server for {root}"
+            ));
             terminate(child);
         }
     }

@@ -33,6 +33,21 @@
 //      expressed a preference — setting it to `0` is how you ask for the GL sink
 //      back.
 //
+// A third, unrelated AMD-radeonsi issue lives here too:
+//
+//   3. DMA-BUF COMPOSITING VRAM PRESSURE. Independent of any media playback —
+//      an idle window with no <video>/<audio> in sight — WebKitGTK's
+//      DMA-BUF-backed accelerated compositor was measured pinning 2.5-3.8 GiB
+//      of this machine's 4 GiB AMD card merely from having a canvas open
+//      (confirmed by sampling `mem_info_vram_used` across a launch with and
+//      without the workaround below; the gap closed to <100 MiB). The
+//      compositor shares GPU buffers with Mesa via DMA-BUF and, on radeonsi,
+//      appears to leak or over-retain them rather than reclaiming on repaint.
+//      WEBKIT_DISABLE_DMABUF_RENDERER=1 routes compositing through a path that
+//      doesn't hand buffers to the GPU this way — a compositing-performance
+//      cost the mostly-DOM/text UI here rarely notices. Same policy as #2:
+//      set only when unset and an AMD GPU is present.
+//
 // Everything here is Linux-only; the module is not compiled elsewhere.
 
 use std::path::{Path, PathBuf};
@@ -43,6 +58,10 @@ use tauri::AppHandle;
 /// process, which inherits our environment — so this must be set before the
 /// webview is created, i.e. before the Tauri builder runs.
 const GL_SINK_ENV: &str = "WEBKIT_GST_DISABLE_GL_SINK";
+
+/// WebKitGTK's opt-out for its DMA-BUF-backed accelerated compositor. Same
+/// read-before-webview-creation constraint as `GL_SINK_ENV`.
+const DMABUF_ENV: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
 
 /// PCI vendor id for AMD/ATI. `/sys/class/drm/*/device/vendor` reports it for
 /// both `amdgpu` and the older `radeon` — both of which land on Mesa's radeonsi
@@ -187,15 +206,12 @@ fn install_hint() -> &'static str {
 
 // ── Entry points ─────────────────────────────────────────────────────────────
 
-/// What to do about the GL sink, given the user's current preference and
-/// whether an AMD GPU is present. `None` = leave the environment alone.
-///
-/// Split out from `configure_env` so the policy is testable without mutating
-/// this process's environment.
-fn gl_sink_decision(current: Option<&str>, amd_present: bool) -> Option<&'static str> {
-    // ANY existing value wins, including "0". A user who has been bitten by
-    // this once and set it, and a user who wants the GL sink back on hardware
-    // we would otherwise blanket-disable, are the same case: they told us.
+/// Shared policy behind both AMD-gated env decisions below: ANY existing
+/// value wins, including "0". A user who has been bitten by the underlying
+/// bug once and set it, and a user who wants the default WebKit behavior back
+/// on hardware we'd otherwise blanket-override, are the same case: they told
+/// us. Otherwise, act only inside the known failure envelope (AMD present).
+fn amd_gated_decision(current: Option<&str>, amd_present: bool) -> Option<&'static str> {
     if current.is_some() {
         return None;
     }
@@ -205,21 +221,36 @@ fn gl_sink_decision(current: Option<&str>, amd_present: bool) -> Option<&'static
     None
 }
 
+/// What to do about the GL sink, given the user's current preference and
+/// whether an AMD GPU is present. `None` = leave the environment alone.
+///
+/// Split out from `configure_env` so the policy is testable without mutating
+/// this process's environment.
+fn gl_sink_decision(current: Option<&str>, amd_present: bool) -> Option<&'static str> {
+    amd_gated_decision(current, amd_present)
+}
+
+/// What to do about the DMA-BUF compositor, given the user's current
+/// preference and whether an AMD GPU is present. Same shape as
+/// `gl_sink_decision` — see `amd_gated_decision`.
+fn dmabuf_decision(current: Option<&str>, amd_present: bool) -> Option<&'static str> {
+    amd_gated_decision(current, amd_present)
+}
+
 /// Set `WEBKIT_GST_DISABLE_GL_SINK` when this machine is in the failure envelope.
 ///
 /// MUST be called before the Tauri builder — WebKit reads it in the web process,
 /// which inherits the environment we have at webview-creation time. Also relies
 /// on being called while still single-threaded (`set_var` is not thread-safe).
 pub fn configure_env() {
-    let current = std::env::var(GL_SINK_ENV).ok();
     let amd = amd_gpu_present_in(Path::new("/sys/class/drm"));
+
     // Bound in its own statement, not inline in the `match` scrutinee: a
     // scrutinee temporary (`current.as_deref()`'s borrow of `current`) lives to
     // the end of the match, which would collide with the arm below consuming
     // `current`.
-    let decision = gl_sink_decision(current.as_deref(), amd);
-
-    match decision {
+    let gl_sink_current = std::env::var(GL_SINK_ENV).ok();
+    match gl_sink_decision(gl_sink_current.as_deref(), amd) {
         Some(value) => {
             std::env::set_var(GL_SINK_ENV, value);
             eprintln!(
@@ -229,8 +260,25 @@ pub fn configure_env() {
             );
         }
         None => {
-            if let Some(v) = current {
+            if let Some(v) = gl_sink_current {
                 eprintln!("[maude] {GL_SINK_ENV}={v} already set — leaving it alone");
+            }
+        }
+    }
+
+    let dmabuf_current = std::env::var(DMABUF_ENV).ok();
+    match dmabuf_decision(dmabuf_current.as_deref(), amd) {
+        Some(value) => {
+            std::env::set_var(DMABUF_ENV, value);
+            eprintln!(
+                "[maude] AMD GPU detected — setting {DMABUF_ENV}={value} (DMA-BUF compositing \
+                 pins several GiB of VRAM on radeonsi even for an idle canvas). Set it \
+                 yourself to override; {DMABUF_ENV}=0 keeps the DMA-BUF renderer."
+            );
+        }
+        None => {
+            if let Some(v) = dmabuf_current {
+                eprintln!("[maude] {DMABUF_ENV}={v} already set — leaving it alone");
             }
         }
     }
@@ -329,6 +377,22 @@ mod tests {
         assert_eq!(gl_sink_decision(Some("0"), true), None);
         assert_eq!(gl_sink_decision(Some("1"), false), None);
         assert_eq!(gl_sink_decision(Some(""), true), None);
+    }
+
+    #[test]
+    fn dmabuf_renderer_disabled_on_amd_when_unset() {
+        assert_eq!(dmabuf_decision(None, true), Some("1"));
+    }
+
+    #[test]
+    fn dmabuf_renderer_untouched_without_amd() {
+        assert_eq!(dmabuf_decision(None, false), None);
+    }
+
+    #[test]
+    fn an_existing_dmabuf_value_always_wins() {
+        assert_eq!(dmabuf_decision(Some("0"), true), None);
+        assert_eq!(dmabuf_decision(Some("1"), false), None);
     }
 
     #[test]
