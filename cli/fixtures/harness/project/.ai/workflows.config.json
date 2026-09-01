@@ -1,0 +1,10 @@
+{
+  "name": "harness-fixture",
+  "knowledgeGraph": {
+    "mode": "auto",
+    "scope": {
+      "repo": "harness-fixture",
+      "dept": "dev"
+    }
+  }
+}

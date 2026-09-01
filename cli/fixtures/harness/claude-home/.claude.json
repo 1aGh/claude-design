@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "duplicate": {
+      "type": "stdio",
+      "command": "global-fixture-mcp",
+      "args": ["--stdio"],
+      "env": {
+        "TOKEN": "${GLOBAL_MCP_TOKEN}"
+      }
+    },
+    "global-remote": {
+      "type": "http",
+      "url": "https://example.invalid/global-mcp",
+      "headers": {
+        "Authorization": "Bearer ${GLOBAL_REMOTE_TOKEN}"
+      }
+    }
+  }
+}

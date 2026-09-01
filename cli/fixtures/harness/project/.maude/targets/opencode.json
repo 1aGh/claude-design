@@ -1,0 +1,6 @@
+{
+  "exclude": ["hooks-*"],
+  "permission": {
+    "bash": "ask"
+  }
+}

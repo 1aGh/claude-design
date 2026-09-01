@@ -64,7 +64,25 @@
   },
   "files": [
     "cli",
+    "!cli/.platform-binary-path",
+    "!cli/**/*.test.mjs",
+    "!cli/fixtures",
+    "!cli/**/fixtures",
+    "!cli/**/backups",
+    "!cli/**/logs",
+    "!cli/**/.DS_Store",
     "apps/studio",
+    "!apps/studio/.ai",
+    "!apps/studio/bun.lock",
+    "!apps/studio/test",
+    "!apps/studio/**/test",
+    "!apps/studio/**/tests",
+    "!apps/studio/**/fixtures",
+    "!apps/studio/**/backups",
+    "!apps/studio/**/logs",
+    "!apps/studio/**/*.test.*",
+    "!apps/studio/**/*.spec.*",
+    "!apps/studio/**/.DS_Store",
     "plugins/design/dependencies.json",
     "plugins/design/dependencies.schema.json",
     "plugins/design/templates",
@@ -72,6 +90,8 @@
     "plugins/flow/dependencies.schema.json",
     "plugins/flow/templates",
     "plugins/flow/.claude-plugin/config.schema.json",
+    "docs/harness-capability-matrix.md",
+    "docs/harness-environment-projection.md",
     "LICENSE",
     "README.md"
   ],
@@ -104,9 +124,11 @@
     "lucide-react": "^1.24.0"
   },
   "dependencies": {
+    "@decimalturn/toml-patch": "3.0.5",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
     "happy-dom": "20.10.6",
-    "svgo": "^4.0.1"
+    "svgo": "^4.0.1",
+    "yaml": "2.9.0"
   }
 }

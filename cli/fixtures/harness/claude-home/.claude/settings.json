@@ -1,0 +1,30 @@
+{
+  "enabledPlugins": {
+    "fixture@local": true
+  },
+  "env": {
+    "NODE_ENV": "development",
+    "SAFE_TOKEN": "${HARNESS_SAFE_TOKEN}"
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "never-execute-global-hook --marker {{HOOK_MARKER}}"
+          },
+          {
+            "type": "prompt",
+            "prompt": "Summarize without executing anything."
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": ["Read", "Bash(git status)"],
+    "ask": ["Write"],
+    "deny": ["Read(.env)"]
+  }
+}

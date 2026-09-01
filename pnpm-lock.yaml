@@ -13,6 +13,9 @@ importers:
 
   .:
     dependencies:
+      '@decimalturn/toml-patch':
+        specifier: 3.0.5
+        version: 3.0.5
       ajv:
         specifier: ^8.20.0
         version: 8.20.0
@@ -25,6 +28,9 @@ importers:
       svgo:
         specifier: ^4.0.1
         version: 4.0.1
+      yaml:
+        specifier: 2.9.0
+        version: 2.9.0
     devDependencies:
       '@biomejs/biome':
         specifier: ^2.5.3
@@ -566,6 +572,10 @@ packages:
   '@cspotcode/source-map-support@0.8.1':
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
     engines: {node: '>=12'}
+
+  '@decimalturn/toml-patch@3.0.5':
+    resolution: {integrity: sha512-awLRLA6DfoQFiv8xB6+BZBtTh1DuiUSxxIn26i7v6wnMRj6+fhcEIgAFuKo8PArK7iy882yN+jBdA26fjKOj8A==}
+    engines: {node: '>=16'}
 
   '@emnapi/core@1.11.1':
     resolution: {integrity: sha512-RSvbQmHzdKzNsLYa/wHrbc3KN4sYLKAdPZxqiM2HATqv/SBk2/ENSHpvXGaLOMcsAyz0poEGqkmmKYG3OWiJEQ==}
@@ -6712,6 +6722,8 @@ snapshots:
   '@cspotcode/source-map-support@0.8.1':
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
+
+  '@decimalturn/toml-patch@3.0.5': {}
 
   '@emnapi/core@1.11.1':
     dependencies:

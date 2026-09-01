@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "never-execute-user-plugin-hook --marker {{HOOK_MARKER}}",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

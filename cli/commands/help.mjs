@@ -84,6 +84,12 @@ COMMANDS
         never overwrites existing config values). --json for programmatic
         consumers.
 
+  harness <migrate|sync|check|diff|status|adopt|remove> [options]
+        Project Claude and Maude configuration into OpenCode or Codex through
+        an explicit --global or --project <root> scope. Migration, diff, and
+        adoption preview safely; use --yes only after reviewing the full diff.
+        Run 'maude harness help' for targets, exit codes, and recovery details.
+
   help              Print this help.
   version           Print the installed version.
 
@@ -104,6 +110,8 @@ EXAMPLES
   maude hub status http://localhost:1234
   maude doctor
   maude doctor --fix
+  maude harness migrate --from claude --targets opencode,codex --project .
+  maude harness check --targets opencode,codex --strict --project .
 
 NOTES
   'maude init' does mechanical scaffolding of .ai/ only.

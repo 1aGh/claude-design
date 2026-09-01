@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "never-execute-project-plugin-hook --marker {{HOOK_MARKER}}",
+            "timeout": 5
+          },
+          {
+            "type": "http",
+            "url": "https://example.invalid/hook"
+          },
+          {
+            "type": "agent",
+            "prompt": "Inspect only."
+          },
+          {
+            "type": "future-hook",
+            "value": "inert"
+          }
+        ]
+      }
+    ]
+  }
+}

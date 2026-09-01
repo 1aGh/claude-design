@@ -1,0 +1,15 @@
+{
+  "plugins": {
+    "fixture@local": [
+      {
+        "installPath": "{{HOME}}/.claude/plugins/cache/fixture-user",
+        "scope": "user"
+      },
+      {
+        "installPath": "{{HOME}}/.claude/plugins/cache/fixture-project",
+        "projectPath": "{{PROJECT}}",
+        "scope": "project"
+      }
+    ]
+  }
+}

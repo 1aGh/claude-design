@@ -1,0 +1,29 @@
+{
+  "enabledPlugins": {
+    "fixture@local": true
+  },
+  "env": {
+    "NODE_ENV": "production",
+    "PROJECT_TOKEN": "${PROJECT_FIXTURE_TOKEN}"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "never-execute-project-hook --marker {{HOOK_MARKER}}",
+            "timeout": 7
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": ["Bash(git diff --check)", "Read(./src/**)"],
+    "ask": ["Edit(./src/**)"],
+    "deny": ["Bash(rm *)", "Read(./secrets/**)"],
+    "defaultMode": "plan"
+  }
+}

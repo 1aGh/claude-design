@@ -1,0 +1,12 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["user-target-plugin"],
+  "theme": "user-owned-theme",
+  "mcp": {
+    "user-target-mcp": {
+      "type": "remote",
+      "url": "https://example.invalid/user-target",
+      "enabled": false
+    }
+  }
+}

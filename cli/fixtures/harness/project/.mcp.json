@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "duplicate": {
+      "type": "stdio",
+      "command": "project-fixture-mcp",
+      "args": ["--stdio"],
+      "env": {
+        "TOKEN": "${PROJECT_MCP_TOKEN}"
+      }
+    },
+    "disabled": {
+      "type": "stdio",
+      "command": "never-start-disabled-mcp",
+      "disabled": true
+    },
+    "remote": {
+      "type": "http",
+      "url": "https://example.invalid/project-mcp",
+      "headers": {
+        "Authorization": "Bearer ${PROJECT_REMOTE_TOKEN}",
+        "X-Public": "fixture"
+      }
+    }
+  }
+}

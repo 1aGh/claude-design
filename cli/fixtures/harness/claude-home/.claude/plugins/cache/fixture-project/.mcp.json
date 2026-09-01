@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "duplicate": {
+      "type": "stdio",
+      "command": "project-plugin-mcp",
+      "args": ["--stdio"]
+    }
+  }
+}
