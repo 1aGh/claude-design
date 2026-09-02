@@ -13,6 +13,14 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 
+import {
+  countTranscriptLinesAt,
+  readHeadLines,
+  readTailLines,
+  readTailWithSeq,
+  TAIL_HYDRATE_BYTES,
+} from './transcript-io.ts';
+
 export interface ChatSummary {
   id: string;
   title: string;
@@ -98,22 +106,19 @@ export function writeChatMeta(
   return next;
 }
 
-function readLines(file: string): Array<Record<string, unknown>> {
-  try {
-    return readFileSync(file, 'utf8')
-      .split('\n')
-      .filter(Boolean)
-      .map((l) => {
-        try {
-          return JSON.parse(l) as Record<string, unknown>;
-        } catch {
-          return null;
-        }
-      })
-      .filter((x): x is Record<string, unknown> => x !== null);
-  } catch {
-    return [];
+/** Parse raw jsonl lines, dropping unparseable ones. Callers hand this a
+ *  BOUNDED slice of a transcript (a head or tail window) — never a whole file.
+ *  Reading a transcript whole is the #119 defect; see `transcript-io.ts`. */
+function parseLines(raw: string[]): Array<Record<string, unknown>> {
+  const out: Array<Record<string, unknown>> = [];
+  for (const l of raw) {
+    try {
+      out.push(JSON.parse(l) as Record<string, unknown>);
+    } catch {
+      /* malformed line — skipped */
+    }
   }
+  return out;
 }
 
 // ── The re-attach seam (feature-acp-write-path-scope Addendum, Task 8) ───────
@@ -130,22 +135,25 @@ function readLines(file: string): Array<Record<string, unknown>> {
 // the client should have seen" are the same number by construction.
 //
 // CRITICAL: these two helpers count/index RAW non-empty lines, deliberately NOT
-// `readLines()`, which silently drops unparseable lines. A single corrupt line
-// would otherwise shift every subsequent seq by one and permanently desync the
-// seam — replaying content the client already has, forever. A malformed line is
+// PARSED lines — parsing silently drops unparseable lines, and a single corrupt
+// line would then shift every subsequent seq by one and permanently desync the
+// seam, replaying content the client already has, forever. A malformed line is
 // skipped from the RESULT here but still consumes its index.
+//
+// The counting itself now lives in ONE place — `transcript-io.ts`'s
+// `countTranscriptLinesAt`, which `bridge.ts` calls too. It used to be two
+// hand-copied bodies held in agreement by a comment saying they must agree
+// (#119); a shared function makes the invariant structural instead of
+// aspirational.
 
 /** The chat's current sequence marker: how many transcript lines exist. `0` for
  *  a chat with no transcript yet. Handed to the client as the `X-Maude-Chat-Seq`
  *  header on the history fetch, and echoed back on `attach`. */
 export function chatTranscriptSeq(designRoot: string, chatId: string): number {
-  const file = join(chatDir(designRoot), `${chatId}.jsonl`);
-  if (!existsSync(file)) return 0;
-  try {
-    return readFileSync(file, 'utf8').split('\n').filter(Boolean).length;
-  } catch {
-    return 0;
-  }
+  // Counted in bounded chunks, never by materializing the file as a string —
+  // and by the SAME function the bridge's counter calls, so the two cannot
+  // drift apart and desync the seam (#119).
+  return countTranscriptLinesAt(join(chatDir(designRoot), `${chatId}.jsonl`));
 }
 
 /** Transcript lines strictly after `afterSeq`, each paired with its own 1-based
@@ -161,18 +169,35 @@ export function readChatLinesAfter(
 ): Array<{ seq: number; entry: Record<string, unknown> }> {
   const file = join(chatDir(designRoot), `${chatId}.jsonl`);
   if (!existsSync(file)) return [];
-  let raw: string[];
-  try {
-    raw = readFileSync(file, 'utf8').split('\n').filter(Boolean);
-  } catch {
-    return [];
-  }
+  // The replay window is the TAIL by construction (`limit` most-recent lines),
+  // so a tail read suffices — but `seq` is a 1-based index into the WHOLE
+  // file, so the skipped prefix still has to be counted (cheaply) to keep the
+  // numbering absolute. Counting and reading are separate passes precisely
+  // because only one of them needs the bytes.
+  //
+  // Two bounds now apply, and they do not conflict in practice: `limit`
+  // (default 500) caps the RESULT to the newest lines, and the tail window
+  // caps the BYTES scanned. A client whose `afterSeq` predates the window
+  // would, in principle, miss the lines between — but those are more than
+  // `TAIL_HYDRATE_BYTES` back in the file, so `limit` has already truncated
+  // them away first. The replay is for the gap since the last hydration, not
+  // for the archive (see this function's contract above).
+  // ONE descriptor, ONE size snapshot — `readTailWithSeq` resolves the window
+  // and its absolute offset together. Doing this as two passes (count, then
+  // read) let the bridge's concurrent appends drift `offset` and shift every
+  // emitted seq: security review F4, and the very desync this seam exists to
+  // prevent.
+  const { lines: raw, offset, total } = readTailWithSeq(file);
+  if (total === 0) return [];
   const out: Array<{ seq: number; entry: Record<string, unknown> }> = [];
   // Walk from the END so `limit` keeps the MOST RECENT lines — truncating the
   // tail would drop precisely the streaming updates the re-attach is for.
-  for (let i = raw.length - 1; i >= afterSeq && out.length < limit; i--) {
+  // `i` indexes the tail window; `offset + i` is the absolute line index, which
+  // is what `afterSeq` is expressed in and what `seq` must report.
+  const lowest = Math.max(0, afterSeq - offset);
+  for (let i = raw.length - 1; i >= lowest && out.length < limit; i--) {
     try {
-      out.push({ seq: i + 1, entry: JSON.parse(raw[i]) as Record<string, unknown> });
+      out.push({ seq: offset + i + 1, entry: JSON.parse(raw[i]) as Record<string, unknown> });
     } catch {
       /* malformed line — skipped from the result, but its index is still spent */
     }
@@ -204,14 +229,35 @@ export function listChats(designRoot: string): ChatSummary[] {
     if (meta.archived) continue;
     const file = join(dir, name);
     let updated = 0;
+    let size = 0;
     try {
-      updated = statSync(file).mtimeMs;
+      const st = statSync(file);
+      updated = st.mtimeMs;
+      size = st.size;
     } catch {
       /* skip unreadable */
     }
-    const lines = readLines(file);
-    if (lines.length === 0) continue;
-    out.push({ id, title: meta.title || deriveTitle(lines), updated, renamed: !!meta.title });
+    if (size === 0) continue;
+    // #119: this used to `readLines(file)` — the WHOLE transcript — for every
+    // chat in the directory, to pull ~60 characters out of the first user
+    // line, on a path the client fires at every turn end. The first user line
+    // sits at the top of the file by construction (only a `role:'bootstrap'`
+    // brief can precede it), so a bounded HEAD read answers the same question
+    // for a fixed cost no matter how large the transcript has grown.
+    //
+    // A user-renamed chat needs no scan at all — the title is already in the
+    // sidecar, so skip the read entirely.
+    if (meta.title) {
+      out.push({ id, title: meta.title, updated, renamed: true });
+      continue;
+    }
+    const head = readHeadLines(file);
+    const lines = parseLines(head.lines);
+    // A file with bytes but no parseable line is still a real chat; only a
+    // genuinely empty one is skipped (matching the old `lines.length === 0`
+    // guard, which could only be reached for an empty/blank file).
+    if (lines.length === 0 && head.complete) continue;
+    out.push({ id, title: deriveTitle(lines), updated, renamed: false });
   }
   return out.sort((a, b) => b.updated - a.updated);
 }
@@ -274,8 +320,27 @@ function stripContextBlock(text: string): string {
 export function readChatMessages(designRoot: string, chatId: string): ChatMessage[] {
   const file = join(chatDir(designRoot), `${chatId}.jsonl`);
   if (!existsSync(file)) return [];
-  const lines = readLines(file);
+  // #119: bounded TAIL read. Below `TAIL_HYDRATE_BYTES` — every transcript
+  // written since inline blobs stopped being persisted — this reads the whole
+  // file and behaves exactly as before. Above it (a historical transcript
+  // bloated by base64 tool results), the newest bytes are hydrated and the
+  // older ones are left on disk rather than pulled through the server and into
+  // the browser. The client's seq-based replay still covers everything
+  // appended AFTER hydration, so the live seam is unaffected either way.
+  const { lines: raw, truncated } = readTailLines(file, TAIL_HYDRATE_BYTES);
+  const lines = parseLines(raw);
   const messages: ChatMessage[] = [];
+  if (truncated) {
+    messages.push({
+      role: 'assistant',
+      parts: [
+        {
+          type: 'text',
+          text: '_Older messages in this chat are not shown — the transcript exceeds the hydration limit. The full record remains on disk._',
+        },
+      ],
+    });
+  }
   let assistant: ChatMessage | null = null;
   const toolIndex = new Map<string, number>();
 

@@ -120,6 +120,13 @@ export function scrub(text: string, opts: ScrubOptions = {}): string {
 export interface DebugBundle {
   app: { maudeVersion: string; platform: string; arch: string };
   context: { projectName: string | null; activeCanvas: string | null };
+  /** Server process memory at report time (#119). A runaway-memory report used
+   *  to arrive as a number the user eyeballed in Activity Monitor, with nothing
+   *  in the bundle to confirm or refute it — and the log ring was silent
+   *  because the heap watch was measuring the wrong counter. `rss` is the same
+   *  number the user sees, so a future report of this class carries its own
+   *  evidence. Bytes; process-level, never per-request. */
+  process: { rssBytes: number; heapUsedBytes: number; uptimeSeconds: number };
   logs: { serverLogTail: string };
 }
 
@@ -137,6 +144,7 @@ export function buildDebugBundle(args: {
   tailLines?: number;
 }): DebugBundle {
   const scrubOpts: ScrubOptions = { repoRoot: args.repoRoot };
+  const memory = process.memoryUsage();
   return {
     app: {
       maudeVersion: args.maudeVersion,
@@ -146,6 +154,11 @@ export function buildDebugBundle(args: {
     context: {
       projectName: args.projectName,
       activeCanvas: args.activeCanvas ? scrub(args.activeCanvas, scrubOpts) : null,
+    },
+    process: {
+      rssBytes: memory.rss,
+      heapUsedBytes: memory.heapUsed,
+      uptimeSeconds: Math.round(process.uptime()),
     },
     logs: {
       serverLogTail: logRingLines(args.tailLines ?? 200)

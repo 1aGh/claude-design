@@ -5,8 +5,30 @@
 // not the primary path. The primary path is the explicit `iframe:closed` event
 // emitted on the bus, which calls cleanupFn synchronously.
 
-const HEAP_WARN_BYTES = 256 * 1024 * 1024; // 256 MB — log only
-const HEAP_PANIC_BYTES = 384 * 1024 * 1024; // 384 MB — force GC
+// #119 — these thresholds are read against `rss`, NOT `heapTotal`.
+//
+// The watch originally polled `process.memoryUsage().heapTotal`, which is a V8
+// intuition that does not carry over: under Bun/JSC it barely moves for the
+// allocations that actually grow this process. Measured while the server read
+// 554 MB of chat transcripts, `rss` peaked at 1.29 GB while `heapTotal` peaked
+// at 5 MB — three orders of magnitude apart. Neither threshold below was
+// reachable, so the one guard written for a runaway-memory failure could never
+// fire, and the `[mem]` line that would have named the problem never reached
+// the log ring (and therefore never reached a bug report's `serverLogTail`).
+// The bug it was meant to catch shipped past it in silence.
+//
+// `rss` is the number the user sees in Activity Monitor, which is also the
+// number they report. Sized for a server whose steady state is a few hundred
+// MB: WARN is "something is wrong", PANIC is "intervene before the machine
+// starts swapping".
+const RSS_WARN_BYTES = 1024 * 1024 * 1024; // 1 GB — log only
+const RSS_PANIC_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB — log + force GC
+
+/** Once past PANIC, back off exponentially instead of forcing a full GC on
+ *  every tick forever. `Bun.gc(true)` is synchronous — it runs on the same
+ *  single thread that serves the ACP socket and every HTTP route — so a
+ *  permanently-crossed threshold must not become a permanent stutter. */
+const PANIC_BACKOFF_MAX = 16;
 
 let registry: FinalizationRegistry<{ id: string; cleanupFn: () => void }> | null = null;
 
@@ -73,17 +95,31 @@ let heapTimer: ReturnType<typeof setInterval> | null = null;
 
 export function startHeapWatch(intervalMs = 60_000) {
   if (heapTimer) return;
+  let ticksUntilPanic = 0;
+  let panicBackoff = 1;
   heapTimer = setInterval(() => {
     const u = process.memoryUsage();
-    if (u.heapTotal > HEAP_PANIC_BYTES) {
+    const mb = (n: number) => (n / 1024 / 1024).toFixed(0);
+    if (u.rss > RSS_PANIC_BYTES) {
+      // ALWAYS log — the log line is the diagnostic that survives into a bug
+      // report, and it must not be suppressed by the GC backoff below.
       console.warn(
-        `[mem] heap ${(u.heapTotal / 1024 / 1024).toFixed(0)}MB > panic threshold — forcing GC`
+        `[mem] rss ${mb(u.rss)}MB > panic threshold (heapUsed ${mb(u.heapUsed)}MB) — memory is not being reclaimed`
       );
-      // Bun.gc(true) is sync; Node has no equivalent without --expose-gc.
-      const gc = (globalThis as { Bun?: { gc?: (sync: boolean) => void } }).Bun?.gc;
-      if (gc) gc(true);
-    } else if (u.heapTotal > HEAP_WARN_BYTES) {
-      console.warn(`[mem] heap ${(u.heapTotal / 1024 / 1024).toFixed(0)}MB > warn threshold`);
+      if (ticksUntilPanic > 0) {
+        ticksUntilPanic--;
+      } else {
+        const gc = (globalThis as { Bun?: { gc?: (sync: boolean) => void } }).Bun?.gc;
+        if (gc) gc(true);
+        ticksUntilPanic = panicBackoff;
+        panicBackoff = Math.min(panicBackoff * 2, PANIC_BACKOFF_MAX);
+      }
+    } else {
+      ticksUntilPanic = 0;
+      panicBackoff = 1;
+      if (u.rss > RSS_WARN_BYTES) {
+        console.warn(`[mem] rss ${mb(u.rss)}MB > warn threshold (heapUsed ${mb(u.heapUsed)}MB)`);
+      }
     }
   }, intervalMs);
   // Don't keep the event loop alive just for the heap watch.

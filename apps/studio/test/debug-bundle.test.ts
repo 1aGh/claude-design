@@ -102,4 +102,21 @@ describe('buildDebugBundle()', () => {
     expect(bundle.logs.serverLogTail).not.toContain('verysecret');
     expect(bundle.logs.serverLogTail).not.toContain('/Users/jane/git/acme');
   });
+
+  // #119 — a runaway-memory report used to arrive as a number the user
+  // eyeballed in Activity Monitor, with nothing in the bundle to confirm it
+  // (and a silent log ring, because the heap watch measured the wrong
+  // counter). `rss` is the same number the user sees.
+  test('carries process memory so a memory report arrives measured', () => {
+    const bundle = buildDebugBundle({
+      maudeVersion: '9.9.9',
+      projectName: 'acme',
+      activeCanvas: null,
+      repoRoot: '/Users/jane/git/acme',
+    });
+    expect(bundle.process.rssBytes).toBeGreaterThan(0);
+    expect(bundle.process.heapUsedBytes).toBeGreaterThan(0);
+    expect(bundle.process.uptimeSeconds).toBeGreaterThanOrEqual(0);
+    expect(Number.isInteger(bundle.process.uptimeSeconds)).toBe(true);
+  });
 });

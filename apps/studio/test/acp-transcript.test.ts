@@ -6,12 +6,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  chatTranscriptSeq,
   deleteChat,
   listChats,
+  readChatLinesAfter,
   readChatMessages,
   readChatMeta,
   writeChatMeta,
 } from '../acp/transcript.ts';
+import { countTranscriptLinesAt } from '../acp/transcript-io.ts';
 
 let root: string;
 afterEach(() => {
@@ -234,5 +237,183 @@ describe('context-hardening projection (feature-acp-context-hardening)', () => {
     ]);
     const msgs = readChatMessages(designRoot, 'cm');
     expect(msgs[0]?.parts[0]?.text).toBe('what is a <maude-context> block?');
+  });
+});
+
+// ── #119: transcripts must be read in BOUNDED windows ───────────────────────
+//
+// The defect: every reader loaded whole files, and `listChats` did it for
+// EVERY transcript in the directory on a path the client fires at each turn
+// end (661 ms blocking / 1.29 GB peak RSS against a real 554 MB `_chat/`).
+// These tests pin the bounded behaviour AND that small transcripts — the
+// overwhelmingly common case — behave exactly as they did before.
+
+/** Seed a `_chat/` with several transcripts at once. */
+function seedMany(chats: Record<string, object[]>): string {
+  root = mkdtempSync(join(tmpdir(), 'acp-tx-'));
+  const dir = join(root, '_chat');
+  mkdirSync(dir, { recursive: true });
+  for (const [id, lines] of Object.entries(chats)) {
+    writeFileSync(join(dir, `${id}.jsonl`), lines.map((l) => JSON.stringify(l)).join('\n'));
+  }
+  return root;
+}
+
+describe('#119 — listChats does not read whole transcripts', () => {
+  test('derives the title from a HUGE transcript without loading it', () => {
+    // The first user line is at the top; everything after it is bulk. A reader
+    // that loads the file to find a 60-character title is the bug.
+    const bulk = Array.from({ length: 4000 }, (_, i) => ({
+      ts: 100 + i,
+      role: 'agent',
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'x'.repeat(500) },
+      },
+    }));
+    const designRoot = seedMany({
+      big: [{ ts: 1, role: 'user', text: 'make the hero bigger' }, ...bulk],
+    });
+    const chats = listChats(designRoot);
+    expect(chats.length).toBe(1);
+    expect(chats[0].title).toBe('make the hero bigger');
+  });
+
+  test('a user-renamed chat is titled from the sidecar with no scan at all', () => {
+    const designRoot = seedMany({ r: [{ ts: 1, role: 'user', text: 'auto title' }] });
+    writeChatMeta(designRoot, 'r', { title: 'My Rename' });
+    const chats = listChats(designRoot);
+    expect(chats[0].title).toBe('My Rename');
+    expect(chats[0].renamed).toBe(true);
+  });
+
+  test('a zero-byte transcript is still skipped', () => {
+    root = mkdtempSync(join(tmpdir(), 'acp-tx-'));
+    const dir = join(root, '_chat');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'empty.jsonl'), '');
+    writeFileSync(join(dir, 'real.jsonl'), JSON.stringify({ ts: 1, role: 'user', text: 'hi' }));
+    expect(listChats(root).map((c) => c.id)).toEqual(['real']);
+  });
+
+  test('lists many chats and keeps newest-first ordering', () => {
+    const designRoot = seedMany({
+      a: [{ ts: 1, role: 'user', text: 'first' }],
+      b: [{ ts: 2, role: 'user', text: 'second' }],
+      c: [{ ts: 3, role: 'user', text: 'third' }],
+    });
+    const ids = listChats(designRoot)
+      .map((c) => c.id)
+      .sort();
+    expect(ids).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('#119 — the re-attach seam survives the streaming rewrite', () => {
+  test('chatTranscriptSeq equals the shared raw-line counter', () => {
+    // These MUST agree with bridge.ts's counter or the seam desyncs forever.
+    // Both now call the same function; this asserts the wiring, and
+    // acp-transcript-io.test.ts asserts the function itself.
+    const designRoot = seedMany({
+      s: [
+        { ts: 1, role: 'user', text: 'hi' },
+        { ts: 2, role: 'agent', update: { sessionUpdate: 'agent_message_chunk' } },
+        { ts: 3, role: 'stop', stopReason: 'end_turn' },
+      ],
+    });
+    const file = join(designRoot, '_chat', 's.jsonl');
+    expect(chatTranscriptSeq(designRoot, 's')).toBe(3);
+    expect(chatTranscriptSeq(designRoot, 's')).toBe(countTranscriptLinesAt(file));
+  });
+
+  test('a corrupt line still consumes its index — seq never shifts', () => {
+    root = mkdtempSync(join(tmpdir(), 'acp-tx-'));
+    const dir = join(root, '_chat');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'c.jsonl'),
+      [
+        JSON.stringify({ ts: 1, role: 'user', text: 'one' }),
+        '{ this is not json',
+        JSON.stringify({ ts: 3, role: 'user', text: 'three' }),
+      ].join('\n')
+    );
+    expect(chatTranscriptSeq(root, 'c')).toBe(3);
+    // Line 3 must still report seq 3, not 2 — the malformed line is dropped
+    // from the RESULT but keeps its index.
+    const after = readChatLinesAfter(root, 'c', 2);
+    expect(after.length).toBe(1);
+    expect(after[0].seq).toBe(3);
+  });
+
+  test('readChatLinesAfter reports ABSOLUTE seqs and no gap or overlap', () => {
+    const lines = Array.from({ length: 60 }, (_, i) => ({ ts: i, role: 'user', text: `m${i}` }));
+    const designRoot = seedMany({ g: lines });
+    const total = chatTranscriptSeq(designRoot, 'g');
+    expect(total).toBe(60);
+    // A client hydrated through seq 40 asks for the rest.
+    const rest = readChatLinesAfter(designRoot, 'g', 40);
+    expect(rest.map((r) => r.seq)).toEqual(Array.from({ length: 20 }, (_, i) => 41 + i));
+    // From 0, the whole thing, in order, starting at 1.
+    const all = readChatLinesAfter(designRoot, 'g', 0);
+    expect(all[0].seq).toBe(1);
+    expect(all[all.length - 1].seq).toBe(total);
+  });
+
+  test('seq stays ABSOLUTE when the file exceeds the tail hydration window', () => {
+    // The one case that actually exercises the tail OFFSET: a transcript
+    // larger than TAIL_HYDRATE_BYTES, so `readTailLines` skips a prefix and
+    // the returned seqs must still count from the top of the FILE, not from
+    // the top of the window. Getting this wrong hands the client rewound seq
+    // numbers and it re-renders content it already has, forever — the exact
+    // desync the seam exists to prevent.
+    root = mkdtempSync(join(tmpdir(), 'acp-tx-'));
+    const dir = join(root, '_chat');
+    mkdirSync(dir, { recursive: true });
+    // ~12 MB of 4 KB lines — comfortably past the 8 MB window.
+    const pad = 'y'.repeat(4000);
+    const n = 3000;
+    const body = Array.from({ length: n }, (_, i) =>
+      JSON.stringify({ ts: i, role: 'user', text: `m${i}`, pad })
+    ).join('\n');
+    writeFileSync(join(dir, 'huge.jsonl'), body);
+
+    expect(chatTranscriptSeq(root, 'huge')).toBe(n);
+    const tail = readChatLinesAfter(root, 'huge', 0, 5);
+    expect(tail.length).toBe(5);
+    // Last five lines of the FILE, numbered n-4..n.
+    expect(tail.map((r) => r.seq)).toEqual([n - 4, n - 3, n - 2, n - 1, n]);
+    expect((tail[4].entry as { text: string }).text).toBe(`m${n - 1}`);
+  });
+
+  test('the replay limit keeps the MOST RECENT lines, numbered absolutely', () => {
+    const lines = Array.from({ length: 40 }, (_, i) => ({ ts: i, role: 'user', text: `m${i}` }));
+    const designRoot = seedMany({ lim: lines });
+    const got = readChatLinesAfter(designRoot, 'lim', 0, 5);
+    expect(got.length).toBe(5);
+    expect(got.map((r) => r.seq)).toEqual([36, 37, 38, 39, 40]);
+  });
+});
+
+describe('#119 — readChatMessages hydration', () => {
+  test('a normal transcript hydrates exactly as before (no truncation notice)', () => {
+    const designRoot = seedMany({
+      n: [
+        { ts: 1, role: 'user', text: 'hello' },
+        {
+          ts: 2,
+          role: 'agent',
+          update: {
+            sessionUpdate: 'agent_message_chunk',
+            content: { type: 'text', text: 'hi back' },
+          },
+        },
+      ],
+    });
+    const msgs = readChatMessages(designRoot, 'n');
+    expect(msgs.length).toBe(2);
+    expect(msgs[0].role).toBe('user');
+    expect(msgs[0].parts[0].text).toBe('hello');
+    expect(msgs[1].parts[0].text).toBe('hi back');
   });
 });

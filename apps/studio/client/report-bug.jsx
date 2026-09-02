@@ -321,6 +321,7 @@ export function ReportBugDialog({ open, onClose, activeCanvas = null }) {
       attachments: {
         screenshots: shots.length,
         serverLogTail: consent.logTail && !!bundle?.logs?.serverLogTail,
+        processStats: consent.logTail && !!bundle?.process,
         crashLogs: consent.crashLogs ? crashLogs.length : 0,
       },
       logs: {},
@@ -329,6 +330,19 @@ export function ReportBugDialog({ open, onClose, activeCanvas = null }) {
     if (id) report.installId = id;
     if (consent.logTail && bundle?.logs?.serverLogTail) {
       report.logs.serverLogTail = bundle.logs.serverLogTail;
+    }
+    // Server process memory — three integers, rides the SAME consent as the log
+    // tail because it is diagnostics of the same kind (and, like the tail, is
+    // only meaningful alongside it). Issue #119 arrived as a RAM figure the
+    // reporter read off Activity Monitor, with nothing in the report to confirm
+    // it; the memory watch that should have logged the problem was measuring a
+    // counter that does not move under Bun, so the log tail was silent too.
+    if (consent.logTail && bundle?.process) {
+      report.process = {
+        rssBytes: bundle.process.rssBytes,
+        heapUsedBytes: bundle.process.heapUsedBytes,
+        uptimeSeconds: bundle.process.uptimeSeconds,
+      };
     }
     if (consent.crashLogs && crashLogs.length && isNativeApp()) {
       report.logs.crashLogs = [];
@@ -568,7 +582,11 @@ export function ReportBugDialog({ open, onClose, activeCanvas = null }) {
                     />
                     <span>
                       Recent server log ({bundle.logs.serverLogTail.split('\n').length} lines,
-                      paths &amp; secrets scrubbed) —{' '}
+                      paths &amp; secrets scrubbed)
+                      {bundle?.process
+                        ? ` + server memory (${Math.round(bundle.process.rssBytes / 1048576)} MB)`
+                        : ''}{' '}
+                      —{' '}
                       <details className="rb-details">
                         <summary>view</summary>
                         <pre className="rb-log">{bundle.logs.serverLogTail}</pre>

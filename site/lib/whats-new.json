@@ -3,6 +3,15 @@
   "version": "1.1.0",
   "entries": [
     {
+      "date": null,
+      "id": "long-chats-no-longer-freeze",
+      "kind": "fix",
+      "summary": "In a project with a long chat history, Maude could slow to a crawl and stop responding for many minutes while using enormous amounts of memory — often needing a force-quit. Screenshots the agent took were being stored inside the chat history at full size, and every chat you opened re-read all of it. Chats now stay small and are read in fixed-size pieces, so a long history costs the same as a short one.",
+      "surface": "design-ui",
+      "title": "Long chats no longer freeze Maude",
+      "version": null
+    },
+    {
       "id": "canvas-media-plays-on-linux",
       "version": "1.0.10",
       "date": "2026-08-26",

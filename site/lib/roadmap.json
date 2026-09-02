@@ -1,18 +1,7 @@
 {
-  "generated": "2026-08-24T00:00:00.000Z",
+  "generated": "2026-09-02T00:00:00.000Z",
   "currentPhase": null,
   "phases": [
-    {
-      "id": "feature-fast-inner-loop-gates",
-      "title": "Feature: Fast inner loop — defer quality gates to /flow:validate",
-      "status": "done",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/archive/feature-fast-inner-loop-gates.md",
-      "archived": true,
-      "phaseKey": null
-    },
     {
       "id": "phase-1-contribute-infra-changesets",
       "title": "Phase 1: Contribute infrastructure + Changesets bootstrap",
@@ -2159,6 +2148,17 @@
       "phaseKey": null
     },
     {
+      "id": "feature-fast-inner-loop-gates",
+      "title": "Feature: Fast inner loop — defer quality gates to /flow:validate",
+      "status": "done",
+      "shipTarget": null,
+      "date": "2026-09-02",
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-fast-inner-loop-gates.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
       "id": "feature-goal-unattended-pipelines",
       "title": "Feature: /goal-aware unattended pipelines for flow + design commands",
       "status": "planned",
@@ -2188,17 +2188,6 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is the extracted Phase 5 of feature-ai-media-generation (closed at Phase 4, 2026-...",
       "planPath": ".ai/plans/feature-local-media-generation.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-opencode-remote-sessions",
-      "title": "Feature: OpenCode remote sessions and Claude Code-like orchestration",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Run workstation-owned OpenCode sessions privately across a tailnet, with safe native monitoring, worktree isolation, and bounded child-session workflows.",
-      "planPath": ".ai/plans/feature-opencode-remote-sessions.md",
       "archived": false,
       "phaseKey": null
     },
