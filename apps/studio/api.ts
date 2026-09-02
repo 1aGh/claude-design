@@ -12,7 +12,6 @@ import {
   rename,
   rm,
   stat as statp,
-  writeFile,
 } from 'node:fs/promises';
 import path from 'node:path';
 import { createAssetMirror, s3ConfigFromEnv } from './assets-s3.ts';
@@ -20,6 +19,7 @@ import { canvasArtifacts, locatorKeyFor, relocatedName } from './canvas-artifact
 import { renderBriefBoard, validateCanvasName, validateFolderName } from './canvas-create.ts';
 import { rewriteRelativeImports } from './canvas-imports.ts';
 import { canvasSlugFromRel } from './canvas-slug.ts';
+import { atomicWrite } from './sync/atomic-write.ts';
 
 // Re-exported so existing external callers (canvas-list-watch.ts, tests) keep
 // importing it from api.ts — the actual implementation now lives in
@@ -2974,7 +2974,11 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       if (!st.isFile()) return;
       const source = await readFile(abs, 'utf8');
       const next = rewriteRelativeImports(source, fromDir, toDir);
-      if (next !== source) await writeFile(abs, next, 'utf8');
+      // atomicWrite, not `writeFile` — this lands on a `.tsx` the fs-mirror is
+      // watching, so a truncate-then-write can surface a partial-content watch
+      // event (the exact hazard atomic-write.ts was built for), and a crash
+      // mid-write would leave a truncated canvas.
+      if (next !== source) atomicWrite(abs, next);
     } catch (err) {
       console.warn(
         `[move] could not rewrite relative imports in ${abs}: ${(err as Error).message}`

@@ -319,15 +319,11 @@ export async function migrateSeed(opts: MigrateSeedOptions): Promise<MigrateSeed
       bodyWinner: applied.bodyWinner,
     });
     if (cssDecision.recoveredDuplication) {
+      // Warn, don't snapshot — see the note on the same branch in agent.ts
+      // reconcile. An exact integer repeat carries no unique bytes to recover,
+      // and snapshotting it hands a hostile hub an eviction lever against the
+      // `_history/` copies that DO.
       console.warn(`[sync/${slug}] shared-doc cold-start css: ${cssDecision.reason}`);
-      // Snapshot before collapsing — see the same guard in agent.ts reconcile.
-      // `X + X` is valid CSS, so unlike a doubled body this repair can in
-      // principle discard a peer's real edit; one snapshot makes it recoverable.
-      try {
-        await opts.snapshot?.(docCssNow, 'pre-css-dedup');
-      } catch {
-        /* best-effort — history is a safety net, never a gate on syncing */
-      }
     }
     if (cssDecision.winner === 'local' && localCss !== null) {
       doc.transact(() => {

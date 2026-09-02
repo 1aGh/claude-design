@@ -647,23 +647,22 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
         bodyWinner,
       });
       if (cssDecision.recoveredDuplication) {
+        // WARN, BUT DO NOT SNAPSHOT — symmetric with the body's
+        // `recover-seed-dup`, which deliberately doesn't either.
+        //
+        // A snapshot stood here briefly, on the reasoning that `X + X` is valid
+        // CSS (unlike a doubled body, which can't build) so the collapse might
+        // discard a real edit. The reasoning was wrong about the bytes:
+        // `isExactRepeat` is true only when the doc is EXACTLY local repeated
+        // N times, so the copies thrown away contain nothing the retained copy
+        // doesn't. The snapshot preserved zero unique bytes — and cost a slot
+        // in a per-slug ring buffer that `pruneSnapshots` evicts oldest-first
+        // at MAX_SNAPSHOTS_PER_SLUG. A hostile hub that keeps re-doubling this
+        // lane could therefore drive one worthless snapshot per reconcile and
+        // push the user's genuine `pre-sync-local` and conflict copies off the
+        // end — turning DDR-102's recovery spine into the attack surface.
+        // Adversarial review found it; the safety net was the vulnerability.
         console.warn(`[sync/${slug}] cold-start css: ${cssDecision.reason}`);
-        // SNAPSHOT BEFORE COLLAPSING — the body lane doesn't need this and css
-        // does. A doubled BODY is provably not authored (two `export default`
-        // won't build), so collapsing it can't discard real work. `X + X` is
-        // perfectly valid CSS, and a peer that legitimately duplicated its own
-        // stylesheet produces exactly the shape this row repairs. The row still
-        // comes before the journal fast-forward — moving it after would let a
-        // checkpointed peer keep the doubled lane, which is the bug — so the
-        // recoverability is bought here instead, the same way DDR-102 buys it
-        // for the body's conflict path: a wrong pick costs one /design:rollback.
-        if (docCss !== null) {
-          try {
-            await opts.snapshot?.(docCss, 'pre-css-dedup');
-          } catch {
-            /* best-effort — history is a safety net, never a gate on syncing */
-          }
-        }
       }
       if (cssDecision.winner === 'local' && paths.css && localCss !== null) {
         applyCssToDoc(doc, localCss, origin);
