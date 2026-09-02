@@ -39,7 +39,11 @@
 
 import type { ColdStartAction, ColdStartDecision } from './cold-start.ts';
 
-export type ColdStartSnapshotReason = 'pre-sync-local' | 'pre-sync-hub';
+/** Why a cold-start snapshot was taken. `pre-css-dedup` is the css lane's
+ *  duplication collapse (issue #114): unlike a doubled BODY, `X + X` is valid
+ *  CSS, so that repair is the one that could in principle discard a real edit
+ *  and is therefore the one that must stay recoverable. */
+export type ColdStartSnapshotReason = 'pre-sync-local' | 'pre-sync-hub' | 'pre-css-dedup';
 
 export interface ColdStartConflictInfo {
   slug: string;

@@ -12,11 +12,13 @@ import {
   rename,
   rm,
   stat as statp,
+  writeFile,
 } from 'node:fs/promises';
 import path from 'node:path';
 import { createAssetMirror, s3ConfigFromEnv } from './assets-s3.ts';
 import { canvasArtifacts, locatorKeyFor, relocatedName } from './canvas-artifacts.ts';
 import { renderBriefBoard, validateCanvasName, validateFolderName } from './canvas-create.ts';
+import { rewriteRelativeImports } from './canvas-imports.ts';
 import { canvasSlugFromRel } from './canvas-slug.ts';
 
 // Re-exported so existing external callers (canvas-list-watch.ts, tests) keep
@@ -2946,6 +2948,40 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     return realTarget === realRoot || realTarget.startsWith(`${realRoot}${path.sep}`);
   }
 
+  /**
+   * Re-root a moved canvas's relative imports for its new folder depth
+   * (issue #114). `fromDir` / `toDir` are POSIX, design-root-relative.
+   *
+   * Runs AFTER the rename, on the file at its destination. Best-effort by
+   * design: the move has already committed, and failing it here would leave a
+   * half-moved tree — strictly worse than the un-rewritten imports that were
+   * the status quo. A no-op rewrite writes nothing.
+   */
+  async function rewriteCanvasImports(abs: string, fromDir: string, toDir: string): Promise<void> {
+    if (fromDir === toDir) return;
+    try {
+      // NEVER DEREFERENCE A SYMLINK HERE. The move's containment checks cover
+      // the source *directory* (`assertRealpathContained(path.dirname(...))`)
+      // and the destination, but never the source FILE — which was inert while
+      // the move was a bare `rename()`, because renaming a symlink moves the
+      // LINK and no out-of-root byte is ever touched. This function is the
+      // first code on the path that reads and writes the file's contents, so
+      // without this guard a planted `ui/evil.tsx -> /elsewhere/secrets.ts`
+      // would turn an ordinary drag-and-drop into an out-of-root read AND an
+      // out-of-root write. `lstat` does not follow; a link is skipped, not
+      // repaired — its target is not ours to rewrite.
+      const st = await lstat(abs);
+      if (!st.isFile()) return;
+      const source = await readFile(abs, 'utf8');
+      const next = rewriteRelativeImports(source, fromDir, toDir);
+      if (next !== source) await writeFile(abs, next, 'utf8');
+    } catch (err) {
+      console.warn(
+        `[move] could not rewrite relative imports in ${abs}: ${(err as Error).message}`
+      );
+    }
+  }
+
   // feature-file-tree-drag-drop-folders (Task 3) — move/rename a canvas + its
   // full artifact set (POST /_api/fs-move). Same main-origin-only trust
   // boundary as createCanvas/deleteCanvas (DDR-054): never reachable from the
@@ -3123,6 +3159,14 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     } catch (err) {
       return { ok: false, status: 500, error: err instanceof Error ? err.message : 'move failed' };
     }
+
+    // The canvas is at a new depth now, so its relative specifiers point at the
+    // wrong place (issue #114). Bytes used to move without them, and the canvas
+    // 500s on the next build with `Could not resolve`. Best-effort: the move
+    // itself already succeeded, and a rewrite failure must not leave the tree
+    // half-moved — it leaves a build error the user can fix by hand, which is
+    // exactly where they were before this existed.
+    await rewriteCanvasImports(toAbs, path.posix.dirname(rel), path.posix.dirname(toRel));
 
     const moved: string[] = [path.relative(paths.repoRoot, toAbs)];
     for (const artifact of canvasArtifacts({ rel, paths })) {
@@ -3371,6 +3415,14 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       const toRel = toRelDir + fromRel.slice(relDir.length);
       const fromSlug = fileSlug(fromRel);
       const toSlug = fileSlug(toRel);
+      // Same depth change as moveCanvas, once per nested canvas (issue #114).
+      // A folder move relocates every canvas inside it by the same delta, but
+      // each one's own dir differs, so the rewrite is per file, not per folder.
+      await rewriteCanvasImports(
+        path.join(paths.designRoot, toRel),
+        path.posix.dirname(fromRel),
+        path.posix.dirname(toRel)
+      );
       for (const artifact of canvasArtifacts({ rel: fromRel, paths })) {
         if (artifact.kind !== 'slug-keyed') continue; // primary/siblings already moved with the dir
         const dest = relocatedName(artifact, fromRel, toRel, paths);

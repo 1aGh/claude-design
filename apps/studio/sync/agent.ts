@@ -65,10 +65,11 @@ import {
 import {
   decideAnnotationsColdStart,
   decideColdStart,
+  decideCssColdStart,
   isExactRepeat,
   unionCommentsById,
 } from './cold-start.ts';
-import { applyColdStart } from './cold-start-apply.ts';
+import { applyColdStart, type ColdStartSnapshotReason } from './cold-start-apply.ts';
 import { type EchoGuard, hashBytes } from './echo-guard.ts';
 import type { SyncJournal } from './journal.ts';
 
@@ -126,7 +127,7 @@ export interface CanvasSyncAgentOptions {
    * without it the conflict path still resolves newest-wins, just without the
    * recovery snapshots (test-only constructions).
    */
-  snapshot?: (content: string, reason: 'pre-sync-local' | 'pre-sync-hub') => Promise<string | null>;
+  snapshot?: (content: string, reason: ColdStartSnapshotReason) => Promise<string | null>;
   /**
    * Called when a non-adopt reconcile (cold-start / post-git-pull) found
    * divergent non-empty content on both sides (DDR-102). `winner` is the side
@@ -185,12 +186,17 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
   let lastMeta: string | null = null;
   let lastCss: string | null = null;
 
-  // F1 — the body this agent pushed on `seed-local-up`, plus the deadline past
-  // which the de-dup repair stops firing. Set on seed; nulled only when the
+  // F1 — the content this agent pushed on `seed-local-up`, plus the deadline
+  // past which the de-dup repair stops firing. Set on seed; nulled only when the
   // window lapses (after convergence the repair is a cheap no-op — the
-  // `body === seedInfo.body` guard short-circuits, so we don't bother clearing).
+  // `=== seedInfo.x` guards short-circuit, so we don't bother clearing).
   // Null = this agent never seeded (so it never repairs).
-  let seedInfo: { body: string; until: number } | null = null;
+  //
+  // `css` rides along with the body (issue #114): a seed writes BOTH lanes in
+  // the same breath, so both can collide with a concurrent peer's identical
+  // seed, and repairing only the body left the canvas un-buildable anyway —
+  // duplicated css is as fatal to the build as a duplicated `export default`.
+  let seedInfo: { body: string; css: string | null; until: number } | null = null;
 
   function onDocUpdate(_update: Uint8Array, updateOrigin: unknown): void {
     if (stopped) return;
@@ -245,18 +251,47 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
     }
     const owner = seededByFromDoc(doc);
     if (owner === null || owner !== doc.clientID) return; // not the elected writer
+    const seeded = seedInfo;
+    const repaired: string[] = [];
+
     const body = htmlFromDoc(doc);
-    if (body === seedInfo.body) return; // already a single copy
-    if (!isExactRepeat(body, seedInfo.body)) return; // divergent edit → conflict path owns it
-    const canonical = seedInfo.body;
-    doc.transact(() => {
-      if (applyHtmlToDoc(doc, canonical, origin)) stampBodyEdit(doc, origin);
-    }, origin);
-    lastHtml = canonical;
-    opts.journal?.record(slug, { bodyHash: hashBytes(canonical) });
-    console.warn(
-      `[sync/${slug}] concurrent cold-seed duplication detected — collapsed to one copy (F1).`
-    );
+    // `=== seeded.body` → already a single copy; not an exact repeat → a
+    // divergent edit, which carries genuine bytes and belongs to the conflict
+    // path, not to a silent collapse.
+    if (body !== seeded.body && isExactRepeat(body, seeded.body)) {
+      const canonical = seeded.body;
+      doc.transact(() => {
+        if (applyHtmlToDoc(doc, canonical, origin)) stampBodyEdit(doc, origin);
+      }, origin);
+      lastHtml = canonical;
+      opts.journal?.record(slug, { bodyHash: hashBytes(canonical) });
+      repaired.push('body');
+    }
+
+    // The css half of the same collision (issue #114). Same proof obligation as
+    // the body — an exact integer repeat of what WE seeded — and the same
+    // idempotence: the collapse deletes the same CRDT items on every peer that
+    // runs it, so concurrent recoveries converge instead of fighting.
+    if (paths.css && seeded.css !== null) {
+      const css = cssFromDoc(doc);
+      if (css !== null && css !== seeded.css && isExactRepeat(css, seeded.css)) {
+        const canonicalCss = seeded.css;
+        doc.transact(() => {
+          applyCssToDoc(doc, canonicalCss, origin);
+        }, origin);
+        lastCss = canonicalCss;
+        opts.journal?.record(slug, { cssHash: hashBytes(canonicalCss) });
+        repaired.push('css');
+      }
+    }
+
+    if (repaired.length > 0) {
+      console.warn(
+        `[sync/${slug}] concurrent cold-seed duplication detected in ${repaired.join(
+          ' + '
+        )} — collapsed to one copy (F1).`
+      );
+    }
   }
 
   async function flush(): Promise<void> {
@@ -446,7 +481,7 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
           // one hub at once self-heal the same way the decision-table seed does.
           markSeeded(doc, origin);
         }, origin);
-        seedInfo = { body: localHtml, until: Date.now() + SEED_REPAIR_WINDOW_MS };
+        seedInfo = { body: localHtml, css: localCss, until: Date.now() + SEED_REPAIR_WINDOW_MS };
       }
       if (localComments !== null) {
         const parsed = tryParseJsonArray(localComments);
@@ -504,10 +539,12 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
         markSeeded(doc, origin);
       }, origin);
       lastHtml = body;
-      // Arm the de-dup repair window: if another peer seeded the same body at the
-      // same instant, the merged Y.Text will double — maybeRepairSeedDuplication
-      // (on the elected owner) collapses it back during this window.
-      seedInfo = { body, until: Date.now() + SEED_REPAIR_WINDOW_MS };
+      // Arm the de-dup repair window: if another peer seeded the same content at
+      // the same instant, the merged Y.Text will double — maybeRepairSeedDuplication
+      // (on the elected owner) collapses it back during this window. `localCss`
+      // is armed too: the css lane is seeded by the same cold start a few lines
+      // below and collides identically (issue #114).
+      seedInfo = { body, css: localCss, until: Date.now() + SEED_REPAIR_WINDOW_MS };
       opts.journal?.record(slug, { bodyHash: hashBytes(body) });
     };
 
@@ -594,22 +631,54 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
       }
     }
 
-    // ---- css: follow the body winner (visually coupled) --------------------
-    if (bodyWinner === 'local') {
-      if (paths.css && localCss !== null && localCss !== docCss) {
+    // ---- css: PER-LANE resolution (issue #114 — was "follow the body winner")
+    // The css lane used to be the only Plane-A lane with no table and no
+    // duplication guard, which is why it was the only one that NEVER came out
+    // of a multi-peer cold start clean. decideCssColdStart owns the rows now;
+    // the two that matter are the exact-repeat collapse and the DDR-064
+    // empty-lane guard, and it finally consumes the `cssHash` checkpoint the
+    // journal has been writing since DDR-102.
+    {
+      const cssDecision = decideCssColdStart({
+        local: localCss,
+        doc: docCss,
+        journalHash: opts.journal?.get(slug)?.cssHash ?? null,
+        hash: hashBytes,
+        bodyWinner,
+      });
+      if (cssDecision.recoveredDuplication) {
+        console.warn(`[sync/${slug}] cold-start css: ${cssDecision.reason}`);
+        // SNAPSHOT BEFORE COLLAPSING — the body lane doesn't need this and css
+        // does. A doubled BODY is provably not authored (two `export default`
+        // won't build), so collapsing it can't discard real work. `X + X` is
+        // perfectly valid CSS, and a peer that legitimately duplicated its own
+        // stylesheet produces exactly the shape this row repairs. The row still
+        // comes before the journal fast-forward — moving it after would let a
+        // checkpointed peer keep the doubled lane, which is the bug — so the
+        // recoverability is bought here instead, the same way DDR-102 buys it
+        // for the body's conflict path: a wrong pick costs one /design:rollback.
+        if (docCss !== null) {
+          try {
+            await opts.snapshot?.(docCss, 'pre-css-dedup');
+          } catch {
+            /* best-effort — history is a safety net, never a gate on syncing */
+          }
+        }
+      }
+      if (cssDecision.winner === 'local' && paths.css && localCss !== null) {
         applyCssToDoc(doc, localCss, origin);
         lastCss = localCss;
         opts.journal?.record(slug, { cssHash: hashBytes(localCss) });
+      } else if (cssDecision.winner === 'hub') {
+        lastCss = docCss;
+        if (paths.css && docCss !== null && localCss !== docCss) {
+          const hash = hashBytes(docCss);
+          echoGuard.record(paths.css, hash);
+          writer(paths.css, docCss);
+          opts.journal?.record(slug, { cssHash: hash });
+        }
       } else {
         lastCss = docCss;
-      }
-    } else {
-      lastCss = docCss;
-      if (paths.css && docCss !== null && localCss !== docCss) {
-        const hash = hashBytes(docCss);
-        echoGuard.record(paths.css, hash);
-        writer(paths.css, docCss);
-        opts.journal?.record(slug, { cssHash: hash });
       }
     }
 

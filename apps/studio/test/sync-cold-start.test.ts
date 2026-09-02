@@ -8,7 +8,14 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { type ColdStartInput, decideColdStart, isExactRepeat } from '../sync/cold-start.ts';
+import {
+  type ColdStartInput,
+  type CssColdStartInput,
+  decideColdStart,
+  decideCssColdStart,
+  isExactRepeat,
+  unionCommentsById,
+} from '../sync/cold-start.ts';
 import { hashBytes } from '../sync/echo-guard.ts';
 
 const BODY_LOCAL = '<div>local work — a day of mascot edits</div>';
@@ -300,5 +307,162 @@ describe('decideColdStart — divergence (conflict + newest-wins)', () => {
       const d = decideColdStart(c);
       expect(d.reason.length).toBeGreaterThan(0);
     }
+  });
+});
+
+/* ------------------------------------------------------------------ css */
+//
+// Issue #114 — the css lane had NO cold-start table and no duplication guard,
+// which made it the only Plane-A lane that never survived a multi-peer cold
+// start intact (measured on the reporting machine: 0 of 43 css lanes clean,
+// against 21 of 84 bodies).
+
+const CSS_LOCAL = ':root { --accent: oklch(70% 0.18 145); }\n.card { padding: 16px; }\n';
+const CSS_HUB = ':root { --accent: oklch(52% 0.2 28); }\n';
+
+function cssInput(over: Partial<CssColdStartInput>): CssColdStartInput {
+  return {
+    local: null,
+    doc: null,
+    journalHash: null,
+    hash: hashBytes,
+    bodyWinner: 'hub',
+    ...over,
+  };
+}
+
+describe('decideCssColdStart — empty/absent sides', () => {
+  test('both empty → none', () => {
+    expect(decideCssColdStart(cssInput({})).winner).toBe('none');
+  });
+
+  test('empty-string doc counts as empty, not as content', () => {
+    expect(decideCssColdStart(cssInput({ local: CSS_LOCAL, doc: '' })).winner).toBe('local');
+  });
+
+  test('no local css → hub materializes', () => {
+    expect(decideCssColdStart(cssInput({ doc: CSS_HUB })).winner).toBe('hub');
+  });
+
+  test('empty hub lane never beats local content, even when the body went hub (DDR-064)', () => {
+    // The row that also closes a quieter bug: a local `.css` next to a
+    // hub-winning body used to travel nowhere at all.
+    expect(decideCssColdStart(cssInput({ local: CSS_LOCAL, bodyWinner: 'hub' })).winner).toBe(
+      'local'
+    );
+  });
+});
+
+describe('decideCssColdStart — duplication recovery (the #114 row)', () => {
+  test('doc == local repeated twice → local wins, flagged as a recovery', () => {
+    const d = decideCssColdStart(cssInput({ local: CSS_LOCAL, doc: CSS_LOCAL.repeat(2) }));
+    expect(d.winner).toBe('local');
+    expect(d.recoveredDuplication).toBe(true);
+  });
+
+  test('3-, 4- and 5-way seed collisions all collapse (every shape seen in the field)', () => {
+    for (const n of [3, 4, 5]) {
+      const d = decideCssColdStart(cssInput({ local: CSS_LOCAL, doc: CSS_LOCAL.repeat(n) }));
+      expect(d.winner).toBe('local');
+      expect(d.recoveredDuplication).toBe(true);
+    }
+  });
+
+  test('the recovery is checked BEFORE the journal fast-forward', () => {
+    // With a matching journal hash the fast-forward row would hand this to the
+    // hub — i.e. KEEP the doubled lane and write it to disk. Row order is the fix.
+    const d = decideCssColdStart(
+      cssInput({ local: CSS_LOCAL, doc: CSS_LOCAL.repeat(2), journalHash: hashBytes(CSS_LOCAL) })
+    );
+    expect(d.winner).toBe('local');
+    expect(d.recoveredDuplication).toBe(true);
+  });
+
+  test('a genuine hub edit is NEVER mistaken for a duplication', () => {
+    const d = decideCssColdStart(cssInput({ local: CSS_LOCAL, doc: CSS_HUB, bodyWinner: 'hub' }));
+    expect(d.winner).toBe('hub');
+    expect(d.recoveredDuplication).toBeUndefined();
+  });
+
+  test('a doc that merely CONTAINS local is not an exact repeat', () => {
+    const d = decideCssColdStart(
+      cssInput({ local: CSS_LOCAL, doc: `${CSS_LOCAL}${CSS_HUB}`, bodyWinner: 'hub' })
+    );
+    expect(d.recoveredDuplication).toBeUndefined();
+  });
+});
+
+describe('decideCssColdStart — journal + divergence', () => {
+  test('identical sides → none', () => {
+    expect(decideCssColdStart(cssInput({ local: CSS_LOCAL, doc: CSS_LOCAL })).winner).toBe('none');
+  });
+
+  test('local matches the journal checkpoint → hub is ahead, fast-forward', () => {
+    // The `cssHash` the journal has been writing since DDR-102 and never reading.
+    const d = decideCssColdStart(
+      cssInput({ local: CSS_LOCAL, doc: CSS_HUB, journalHash: hashBytes(CSS_LOCAL) })
+    );
+    expect(d.winner).toBe('hub');
+  });
+
+  test('stale journal + divergence → follows the body winner, both directions', () => {
+    for (const bodyWinner of ['local', 'hub'] as const) {
+      const d = decideCssColdStart(
+        cssInput({
+          local: CSS_LOCAL,
+          doc: CSS_HUB,
+          journalHash: hashBytes('something else'),
+          bodyWinner,
+        })
+      );
+      expect(d.winner).toBe(bodyWinner);
+    }
+  });
+
+  test('every decision carries a human-readable reason', () => {
+    const cases: CssColdStartInput[] = [
+      cssInput({}),
+      cssInput({ doc: CSS_HUB }),
+      cssInput({ local: CSS_LOCAL }),
+      cssInput({ local: CSS_LOCAL, doc: CSS_LOCAL }),
+      cssInput({ local: CSS_LOCAL, doc: CSS_LOCAL.repeat(2) }),
+      cssInput({ local: CSS_LOCAL, doc: CSS_HUB, journalHash: hashBytes(CSS_LOCAL) }),
+      cssInput({ local: CSS_LOCAL, doc: CSS_HUB }),
+    ];
+    for (const c of cases) expect(decideCssColdStart(c).reason.length).toBeGreaterThan(0);
+  });
+});
+
+/* ------------------------------------------------------- comments union */
+//
+// Issue #112 — `out` was seeded as `[...docList]`, so the union filtered the
+// LOCAL side only. A doc array that had already been concurrency-doubled
+// carried every copy forward and re-published it as truth: 2 → 4 → 8.
+
+describe('unionCommentsById — the doc is deduped against itself', () => {
+  const c1 = { id: 'c1', text: 'first' };
+  const c2 = { id: 'c2', text: 'second' };
+
+  test('an already-duplicated doc list collapses to one entry per id', () => {
+    const doubled = [c1, c2, c1, c2, c1, c2, c1, c2]; // the reported ×8 shape
+    expect(unionCommentsById(doubled, [])).toEqual([c1, c2]);
+  });
+
+  test('local-only comments still survive the merge', () => {
+    const local = [{ id: 'c3', text: 'local only' }];
+    expect(unionCommentsById([c1, c1], local)).toEqual([c1, local[0]]);
+  });
+
+  test('same-id entries still keep the DOC version, not local', () => {
+    expect(unionCommentsById([c1], [{ id: 'c1', text: 'local edit' }])).toEqual([c1]);
+  });
+
+  test('id-less entries dedupe by JSON identity, on the doc side too', () => {
+    const anon = { text: 'no id' };
+    expect(unionCommentsById([anon, anon], [anon])).toEqual([anon]);
+  });
+
+  test('doc order is preserved', () => {
+    expect(unionCommentsById([c2, c1, c2], [])).toEqual([c2, c1]);
   });
 });

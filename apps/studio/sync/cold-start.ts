@@ -90,22 +90,33 @@ function commentId(c: unknown): string | null {
  * cold-start paths (agent reconcile + migrate-seed).
  */
 export function unionCommentsById(docList: unknown[], localList: unknown[]): unknown[] {
-  const out = [...docList];
+  const out: unknown[] = [];
   const seenIds = new Set<string>();
   const seenJson = new Set<string>();
-  for (const c of docList) {
+  // THE DOC IS DEDUPED AGAINST ITSELF, not just against local (issue #114/#112).
+  // `out` used to be seeded as `[...docList]`, which made this union a filter on
+  // the LOCAL side only — so a doc whose comments array had already been
+  // concurrency-doubled (`applyCommentsToDoc` is delete-all + push: two peers
+  // replacing at once keep both pushes) carried every copy forward, and the
+  // merged result was re-published as the new truth. That is the amplifier
+  // behind "the comment self duplicated like 8 times": 2 → 4 → 8, one doubling
+  // per concurrent round, with nothing in the loop able to shrink it again.
+  // Deduping the doc half turns the same pass into the repair.
+  const admit = (c: unknown): void => {
     const id = commentId(c);
-    if (id !== null) seenIds.add(id);
-    else seenJson.add(JSON.stringify(c));
-  }
-  for (const c of localList) {
-    const id = commentId(c);
-    const dup = id !== null ? seenIds.has(id) : seenJson.has(JSON.stringify(c));
-    if (dup) continue;
+    if (id !== null) {
+      if (seenIds.has(id)) return;
+      seenIds.add(id);
+    } else {
+      const json = JSON.stringify(c);
+      if (seenJson.has(json)) return;
+      seenJson.add(json);
+    }
     out.push(c);
-    if (id !== null) seenIds.add(id);
-    else seenJson.add(JSON.stringify(c));
-  }
+  };
+  // Doc order first (same-id entries keep the doc's version), local-only appended.
+  for (const c of docList) admit(c);
+  for (const c of localList) admit(c);
   return out;
 }
 
@@ -290,5 +301,99 @@ export function decideAnnotationsColdStart(
   return {
     winner: bodyWinner,
     reason: `diverged — no per-lane stamp on one side, following the body winner (${bodyWinner})`,
+  };
+}
+
+/* ------------------------------------------------------- css (per-lane) */
+
+export interface CssColdStartInput {
+  /** Local sibling `.css` content, or null when the file doesn't exist. */
+  local: string | null;
+  /** The css currently held by the doc (`null` when the lane is unset/empty). */
+  doc: string | null;
+  /** Journal entry's `cssHash` for this slug, or null when never checkpointed. */
+  journalHash: string | null;
+  /** Hash fn — passed in so this table stays as dependency-free as the rest. */
+  hash: (s: string) => string;
+  /** How the body lane resolved; the tie-break for a genuine divergence. */
+  bodyWinner: 'local' | 'hub';
+}
+
+export interface CssColdStartDecision {
+  winner: 'local' | 'hub' | 'none';
+  /** True when local won because the doc held local repeated N≥2 times. */
+  recoveredDuplication?: boolean;
+  reason: string;
+}
+
+/**
+ * Per-lane cold-start resolution for the canvas's sibling `.css` (issue #114).
+ *
+ * WHY THIS TABLE EXISTS. Every other Plane-A lane had one — `decideColdStart`
+ * for the body, `decideAnnotationsColdStart` for annotations, `repairSharedMeta`
+ * for meta — and css had none: it simply followed the body winner and re-applied
+ * the whole file whenever the two sides disagreed. That left it the only lane
+ * with no duplication guard at all, and `applyCssToDoc` is a delete-all+insert,
+ * so two peers seeding one empty document concurrently kept BOTH inserts and the
+ * lane became `CSS × N` (Yjs merges concurrent inserts at the same position by
+ * keeping both — not a corruption, the CRDT doing its job). Worse, the "repair"
+ * was itself another full insert, so every subsequent disagreement could double
+ * it again. Measured on the reporting machine's 84 persisted docs: the body lane
+ * was clean 21 times out of 84, the css lane ZERO times out of 43, and css
+ * carried strictly more copies than its own document's body in 43 of 43.
+ * Per-lane vigilance is what failed; a table per lane is the shape that holds.
+ *
+ * The rows mirror `decideColdStart`'s, in the same order and for the same
+ * reasons — crucially the `recover-seed-dup` row, checked BEFORE the journal
+ * fast-forward so a doubled lane is collapsed rather than read as "the hub moved
+ * ahead". Like the body's, it repairs only what it can PROVE: an exact integer
+ * repeat of the bytes on disk. A doc carrying genuinely new css is never an
+ * exact repeat, so this cannot clobber an edit.
+ */
+export function decideCssColdStart(input: CssColdStartInput): CssColdStartDecision {
+  const { local, doc, journalHash, hash, bodyWinner } = input;
+  const localEmpty = local === null || local === '';
+  const docEmpty = doc === null || doc === '';
+
+  if (localEmpty && docEmpty) return { winner: 'none', reason: 'both sides empty' };
+  if (localEmpty) return { winner: 'hub', reason: 'no local css — materializing the hub lane' };
+  if (docEmpty) {
+    // The body lane's DDR-064 guard, applied here: an empty css lane means the
+    // hub holds no css for this canvas YET, never "this canvas has no css".
+    // Without this row a local `.css` next to a hub-winning body never travelled
+    // at all — it sat on one disk and no peer ever saw it.
+    return { winner: 'local', reason: 'hub css lane empty — seeding local css up (DDR-064 guard)' };
+  }
+  if (doc === local) return { winner: 'none', reason: 'local and hub css identical' };
+
+  // Concurrent cold-seed collision, css edition — see the header. Collapsing is
+  // re-applying local: `applyCssToDoc` replaces the lane wholesale, so the
+  // repeated copies go and one stays.
+  if (isExactRepeat(doc, local)) {
+    return {
+      winner: 'local',
+      recoveredDuplication: true,
+      reason:
+        'hub css is local repeated — concurrent cold-seed duplication; collapsing to one copy',
+    };
+  }
+
+  // The journal checkpoint the css lane has been WRITING since DDR-102 and never
+  // reading. Same meaning as the body's: every local byte was already reconciled
+  // through this machine, so the hub is simply ahead.
+  if (journalHash !== null && journalHash === hash(local)) {
+    return {
+      winner: 'hub',
+      reason: 'local css matches the last-synced journal hash — hub is ahead, fast-forwarding',
+    };
+  }
+
+  // Genuine divergence. The css is visually coupled to the body, so it follows
+  // the body's resolution rather than inventing a second, possibly disagreeing
+  // winner for the same canvas — the pre-existing behaviour, now reached only
+  // when the rows above have ruled out the cases they can decide on their own.
+  return {
+    winner: bodyWinner,
+    reason: `css diverged — following the body winner (${bodyWinner})`,
   };
 }

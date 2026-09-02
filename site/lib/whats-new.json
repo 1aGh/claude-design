@@ -3,6 +3,15 @@
   "version": "1.0.12",
   "entries": [
     {
+      "id": "synced-canvases-stop-duplicating",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "Synced canvases stop duplicating themselves",
+      "summary": "On a project linked to a hub, a canvas could come back with its whole contents pasted onto itself — twice, sometimes more — which broke the build and left the canvas unopenable. It happened when two people (or your machine and the hub) first picked up the same canvas at the same moment. Maude now recognises that exact shape and collapses it back to one copy, on the styles as well as the body, and comments no longer multiply the same way. Moving a canvas into another folder also fixes up its imports instead of breaking them.",
+      "surface": "design-ui"
+    },
+    {
       "id": "canvas-media-plays-on-linux",
       "version": "1.0.10",
       "date": "2026-08-26",

@@ -60,6 +60,76 @@ describe('/_api/fs-move — POST round-trip', () => {
     }
   });
 
+  // Issue #114, second bug: the move used to relocate BYTES and leave the
+  // relative specifiers pointing one level too high, so the canvas 500s on the
+  // next build with `Could not resolve` — reported as
+  // `ui/print/AlligatorsAcko.tsx` still importing `../system/…`. The unit tests
+  // in canvas-imports.test.ts pin the rewrite itself; this pins that the move
+  // actually CALLS it, which is the half that was missing.
+  test('re-roots the canvas relative imports for its new depth', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      const created = await createBoard(port, 'Importer');
+      const abs = join(designRoot, 'ui', 'Importer.tsx');
+      writeFileSync(
+        abs,
+        [
+          'import { DCArtboard } from "@maude/canvas-lib";',
+          'import { Sign } from "../system/alligators/preview/_kit";',
+          'import "../system/alligators/preview/_layout.css";',
+          'export default function Importer() { return <DCArtboard><Sign /></DCArtboard>; }',
+          '',
+        ].join('\n'),
+        'utf8'
+      );
+
+      const r = await move(port, created.rel, 'ui/print');
+      expect(r.status).toBe(200);
+
+      const moved = readFileSync(join(designRoot, 'ui', 'print', 'Importer.tsx'), 'utf8');
+      expect(moved).toContain('from "../../system/alligators/preview/_kit"');
+      expect(moved).toContain('import "../../system/alligators/preview/_layout.css"');
+      // The bare specifier is resolved by the bundler, not by depth.
+      expect(moved).toContain('from "@maude/canvas-lib"');
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  // The move's containment checks cover the source DIRECTORY, never the source
+  // file, which was harmless while the move was a bare `rename()` — renaming a
+  // symlink moves the link and touches no out-of-root byte. The import rewrite
+  // is the first code on this path that reads and writes CONTENT, so a planted
+  // link would have become an out-of-root read + write behind a drag-and-drop.
+  test('never rewrites THROUGH a symlinked canvas (no out-of-root write)', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      const outside = join(root, 'outside-the-design-root.ts');
+      const outsideBody = 'import "./secrets/keys.ts";\nexport const secret = 1;\n';
+      writeFileSync(outside, outsideBody, 'utf8');
+
+      // A canvas-shaped symlink pointing out of the design root.
+      symlinkSync(outside, join(designRoot, 'ui', 'Planted.tsx'));
+      writeFileSync(
+        join(designRoot, 'ui', 'Planted.meta.json'),
+        JSON.stringify({ title: 'Planted' }),
+        'utf8'
+      );
+
+      await move(port, 'ui/Planted.tsx', 'ui/deep');
+
+      // Whatever the move decided about the link itself, the file it points at
+      // must be byte-for-byte untouched.
+      expect(readFileSync(outside, 'utf8')).toBe(outsideBody);
+    } finally {
+      await killProc(proc);
+    }
+  });
+
   // THE `.ydoc.bin` CACHE IS THE ONE ARTIFACT THAT MUST NOT FOLLOW.
   //
   // It is the OLD document's CRDT state, and the move's last act before the

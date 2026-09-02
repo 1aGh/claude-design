@@ -96,20 +96,27 @@ export function htmlFromDoc(doc: Y.Doc): string {
 }
 
 /**
- * Apply `next` to the Y.Text inside `doc`. Uses a minimal common-prefix /
- * common-suffix replace so peers see a small op rather than a full replace.
+ * Apply `next` to one Y.Text lane as a minimal common-prefix / common-suffix
+ * replace, so peers see a small op rather than a full replace.
+ *
+ * THIS SHAPE IS A CONVERGENCE PROPERTY, NOT AN OPTIMIZATION (issue #114).
+ * Collapsing a concurrency-duplicated lane — `X + X` back to `X` — comes out of
+ * this diff as a PURE DELETE of the trailing run: no insert at all. Two peers
+ * that independently decide to collapse therefore delete the SAME CRDT items,
+ * and deletes are idempotent, so they converge.
+ *
+ * A wholesale `delete(0, len)` + `insert(0, next)` does not have that property.
+ * Both peers' inserts are new items at the same position, and Yjs keeps both —
+ * so the "repair" re-creates exactly the duplication it was meant to undo. The
+ * css lane was written that way, which is why it was the lane that never came
+ * out of a multi-peer cold start clean (measured: 0 of 43 lanes). Any lane whose
+ * duplication is repairable MUST go through here.
  *
  * Pass `origin` as the transaction origin so a downstream observer can
  * distinguish self-originated updates from peer/remote ones.
  */
-export function applyHtmlToDoc(doc: Y.Doc, next: string, origin?: unknown): boolean {
-  if (byteLengthUtf8(next) > MAX_HTML_BYTES) {
-    console.warn(
-      `[sync/codec] refusing HTML apply > ${MAX_HTML_BYTES} bytes (got ${byteLengthUtf8(next)}). DDR-054 §2d.`
-    );
-    return false;
-  }
-  const yText = doc.getText(Y_SYNC_TYPES.html);
+function applyTextLane(doc: Y.Doc, lane: string, next: string, origin?: unknown): boolean {
+  const yText = doc.getText(lane);
   const current = yText.toString();
   if (current === next) return false;
 
@@ -138,6 +145,19 @@ export function applyHtmlToDoc(doc: Y.Doc, next: string, origin?: unknown): bool
   }, origin);
 
   return true;
+}
+
+/**
+ * Apply `next` to the canvas body Y.Text inside `doc`. See `applyTextLane`.
+ */
+export function applyHtmlToDoc(doc: Y.Doc, next: string, origin?: unknown): boolean {
+  if (byteLengthUtf8(next) > MAX_HTML_BYTES) {
+    console.warn(
+      `[sync/codec] refusing HTML apply > ${MAX_HTML_BYTES} bytes (got ${byteLengthUtf8(next)}). DDR-054 §2d.`
+    );
+    return false;
+  }
+  return applyTextLane(doc, Y_SYNC_TYPES.html, next, origin);
 }
 
 /* ---------------------------------------------------------------- comments */
@@ -618,10 +638,19 @@ export function cssFromDoc(doc: Y.Doc): string | null {
 }
 
 /**
- * Apply the canvas's `.css` to the doc as opaque Y.Text (wholesale replace).
- * CSS round-trips byte-identically (we write exactly the doc string back), so a
- * wholesale delete+insert can't churn; the equality short-circuit keeps it quiet
- * when unchanged. Returns false on over-cap / no change.
+ * Apply the canvas's `.css` to the doc as opaque Y.Text.
+ *
+ * Goes through `applyTextLane` — the same prefix/suffix diff the body uses —
+ * and that is load-bearing, not tidiness (issue #114). This was a wholesale
+ * `delete(0, len)` + `insert(0, next)`, whose comment argued it "can't churn"
+ * because css round-trips byte-identically. True for a SINGLE writer, and the
+ * reason the lane looked fine in every single-peer test. Under concurrency it
+ * is the bug: two peers each replacing the lane keep both inserts, so the css
+ * doubled on a concurrent cold seed AND doubled again every time a peer tried
+ * to repair it. Measured in the field at 3×, 4× and 5×, while the body lane —
+ * same collision, diffing codec — never exceeded 3× and mostly self-healed.
+ *
+ * Returns false on over-cap / no change.
  */
 export function applyCssToDoc(doc: Y.Doc, next: string, origin?: unknown): boolean {
   if (byteLengthUtf8(next) > MAX_CSS_BYTES) {
@@ -630,11 +659,5 @@ export function applyCssToDoc(doc: Y.Doc, next: string, origin?: unknown): boole
     );
     return false;
   }
-  const t = doc.getText(Y_SYNC_TYPES.css);
-  if (t.toString() === next) return false;
-  doc.transact(() => {
-    if (t.length > 0) t.delete(0, t.length);
-    t.insert(0, next);
-  }, origin);
-  return true;
+  return applyTextLane(doc, Y_SYNC_TYPES.css, next, origin);
 }
