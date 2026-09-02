@@ -20,6 +20,7 @@
     "wdio.lifecycle.conf.ts",
     "wdio.switchrepos.conf.ts",
     "wdio.onboarding.conf.ts",
-    "wdio.acp-cold-start.conf.ts"
+    "wdio.acp-cold-start.conf.ts",
+    "wdio.sidecar-respawn.conf.ts"
   ]
 }

@@ -272,6 +272,31 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
     let state = app.state::<SidecarState>();
     let project_root = project_root.to_string();
 
+    // RETIRE THE PREVIOUS PROCESS'S `_server.json` BEFORE WE SPAWN — issue #115.
+    //
+    // The dev-server unlinks this file only on a GRACEFUL shutdown (server.ts),
+    // so a crash leaves the dead process's `{pid, port, url, canvasOrigin}` on
+    // disk. Every reader here treats the file's existence as "a server is
+    // listening": the respawn path below calls `wait_for_server` the instant
+    // this function returns, and with a stale file that wait satisfies itself in
+    // ~0 ms with the dead URL — so the recovery re-navigate fires before the
+    // fresh child has bound anything, and the one mechanism that would have
+    // reloaded a page holding a stale `canvasOrigin` spends itself for nothing.
+    //
+    // The BOOT path (lib.rs, whose comment already names the symptom: "the
+    // webview navigates to the old port before the new server binds →
+    // connection refused → intermittent white screen") and `switch_project`
+    // have both always done this. The RESPAWN path and the DDR-235 "Try again"
+    // path never did — which is why a crash-respawn behaved worse than a cold
+    // start. Doing it HERE covers all four, so they cannot drift again.
+    // Best-effort by design: a file that isn't there, or can't be removed, must
+    // not stop us from starting a server.
+    let _ = std::fs::remove_file(
+        std::path::Path::new(&project_root)
+            .join(".design")
+            .join("_server.json"),
+    );
+
     let mut command = app
         .shell()
         .sidecar("maude-server")
@@ -574,6 +599,11 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
                     }
                     eprintln!("[maude] respawning dev-server (attempt {attempt}/{MAX_RESTARTS})");
                     tokio::time::sleep(Duration::from_millis(500 * attempt as u64)).await;
+                    // Stamped BEFORE the spawn so the recovery wait below can
+                    // tell the fresh child's `_server.json` from the dead one's
+                    // (issue #115). `spawn_for` also removes the stale file; this
+                    // is the half that does not depend on that removal working.
+                    let spawn_at = std::time::SystemTime::now();
                     if let Err(e) = spawn_for(&app, &supervised_root) {
                         eprintln!("[maude] respawn failed: {e}");
                     } else {
@@ -593,7 +623,13 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
                         let root2 = supervised_root.clone();
                         tauri::async_runtime::spawn(async move {
                             let design_root = std::path::Path::new(&root2).join(".design");
-                            match crate::server_json::wait_for_server(design_root, 120_000).await {
+                            match crate::server_json::wait_for_server_since(
+                                design_root,
+                                120_000,
+                                Some(spawn_at),
+                            )
+                            .await
+                            {
                                 Ok(url) => {
                                     let still_shown = app2
                                         .state::<SidecarState>()
