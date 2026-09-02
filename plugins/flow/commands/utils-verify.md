@@ -2,7 +2,7 @@
 name: utils-verify
 category: utils
 type: command
-description: "Light verification of touched files during /flow:execute — type/lint/affected tests + agent-browser/agent-device smoke for UI changes"
+description: "Light verification of touched files during /flow:execute — scoped gates (qualityScoped) + affected tests + agent-browser/agent-device smoke for UI changes; repo-wide gates defer to /flow:validate"
 keywords: [verify, check, smoke, edit-verify, agent-browser, agent-device]
 ---
 
@@ -24,22 +24,43 @@ Use during `/execute` after each task (Edit-Verify Loop). For a full cross-platf
    - RN files (`apps/mobile/`, `apps/native/`, etc.) → agent-device smoke
    - Pure backend / config → static checks only
 
-2. **Static checks (always) — `config.quality.{format,lint}` + affected tests:**
+2. **Static checks — scoped-only (`config.qualityScoped.*`) + affected tests:**
 
-   Run the project's declared `format` + `lint` gates (per the `flow:quality-gates` skill). `typecheck`, the full `tests` suite, and `build` are `/flow:validate`'s job — the inner loop runs only the two fast gates plus *affected* tests.
+   > **Never run a repo-wide gate here.** The inner loop runs ONLY commands that are scoped to the change by construction — see the `flow:quality-gates` skill § "Inner loop vs outer gate". The full `quality.{format,lint,typecheck,tests,build}` pipeline is `/flow:validate`'s job, exactly once, before merge. A repo-wide check mid-implementation (measured: 16-minute monorepo typecheck, killed without a verdict) only slows the user down.
+
+   Per gate `format`, `lint`, `typecheck`, resolve in this order:
 
    ```bash
-   for gate in format lint; do
-     CMD=$(jq -r ".quality.$gate // empty" .ai/workflows.config.json)
-     if [[ -n "$CMD" ]]; then
-       echo "→ $gate: $CMD"
-       eval "$CMD" || { echo "::error::$gate gate failed (\`$CMD\`)"; exit 1; }
+   # Changed filenames are UNTRUSTED (a checked-out PR branch or codegen can plant
+   # hostile names) — collect NUL-safe and shell-quote each one before any eval.
+   CHANGED=""
+   while IFS= read -r -d '' f; do CHANGED+="$(printf '%q' "$f") "; done \
+     < <({ git diff -z --name-only --diff-filter=d; git diff -z --cached --name-only --diff-filter=d; } | sort -zu)
+   for gate in format lint typecheck; do
+     SCOPED=$(jq -r ".qualityScoped.$gate // empty" .ai/workflows.config.json)
+     if [[ -n "$SCOPED" ]]; then
+       echo "→ $gate (scoped): $SCOPED"
+       eval "$SCOPED" || { echo "::error::$gate scoped gate failed (\`$SCOPED\`)"; exit 1; }
+     elif [[ "$gate" != "typecheck" ]]; then
+       # format/lint only: try the repo-wide command constrained to changed files.
+       # Tools that ignore positional file args would silently scan everything — so
+       # only run this form when the command visibly accepts file args; else defer.
+       CMD=$(jq -r ".quality.$gate // empty" .ai/workflows.config.json)
+       if [[ -n "$CMD" && -n "$CHANGED" ]]; then
+         echo "→ $gate (changed files): $CMD -- $CHANGED"
+         eval "$CMD -- $CHANGED" || { echo "::error::$gate gate failed on changed files"; exit 1; }
+       else
+         echo "→ $gate: no scoped gate declared — deferred to /flow:validate"
+       fi
      else
-       echo "⚠ quality.$gate not declared — run \`maude doctor --fix\` (skipping)"
+       # typecheck has no generic file-args form (project-mode tsc ignores file args).
+       echo "→ typecheck: no qualityScoped.typecheck declared — deferred to /flow:validate"
      fi
    done
    ```
-   - Affected unit/integration tests (only the tests touching changed files — not the full `quality.tests` suite).
+
+   - **Affected tests** (only the tests touching changed files — never the full `quality.tests` suite). **Filter-sanity guard** (`flow:quality-gates` §7): after the run, check the reported test-file count — if it's near the full suite despite your pattern, the filter was swallowed (classic: `pnpm --filter X test -- <pattern>` lands the pattern after a bare `--` and vitest ignores it; ~55 s instead of 1.2 s). Switch to the runner's exec form (`pnpm --filter X exec vitest run <pattern>` or project equivalent) and keep using it for the rest of the session.
+   - When the diff spans monorepo packages, scope by **changed packages only** (`[base]`), not changed-plus-dependents (`...[base]`) — the dependents-inclusive filter selects nearly the whole monorepo whenever a shared package is touched. Dependent breakage is `/flow:validate`'s job.
 
 3. **UI smoke (parallel — fire only the legs the diff triggers):**
 
@@ -67,11 +88,11 @@ Use during `/execute` after each task (Edit-Verify Loop). For a full cross-platf
    - `a11y-auditor` — quick a11y check of affected UI files
    - `design-system-guard` — conformance with the project design system
 
-5. **Report:**
+5. **Report** — deferred gates are listed explicitly so it's never silently unclear what wasn't checked:
    ```
-   ✓ types: pass
-   ✓ lint: pass (3 files)
-   ✓ tests: 12/12 pass
+   ✓ lint (scoped): pass (3 files)
+   → typecheck: deferred to /flow:validate (no qualityScoped.typecheck)
+   ✓ tests: 5/5 pass (1 file — filter verified)
    ✓ web-desktop smoke: page loads, key elements present
    ⚠ a11y: 1 warning — Button on screen X missing accessible name
    ```
@@ -87,13 +108,14 @@ Use during `/execute` after each task (Edit-Verify Loop). For a full cross-platf
 
 ## What /flow:utils-verify does NOT do
 
+- **Repo-wide gates** — `quality.{format,lint,typecheck,tests,build}` run in `/flow:validate`, once. Undeclared scoped gate → defer, never fall back to the repo-wide command.
 - Cross-platform parity check — that's a `/validate` job (spawn the `scenario-runner` subagent across 5 platforms).
-- Full test suite (only affected tests).
+- Full test suite (only affected tests, with the filter-sanity guard).
 - Build of the whole project — only where directly touched.
 - Bundle size / performance regression — that's `/validate`.
 
 ## Idiom
 
-`/flow:utils-verify` is the **inner loop** during work. Run often, even after every edit. **Cheap.** Roughly 15–60s depending on scope.
+`/flow:utils-verify` is the **inner loop** during work. Run often, even after every edit. **Cheap by construction** — it only ever runs scoped commands, so the 15–60 s envelope holds regardless of repo size; anything that can't be scoped is deferred, not run.
 
 `/validate` is the **outer gate** before merge. Run once before `/done`. **Expensive** (cross-platform scenario, full pipeline). Roughly 5–15 min depending on platform count.

@@ -96,6 +96,7 @@ Scientific method:
 2. **Test minimally.** Smallest possible change to test hypothesis. One variable at a time. Don't fix multiple things at once.
 3. **Verify before continuing.** Worked? → Phase 4. Didn't work? Form a **new** hypothesis. Don't add more fixes on top.
 4. **When you don't know.** Say "I don't understand X." Don't pretend. Ask the user. Research more.
+5. **Re-verify the verification.** When a check or ad-hoc query claims the design's premise is wrong, that claim itself needs evidence — verify the verification script/query before overturning the design. Real cost of skipping this: an ad-hoc Mongo check "proved" a correct production join broken (the check, not the code, was wrong) and nearly triggered a fix in the wrong direction.
 
 ### Phase 4 — Implementation
 

@@ -81,9 +81,24 @@ You'll end up with something like:
 
 `stack.monorepo: true` and `stack.buildTool: "turbo"` flip flow into monorepo mode:
 
-- `/flow:utils-verify` runs `turbo run lint test --filter=...changed` instead of running globally.
 - `/flow:validate` runs `turbo run build` and gates on it.
 - `/flow:done` honors Turbo's affected-graph when deciding what tests to run.
+
+In a monorepo, also declare **`qualityScoped`** — scoped gate variants the implementation inner loop (`/flow:utils-verify`) runs instead of the repo-wide `quality.*` commands:
+
+```json
+{
+  "qualityScoped": {
+    "lint": "turbo run lint --filter='[origin/main]'",
+    "typecheck": "turbo run check-types --filter='[origin/main]'"
+  }
+}
+```
+
+Two rules worth internalizing:
+
+- **Use changed-only `[origin/main]`, not dependents-inclusive `...[origin/main]`.** The dependents-inclusive filter selects nearly the whole monorepo whenever a shared package is touched — no speed-up for exactly the changes that need one. Dependent breakage is `/flow:validate`'s job before merge.
+- **A gate without a scoped variant is deferred, not run.** The inner loop never falls back to a repo-wide command; `/flow:validate` runs the full `quality.*` pipeline once, at the end.
 
 ## Changeset releases
 

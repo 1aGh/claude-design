@@ -579,6 +579,12 @@ Branch whose coverage is considered authoritative. /flow:done writes the baselin
 
 Map of gate name → shell command string. Gate names are free-form (conventional names: `lint`, `format`, `typecheck`, `tests`, `build`). Each command is executed as-is via `eval` by the slash command that consumes the gate. Missing gate → slash command emits a one-line warning and skips (never fabricates a command). v1 deliberately keeps this a flat string map — no per-gate object shape, no `order`, no `scope`. Populate via `maude doctor --fix`, which detects from `package.json` scripts + tool presence. Existing user values are never overwritten — additions only.
 
+## `qualityScoped`
+
+**Type:** `object`
+
+Scoped (changed-files / changed-packages-only) gate variants for the IMPLEMENTATION inner loop (`/flow:utils-verify`, per-task `/flow:execute`, `/flow:bug-fix`). Same flat shape as `quality` — gate name → shell command string, keys mirror `quality` (conventionally `lint`, `format`, `typecheck`, `tests`). During implementation these run INSTEAD of the repo-wide `quality.*` commands; a missing key means the inner loop defers that gate to `/flow:validate` (it never falls back to the repo-wide command). `/flow:validate` and `/flow:done` ignore this block entirely — the full `quality.*` pipeline remains the single outer gate. Monorepo example: `"lint": "turbo run lint --filter='[origin/main]'"` — note changed-only `[base]`, NOT dependents-inclusive `...[base]`, which selects nearly the whole monorepo whenever a shared package is touched; dependent breakage is `/flow:validate`'s job.
+
 ## `integrations`
 
 **Type:** `object`

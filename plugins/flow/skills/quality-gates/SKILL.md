@@ -1,7 +1,7 @@
 ---
 name: quality-gates
 category: shared
-description: How flow commands read project quality gates from `.ai/workflows.config.json` → `quality`. Use when wiring or running a quality gate (lint, format, typecheck, tests, build), when a command needs the `config.quality` read pattern, or when a `lint script` / `tests script` / `format script` must run. Data-shape reference, NOT a runner.
+description: How flow commands read project quality gates from `.ai/workflows.config.json` → `quality` (outer gate) and `qualityScoped` (implementation inner loop). Use when wiring or running a quality gate (lint, format, typecheck, tests, build), when a command needs the `config.quality` read pattern, when deciding whether a gate belongs in the inner loop or in `/flow:validate`, or when a `lint script` / `tests script` / `format script` must run. Data-shape reference, NOT a runner.
 user-invocable: false
 ---
 
@@ -44,14 +44,46 @@ fi
 
 If a gate key is absent, print a one-line warning pointing at `maude doctor --fix` and move on. Do not infer or invent a command. A declared gate that fails IS a blocker; an *undeclared* gate is not.
 
-## 5. Which command reads which gate
+## 5. Inner loop vs outer gate — the posture split
+
+Implementation commands (`/flow:utils-verify`, per-task `/flow:execute`, `/flow:bug-fix`, `/flow:quick`) **never run a repo-wide gate in the foreground**. The full `quality.*` pipeline runs exactly once, at the outer gate (`/flow:validate` / `/flow:done`). Rationale, measured (AI-StudyMate wiki-adoption-telemetry execution report, 2026-09-01): a repo-wide `typecheck` fanned out to 37 turbo projects, ran 16m15s, and was force-killed **without producing a verdict** — pure loss; the same gates then ran again at `/flow:done`. A repo-wide check mid-implementation can only slow the user down; it cannot make the merge safer than the outer gate already does.
+
+During implementation the inner loop runs, per gate:
+
+1. **`qualityScoped.<gate>` declared** → run it (blocker on fail).
+2. **Not declared, gate is `format`/`lint`** → the command MAY run the `quality.<gate>` command constrained to changed files (`eval "$CMD -- $FILES"` — the same trick `/flow:quick` uses on staged files). If the tool ignores file args or `quality.<gate>` is absent → defer.
+3. **Otherwise** → **defer**: print one line (`→ <gate>: no scoped gate declared — deferred to /flow:validate`) and move on. Never fall back to the repo-wide command; never fabricate a filter the user didn't declare.
+
+## 6. `qualityScoped` — scoped gate variants
+
+Top-level block, same flat shape as `quality` (gate name → shell command string, keys mirror `quality`). It exists **only** for the inner loop; `/flow:validate` ignores it entirely.
+
+```jsonc
+"qualityScoped": {
+  "lint":      "turbo run lint --filter='[origin/main]'",
+  "typecheck": "turbo run check-types --filter='[origin/main]'"
+}
+```
+
+> **Why a separate block, not `lintScoped` keys inside `quality`:** `/flow:validate` Step 3.5 runs every non-conventional `quality.*` key as a blocking custom gate — a scoped key inside `quality` would run twice (inner loop + validate).
+
+Read pattern is identical to §3 (`jq -r '.qualityScoped.<gate> // empty'` + `eval`). Missing key → defer per §5, not warn-and-run-something-else.
+
+**Monorepo fan-out trap (document-worthy because the obvious fix is wrong):** Turborepo's `--filter='...[base]'` (changed **+ dependents**) looks like the correct scoping answer, but whenever a shared package is touched it selects nearly the whole monorepo (measured: 37 of 37 packages) — i.e. no speed-up for exactly the changes that need one. Scoped gates use changed-only `[base]`; dependent breakage is `/flow:validate`'s job before merge.
+
+## 7. Affected tests — filter-sanity rule
+
+When the inner loop runs "affected tests", verify the filter actually filtered: if the runner reports a file count near the full suite despite a pattern being passed, the pattern was swallowed — a common trap is a pattern landing after a bare `--` in a package script (e.g. `pnpm --filter X test -- <pattern>` with a `vitest run` script ignores it and runs everything; ~55 s instead of 1.2 s, measured). Switch to the runner's exec form (`pnpm --filter X exec vitest run <pattern>` or the project equivalent) and keep using it. A "full suite passed" line during a scoped run is a bug signal, not reassurance.
+
+## 8. Which command reads which gate
 
 | Command | Gates read | Posture |
 | ------- | ---------- | ------- |
-| `/flow:utils-verify` | `format`, `lint` | Blocker; missing → skip+warn |
-| `/flow:quick` | `format`, `lint` (staged-only) | Blocker |
-| `/flow:validate` | `format` → `lint` → `typecheck` → `tests` → `build` (in order, fail-fast) | All blocker |
+| `/flow:utils-verify` | `qualityScoped.{format,lint,typecheck}` (declared-only) + affected tests; undeclared `format`/`lint` may run `quality.*` on changed files via file args | Blocker when run; undeclared → defer to `/flow:validate` (§5) |
+| `/flow:quick` | `qualityScoped.{format,lint}` if declared, else `quality.{format,lint}` staged-files-only | Blocker |
+| `/flow:execute` (per task) / `/flow:bug-fix` | — delegate to `/flow:utils-verify` | — |
+| `/flow:validate` | `format` → `lint` → `typecheck` → `tests` → `build` (in order, fail-fast) + custom `quality.*` gates; ignores `qualityScoped` | All blocker |
 | `/flow:done` | — delegates to `/flow:validate` | — |
 | `.ai/release-guide.md` pre-flight | every entry in `config.quality` | Blocker |
 
-Config never enforces ordering or blocking — that is the calling command's opinion. Schema health for the `quality` block (e.g. a non-string value) surfaces under `maude doctor`, not here.
+Config never enforces ordering or blocking — that is the calling command's opinion. Schema health for the `quality`/`qualityScoped` blocks (e.g. a non-string value) surfaces under `maude doctor`, not here.

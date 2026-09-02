@@ -82,12 +82,21 @@ Follow existing conventions in the codebase:
 
 ### 3. Verify
 
-Run the two fast quality gates on **staged files only** (`format` + `lint`, per the `flow:quality-gates` skill). Full `typecheck` / `tests` / `build` belong to `/flow:validate` — `quick` stays fast.
+Run the two fast quality gates on **staged files only** (`format` + `lint`, per the `flow:quality-gates` skill § "Inner loop vs outer gate"). Full `typecheck` / `tests` / `build` belong to `/flow:validate` — `quick` stays fast. When the project declares `qualityScoped.format` / `qualityScoped.lint`, prefer those over the staged-file-args heuristic below (they're scoped by construction).
 
 ```bash
-STAGED=$(git diff --cached --name-only)
+# Staged filenames are untrusted input — collect NUL-safe, shell-quote before eval.
+STAGED=""
+while IFS= read -r -d '' f; do STAGED+="$(printf '%q' "$f") "; done \
+  < <(git diff -z --cached --name-only --diff-filter=d)
 [[ -z "$STAGED" ]] && { echo "no staged files — nothing to verify"; exit 0; }
 for gate in format lint; do
+  SCOPED=$(jq -r ".qualityScoped.$gate // empty" .ai/workflows.config.json)
+  if [[ -n "$SCOPED" ]]; then
+    echo "→ $gate (scoped): $SCOPED"
+    eval "$SCOPED" || { echo "::error::$gate scoped gate failed (\`$SCOPED\`)"; exit 1; }
+    continue
+  fi
   CMD=$(jq -r ".quality.$gate // empty" .ai/workflows.config.json)
   if [[ -n "$CMD" ]]; then
     echo "→ $gate (staged): $CMD"
