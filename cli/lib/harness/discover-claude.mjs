@@ -31,7 +31,11 @@ export async function discoverClaude({
   allowedPluginRoots = [],
   discoveryFailpoint = async () => {},
   limits = {},
+  profile = 'full',
+  includeProjectSettings = true,
 } = {}) {
+  if (!['full', 'plugins', 'runtime'].includes(profile))
+    throw new Error(`unknown Claude discovery profile ${profile}`);
   const bounded = { ...DEFAULT_LIMITS, ...limits };
   const canonicalHome = await canonicalDirectory(home, 'home');
   const canonicalProject = await canonicalDirectory(projectRoot, 'project root');
@@ -46,11 +50,16 @@ export async function discoverClaude({
   };
   const approvedPluginRoots = await existingCanonicalDirectories([
     join(claudeHome, 'plugins'),
-    canonicalProject,
+    ...(includeProjectSettings ? [canonicalProject] : []),
     ...allowedPluginRoots,
   ]);
 
-  const settingsLayers = await readSettingsLayers(context, claudeHome, canonicalProject);
+  const settingsLayers = await readSettingsLayers(
+    context,
+    claudeHome,
+    canonicalProject,
+    includeProjectSettings
+  );
   addEffectiveSettings(context, settingsLayers);
   addSettingsCapabilities(context, settingsLayers);
 
@@ -59,9 +68,23 @@ export async function discoverClaude({
     claudeHome,
     canonicalProject,
     settingsLayers,
-    approvedPluginRoots
+    approvedPluginRoots,
+    includeProjectSettings
   );
-  await discoverInstructions(context, claudeHome, canonicalProject);
+  if (profile === 'plugins') {
+    return createEnvironmentIR(context.items.filter((item) => item.category === 'plugins'));
+  }
+  if (profile === 'runtime') {
+    return createEnvironmentIR(
+      context.items.filter(
+        (item) =>
+          item.category === 'plugins' ||
+          item.category === 'permission-mode' ||
+          item.category.startsWith('permissions-')
+      )
+    );
+  }
+  await discoverInstructions(context, claudeHome, canonicalHome, canonicalProject);
   await discoverAssetRoot(context, claudeHome, 'global', 'global', 10, canonicalHome, false);
   for (const plugin of plugins) {
     await discoverAssetRoot(
@@ -101,7 +124,7 @@ export async function discoverClaude({
   return createEnvironmentIR(context.items);
 }
 
-async function readSettingsLayers(context, claudeHome, projectRoot) {
+async function readSettingsLayers(context, claudeHome, projectRoot, includeProjectSettings) {
   const candidates = [
     {
       path: join(claudeHome, 'settings.json'),
@@ -121,7 +144,7 @@ async function readSettingsLayers(context, claudeHome, projectRoot) {
       precedence: 50,
       scope: 'project',
     },
-  ];
+  ].filter((candidate) => includeProjectSettings || candidate.scope !== 'project');
   const layers = [];
   for (const candidate of candidates) {
     const source = await readJsonIfPresent(context, candidate.path, candidate.allowedRoot);
@@ -206,7 +229,8 @@ async function discoverPlugins(
   claudeHome,
   projectRoot,
   settingsLayers,
-  approvedPluginRoots
+  approvedPluginRoots,
+  includeProjectInstalls
 ) {
   const enabled = new Map();
   for (const layer of settingsLayers) {
@@ -223,7 +247,7 @@ async function discoverPlugins(
   for (const [pluginName, isEnabled] of [...enabled].sort(([a], [b]) => a.localeCompare(b))) {
     if (!isEnabled) continue;
     const installs = installed?.value?.plugins?.[pluginName] ?? [];
-    const selected = await selectPluginInstall(installs, projectRoot);
+    const selected = await selectPluginInstall(installs, projectRoot, includeProjectInstalls);
     if (!selected) {
       const sourceLayer = settingsLayers.findLast(
         (layer) => layer.value.enabledPlugins?.[pluginName] !== undefined
@@ -242,13 +266,23 @@ async function discoverPlugins(
       continue;
     }
     const root = await canonicalDirectory(selected.installPath, `plugin ${pluginName}`);
+    if (!includeProjectInstalls && isWithin(root, projectRoot)) {
+      throw new Error(`plugin ${pluginName} resolves inside an untrusted project: ${root}`);
+    }
     if (!approvedPluginRoots.some((approvedRoot) => isWithin(root, approvedRoot))) {
       throw new Error(`plugin ${pluginName} is outside approved roots: ${root}`);
     }
     const scope = selected.projectPath ? 'project' : 'global';
     const precedence = selected.projectPath ? 45 : 20;
     const namespace = pluginName.split('@')[0];
-    const value = { installPath: root, pluginName, scope };
+    const value = {
+      gitCommitSha: selected.gitCommitSha,
+      installPath: root,
+      lastUpdated: selected.lastUpdated,
+      pluginName,
+      scope,
+      version: selected.version,
+    };
     addItem(context, {
       category: 'plugins',
       name: pluginName,
@@ -266,23 +300,26 @@ async function discoverPlugins(
   return plugins;
 }
 
-async function selectPluginInstall(installs, projectRoot) {
-  for (const entry of installs) {
-    if (!entry.projectPath) continue;
-    try {
-      if ((await realpath(resolve(entry.projectPath))) === projectRoot) return entry;
-    } catch (error) {
-      if (error.code !== 'ENOENT') throw error;
+async function selectPluginInstall(installs, projectRoot, includeProjectInstalls = true) {
+  if (includeProjectInstalls) {
+    for (const entry of installs) {
+      if (!entry.projectPath) continue;
+      try {
+        if ((await realpath(resolve(entry.projectPath))) === projectRoot) return entry;
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
     }
   }
   return installs.find((entry) => entry.scope === 'user');
 }
 
-async function discoverInstructions(context, claudeHome, projectRoot) {
+async function discoverInstructions(context, claudeHome, home, projectRoot) {
   const candidates = [
     {
       path: join(claudeHome, 'CLAUDE.md'),
-      allowedRoot: claudeHome,
+      allowedRoot: home,
+      importRoot: claudeHome,
       name: 'global:CLAUDE.md',
       scope: 'global',
       precedence: 10,
@@ -325,7 +362,7 @@ async function discoverInstructions(context, claudeHome, projectRoot) {
         context,
         importPath,
         candidate.path,
-        candidate.allowedRoot
+        candidate.importRoot ?? candidate.allowedRoot
       );
       const value = {
         ...imported.value,
@@ -1211,6 +1248,7 @@ async function inventorySkillDirectory(
       continue;
     }
     if (!entry.isFile()) throw new Error(`skill directory contains non-regular file: ${path}`);
+    if (isSkillRuntimeCacheFile(entry.name)) continue;
     const source = await readBytes(context, path, canonicalRoot, true);
     files.push({
       bytes: source.bytes,
@@ -1221,6 +1259,10 @@ async function inventorySkillDirectory(
   files.sort((left, right) => left.path.localeCompare(right.path));
   const sourceClosure = files.map(({ path, hash }) => `${path}\0${hash}`).join('\n');
   return { files, treeHash: sha256(sourceClosure) };
+}
+
+function isSkillRuntimeCacheFile(name) {
+  return name === '.DS_Store' || name.endsWith('.pyc') || name.endsWith('.pyo');
 }
 
 async function markdownFiles(context, directory, allowedRoot, recursive) {
@@ -1292,7 +1334,7 @@ async function listFiles(
         );
         continue;
       }
-      throw new Error(`symlink source is forbidden: ${path}`);
+      throw new Error(`Claude asset cannot contain symlink: ${path}`);
     }
     if (entry.isFile() && matches(entry.name)) files.push(path);
     if (recursive && entry.isDirectory()) {

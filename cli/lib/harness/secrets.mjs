@@ -1,8 +1,6 @@
 const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const CREDENTIAL_VALUE =
   /(?:\bBearer\s+[A-Za-z0-9._~+/-]+=*|\b(?:sk|gh[opusr]|xox[baprs])[_-][A-Za-z0-9_-]{8,}|\bAKIA[A-Z0-9]{16}\b)/;
-const COMMAND_CREDENTIAL =
-  /--(?:access[_-]?token|api[_-]?key|authorization|password|private[_-]?key|secret|token)(?:=|\s+)(?!\$\{|\{env:|keychain:)[^\s]+/i;
 const REFERENCE_ONLY =
   /^(?:\$\{[A-Z_][A-Z0-9_]*\}|\{env:[A-Z_][A-Z0-9_]*\}|keychain:[A-Za-z0-9._/-]+)$/;
 const PEM_PRIVATE_KEY = /-----BEGIN ((?:[A-Z0-9]+ )*PRIVATE KEY)-----[\s\S]*?-----END \1-----/;
@@ -102,7 +100,7 @@ export function sanitizeUntrustedValue(value, { maxDepth = 32, maxNodes = 50_000
           ((typeof previous === 'string' &&
             isSensitiveFlag(previous) &&
             !isCredentialReference(nested)) ||
-            COMMAND_CREDENTIAL.test(nested))
+            hasInlineSensitiveFlag(nested))
         ) {
           findings.push({ path: [...path, String(index)].join('.'), reason: 'literal-secret' });
           return { $maudeSecret: 'literal-rejected' };
@@ -168,15 +166,29 @@ export function sanitizeUntrustedText(value) {
 
 function isCredentialKey(key) {
   const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '');
-  return /(?:accesskey|accesstoken|apikey|auth|authorization|clientsecret|cookie|credential|databaseurl|dsn|password|privatekey|redisurl|secret|setcookie|token)$/.test(
+  return /(?:accesskey|accesstoken|apikey|auth|authorization|clientsecret|cookie|credentials?|databaseurl|dsn|password|privatekey|redisurl|secret|setcookie|token)$/.test(
     normalized
   );
 }
 
 function isSensitiveFlag(value) {
-  return /^--(?:access[_-]?token|api[_-]?key|authorization|password|private[_-]?key|secret|token)$/i.test(
-    value
+  if (typeof value !== 'string' || !value.startsWith('--') || value.includes('=')) return false;
+  const normalized = value
+    .slice(2)
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+  return /(?:accesskey|accesstoken|apikey|auth|authorization|bearertoken|clientsecret|credentials?|pass|passphrase|password|privatekey|secret|secretkey|token)$/.test(
+    normalized
   );
+}
+
+function hasInlineSensitiveFlag(value) {
+  if (typeof value !== 'string') return false;
+  const separator = value.indexOf('=');
+  if (separator < 0) return false;
+  const flag = value.slice(0, separator);
+  const candidate = value.slice(separator + 1);
+  return isSensitiveFlag(flag) && !isCredentialReference(candidate);
 }
 
 function validLocale(value) {

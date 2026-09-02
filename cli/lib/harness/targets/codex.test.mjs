@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
@@ -71,10 +71,18 @@ test('patches complete user and trusted-project TOML without changing unmanaged 
     first.outputs.map(({ contents, path }) => [path, contents])
   );
 
-  assert.equal(first.outputs.filter((output) => output.metadata.kind === 'agent').length, 1);
+  assert.equal(first.outputs.filter((output) => output.metadata.kind === 'agent').length, 0);
   assert.equal(first.outputs.filter((output) => output.metadata.kind === 'skill').length, 2);
   assert.ok(first.outputs.every((output) => output.metadata.target === 'codex'));
-  assert.ok(first.report.records.every((record) => record.enabled === true));
+  const agentRecord = first.report.records.find(byCategory(ir, 'agents'));
+  assert.equal(agentRecord.enabled, false);
+  assert.equal(agentRecord.failClosed, true);
+  assert.match(agentRecord.reason, /inherit.*tool registry/i);
+  assert.ok(
+    first.report.records
+      .filter((record) => record !== agentRecord)
+      .every((record) => record.enabled === true)
+  );
 });
 
 test('preserves existing fallback names and reports AGENTS.md shadow conflicts', async () => {
@@ -362,6 +370,125 @@ test('projects multi-file skills and strips privilege-bearing command frontmatte
     true
   );
   assert.equal(parse(result.projectConfig).project_doc_fallback_filenames, undefined);
+});
+
+test('keeps skills already stored at the native Codex path user-owned', async () => {
+  const paths = await fixturePaths();
+  const nativeSkill = item('skills', 'project:native', {
+    body: '# Native',
+    frontmatter: { description: 'Native skill', name: 'native' },
+    sourceClosure: [
+      { content: '# Native', hash: sha256('skill'), path: 'SKILL.md' },
+      { content: 'Reference', hash: sha256('reference'), path: 'references/context.md' },
+    ],
+  });
+  nativeSkill.sourcePath = join(paths.projectSkillsRoot, 'native', 'SKILL.md');
+
+  const ir = createEnvironmentIR([nativeSkill]);
+  const result = await lowerCodex(ir, {
+    ...paths,
+    existingProjectToml: '',
+    existingUserToml: '',
+    projectTrusted: true,
+  });
+
+  assert.equal(result.report.records[0].enabled, true);
+  assert.match(result.report.records[0].reason, /remains user-owned/);
+  assert.equal(
+    result.outputs.some((output) => output.metadata.sourceId === ir.items[0].id),
+    false
+  );
+});
+
+test('keeps symlinked native Codex skills user-owned', async () => {
+  const paths = await fixturePaths();
+  const nativeDirectory = join(paths.projectSkillsRoot, 'native');
+  const claudeSkillsRoot = join(paths.projectRoot, '.claude', 'skills');
+  await mkdir(nativeDirectory, { recursive: true });
+  await mkdir(claudeSkillsRoot, { recursive: true });
+  await writeFile(join(nativeDirectory, 'SKILL.md'), '# Native\n', 'utf8');
+  await symlink(nativeDirectory, join(claudeSkillsRoot, 'native'));
+  const nativeSkill = item('skills', 'project:native', {
+    body: '# Native',
+    frontmatter: { description: 'Native skill', name: 'native' },
+    sourceClosure: [{ content: '# Native\n', hash: sha256('# Native\n'), path: 'SKILL.md' }],
+  });
+  nativeSkill.sourcePath = join(claudeSkillsRoot, 'native', 'SKILL.md');
+
+  const ir = createEnvironmentIR([nativeSkill]);
+  const result = await lowerCodex(ir, {
+    ...paths,
+    existingProjectToml: '',
+    existingUserToml: '',
+    projectTrusted: true,
+  });
+
+  assert.match(result.report.records[0].reason, /remains user-owned/);
+  assert.equal(
+    result.outputs.some((output) => output.metadata.sourceId === ir.items[0].id),
+    false
+  );
+});
+
+test('marks native Codex skill paths for ownership release instead of stale deletion', async () => {
+  const paths = await fixturePaths();
+  const nativeRoot = join(paths.projectSkillsRoot, 'speech-engine');
+  const nativeSkill = join(nativeRoot, 'SKILL.md');
+  await mkdir(nativeRoot, { recursive: true });
+  await writeFile(nativeSkill, '---\nname: speech-engine\ndescription: Native\n---\nUse native.\n');
+  const ir = createEnvironmentIR([
+    {
+      ...item('skills', 'project:speech-engine', {
+        body: 'Use native.\n',
+        frontmatter: { description: 'Native', name: 'speech-engine' },
+      }),
+      sourcePath: nativeSkill,
+    },
+  ]);
+
+  const result = await lowerCodex(ir, {
+    ...paths,
+    existingProjectToml: '',
+    existingUserToml: '',
+    projectTrusted: true,
+  });
+
+  assert.deepEqual(result.preservedPaths, [nativeSkill]);
+  assert.equal(
+    result.outputs.some((output) => output.path === nativeSkill),
+    false
+  );
+});
+
+test('does not treat a single symlinked SKILL.md as a native skill directory', async () => {
+  const paths = await fixturePaths();
+  const nativeDirectory = join(paths.projectSkillsRoot, 'native');
+  const claudeDirectory = join(paths.projectRoot, '.claude', 'skills', 'native');
+  await mkdir(nativeDirectory, { recursive: true });
+  await mkdir(claudeDirectory, { recursive: true });
+  await writeFile(join(nativeDirectory, 'SKILL.md'), '# Native\n', 'utf8');
+  await symlink(join(nativeDirectory, 'SKILL.md'), join(claudeDirectory, 'SKILL.md'));
+  const nativeSkill = item('skills', 'project:native', {
+    body: '# Native',
+    frontmatter: { description: 'Native skill', name: 'native' },
+    sourceClosure: [{ content: '# Native\n', hash: sha256('# Native\n'), path: 'SKILL.md' }],
+  });
+  nativeSkill.sourcePath = join(claudeDirectory, 'SKILL.md');
+
+  const ir = createEnvironmentIR([nativeSkill]);
+  const result = await lowerCodex(ir, {
+    ...paths,
+    existingProjectToml: '',
+    existingUserToml: '',
+    projectTrusted: true,
+  });
+
+  assert.doesNotMatch(result.report.records[0].reason, /remains user-owned/);
+  assert.equal(
+    result.outputs.some((output) => Object.hasOwn(output.metadata.sourceHashes, ir.items[0].id)),
+    true,
+    result.report.records[0].reason
+  );
 });
 
 test('semantic validators reject malformed or unsafe generated artifacts', () => {

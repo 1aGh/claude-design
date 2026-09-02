@@ -32,9 +32,9 @@ Generated output is valid only for a target version accepted by the versioned ca
 | `.claude/rules/**/*.md` | `degraded` to scoped instruction globs | `degraded` to generated skill/instruction references | Do not claim Claude path-condition semantics when the target cannot enforce them. |
 | Scalar Claude settings | `degraded` per registered key | `degraded` per registered key and allowed scope | Unknown keys are reported and omitted. |
 | Map/list setting precedence | `degraded`; lower into OpenCode's merge layers | `degraded`; lower into Codex's CLI/project/profile/user/system layers | Retain all contributing sources; refuse ambiguous security conflicts. |
-| User/project marketplace plugin selection | `degraded`; lower individual compatible assets | `degraded`; package compatible skills, MCP, and hooks individually | Never claim Claude plugin identity or execute plugin lifecycle code. |
+| User/project marketplace plugin selection | `degraded`; lower individual compatible assets | `native` plugin lifecycle in the pre-launch bridge; `degraded` in static projection | Runtime mirrors preserve selected plugin identity; static projection never claims lifecycle parity. |
 | Claude custom commands | `degraded` to OpenCode commands | `degraded` to Codex skills/plugins | Preserve body and description; report frontmatter, argument, and invocation differences. |
-| Claude subagents | `degraded` to OpenCode agents | `degraded` to Codex custom agents | Unsupported memory, isolation, background, hook, or tool semantics remain disabled/reported. |
+| Claude subagents | `degraded` to OpenCode agents | `unsupported`; Codex custom agents inherit the parent tool registry | Do not emit a role whose Claude tool restrictions cannot be enforced; remove previously managed roles and report them. |
 | Claude skills | `native` for target-valid `SKILL.md` assets | `native` for target-valid skills/plugin assets | Validate frontmatter and references; malformed skills are invalid source, not skipped. |
 | STDIO MCP | `native` local MCP | `native` STDIO MCP | Preserve command/args and environment references without spawning the server. |
 | Streamable HTTP MCP | `native` remote MCP | `native` HTTP MCP | Validate URL and reference syntax; never make a discovery-time request. |
@@ -50,8 +50,8 @@ Generated output is valid only for a target version accepted by the versioned ca
 | Hook matchers, output, and blocking decisions | `degraded` only when all semantics match | `degraded` only when all semantics match | Never approximate lifecycle events or discard hook output/errors. |
 | Permission allow rules | `degraded` per exactly expressible tool/path/command scope | `degraded` through approval, sandbox, and exec-policy intersections | A scoped rule can never become blanket allow. |
 | Permission ask rules | `degraded` where the target has the same approval boundary | `degraded` through approval policy plus sandbox/exec policy | If exact scope is unavailable, retain deny/default posture and report loss. |
-| Permission deny rules | `degraded` per exactly expressible scope | `degraded` through sandbox and exec-policy denial | Deny wins; an unrepresentable deny blocks migration in strict mode. |
-| Claude permission modes | `unsupported` as direct mappings | `degraded` to narrower approval/sandbox combinations | `auto` and `bypassPermissions` never generate broad target access. |
+| Permission deny rules | `degraded` per exactly expressible scope | `degraded` through sandbox and exec-policy denial; runtime `Read(path)` rules become stricter filesystem denies | Deny wins; an unrepresentable deny blocks migration or keeps runtime bypass inert. |
+| Claude permission modes | `unsupported` as direct mappings | `degraded` to narrower approval/sandbox combinations; trusted runtime `bypassPermissions` uses a no-prompt permission profile | Static projection stays narrow. Runtime bypass activates only when every ask/deny rule is conservatively representable. |
 | Generic environment injection | `degraded` through a bounded thin plugin using references | `degraded` through shell environment policy and MCP-specific fields | Preserve names/references only; do not read current values. |
 | Keychain identifiers | `degraded` reference-only | `degraded` reference-only | Never read, copy, log, or back up resolved credentials. |
 | `.ai/` state | `degraded` reference/register in place | `degraded` reference/register in place | Never copy the state tree into target directories. |

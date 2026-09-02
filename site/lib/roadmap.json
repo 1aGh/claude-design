@@ -2159,6 +2159,17 @@
       "phaseKey": null
     },
     {
+      "id": "feature-harness-environment-projection",
+      "title": "Feature: Harness environment projection",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate current Claude Code, OpenCode, and Codex schemas before implementing. Never infer target behavior from the existing best-effort adapter when the current target documentation or executable...",
+      "planPath": ".ai/plans/feature-harness-environment-projection.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
       "id": "feature-local-media-generation",
       "title": "Feature: Power-user local media generation + native keychain (post-v1)",
       "status": "planned",

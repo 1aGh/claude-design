@@ -270,6 +270,54 @@ test('adoption structurally rejects JSON and TOML credential fields', async () =
   }
 });
 
+test('adoption permits credential terminology inside valid TOML multiline strings', async () => {
+  const { projectRoot, stateRoot, targetRoot } = await fixture();
+  const paths = await manifestPaths({ projectRoot, scope: 'project', stateRoot });
+  const ownedPath = join(targetRoot, 'agent.toml');
+  await writeFile(
+    ownedPath,
+    'name = "mobile"\ndeveloper_instructions = """\nUse secure token storage.\n"""\n'
+  );
+
+  const adopted = await adoptManagedPath({
+    allowRoots: [targetRoot],
+    confirm: true,
+    path: ownedPath,
+    paths,
+    target: 'codex',
+  });
+
+  assert.equal(adopted.ownership, 'adopted');
+});
+
+test('adoption propagates sensitive TOML table context to nested values', async () => {
+  const { projectRoot, stateRoot, targetRoot } = await fixture();
+  const paths = await manifestPaths({ projectRoot, scope: 'project', stateRoot });
+  const literalPath = join(targetRoot, 'literal.toml');
+  const referencePath = join(targetRoot, 'reference.toml');
+  await writeFile(literalPath, '[credentials]\nvalue = "ordinary-nested-secret"\n');
+  await writeFile(referencePath, '[credentials]\nvalue = "{env:CODEX_TOKEN}"\n');
+
+  await assert.rejects(
+    adoptManagedPath({
+      allowRoots: [targetRoot],
+      confirm: true,
+      path: literalPath,
+      paths,
+      target: 'codex',
+    }),
+    /literal credential/i
+  );
+  const adopted = await adoptManagedPath({
+    allowRoots: [targetRoot],
+    confirm: true,
+    path: referencePath,
+    paths,
+    target: 'codex',
+  });
+  assert.equal(adopted.ownership, 'adopted');
+});
+
 test('adoption rejects embedded shell headers and opaque sensitive assignments before backup', async () => {
   const { projectRoot, stateRoot, targetRoot } = await fixture();
   const paths = await manifestPaths({ projectRoot, scope: 'project', stateRoot });

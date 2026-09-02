@@ -540,6 +540,116 @@ test('missing optional paths are valid and repeated discovery is byte-determinis
   assert.equal(first.generationHash, second.generationHash);
 });
 
+test('plugin-only discovery ignores unrelated project state symlinks', async () => {
+  const { home, projectRoot, root } = await fixture();
+  const externalDesign = join(root, 'external-design');
+  await mkdir(externalDesign, { recursive: true });
+  await symlink(externalDesign, join(projectRoot, '.design'));
+
+  const ir = await discoverClaude({ home, profile: 'plugins', projectRoot });
+
+  assert.ok(ir.items.every((entry) => entry.category === 'plugins'));
+});
+
+test('runtime discovery includes permissions without traversing unrelated project state', async () => {
+  const { home, projectRoot, root } = await fixture();
+  const externalDesign = join(root, 'external-design');
+  await mkdir(externalDesign, { recursive: true });
+  await symlink(externalDesign, join(projectRoot, '.design'));
+  await json(join(projectRoot, '.claude', 'settings.json'), {
+    permissions: { defaultMode: 'bypassPermissions', deny: ['Read(.env)'] },
+  });
+
+  const ir = await discoverClaude({ home, profile: 'runtime', projectRoot });
+
+  assert.ok(ir.items.some((entry) => entry.category === 'permission-mode'));
+  assert.ok(ir.items.some((entry) => entry.category === 'permissions-deny'));
+  assert.ok(
+    ir.items.every(
+      (entry) => entry.category === 'plugins' || entry.category.startsWith('permission')
+    )
+  );
+});
+
+test('plugin-only discovery can ignore project plugin selection for an untrusted target', async () => {
+  const { home, claudeHome, projectRoot, root } = await fixture();
+  const pluginRoot = join(root, 'plugins', 'flow');
+  await mkdir(pluginRoot, { recursive: true });
+  await json(join(projectRoot, '.claude', 'settings.json'), {
+    enabledPlugins: { 'flow@maude': true },
+  });
+  await json(join(claudeHome, 'plugins', 'installed_plugins.json'), {
+    plugins: { 'flow@maude': [{ installPath: pluginRoot, scope: 'user' }] },
+  });
+
+  const trusted = await discoverClaude({
+    allowedPluginRoots: [join(root, 'plugins')],
+    home,
+    profile: 'plugins',
+    projectRoot,
+  });
+  const untrusted = await discoverClaude({
+    allowedPluginRoots: [join(root, 'plugins')],
+    home,
+    includeProjectSettings: false,
+    profile: 'plugins',
+    projectRoot,
+  });
+
+  assert.equal(
+    trusted.items.some((entry) => entry.name === 'flow@maude'),
+    true
+  );
+  assert.equal(
+    untrusted.items.some((entry) => entry.name === 'flow@maude'),
+    false
+  );
+});
+
+test('untrusted plugin discovery cannot prefer a project-scoped install', async () => {
+  const { home, claudeHome, projectRoot, root } = await fixture();
+  const userPlugin = join(root, 'plugins', 'user-flow');
+  const projectPlugin = join(projectRoot, '.claude', 'plugins', 'flow');
+  await Promise.all([
+    mkdir(userPlugin, { recursive: true }),
+    mkdir(projectPlugin, { recursive: true }),
+  ]);
+  await json(join(claudeHome, 'settings.json'), {
+    enabledPlugins: { 'flow@maude': true },
+  });
+  await json(join(claudeHome, 'plugins', 'installed_plugins.json'), {
+    plugins: {
+      'flow@maude': [
+        { installPath: projectPlugin, projectPath: projectRoot, scope: 'project' },
+        { installPath: userPlugin, scope: 'user' },
+      ],
+    },
+  });
+
+  const trusted = await discoverClaude({
+    allowedPluginRoots: [join(root, 'plugins')],
+    home,
+    profile: 'plugins',
+    projectRoot,
+  });
+  const untrusted = await discoverClaude({
+    allowedPluginRoots: [join(root, 'plugins')],
+    home,
+    includeProjectSettings: false,
+    profile: 'plugins',
+    projectRoot,
+  });
+
+  assert.equal(
+    item(trusted, 'plugins', 'flow@maude').value.installPath,
+    await realpath(projectPlugin)
+  );
+  assert.equal(
+    item(untrusted, 'plugins', 'flow@maude').value.installPath,
+    await realpath(userPlugin)
+  );
+});
+
 test('skill approvals cover every regular file in deterministic relative-path order', async () => {
   const { home, projectRoot } = await fixture();
   const skillRoot = join(projectRoot, '.claude', 'skills', 'review');
@@ -561,6 +671,42 @@ test('skill approvals cover every regular file in deterministic relative-path or
   await writeFile(join(skillRoot, 'scripts', 'check.mjs'), 'export const safe = false;\n', 'utf8');
   const second = item(await discoverClaude({ home, projectRoot }), 'skills', 'project:review');
   assert.notEqual(second.sourceHash, first.sourceHash);
+});
+
+test('skill approvals exclude Python bytecode and OS metadata files', async () => {
+  const { home, projectRoot } = await fixture();
+  const skillRoot = join(projectRoot, '.claude', 'skills', 'review');
+  await mkdir(join(skillRoot, 'scripts', '__pycache__'), { recursive: true });
+  await writeFile(join(skillRoot, 'SKILL.md'), '---\nname: review\n---\n# Review\n', 'utf8');
+  await writeFile(join(skillRoot, 'scripts', 'check.py'), 'print("safe")\n', 'utf8');
+  await writeFile(
+    join(skillRoot, 'scripts', '__pycache__', 'check.cpython-314.pyc'),
+    Buffer.from([0xff])
+  );
+  await writeFile(join(skillRoot, '.DS_Store'), Buffer.from([0xff]));
+
+  const skill = item(await discoverClaude({ home, projectRoot }), 'skills', 'project:review');
+  assert.deepEqual(
+    skill.value.sourceClosure.map((entry) => entry.path),
+    ['scripts/check.py', 'SKILL.md']
+  );
+});
+
+test('skill runtime-cache names cannot hide symlinks or regular support files', async () => {
+  const { home, projectRoot } = await fixture();
+  const skillRoot = join(projectRoot, '.claude', 'skills', 'review');
+  await mkdir(join(skillRoot, '.pytest_cache'), { recursive: true });
+  await writeFile(join(skillRoot, 'SKILL.md'), '---\nname: review\n---\n# Review\n', 'utf8');
+  await writeFile(join(skillRoot, '.pytest_cache', 'instructions.md'), 'Review cache.\n', 'utf8');
+  await symlink(join(skillRoot, 'SKILL.md'), join(skillRoot, '.DS_Store'));
+
+  await assert.rejects(discoverClaude({ home, projectRoot }), /cannot contain symlink/);
+  await rm(join(skillRoot, '.DS_Store'));
+  const skill = item(await discoverClaude({ home, projectRoot }), 'skills', 'project:review');
+  assert.equal(
+    skill.value.sourceClosure.some((entry) => entry.path === '.pytest_cache/instructions.md'),
+    true
+  );
 });
 
 test('contained skill directory symlinks resolve to their canonical in-project closure', async () => {
