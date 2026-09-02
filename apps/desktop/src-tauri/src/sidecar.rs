@@ -522,26 +522,31 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
         let mut server_log = ServerLog::open(&app);
         while let Some(event) = rx.recv().await {
             match event {
+                // PANIC-FREE LOGGING IS LOAD-BEARING HERE — see `log_line`. A
+                // broken stderr pipe (the normal state of a Finder-launched
+                // .app) made `eprint!` panic out of this very task, which is
+                // the only consumer of `Terminated` below: no respawn, no
+                // drained output, no give-up modal.
                 CommandEvent::Stdout(line) => {
-                    eprint!("[maude:server] {}", String::from_utf8_lossy(&line));
+                    log_raw(&format!("[maude:server] {}", String::from_utf8_lossy(&line)));
                     if let Some(log) = server_log.as_mut() {
                         log.write(&line);
                     }
                 }
                 CommandEvent::Stderr(line) => {
-                    eprint!("[maude:server] {}", String::from_utf8_lossy(&line));
+                    log_raw(&format!("[maude:server] {}", String::from_utf8_lossy(&line)));
                     if let Some(log) = server_log.as_mut() {
                         log.write(&line);
                     }
                 }
                 CommandEvent::Error(err) => {
-                    eprintln!("[maude:server] error: {err}");
+                    log_line(&format!("[maude:server] error: {err}"));
                 }
                 CommandEvent::Terminated(payload) => {
-                    eprintln!(
+                    log_line(&format!(
                         "[maude:server] terminated (code={:?}) — root {supervised_root}",
                         payload.code
-                    );
+                    ));
                     let state = app.state::<SidecarState>();
                     if state.shutting_down.load(Ordering::SeqCst) {
                         break; // expected — app is quitting
@@ -566,22 +571,26 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
                                 let uptime = inst.spawned_at.elapsed();
                                 inst.restarts = next_restart_count(inst.restarts, uptime);
                                 inst.child = None;
-                                eprintln!(
+                                log_line(&format!(
                                     "[maude] dev-server was up {}s before it died — restart {}/{}",
                                     uptime.as_secs(),
                                     inst.restarts,
                                     MAX_RESTARTS
-                                );
+                                ));
                                 inst.restarts
                             }
                             None => {
-                                eprintln!("[maude] {supervised_root} was retired — not respawning");
+                                log_line(&format!(
+                                    "[maude] {supervised_root} was retired — not respawning"
+                                ));
                                 break;
                             }
                         }
                     };
                     if attempt > MAX_RESTARTS {
-                        eprintln!("[maude] sidecar gave up after {MAX_RESTARTS} restarts ({supervised_root})");
+                        log_line(&format!(
+                            "[maude] sidecar gave up after {MAX_RESTARTS} restarts ({supervised_root})"
+                        ));
                         state
                             .instances
                             .lock()
@@ -597,7 +606,9 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
                         report_sidecar_gave_up(&app, &supervised_root);
                         break;
                     }
-                    eprintln!("[maude] respawning dev-server (attempt {attempt}/{MAX_RESTARTS})");
+                    log_line(&format!(
+                        "[maude] respawning dev-server (attempt {attempt}/{MAX_RESTARTS})"
+                    ));
                     tokio::time::sleep(Duration::from_millis(500 * attempt as u64)).await;
                     // Stamped BEFORE the spawn so the recovery wait below can
                     // tell the fresh child's `_server.json` from the dead one's
@@ -605,7 +616,7 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
                     // is the half that does not depend on that removal working.
                     let spawn_at = std::time::SystemTime::now();
                     if let Err(e) = spawn_for(&app, &supervised_root) {
-                        eprintln!("[maude] respawn failed: {e}");
+                        log_line(&format!("[maude] respawn failed: {e}"));
                     } else {
                         // The dead process took the webview's open WebSocket(s)
                         // with it — sync status, active-canvas tracking, HMR —
@@ -647,23 +658,27 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
                                         {
                                             if let Some(window) = app2.get_webview_window("main")
                                             {
-                                                eprintln!(
+                                                log_line(&format!(
                                                     "[maude] dev-server recovered — reloading webview for {root2}"
-                                                );
+                                                ));
                                                 if let Err(e) = window.navigate(parsed) {
-                                                    eprintln!("[maude] post-respawn navigate failed: {e}");
+                                                    log_line(&format!(
+                                                        "[maude] post-respawn navigate failed: {e}"
+                                                    ));
                                                 }
                                             }
                                         }
-                                        Ok(parsed) => eprintln!(
+                                        Ok(parsed) => log_line(&format!(
                                             "[maude] refusing non-loopback navigate (DDR-109): {parsed}"
-                                        ),
-                                        Err(e) => eprintln!("[maude] invalid server url {url}: {e}"),
+                                        )),
+                                        Err(e) => {
+                                            log_line(&format!("[maude] invalid server url {url}: {e}"))
+                                        }
                                     }
                                 }
-                                Err(e) => {
-                                    eprintln!("[maude] post-respawn: dev-server did not come back up: {e}")
-                                }
+                                Err(e) => log_line(&format!(
+                                    "[maude] post-respawn: dev-server did not come back up: {e}"
+                                )),
                             }
                         });
                     }
@@ -1027,8 +1042,34 @@ fn terminate(child: CommandChild) {
 ///
 /// A teardown path may not depend on anybody listening.
 pub fn log_shutdown(line: &str) {
+    log_line(line);
+}
+
+/// Write one line to stderr, DISCARDING the result — the panic-free `eprintln!`.
+///
+/// NOT only for teardown (issue #115 follow-up). `eprintln!`/`eprint!` panic
+/// when stderr cannot be written, and an unwritable stderr is the ORDINARY
+/// state of a `.app` launched from Finder, the Dock, or `gtk-launch` — the
+/// pipe is broken from the start or breaks when the launching terminal goes
+/// away. Any code that can run in that state and prints must use this.
+///
+/// The supervisor task below is the load-bearing case. It is the only consumer
+/// of `CommandEvent::Terminated`, so a panic unwinding out of it does far more
+/// than lose a log line: the sidecar is never respawned, its output stops being
+/// drained (so the child eventually blocks on a full pipe and hangs), and the
+/// `MAX_RESTARTS` give-up modal never fires either — the app goes quiet with no
+/// crash, no reason, and no way back. Three crash reports on one install showed
+/// exactly this, twice at the `eprint!` in the Stdout/Stderr arms.
+fn log_line(line: &str) {
     use std::io::Write;
     let _ = writeln!(std::io::stderr(), "{line}");
+}
+
+/// `log_line` without the trailing newline — for mirroring sidecar output that
+/// already carries its own.
+fn log_raw(chunk: &str) {
+    use std::io::Write;
+    let _ = write!(std::io::stderr(), "{chunk}");
 }
 
 /// Kill EVERY sidecar (called on app quit). Flags shutdown first so no
