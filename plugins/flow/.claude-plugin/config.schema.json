@@ -459,6 +459,14 @@
         "minLength": 1
       }
     },
+    "qualityScoped": {
+      "type": "object",
+      "description": "Scoped (changed-files / changed-packages-only) gate variants for the IMPLEMENTATION inner loop (`/flow:utils-verify`, per-task `/flow:execute`, `/flow:bug-fix`). Same flat shape as `quality` — gate name → shell command string, keys mirror `quality` (conventionally `lint`, `format`, `typecheck`, `tests`). During implementation these run INSTEAD of the repo-wide `quality.*` commands; a missing key means the inner loop defers that gate to `/flow:validate` (it never falls back to the repo-wide command). `/flow:validate` and `/flow:done` ignore this block entirely — the full `quality.*` pipeline remains the single outer gate. Monorepo example: `\"lint\": \"turbo run lint --filter='[origin/main]'\"` — note changed-only `[base]`, NOT dependents-inclusive `...[base]`, which selects nearly the whole monorepo whenever a shared package is touched; dependent breakage is `/flow:validate`'s job.",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
     "integrations": {
       "type": "object",
       "additionalProperties": false,

@@ -83,22 +83,25 @@ Following the "Testing Requirements" from RCA:
 2. Test edge cases related to the bug
 3. Ensure no regression in related functionality
 
-### 5. Validate
+### 5. Verify (scoped — the fast inner loop)
 
-```bash
-<pm> lint
-<pm> typecheck
-<pm> test
-<pm> build
-```
+Run `/flow:utils-verify` — scoped gates (`qualityScoped.*`) + **affected tests only**, correctly filtered (see the `flow:quality-gates` skill §7 filter-sanity guard: if the runner reports the full suite despite your pattern, the filter was swallowed — use the runner's exec form). Run the RCA's "Testing Requirements" tests through the same scoped form.
 
-Fix any failures before proceeding.
+**Do NOT run the full `lint` / `typecheck` / `test` / `build` pipeline here.** Those repo-wide gates run exactly once, in `/flow:validate` (or via `/flow:done`), before merge — the fix loop stays fast so the user can try the fix immediately.
+
+Fix any scoped-verify failures before proceeding.
 
 ## Post-Fix Flow
 
-After all validations pass, ask:
+After the scoped verify passes, ask:
 
-> **Fix validated. Ready to commit?**
+> **Fix verified (scoped). Run a full `/flow:validate` now, or go straight to commit?** (Full validate before the PR merges is required either way.)
+
+If the user commits without a full validate, record `validate: pending` in the checkpoint state (`.ai/state/STATE.md` or the graph when kgai is active) so `/flow:done` / the PR flow can assert the outer gate actually ran — the deferral must never be silent.
+
+Then, when ready to commit, ask:
+
+> **Ready to commit?**
 
 If confirmed, commit using a conventional `fix:` subject that references the ticket. The reference format depends on `integrations.tracker.provider`:
 

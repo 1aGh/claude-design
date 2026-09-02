@@ -132,7 +132,7 @@ fi
 
 ### 3.5 Custom quality gates (project-specific CI mirror)
 
-> Any `config.quality.*` gate **beyond** the five conventional ones (`format`, `lint`, `typecheck`, `tests`, `build`) runs here, in declaration order. This is how a project mirrors its full CI surface locally (e.g. version-parity, tarball-shape, generated-content drift) so `/flow:validate` catches what CI would catch — before push. All blocker.
+> Any `config.quality.*` gate **beyond** the five conventional ones (`format`, `lint`, `typecheck`, `tests`, `build`) runs here, in declaration order. This is how a project mirrors its full CI surface locally (e.g. version-parity, tarball-shape, generated-content drift) so `/flow:validate` catches what CI would catch — before push. All blocker. The separate top-level `qualityScoped` block is the implementation inner loop's (`/flow:utils-verify`) — validate ignores it and never runs it.
 
 ```bash
 for gate in $(jq -r '.quality | keys[]' .ai/workflows.config.json); do

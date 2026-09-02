@@ -104,6 +104,11 @@
     "store": "",
     "scope": { "repo": "maude", "dept": "dev" }
   },
+  "qualityScoped": {
+    "lint": "git diff -z --name-only --diff-filter=d HEAD | grep -zE '\\.(ts|tsx|mjs|js|jsx|json)$' | xargs -0r pnpm exec biome check",
+    "format": "git diff -z --name-only --diff-filter=d HEAD | grep -zE '\\.(ts|tsx|mjs|js|jsx|json)$' | xargs -0r pnpm exec biome format --write",
+    "typecheck": "cd apps/studio && bunx tsc --noEmit"
+  },
   "quality": {
     "lint": "pnpm lint",
     "format": "pnpm format",
