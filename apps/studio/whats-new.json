@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "pdf-export-print-safe-text",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "PDF exports a print shop will actually accept",
+      "summary": "A colour font or a faux-italic could come out of a PDF export in a form printers reject — the file looked perfect on screen, and you only found out when the print shop refused it. Maude now checks the fonts on every PDF export and warns you, by name, when one of them would fail preflight. Under Text you can also ask it to verify the fonts are properly embedded, or convert all text to curves so there is nothing left to break — bleed, crop marks and photo resolution all come through untouched.",
+      "surface": "design-ui"
+    },
+    {
       "id": "comments-stop-duplicating",
       "version": null,
       "date": null,

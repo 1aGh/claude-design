@@ -307,9 +307,11 @@ function StatusPill({ job }) {
         : job.status === 'done'
           ? degraded && job.degraded.audioDropped
             ? 'Ready · no audio'
-            : degraded
-              ? 'Ready · degraded'
-              : 'Ready'
+            : degraded && job.degraded.fontsNotEmbedded?.length
+              ? 'Ready · font warning'
+              : degraded
+                ? 'Ready · degraded'
+                : 'Ready'
           : 'Failed';
   const eta = job.status === 'running' ? etaLabel(job) : null;
   return (
@@ -331,12 +333,18 @@ function StatusPill({ job }) {
  */
 function DegradedNote({ degraded }) {
   if (!degraded) return null;
+  // The font case names the fonts, because "reduced fidelity" is useless to
+  // someone about to send this to a printer — what they need is which faces
+  // came out unprintable (issue #116).
+  const fonts = degraded.fontsNotEmbedded ?? [];
+  const headline = degraded.audioDropped
+    ? 'Exported without audio.'
+    : fonts.length
+      ? `Fonts a print shop will reject: ${fonts.join(', ')}.`
+      : 'Exported with reduced fidelity.';
   return (
     <div className="st-export-degraded" data-testid="export-degraded-note">
-      <span aria-hidden="true">⚠</span>{' '}
-      {degraded.audioDropped
-        ? 'Exported without audio.'
-        : 'Exported with reduced fidelity.'}
+      <span aria-hidden="true">⚠</span> {headline}
       {degraded.remedy ? <div className="st-export-degraded__fix">{degraded.remedy}</div> : null}
     </div>
   );

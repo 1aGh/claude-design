@@ -1218,6 +1218,37 @@ const PDF_DPI_OPTIONS = [
 ];
 const PDF_DPI_DEFAULT = 'auto';
 
+// issue #116 — how the export treats text. Mirrors export-dialog.tsx's
+// PDF_TEXT_OPTIONS (same mirror obligation as PDF_DPI_OPTIONS above).
+//
+// The list is FIXED regardless of whether Ghostscript is present on this
+// machine. Hiding "Convert to outlines" when gs is missing would need a new
+// capability route, and would answer the user's question ("can I send this to
+// a printer?") by making the answer invisible; a refusal that names the
+// one-line install is more honest and reaches them at the moment they care.
+const PDF_TEXT_OPTIONS = [
+  {
+    id: 'keep',
+    label: 'Keep selectable (default)',
+    description:
+      'Text stays selectable and searchable. You are warned if a font came out unprintable.',
+  },
+  {
+    id: 'embed',
+    label: 'Verify fonts embedded',
+    description:
+      'Same file, but the export fails instead of shipping a font a print shop would reject.',
+  },
+  {
+    id: 'outline',
+    label: 'Convert to outlines (print-safe)',
+    description:
+      'Every glyph becomes a vector path — no fonts left to break. Text is no longer selectable ' +
+      'and the file can grow a lot. Needs Ghostscript installed locally; cloud workspaces have it.',
+  },
+];
+const PDF_TEXT_DEFAULT = 'keep';
+
 // feature-bulk-media-insert — best-effort MIME guess from a filename extension.
 // Only used to classify a natively-picked file (Rust returns `{name, bytes}`,
 // no type) for the destination-toggle's image/video/audio split; the actual
@@ -1602,6 +1633,7 @@ function ExportDialog({
   const [pdfMarksCrop, setPdfMarksCrop] = useState(false);
   const [pdfMarksRegistration, setPdfMarksRegistration] = useState(false);
   const [pdfDpiId, setPdfDpiId] = useState(PDF_DPI_DEFAULT);
+  const [pdfTextId, setPdfTextId] = useState(PDF_TEXT_DEFAULT);
   // DDR-148 addendum — mp4/webm of a registered video-comp render through
   // renderMediaOnWeb, which produces real audio (Remotion owns the
   // TransitionSeries/volume-closure timeline). gif has no audio track at all
@@ -1714,6 +1746,10 @@ function ExportDialog({
       // itself stays vector regardless of this.
       const pdfDpi = PDF_DPI_OPTIONS.find((d) => d.id === pdfDpiId)?.value;
       if (pdfDpi !== undefined) options.dpi = pdfDpi;
+      // issue #116 — omitted for `keep` rather than sent explicitly: the
+      // adapter's default IS keep, so an untouched dialog produces the exact
+      // request body it did before this feature existed.
+      if (pdfTextId !== 'keep') options.text = pdfTextId;
     }
     // Scope targeting hints (resolveScope reads these): `artboardId` makes
     // "Active artboard" export the right screen instead of `:first-of-type`;
@@ -2021,6 +2057,27 @@ function ExportDialog({
               <div className="st-mono" style={{ fontSize: 11, color: 'var(--fg-3)' }}>
                 The page stays vector; this only sets the capture density for raster content on it
                 (dropped photos, large-format art).
+              </div>
+              <div className="st-dialog-row">
+                <label className="st-dialog-lbl" htmlFor="st-export-pdf-text">
+                  Text
+                </label>
+                <select
+                  id="st-export-pdf-text"
+                  className="st-select"
+                  data-testid="export-pdf-text"
+                  value={pdfTextId}
+                  onChange={(e) => setPdfTextId(e.target.value)}
+                >
+                  {PDF_TEXT_OPTIONS.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="st-mono" style={{ fontSize: 11, color: 'var(--fg-3)' }}>
+                {PDF_TEXT_OPTIONS.find((t) => t.id === pdfTextId)?.description}
               </div>
               <div className="st-dialog-row">
                 <label

@@ -42,6 +42,8 @@ import { readArtboardPrintProp } from '../canvas-edit.ts';
 import { computeMarksGeometry, MARK_STROKE_PT, requiredSlugPt } from '../print/marks.ts';
 import { CSS_DPI, getPaperPreset, mmToPt, resolveBleedMm, trimSizeMm } from '../print/units.ts';
 import { exportShimPath, runShim } from './_runtime.ts';
+import type { ExportDegradation } from './degraded.ts';
+import { outlinePdf } from './ghostscript.ts';
 import {
   canvasShellUrl,
   type ExportContext,
@@ -49,6 +51,7 @@ import {
   type ExportOptions,
   type ExportResult,
 } from './index.ts';
+import { analyzePdfFonts, describeFontProblem, unprintableFonts } from './pdf-fonts.ts';
 import { clampDpi } from './png.ts';
 import type { Target } from './scope.ts';
 
@@ -203,6 +206,121 @@ export function parsePdfPrintOptions(raw: unknown): PdfPrintOptions | null {
 export function parsePageFit(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
   return getPaperPreset(raw) ? raw : null;
+}
+
+/**
+ * How the export should treat text (issue #116).
+ *
+ *  - `keep`    — today's behaviour. Text stays selectable and searchable; the
+ *                fonts are whatever Chromium emitted. A preflight NOTICE is
+ *                attached when some of those are unprintable.
+ *  - `embed`   — assert every font is a real embedded font program. Type 3 is
+ *                a hard failure, named — never a silent pass.
+ *  - `outline` — every glyph becomes a vector path (Ghostscript). Print-safe
+ *                by construction; text is no longer selectable and the file
+ *                can grow substantially.
+ */
+export type PdfTextMode = 'keep' | 'embed' | 'outline';
+
+/**
+ * `options.text` — TOP-LEVEL, not nested under `pdfPrint`, deliberately.
+ * `pdfPrint`'s presence is what switches the boxes/marks post-pass on, and
+ * text handling is orthogonal to that: a plain non-print PDF can carry Type 3
+ * fonts just as easily as a leaflet can.
+ *
+ * Degrades to `keep` on anything unrecognised rather than throwing, per this
+ * adapter's standing rule that a malformed options bag must never break an
+ * export (`ExportOptions` is free-form with no schema gate upstream).
+ */
+export function parsePdfText(raw: unknown): PdfTextMode {
+  return raw === 'embed' || raw === 'outline' ? raw : 'keep';
+}
+
+/**
+ * Classify the fonts in the bytes we are about to hand back.
+ *
+ * On the SAVED BYTES, not the in-memory `PDFDocument`, and that is load-bearing:
+ * pdf-lib DEFERS `embedPage` until flush, so before a save the `pageFit` path's
+ * page XObject is a dangling ref and a font walk finds nothing at all. Analysing
+ * the document would silently report "no fonts" for exactly the scale-to-paper
+ * exports print shops receive. `test/pdf-font-preflight.test.ts` pins both
+ * halves of that.
+ *
+ * Returns null when pdf-lib cannot read the bytes. A preflight is a warning
+ * mechanism; it must never become a new way for a successful export to fail.
+ */
+async function analyzeFinalBytes(bytes: Uint8Array) {
+  try {
+    const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+    return analyzePdfFonts(doc);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Apply `options.text` to the assembled bytes — the one place all three modes
+ * are decided, so the fast path and the post-pass path can never disagree about
+ * what `embed` means.
+ */
+export async function applyTextMode(
+  bytes: Uint8Array,
+  mode: PdfTextMode,
+  hooks?: ExportHooks
+): Promise<{ body: Uint8Array; degraded?: ExportDegradation }> {
+  if (mode === 'outline') {
+    const outlined = await outlinePdf(bytes, { signal: hooks?.signal });
+    // Ghostscript exited 0 — but "it ran" is not "it worked". Re-run the same
+    // preflight over its output: if a font survived, the file LOOKS converted
+    // and is not, which is the failure this whole feature exists to make
+    // impossible. Better to fail than to hand back a plausible lie.
+    const after = await analyzeFinalBytes(outlined);
+    if (after && after.length) {
+      throw new Error(
+        `Ghostscript reported success but ${after.length} font(s) survived outlining ` +
+          `(${after.map((f) => f.name).join(', ')}). The PDF was not converted to curves; ` +
+          'do not send it to print.'
+      );
+    }
+    assertOutlinedSizeOk(outlined.byteLength);
+    return { body: outlined };
+  }
+
+  const fonts = await analyzeFinalBytes(bytes);
+  if (!fonts) return { body: bytes };
+  const bad = unprintableFonts(fonts);
+  if (!bad.length) return { body: bytes };
+
+  const { reason, remedy } = describeFontProblem(bad);
+  if (mode === 'embed') {
+    throw new Error(`text=embed: ${reason} ${remedy}`);
+  }
+  return {
+    body: bytes,
+    degraded: { fontsNotEmbedded: bad.map((f) => f.name), reason, remedy },
+  };
+}
+
+/**
+ * Outlining trades file size for print safety — glyphs become path data, and a
+ * photo-heavy piece can grow by an order of magnitude. That is a legitimate
+ * print deliverable, not a bug, so this reuses the SAME generous ceiling
+ * `assertTotalSizeOk` applies to captures rather than a tighter one; it exists
+ * to catch a runaway, not to cap ordinary print output.
+ *
+ * Checked separately because `assertTotalSizeOk` runs on the CAPTURED files,
+ * before assembly and long before outlining — the pass that actually creates
+ * the growth was downstream of every existing guard.
+ */
+export function assertOutlinedSizeOk(byteLength: number): void {
+  if (byteLength <= MAX_TOTAL_OUTPUT_BYTES) return;
+  const mb = Math.round(byteLength / 1024 / 1024);
+  const maxMb = Math.round(MAX_TOTAL_OUTPUT_BYTES / 1024 / 1024);
+  throw new Error(
+    `Outlined PDF is too large (~${mb}MB, limit ~${maxMb}MB) — converting text to curves ` +
+      'grows the file. Try exporting fewer artboards per file, a lower DPI, or ' +
+      'text=embed (which verifies the fonts without converting them).'
+  );
 }
 
 /**
@@ -361,6 +479,7 @@ export async function run(
   const timeoutSec = (options.timeoutSec as number | undefined) ?? 12;
   const printOpts = parsePdfPrintOptions(options.pdfPrint);
   const pageFit = parsePageFit(options.pageFit);
+  const textMode = parsePdfText(options.text);
   // Dogfood follow-up — raster CONTENT on the artboard (a dropped photo, a
   // large-format piece authored at a fraction of its physical size) needs a
   // real deviceScaleFactor to embed at print density; the page itself stays
@@ -407,11 +526,25 @@ export async function run(
     // Fast path — no print/pageFit options given: pass Chromium's vector PDF
     // straight through, exactly as before this feature (zero pdf-lib
     // round-trip overhead for the common "just export a PDF" case).
+    //
+    // The font preflight (`applyTextMode`) DOES parse here, and that is a
+    // deliberate cost. This path is what `/design:export pdf` with no options
+    // takes — i.e. the most likely way someone exports a leaflet — and a PDF
+    // that a print shop will reject while saying nothing is precisely the bug
+    // being fixed. The parse is a tokenize + object-table build (raw streams
+    // are copied by length, never decoded), and it degrades to silence rather
+    // than an error on a PDF pdf-lib cannot read.
     if (!needsPostPass) {
       const [only] = written;
       if (written.length === 1 && only) {
         const bytes = new Uint8Array(readFileSync(only.path));
-        return { filename: `${baseSlug}.pdf`, contentType: 'application/pdf', body: bytes };
+        const finished = await applyTextMode(bytes, textMode, hooks);
+        return {
+          filename: `${baseSlug}.pdf`,
+          contentType: 'application/pdf',
+          body: finished.body,
+          ...(finished.degraded ? { degraded: finished.degraded } : {}),
+        };
       }
       const out = await PDFDocument.create();
       for (const w of written) {
@@ -420,7 +553,13 @@ export async function run(
         for (const page of pages) out.addPage(page);
       }
       const bytes = await out.save();
-      return { filename: `${baseSlug}.pdf`, contentType: 'application/pdf', body: bytes };
+      const finished = await applyTextMode(bytes, textMode, hooks);
+      return {
+        filename: `${baseSlug}.pdf`,
+        contentType: 'application/pdf',
+        body: finished.body,
+        ...(finished.degraded ? { degraded: finished.degraded } : {}),
+      };
     }
 
     // Post-pass path — every page goes through pdf-lib (single-page case now
@@ -473,7 +612,17 @@ export async function run(
       }
     }
     const bytes = await out.save();
-    return { filename: `${baseSlug}.pdf`, contentType: 'application/pdf', body: bytes };
+    // Text handling runs LAST, on the fully assembled document: the boxes are
+    // set and the vector crop/registration marks are drawn, so they are part of
+    // what Ghostscript preserves rather than something applied to an already
+    // outlined file (pdf-lib could not re-open and re-mark it as cleanly).
+    const finished = await applyTextMode(bytes, textMode, hooks);
+    return {
+      filename: `${baseSlug}.pdf`,
+      contentType: 'application/pdf',
+      body: finished.body,
+      ...(finished.degraded ? { degraded: finished.degraded } : {}),
+    };
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }

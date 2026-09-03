@@ -54,6 +54,41 @@ function safeArtifactName(raw: string | null, format: Format): string {
   return base.slice(0, 255);
 }
 
+/**
+ * Reduce whatever the render service put in `x-maude-degraded` to a value the
+ * rest of the system can hold, mirroring `safeArtifactName` above.
+ *
+ * The header was previously `JSON.parse`d and cast straight to
+ * `ExportDegradation` — the one field on this boundary that skipped the file's
+ * own "everything crossing back is untrusted" rule. It mattered less while the
+ * only consumer read a boolean; it matters now that a degradation can carry a
+ * `fontsNotEmbedded` ARRAY which `client/export-center.jsx` renders with
+ * `.join(', ')`. A hostile or simply mixed-version worker sending an object
+ * there turns the export panel into a TypeError, and unbounded `reason` /
+ * `remedy` strings land verbatim in the on-disk history ledger.
+ *
+ * Returns undefined for anything unusable — a malformed note must never cost a
+ * real artifact, which is the same reason the caller swallows parse errors.
+ */
+function safeDegradation(raw: unknown): ExportDegradation | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const o = raw as Record<string, unknown>;
+  const text = (v: unknown, max: number): string | undefined =>
+    typeof v === 'string' && v ? v.slice(0, max) : undefined;
+
+  const reason = text(o.reason, 2000);
+  if (!reason) return undefined; // `reason` is the only required field
+  const fonts = Array.isArray(o.fontsNotEmbedded)
+    ? o.fontsNotEmbedded.flatMap((f) => text(f, 200) ?? []).slice(0, 50)
+    : undefined;
+  return {
+    reason,
+    ...(o.audioDropped === true ? { audioDropped: true } : {}),
+    ...(fonts?.length ? { fontsNotEmbedded: fonts } : {}),
+    ...(text(o.remedy, 2000) ? { remedy: text(o.remedy, 2000) } : {}),
+  };
+}
+
 /** Read a response body with a hard byte ceiling — `arrayBuffer()` has none. */
 async function readCapped(res: Response, max: number): Promise<Uint8Array> {
   const declared = Number(res.headers.get('content-length'));
@@ -274,7 +309,7 @@ export async function renderRemotely(args: {
       const raw = /^[A-Za-z0-9+/=]+$/.test(degradedHeader)
         ? Buffer.from(degradedHeader, 'base64').toString('utf8')
         : degradedHeader;
-      degraded = JSON.parse(raw) as ExportDegradation;
+      degraded = safeDegradation(JSON.parse(raw));
     } catch {
       /* a malformed degradation note must not fail a real artifact */
     }

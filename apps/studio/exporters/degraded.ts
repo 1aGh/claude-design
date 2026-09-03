@@ -7,8 +7,8 @@
 // RCA `issue-mp4-audio-export-html5audio-silent-degrade`.
 
 /**
- * The file is real and the job is `done` — but it is NOT what was asked for,
- * and saying so is the whole point.
+ * The file is real and the job is `done` — but it is NOT clean, and saying so
+ * is the whole point.
  *
  * An mp4 export of a comp using `remotion`'s `<Audio>` (= `<Html5Audio>`, which
  * `@remotion/web-renderer` rejects outright) degrades to the video-only
@@ -17,10 +17,26 @@
  * for it, and the only trace was one `console.error` in the desktop app's
  * stderr — so the artifact and its ledger entry were indistinguishable from a
  * good export. This is what makes them distinguishable.
+ *
+ * Audio was the first instance of that shape, not the only one: issue #116 is
+ * the same failure in a different format. A PDF whose text came out as Type 3
+ * fonts is downloadable, opens fine, and looks right on screen — and a print
+ * shop's preflight rejects it. Both are "the file is real, the file is wrong",
+ * so both ride THIS channel rather than a parallel one: the job record, the
+ * history ledger, the WS emit, the pill and the completion toast are already
+ * wired to it, and a second notice type would have to re-earn all five.
+ *
+ * Every cause flag is optional — a degradation carries the one(s) that apply.
  */
 export interface ExportDegradation {
   /** The requested audio track is absent from the produced file. */
-  audioDropped: boolean;
+  audioDropped?: boolean;
+  /**
+   * Fonts a print shop's preflight will reject — Type 3 or genuinely
+   * non-embedded (issue #116). Names only, already stripped of their
+   * `AAAAAA+` subset prefixes; the count and the split live in `reason`.
+   */
+  fontsNotEmbedded?: string[];
   /** Human-readable cause, already newline-collapsed by the shim (DDR-054). */
   reason: string;
   /** One-line remedy — present only when the cause is a fixable authoring mistake. */

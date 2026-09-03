@@ -855,3 +855,100 @@ describe('export E2E — worker lane, real render service, real artifact', () =>
     { timeout: 600_000 }
   );
 });
+
+// ── PDF text modes against REAL Chromium output (issue #116) ─────────────────
+//
+// Every other gate for this feature reads hand-built pdf-lib fixtures, which
+// prove how we CLASSIFY a font dictionary but say nothing about what Chromium
+// actually emits. That gap is the whole bug: the classifier could be perfect
+// and still never fire on a real export. So this drives the real adapter over
+// a real print artboard and asserts on the delivered bytes.
+describe('export E2E — PDF text modes over a real capture', () => {
+  test(
+    'keep / embed agree with the delivered bytes, and outline leaves no font behind',
+    async () => {
+      const box = makeExportSandbox();
+      const port = nextPort();
+      // Plain local lane (no MAUDE_WORKSPACE_MODE) so the real pdf adapter runs
+      // in-process — this is the desktop/CLI path.
+      const proc = await bootServer(box.root, port);
+      try {
+        const exportPdf = (text?: string) =>
+          fetch(`http://localhost:${port}/_api/export`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              format: 'pdf',
+              scope: 'artboard',
+              options: {
+                // `canvasFile` overrides the server's `_active.json` (scope.ts
+                // readHints), so this needs no browser to set the active canvas
+                // — the point here is the ADAPTER over a real capture, not the
+                // shell's tab state, which the worker-lane test already drives.
+                canvasFile: '.design/ui/e2e-print.tsx',
+                artboardId: 'flyer',
+                pdfPrint: { includeBleed: true, marks: { crop: true, registration: true } },
+                ...(text ? { text } : {}),
+              },
+            }),
+          });
+
+        const { PDFDocument } = await import('pdf-lib');
+        const { analyzePdfFonts } = await import('../exporters/pdf-fonts.ts');
+
+        // 1. Default (`keep`) — a real PDF, and the preflight's verdict on real
+        //    Chromium output must match what is actually in the file.
+        const keepRes = await exportPdf();
+        expect(keepRes.status).toBe(200);
+        const keepBytes = new Uint8Array(await keepRes.arrayBuffer());
+        expect(new TextDecoder().decode(keepBytes.slice(0, 5))).toBe('%PDF-');
+        const fonts = analyzePdfFonts(await PDFDocument.load(keepBytes));
+        console.error(
+          `[pdf-text] Chromium emitted ${fonts.length} font(s): ${fonts
+            .map((f) => `${f.name}=${f.kind}`)
+            .join(', ')}`
+        );
+        // The fixture renders real text, so the capture must contain SOME font.
+        // If this ever reads 0, the preflight has gone blind on real output —
+        // exactly the failure a hand-built fixture cannot detect.
+        expect(fonts.length).toBeGreaterThan(0);
+
+        // 2. `embed` must AGREE with `keep`'s own analysis — refuse iff the
+        //    delivered file genuinely carries an unprintable font. Asserting the
+        //    agreement rather than a fixed outcome keeps this honest on a
+        //    machine whose font stack differs from this one's.
+        const unprintable = fonts.filter((f) => f.kind !== 'embedded');
+        const embedRes = await exportPdf('embed');
+        if (unprintable.length === 0) {
+          expect(embedRes.status).toBe(200);
+        } else {
+          expect(embedRes.status).toBe(500);
+          expect(await embedRes.text()).toContain(unprintable[0]?.name ?? '');
+        }
+
+        // 3. `outline` — gated on gs, since without it the correct behaviour is
+        //    a refusal, which the unit test asserts.
+        const { ghostscriptAvailable } = await import('../exporters/ghostscript.ts');
+        if (await ghostscriptAvailable()) {
+          const outRes = await exportPdf('outline');
+          expect(outRes.status).toBe(200);
+          const outDoc = await PDFDocument.load(new Uint8Array(await outRes.arrayBuffer()));
+          // No fonts left to fail a printer's preflight…
+          expect(analyzePdfFonts(outDoc)).toHaveLength(0);
+          // …and the print geometry the same request asked for still survives
+          // the Ghostscript rewrite (the risk of running this post-pass LAST).
+          const page = outDoc.getPage(0);
+          const media = page.getMediaBox();
+          const trim = page.getTrimBox();
+          expect(trim.width).toBeLessThan(media.width);
+          expect(trim.height).toBeLessThan(media.height);
+        } else {
+          console.error('[pdf-text] no ghostscript — outline assertions skipped');
+        }
+      } finally {
+        killProc(proc);
+      }
+    },
+    { timeout: 300_000 }
+  );
+});

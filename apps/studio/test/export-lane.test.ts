@@ -138,7 +138,17 @@ describe('lane remote', () => {
           headers: {
             'content-type': 'image/png',
             'x-maude-filename': 'home.png',
-            'x-maude-degraded': JSON.stringify({ kind: 'test-degrade' }),
+            // A realistic degradation PLUS the hostile shapes the sanitizer
+            // exists for: `fontsNotEmbedded` is rendered with `.join(', ')` in
+            // the panel, so a non-array there would TypeError the export UI,
+            // and unbounded strings land in the on-disk history ledger.
+            'x-maude-degraded': JSON.stringify({
+              reason: 'r',
+              remedy: 'm',
+              fontsNotEmbedded: ['Ok-Font', 42, { evil: true }, 'x'.repeat(500)],
+              audioDropped: 'yes-please',
+              extra: 'dropped',
+            }),
           },
         });
       },
@@ -154,7 +164,14 @@ describe('lane remote', () => {
       expect(res.filename).toBe('home.png');
       expect(res.contentType).toBe('image/png');
       expect(res.body).toEqual(new Uint8Array([137, 80, 78, 71]));
-      expect(res.degraded).toEqual({ kind: 'test-degrade' } as never);
+      // Sanitized at the boundary, not passed through: non-strings dropped from
+      // the array, over-long entries clamped, `audioDropped` kept only when it
+      // is literally true, unknown keys discarded.
+      expect(res.degraded?.reason).toBe('r');
+      expect(res.degraded?.remedy).toBe('m');
+      expect(res.degraded?.fontsNotEmbedded).toEqual(['Ok-Font', 'x'.repeat(200)]);
+      expect(res.degraded?.audioDropped).toBeUndefined();
+      expect(Object.keys(res.degraded ?? {})).not.toContain('extra');
 
       // The wire contract: bearer ingress, resolved targets (pure data), the
       // member's canvas grant — and nothing else (no fs paths leak).
@@ -169,7 +186,8 @@ describe('lane remote', () => {
       // Job lifecycle + bytes-on-disk contract holds on the remote lane too.
       const job = queue.get(id);
       expect(job?.status).toBe('done');
-      expect(job?.degraded).toEqual({ kind: 'test-degrade' } as never);
+      expect(job?.degraded?.reason).toBe('r');
+      expect(job?.degraded?.fontsNotEmbedded).toEqual(['Ok-Font', 'x'.repeat(200)]);
       const dl = await queue.getBytes(id);
       expect(dl.ok).toBe(true);
     } finally {
