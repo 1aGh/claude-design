@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { realpathSync } from 'node:fs';
 import { access } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
@@ -121,6 +122,7 @@ export async function lowerCodex(
   const trustedHooks = new Set(trustedHookHashes);
   const decisions = new Map();
   const assets = [];
+  const preservedPaths = [];
   const names = {
     agent: new Set(),
     commandSkill: new Set(),
@@ -176,21 +178,26 @@ export async function lowerCodex(
     if (item.category === 'instructions') {
       decision = lowerInstructions(item, config, shadow, assets, userConfigPath);
     } else if (item.category === 'instruction-imports' || item.category === 'rules') {
-      decision = lowerSkill(item, assets, names, { projectSkillsRoot, userSkillsRoot });
-    } else if (item.category === 'agents') {
-      decision = lowerAgent(item, assets, names, {
-        outputRoot,
-        projectConfigPath,
-        userConfigPath,
+      decision = lowerSkill(item, assets, names, {
+        preservedPaths,
+        projectSkillsRoot,
+        userSkillsRoot,
       });
+    } else if (item.category === 'agents') {
+      decision = lowerAgent(item);
     } else if (item.category === 'commands') {
       decision = lowerSkill(item, assets, names, {
         command: true,
+        preservedPaths,
         projectSkillsRoot,
         userSkillsRoot,
       });
     } else if (item.category === 'skills') {
-      decision = lowerSkill(item, assets, names, { projectSkillsRoot, userSkillsRoot });
+      decision = lowerSkill(item, assets, names, {
+        preservedPaths,
+        projectSkillsRoot,
+        userSkillsRoot,
+      });
     } else if (MCP_CATEGORIES.has(item.category) || item.category === 'mcp-disabled') {
       decision = lowerMcp(item, config);
     } else if (item.category === 'mcp-environment') {
@@ -284,6 +291,7 @@ export async function lowerCodex(
   ];
 
   return {
+    preservedPaths: [...new Set(preservedPaths)].sort(),
     projectConfig: renderedProject,
     report,
     outputs,
@@ -401,6 +409,9 @@ export function smokeCodexConfig({ cwd, env, executable = 'codex' }) {
     timeout: 120_000,
   });
   if (result.error?.code === 'ENOENT') return { available: false };
+  if (result.status !== 0 && /maude: unknown command ["']codex["']/.test(result.stderr)) {
+    return { available: false };
+  }
   let report;
   try {
     report = JSON.parse(result.stdout);
@@ -449,36 +460,21 @@ function lowerInstructions(item, config, shadow, assets, userConfigPath) {
   };
 }
 
-function lowerAgent(item, assets, names, { projectConfigPath, userConfigPath }) {
-  const strippedPrivileges = hasPrivilegeFrontmatter(item);
-  const body = item.value?.body;
-  if (typeof body !== 'string' || !body.trim()) {
-    return { active: false, reason: 'Agent has no usable instruction body.' };
-  }
-  const name = codexName(item.name);
-  if (names.agent.has(`${item.scope}:${name}`)) return collision('agent', name);
-  names.agent.add(`${item.scope}:${name}`);
-  const description =
-    stringValue(item.value?.frontmatter?.description) ?? `Projected ${name} agent`;
-  const configRoot = dirname(resolve(item.scope === 'global' ? userConfigPath : projectConfigPath));
-  const path = join(configRoot, 'agents', `${name}.toml`);
-  const document = parseDocument('');
-  document.patch({
-    name,
-    description,
-    developer_instructions: body,
-    sandbox_mode: 'read-only',
-  });
-  assets.push(assetOutput(item, path, document.toTomlString, validateCodexAgent, 'agent'));
-  return strippedPrivileges
-    ? strippedPrivilegeDecision('Standalone Codex custom agent validated with a read-only sandbox')
-    : {
-        active: true,
-        reason: 'Standalone Codex custom agent validated with a read-only sandbox.',
-      };
+function lowerAgent(_item) {
+  return {
+    active: false,
+    failClosed: true,
+    reason:
+      'Codex custom agents inherit the parent tool registry, so Claude tool restrictions cannot be enforced.',
+  };
 }
 
-function lowerSkill(item, assets, names, { command = false, projectSkillsRoot, userSkillsRoot }) {
+function lowerSkill(
+  item,
+  assets,
+  names,
+  { command = false, preservedPaths, projectSkillsRoot, userSkillsRoot }
+) {
   const strippedPrivileges = hasPrivilegeFrontmatter(item);
   const sourceName = codexName(item.name);
   const name = command ? `command-${sourceName}` : sourceName;
@@ -494,6 +490,13 @@ function lowerSkill(item, assets, names, { command = false, projectSkillsRoot, u
   }
   const root = item.scope === 'global' ? userSkillsRoot : projectSkillsRoot;
   const path = join(resolve(root), name, 'SKILL.md');
+  if (!command && sameDirectoryPath(dirname(item.sourcePath), dirname(path))) {
+    preservedPaths.push(path);
+    return {
+      active: true,
+      reason: 'Skill already lives at the native Codex skill location and remains user-owned.',
+    };
+  }
   const contents = `---\nname: ${JSON.stringify(name)}\ndescription: ${JSON.stringify(description)}\n---\n${body.endsWith('\n') ? body : `${body}\n`}`;
   let support = { ok: true, outputs: [] };
   if (!command) {
@@ -514,6 +517,17 @@ function lowerSkill(item, assets, names, { command = false, projectSkillsRoot, u
       ? 'Claude command lowered to a command-prefixed Codex skill invocation.'
       : 'Complete skill closure lowered to the native Codex skill location.',
   };
+}
+
+function sameDirectoryPath(left, right) {
+  const resolvedLeft = resolve(left);
+  const resolvedRight = resolve(right);
+  if (resolvedLeft === resolvedRight) return true;
+  try {
+    return realpathSync(resolvedLeft) === realpathSync(resolvedRight);
+  } catch {
+    return false;
+  }
 }
 
 function lowerMcp(item, config) {

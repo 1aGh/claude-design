@@ -14,6 +14,7 @@ const COMMANDS = {
   init: () => import('../commands/init.mjs'),
   config: () => import('../commands/config.mjs'),
   cache: () => import('../commands/cache.mjs'),
+  codex: () => import('../commands/codex.mjs'),
   preflight: () => import('../commands/preflight.mjs'),
   design: () => import('../commands/design.mjs'),
   'scenario-report': () => import('../commands/scenario-report.mjs'),

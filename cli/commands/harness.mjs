@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { realpathSync } from 'node:fs';
+import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { lstat, mkdir, readFile, stat } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { delimiter, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -288,6 +288,7 @@ async function project(context) {
     generationHash: sha256(`${baseIr.serialized}\n${JSON.stringify(overrideHashes)}`),
   };
   const outputs = [];
+  const preservedPaths = [];
   const reports = [];
   const observedVersions = {};
   for (const target of context.selectedTargets) {
@@ -331,9 +332,17 @@ async function project(context) {
     const scopedOutputs = selectScopedOutputs(target, context.scope.kind, lowered.outputs, layout);
     await validateOutputs(scopedOutputs);
     outputs.push(...scopedOutputs);
+    preservedPaths.push(...(lowered.preservedPaths ?? []));
     reports.push(lowered.report);
   }
-  return { ir, observedVersions, outputs: outputs.sort(byPath), overrideHashes, reports };
+  return {
+    ir,
+    observedVersions,
+    outputs: outputs.sort(byPath),
+    overrideHashes,
+    preservedPaths: [...new Set(preservedPaths)].sort(),
+    reports,
+  };
 }
 
 async function readTargetOverride(context, target) {
@@ -434,6 +443,9 @@ async function buildPreview(context, projection) {
   const changed = [];
   const conflicts = [];
   for (const output of projection.outputs) {
+    await assertAllowedPath(output.path, context.targetLayouts[output.metadata.target].allowRoots, {
+      allowMissingRoots: true,
+    });
     const prior = owned.get(output.path);
     const currentHash = await optionalHash(output.path);
     const desiredHash = sha256(output.contents);
@@ -442,7 +454,7 @@ async function buildPreview(context, projection) {
         path: output.path,
         reason: `managed output was externally modified: ${output.path}`,
       });
-    } else if (!prior && currentHash) {
+    } else if (!prior && currentHash && currentHash !== desiredHash) {
       conflicts.push({
         path: output.path,
         reason: `unmanaged target collision requires adoption: ${output.path}`,
@@ -455,6 +467,20 @@ async function buildPreview(context, projection) {
       });
     }
     owned.delete(output.path);
+  }
+  for (const path of projection.preservedPaths ?? []) {
+    const prior = owned.get(path);
+    if (!prior) continue;
+    const currentHash = await optionalHash(path);
+    if (currentHash !== prior.hash) {
+      conflicts.push({
+        path,
+        reason: `managed output became a native source after external modification: ${path}`,
+      });
+    } else {
+      changed.push({ action: 'release-ownership', path, target: prior.target });
+    }
+    owned.delete(path);
   }
   for (const stale of owned.values()) {
     if (context.selectedTargets.includes(stale.target)) {
@@ -477,9 +503,11 @@ async function commitProjection(context, projection) {
     (context.manifest?.outputs ?? []).map((output) => [output.path, output])
   );
   const requested = new Set(context.selectedTargets);
-  const transactionOutputs = projection.outputs.map((output) => {
+  const transactionOutputs = [];
+  for (const output of projection.outputs) {
     const prior = priorOutputs.get(output.path);
-    return {
+    if (!prior && (await optionalHash(output.path)) === sha256(output.contents)) continue;
+    transactionOutputs.push({
       ...output,
       expectedHash: prior?.hash,
       metadata: {
@@ -493,8 +521,8 @@ async function commitProjection(context, projection) {
             }
           : { ownership: 'generated' }),
       },
-    };
-  });
+    });
+  }
   for (const stale of priorOutputs.values()) {
     if (
       !requested.has(stale.target) ||
@@ -502,6 +530,7 @@ async function commitProjection(context, projection) {
     ) {
       continue;
     }
+    if ((projection.preservedPaths ?? []).includes(stale.path)) continue;
     transactionOutputs.push(
       stale.ownership === 'adopted'
         ? {
@@ -718,7 +747,7 @@ async function readAdoptedBackup(output, backupDir) {
   return bytes;
 }
 
-function assertDiagnosticOverrides(verb, scope) {
+function assertDiagnosticOverrides(verb, _scope) {
   const overrides = [
     process.env.MAUDE_HARNESS_SKIP_EXECUTABLE_PROOF === '1' &&
       'MAUDE_HARNESS_SKIP_EXECUTABLE_PROOF',
@@ -842,13 +871,40 @@ async function ensureTargetRoots(layouts) {
   }
 }
 
-function observeTargetVersion(target) {
+export function observeTargetVersion(target) {
   if (process.env.MAUDE_HARNESS_SKIP_EXECUTABLE_PROOF === '1') return null;
-  const executable = target === 'opencode' ? 'opencode' : 'codex';
-  const result = spawnSync(executable, ['--version'], { encoding: 'utf8', timeout: 10_000 });
-  if (result.error?.code === 'ENOENT') return null;
-  if (result.status !== 0) throw targetError(`${target} --version failed`);
-  return /\d+\.\d+\.\d+/.exec(`${result.stdout}\n${result.stderr}`)?.[0] ?? null;
+  const name = target === 'opencode' ? 'opencode' : 'codex';
+  const candidates = [
+    ...(target === 'codex' && process.env.MAUDE_CODEX_REAL ? [process.env.MAUDE_CODEX_REAL] : []),
+    ...String(process.env.PATH || '')
+      .split(delimiter)
+      .filter(Boolean)
+      .map((root) => join(root, name)),
+  ];
+  for (const candidate of new Set(candidates)) {
+    let executable;
+    try {
+      executable = realpathSync(candidate);
+      if (target === 'codex' && isMaudeCodexWrapper(executable)) continue;
+    } catch (error) {
+      if (error.code === 'ENOENT') continue;
+      throw error;
+    }
+    const result = spawnSync(executable, ['--version'], { encoding: 'utf8', timeout: 10_000 });
+    if (result.error?.code === 'ENOENT') continue;
+    if (result.status !== 0) throw targetError(`${target} --version failed`);
+    return /\d+\.\d+\.\d+/.exec(`${result.stdout}\n${result.stderr}`)?.[0] ?? null;
+  }
+  return null;
+}
+
+function isMaudeCodexWrapper(path) {
+  try {
+    if (statSync(path).size > 8192) return false;
+    return /\bexec\s+maude\s+codex\b/.test(readFileSync(path, 'utf8'));
+  } catch {
+    return false;
+  }
 }
 
 function targetEnvironment(context) {

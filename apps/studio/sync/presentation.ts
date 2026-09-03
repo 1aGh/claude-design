@@ -170,7 +170,26 @@ export function syncPresentation(
     status.startedAt > 0
       ? status.startedAt
       : null;
-  const stalled = (): SyncPresentation => {
+  /**
+   * @param credentialUnknown  Can an expired sign-in still be the cause?
+   *
+   * ONLY BLAME THE SIGN-IN WHEN THE SIGN-IN COULD BE THE PROBLEM (issue #118).
+   * This unconditionally told the person to reconnect the workspace because
+   * "the sign-in may have expired" — at call sites that have ALREADY proved
+   * `rejected === 0`, i.e. where the hub has refused exactly nothing and the
+   * credential is demonstrably fine. Naming a cause we have evidence against is
+   * worse than naming none: it sent the reporter to Resync, which re-handshakes
+   * every canvas against a hub that is not answering, times out the fresh
+   * monitor's grace window, and lands on `offline`. The product talked the
+   * person into making its own display worse.
+   *
+   * A rejection has its OWN branch (`phase: 'refused'`) and outranks this one,
+   * and it is the branch that may legitimately say "credential". Here we say
+   * what we actually know: the hub is not completing handshakes. Only the
+   * legacy no-`docs` payload, where refusals are unknowable, keeps the older
+   * hedge — and it is written as a possibility rather than a diagnosis.
+   */
+  const stalled = (credentialUnknown = false): SyncPresentation => {
     // `?? now` rather than a cast: every call site is behind `isStalled`, which
     // has already proved `startedAt` is a number — and a future one that isn't
     // reads "1 minute" instead of "NaN minutes".
@@ -180,7 +199,9 @@ export function syncPresentation(
       online: false,
       label: 'stalled',
       title: `Nothing has synced with ${project} in the ${min} minute${min === 1 ? '' : 's'} since Maude started trying.`,
-      next: 'Reconnect the workspace — the sign-in may have expired.',
+      next: credentialUnknown
+        ? 'Maude keeps retrying. If it persists, reconnect the workspace — the sign-in may have expired.'
+        : 'Maude keeps retrying — the workspace is reachable but is not completing handshakes.',
       names: [],
     };
   };
@@ -265,7 +286,9 @@ export function syncPresentation(
     // Pre-DDR-102 payload: `state` is all there is. Report it as the weaker
     // evidence it is, rather than promoting it to a document-level claim.
     const online = status.state === 'online' || status.flash === 'synced';
-    if (!online && isStalled) return stalled();
+    // Pre-DDR-102 payload — no per-document counts, so a refusal cannot be
+    // ruled out and the credential hedge stays.
+    if (!online && isStalled) return stalled(true);
     return {
       phase: online ? 'synced' : 'connecting',
       online,

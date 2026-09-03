@@ -90,6 +90,10 @@ COMMANDS
         adoption preview safely; use --yes only after reviewing the full diff.
         Run 'maude harness help' for targets, exit codes, and recovery details.
 
+  codex [--real <path>] [codex options]
+        Synchronize the trusted local Claude environment into Codex, then launch
+        the real Codex binary. Use 'maude codex sync --json' without launching.
+
   help              Print this help.
   version           Print the installed version.
 
@@ -112,6 +116,7 @@ EXAMPLES
   maude doctor --fix
   maude harness migrate --from claude --targets opencode,codex --project .
   maude harness check --targets opencode,codex --strict --project .
+  maude codex --real ~/.local/bin/codex
 
 NOTES
   'maude init' does mechanical scaffolding of .ai/ only.

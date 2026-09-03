@@ -1,6 +1,6 @@
 {
   "generated": "2026-08-26T00:00:00.000Z",
-  "version": "1.0.12",
+  "version": "1.1.0",
   "entries": [
     {
       "id": "comments-stop-duplicating",
@@ -19,6 +19,24 @@
       "title": "Synced canvases stop duplicating themselves",
       "summary": "On a project linked to a hub, a canvas could come back with its whole contents pasted onto itself — twice, sometimes more — which broke the build and left the canvas unopenable. It happened when two people (or your machine and the hub) first picked up the same canvas at the same moment. Maude now recognises that exact shape and collapses it back to one copy, on the styles as well as the body. Moving a canvas into another folder also fixes up its imports instead of breaking them.",
       "surface": "design-ui"
+    },
+    {
+      "date": null,
+      "id": "sync-recovers-after-the-workspace-sleeps",
+      "kind": "fix",
+      "summary": "If you left Maude alone for a while, your cloud workspace went to sleep and syncing quietly stopped — the indicator still said it was connected, and only pressing Resync got it moving again. Maude now notices when the connection has gone quiet, brings it back on its own, and only reports canvases as synced once they really are.",
+      "surface": "design-ui",
+      "title": "Sync comes back on its own",
+      "version": null
+    },
+    {
+      "date": null,
+      "id": "long-chats-no-longer-freeze",
+      "kind": "fix",
+      "summary": "In a project with a long chat history, Maude could slow to a crawl and stop responding for many minutes while using enormous amounts of memory — often needing a force-quit. Screenshots the agent took were being stored inside the chat history at full size, and every chat you opened re-read all of it. Chats now stay small and are read in fixed-size pieces, so a long history costs the same as a short one.",
+      "surface": "design-ui",
+      "title": "Long chats no longer freeze Maude",
+      "version": null
     },
     {
       "id": "canvas-media-plays-on-linux",

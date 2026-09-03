@@ -16,6 +16,8 @@ import {
 import { homedir } from 'node:os';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
+import { parse as parseToml } from '@decimalturn/toml-patch';
+
 import {
   HARNESS_MANIFEST_SCHEMA_VERSION,
   unsupportedManifestSchemaMessage,
@@ -534,20 +536,32 @@ export async function assertCanonicalPrivateScope(scopeDir, { create }) {
   return expected;
 }
 
-export async function assertAllowedPath(path, allowRoots, { mustExist = false } = {}) {
+export async function assertAllowedPath(
+  path,
+  allowRoots,
+  { allowMissingRoots = false, mustExist = false } = {}
+) {
   if (!isAbsolute(path)) throw new Error(`managed path must be absolute: ${path}`);
   if (!Array.isArray(allowRoots) || allowRoots.length === 0) {
     throw new Error('at least one allowlisted target root is required');
   }
   const candidate = resolve(path);
   let selectedRoot;
+  let validationRoot;
   for (const root of allowRoots) {
     const absoluteRoot = resolve(root);
-    const info = await lstat(absoluteRoot);
+    let info;
+    try {
+      info = await lstat(absoluteRoot);
+    } catch (error) {
+      if (error.code !== 'ENOENT' || !allowMissingRoots) throw error;
+      validationRoot = await nearestCanonicalDirectory(absoluteRoot);
+    }
     if (
-      info.isSymbolicLink() ||
-      !info.isDirectory() ||
-      (await realpath(absoluteRoot)) !== absoluteRoot
+      info &&
+      (info.isSymbolicLink() ||
+        !info.isDirectory() ||
+        (await realpath(absoluteRoot)) !== absoluteRoot)
     ) {
       throw new Error(`allowlisted target root is not a canonical directory: ${absoluteRoot}`);
     }
@@ -557,12 +571,32 @@ export async function assertAllowedPath(path, allowRoots, { mustExist = false } 
       (!nested.startsWith(`..${sep}`) && nested !== '..' && !isAbsolute(nested))
     ) {
       selectedRoot = absoluteRoot;
+      validationRoot ??= absoluteRoot;
       break;
     }
+    validationRoot = undefined;
   }
   if (!selectedRoot) throw new Error(`path is outside every allowlisted target root: ${candidate}`);
-  await rejectSymlinkSegments(selectedRoot, candidate, { mustExist });
+  await rejectSymlinkSegments(validationRoot, candidate, { mustExist });
   return candidate;
+}
+
+async function nearestCanonicalDirectory(path) {
+  let current = dirname(path);
+  while (true) {
+    try {
+      const info = await lstat(current);
+      if (info.isSymbolicLink() || !info.isDirectory() || (await realpath(current)) !== current) {
+        throw new Error(`allowlisted target ancestor is not a canonical directory: ${current}`);
+      }
+      return current;
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      const parent = dirname(current);
+      if (parent === current) throw error;
+      current = parent;
+    }
+  }
 }
 
 export async function ensureAllowedParent(path, allowRoots) {
@@ -1135,17 +1169,27 @@ function containsRawCredential(text, path) {
   return containsCredentialAssignment(text);
 }
 
-function containsCredentialValue(value, key = '') {
-  if (Array.isArray(value)) return value.some((entry) => containsCredentialValue(entry, key));
-  if (!value || typeof value !== 'object') {
-    return Boolean(classifyCredential(String(value), { key }));
+function containsCredentialValue(value, key = '', sensitiveKey = '') {
+  if (Array.isArray(value)) {
+    return value.some((entry) => containsCredentialValue(entry, key, sensitiveKey));
   }
-  return Object.entries(value).some(([nestedKey, nested]) =>
-    containsCredentialValue(nested, nestedKey)
-  );
+  if (!value || typeof value !== 'object') {
+    return Boolean(classifyCredential(String(value), { key: sensitiveKey || key }));
+  }
+  return Object.entries(value).some(([nestedKey, nested]) => {
+    const nestedSensitiveKey = classifyCredential('literal', { key: nestedKey })
+      ? nestedKey
+      : sensitiveKey;
+    return containsCredentialValue(nested, nestedKey, nestedSensitiveKey);
+  });
 }
 
 function containsTomlCredential(text) {
+  try {
+    return containsCredentialValue(parseToml(text));
+  } catch {
+    // Invalid TOML still receives conservative assignment scanning below.
+  }
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.replace(/\s+#.*$/, '').trim();
     if (!line || /^\[.*\]$/.test(line)) continue;

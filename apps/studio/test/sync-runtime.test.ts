@@ -385,6 +385,563 @@ describe('createSyncRuntime', () => {
     await runtime?.stop();
   });
 
+  // ── Issue #118 — a document that re-handshakes is synced again ──────────
+  //
+  // FAIL-FIRST SHAPE: revert `repromoteOnReconnect` in sync/index.ts and this
+  // goes red on the last assertion — `synced` stays 0 forever.
+  //
+  // What it guards: `noteDocState(slug,'connected')` had ONE call site, the
+  // post-handshake reconcile inside `connectCanvas`, which runs at attach /
+  // adopt / auth-re-probe and never again. A dropped socket demotes every
+  // connected document to `pending` (correctly — a document whose socket is
+  // gone is not synced), and nothing re-promoted it when the socket returned.
+  // The demotion was permanent for the life of the runtime: observed live on
+  // the reported project as `state:"online", docs:{synced:0,pending:85}`
+  // fifteen minutes after a boot whose own log line read `85/87 synced`.
+  test('a document demoted by a dropped socket is re-promoted when it returns', async () => {
+    const url = 'https://hub.example.com';
+    writeHubsConfig(url, 'mau_test');
+    const ctx = makeCtx({ url, linkedAt: 1 });
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'screen.html'), '<button>hi</button>');
+
+    let emitStatus: ((s: 'connected' | 'connecting' | 'disconnected') => void) | null = null;
+    const doc = new Y.Doc();
+    const factory = () => ({
+      document: doc,
+      onStatus(cb: (s: 'connected' | 'connecting' | 'disconnected') => void) {
+        emitStatus = cb;
+        return () => {
+          emitStatus = null;
+        };
+      },
+      // Resolves on every call — the real provider clears `synced` on close and
+      // sets it again after the next sync step, so a post-reconnect await is a
+      // fresh handshake, not a cached `true`.
+      async onceSynced() {},
+      destroy() {
+        doc.destroy();
+      },
+    });
+
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory });
+    await runtime?.start();
+
+    // `start()` resolves before the boot summary settles, so let the
+    // post-handshake reconcile land before reading the counts.
+    const settle = () => new Promise((r) => setTimeout(r, 0));
+    await settle();
+
+    // Boot: the handshake completed, so the document is synced.
+    emitStatus?.('connected');
+    expect(runtime?.status()?.docs?.synced).toBe(1);
+
+    // The socket drops — demotion is correct and deliberate.
+    emitStatus?.('disconnected');
+    expect(runtime?.status()?.docs?.synced).toBe(0);
+    expect(runtime?.status()?.docs?.pending).toBe(1);
+
+    // …and it comes back. THIS is the assertion the bug failed.
+    emitStatus?.('connected');
+    await settle();
+    expect(runtime?.status()?.docs?.synced).toBe(1);
+    expect(runtime?.status()?.docs?.pending).toBe(0);
+
+    await runtime?.stop();
+  });
+
+  // ── Issue #118 security remediation (2026-09-03 defender + attacker) ────
+  //
+  // These three are BEHAVIOURAL on purpose. The first cut of this fix shipped
+  // two source-regex pins in sync-status.test.ts, and both review seats made
+  // the same point: a grep over `index.ts` stays green through every one of the
+  // four HIGH findings below. A test that cannot fail on the bug is not a gate.
+
+  // F3 (attacker) — refusal laundering. `handleAuthFailure` files `generic` and
+  // `rate-limit` NOWHERE but the monitor: they never enter `rejectedPermanent`.
+  // Guarding the re-promotion on that map therefore let a transient refusal —
+  // `permission-denied`, what every pre-DDR-102 hub sends — be overwritten with
+  // `connected` while the hub was dropping the document's writes.
+  // FAIL-FIRST: revert BOTH halves of the fix — the `rejectedAny` guard back to
+  // `rejectedPermanent` AND the single `noteSyncActivity` back to the original
+  // `noteDocState(slug,'connected')` pair — and this goes red. Reverting the
+  // guard ALONE leaves it green, and that is a fact worth recording rather than
+  // hiding: `noteSyncActivity` refuses to resurrect an `auth-rejected` document
+  // on its own, so the two changes are independent layers over the same hole.
+  // Neither is redundant — the guard also stops us waiting on, and stamping the
+  // clock for, a document the hub has already refused.
+  test('a transient refusal landing mid-handshake is NOT laundered into synced', async () => {
+    const url = 'https://hub.example.com';
+    writeHubsConfig(url, 'mau_test');
+    const ctx = makeCtx({ url, linkedAt: 1 });
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'screen.html'), '<button>hi</button>');
+
+    let emitStatus: ((s: 'connected' | 'connecting' | 'disconnected') => void) | null = null;
+    let failAuth: ((info: { reason: string }) => void) | null = null;
+    let releaseSynced: (() => void) | null = null;
+    let booted = false;
+    const doc = new Y.Doc();
+    const factory = () => ({
+      document: doc,
+      onStatus(cb: (s: 'connected' | 'connecting' | 'disconnected') => void) {
+        emitStatus = cb;
+        return () => {};
+      },
+      onAuthFailed(cb: (info: { reason: string }) => void) {
+        failAuth = cb;
+        return () => {};
+      },
+      // Boot resolves immediately; every later handshake is held open so the
+      // test can land a refusal INSIDE the await window.
+      onceSynced() {
+        if (!booted) {
+          booted = true;
+          return Promise.resolve();
+        }
+        return new Promise<void>((r) => {
+          releaseSynced = r;
+        });
+      },
+      destroy() {},
+    });
+
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory });
+    await runtime?.start();
+    const settle = () => new Promise((r) => setTimeout(r, 0));
+    await settle();
+    emitStatus?.('connected');
+    expect(runtime?.status()?.docs?.synced).toBe(1);
+
+    // Drop, then reconnect — the re-promotion is now parked on the handshake.
+    emitStatus?.('disconnected');
+    emitStatus?.('connected');
+    await settle();
+
+    // The hub refuses, in a TRANSIENT class, while we wait.
+    failAuth?.({ reason: 'permission-denied' });
+    await settle();
+    expect(runtime?.status()?.docs?.rejected).toBe(1);
+
+    // Now let the handshake land. It must NOT overwrite the refusal.
+    releaseSynced?.();
+    await settle();
+    await settle();
+    const after = runtime?.status();
+    expect(after?.docs?.rejected).toBe(1);
+    expect(after?.docs?.synced).toBe(0);
+
+    await runtime?.stop();
+  });
+
+  // F4 (attacker) — the single-flight latch. `provider.destroy()` emits
+  // `destroy`, never `synced`, so an unbounded `await onceSynced()` never
+  // settles, `finally` never runs, and the slug stays latched forever: issue
+  // #118 recreated per-document, permanently, by its own fix.
+  // FAIL-FIRST: drop `settleWait` around the await → red (times out latched).
+  test('a handshake that never settles does not latch the slug forever', async () => {
+    const url = 'https://hub.example.com';
+    writeHubsConfig(url, 'mau_test');
+    const ctx = makeCtx({ url, linkedAt: 1 });
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'screen.html'), '<button>hi</button>');
+
+    let emitStatus: ((s: 'connected' | 'connecting' | 'disconnected') => void) | null = null;
+    let booted = false;
+    let hang = true;
+    const doc = new Y.Doc();
+    const factory = () => ({
+      document: doc,
+      onStatus(cb: (s: 'connected' | 'connecting' | 'disconnected') => void) {
+        emitStatus = cb;
+        return () => {};
+      },
+      onceSynced() {
+        if (!booted) {
+          booted = true;
+          return Promise.resolve();
+        }
+        // First reconnect hangs forever; later ones resolve.
+        if (hang) {
+          hang = false;
+          return new Promise<void>(() => {});
+        }
+        return Promise.resolve();
+      },
+      destroy() {},
+    });
+
+    // A short settle ceiling so the hung await is abandoned inside the test.
+    const runtime = createSyncRuntime(ctx, {
+      providerFactory: factory,
+      auth: { settleTimeoutMs: 20 },
+    });
+    await runtime?.start();
+    const settle = () => new Promise((r) => setTimeout(r, 0));
+    await settle();
+    emitStatus?.('connected');
+
+    // Reconnect #1 — parks on a handshake that will never come.
+    emitStatus?.('disconnected');
+    emitStatus?.('connected');
+    await new Promise((r) => setTimeout(r, 60));
+    expect(runtime?.status()?.docs?.synced).toBe(0);
+
+    // Reconnect #2 — must NOT be swallowed by a stale latch.
+    emitStatus?.('disconnected');
+    emitStatus?.('connected');
+    await settle();
+    await settle();
+    expect(runtime?.status()?.docs?.synced).toBe(1);
+
+    await runtime?.stop();
+  });
+
+  // N1 (verification review, HIGH) — the remediation for F1 introduced this,
+  // and it is the sharpest lesson of the whole exercise: `reconnect()` first
+  // CALLED `socket.onClose(...)`, which emits `status` and `disconnect` but
+  // never `close`. Providers learn about a drop only through the `close` EVENT
+  // (`websocketProvider.on('close', boundOnClose)` → `provider.synced = false`),
+  // so every provider kept `synced === true` across the forced reconnect, and
+  // `onceSynced()` — which short-circuits on that field — resolved instantly for
+  // every document against a socket that had completed no handshake. The
+  // recovery would have manufactured a fully-synced display out of nothing and
+  // then disarmed the watchdog through its own `docs.synced > 0` guard.
+  //
+  // This test models the EMITTER rather than mirroring our own call shape — the
+  // F1 test below cannot see N1 precisely because its fake has no emitter.
+  // FAIL-FIRST: change the emit back to `socket.onClose({...})` → red.
+  test('a forced reconnect resets every provider, so nothing is synced without a fresh handshake', async () => {
+    const listeners = new Map<string, Array<(arg: unknown) => void>>();
+    const socket = {
+      status: 'connected',
+      shouldConnect: true,
+      on(evt: string, cb: (arg: unknown) => void) {
+        if (!listeners.has(evt)) listeners.set(evt, []);
+        listeners.get(evt)?.push(cb);
+      },
+      off() {},
+      emit(evt: string, arg: unknown) {
+        for (const cb of listeners.get(evt) ?? []) cb(arg);
+      },
+      // The library's own ctor wiring: the close EVENT runs this.
+      onClose() {
+        socket.status = 'disconnected';
+      },
+      disconnect() {
+        socket.shouldConnect = false;
+      },
+      connect() {
+        return Promise.resolve();
+      },
+      destroy() {},
+    };
+    socket.on('close', () => socket.onClose());
+
+    // A provider that behaves like HocuspocusProvider: `synced` is reset ONLY
+    // by the close event, and `attach()` registers that listener.
+    const made: Array<{ synced: boolean }> = [];
+    const { createDefaultProviderFactory } = await import('../sync/index.ts');
+    const factory = createDefaultProviderFactory(async () => ({
+      HocuspocusProviderWebsocket: function () {
+        return socket;
+      } as unknown as new () => unknown,
+      HocuspocusProvider: function (this: Record<string, unknown>) {
+        const self = { synced: true, document: new Y.Doc() };
+        made.push(self);
+        return {
+          ...self,
+          get synced() {
+            return self.synced;
+          },
+          attach() {
+            socket.on('close', () => {
+              self.synced = false;
+            });
+          },
+          on() {},
+          off() {},
+          destroy() {},
+        };
+      } as unknown as new () => unknown,
+    }));
+    await factory({ url: 'https://hub.example.com', token: 't', documentName: 'd' });
+    expect(made[0]?.synced).toBe(true);
+
+    factory.reconnect();
+
+    // The provider must have been told. If it was not, `onceSynced()` would
+    // resolve instantly and report a handshake that never happened.
+    expect(made[0]?.synced).toBe(false);
+    // …and the socket's own cleanup still ran, so the re-arm path is intact.
+    expect(socket.status).toBe('disconnected');
+    expect(socket.shouldConnect).toBe(true);
+  });
+
+  // NEW-3 / N4 (round-3 verification) — the stall watchdog had NO behavioural
+  // coverage: it required the OWNED factory (so every test's injected one made
+  // it a silent no-op) and real wall-clock minutes. Three review rounds each
+  // found a HIGH inside this function and none of them could have been caught
+  // by a test. These two drive it through an injected clock and factory.
+  const stallCtx = () => {
+    const url = 'https://hub.example.com';
+    writeHubsConfig(url, 'mau_test');
+    const ctx = makeCtx({ url, linkedAt: 1 });
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'screen.html'), '<button>hi</button>');
+    return ctx;
+  };
+  // A provider whose handshake NEVER lands: the document stays `pending` while
+  // the socket reports connected — the half-open case the watchdog exists for.
+  const stallFactory = (emit: { cb: ((s: 'connected' | 'disconnected') => void) | null }) => {
+    const doc = new Y.Doc();
+    return () => ({
+      document: doc,
+      onStatus(cb: (s: 'connected' | 'connecting' | 'disconnected') => void) {
+        emit.cb = cb;
+        return () => {};
+      },
+      onceSynced() {
+        return new Promise<void>(() => {});
+      },
+      destroy() {},
+    });
+  };
+
+  test('the stall watchdog forces a reconnect when the socket is up and nothing syncs', async () => {
+    const ctx = stallCtx();
+    const emit: { cb: ((s: 'connected' | 'disconnected') => void) | null } = { cb: null };
+    let now = 1_000_000;
+    let reconnects = 0;
+    const factory = Object.assign(stallFactory(emit), { reconnect: () => reconnects++ });
+
+    const runtime = createSyncRuntime(ctx, {
+      providerFactory: factory,
+      stall: { checkMs: 5, afterMs: 60_000, minMs: 300_000, jitterMs: 0, now: () => now },
+    });
+    await runtime?.start();
+    emit.cb?.('connected');
+
+    const snap = runtime?.status();
+    expect(snap?.state).toBe('online');
+    expect(snap?.docs?.synced).toBe(0);
+    expect(snap?.docs?.pending).toBe(1);
+
+    // Not yet — a handshake gets its moment.
+    await new Promise((r) => setTimeout(r, 20));
+    expect(reconnects).toBe(0);
+
+    // Past the threshold: exactly one forced reconnect, and the floor holds.
+    now += 61_000;
+    await new Promise((r) => setTimeout(r, 30));
+    expect(reconnects).toBe(1);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(reconnects).toBe(1);
+
+    // The floor DOUBLED the moment the first one fired (5 → 10 min), so the
+    // base minimum is no longer enough — this is the anti-storm property.
+    now += 301_000;
+    await new Promise((r) => setTimeout(r, 30));
+    expect(reconnects).toBe(1);
+
+    // Past the doubled floor: the second fires, and the floor doubles again
+    // (→ 20 min), so the same advance must not buy a third.
+    now += 301_000;
+    await new Promise((r) => setTimeout(r, 30));
+    expect(reconnects).toBe(2);
+    now += 601_000;
+    await new Promise((r) => setTimeout(r, 30));
+    expect(reconnects).toBe(2);
+
+    await runtime?.stop();
+  });
+
+  test('the watchdog stands down when ANY document is refused — that is the auth lane', async () => {
+    // Two canvases on purpose: one refused, one still pending. With a single
+    // refused doc `pending === 0` already short-circuits, so the test would
+    // pass without the `rejected > 0` clause it is meant to pin.
+    const url = 'https://hub.example.com';
+    writeHubsConfig(url, 'mau_test');
+    const ctx = makeCtx({ url, linkedAt: 1 });
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'screen.html'), '<button>a</button>');
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'other.html'), '<button>b</button>');
+
+    const cbs: Array<(s: 'connected' | 'disconnected') => void> = [];
+    let now = 1_000_000;
+    let reconnects = 0;
+    const factory = Object.assign(
+      (args: { documentName: string }) => {
+        const doc = new Y.Doc();
+        const refused = args.documentName.includes('screen');
+        return {
+          document: doc,
+          onStatus(cb: (s: 'connected' | 'connecting' | 'disconnected') => void) {
+            cbs.push(cb);
+            return () => {};
+          },
+          onAuthFailed(cb: (info: { reason: string }) => void) {
+            if (refused) setTimeout(() => cb({ reason: 'not authorized' }), 0);
+            return () => {};
+          },
+          onceSynced() {
+            return new Promise<void>(() => {});
+          },
+          destroy() {},
+        };
+      },
+      { reconnect: () => reconnects++ }
+    );
+
+    const runtime = createSyncRuntime(ctx, {
+      providerFactory: factory,
+      stall: { checkMs: 5, afterMs: 60_000, minMs: 300_000, jitterMs: 0, now: () => now },
+    });
+    await runtime?.start();
+    for (const cb of cbs) cb('connected');
+    await new Promise((r) => setTimeout(r, 20));
+
+    const snap = runtime?.status();
+    expect(snap?.docs?.rejected).toBe(1);
+    expect(snap?.docs?.pending).toBe(1);
+    expect(snap?.docs?.synced).toBe(0);
+
+    now += 600_000;
+    await new Promise((r) => setTimeout(r, 30));
+    expect(reconnects).toBe(0);
+
+    await runtime?.stop();
+  });
+
+  // NEW-1 (round-3 verification, HIGH) — the LIBRARY makes the same mistake we
+  // did. `checkConnection()`'s force-close branch CALLS `this.onClose(...)`
+  // directly (and `cleanupWebSocket` has already detached the raw handlers), so
+  // no `close` event is emitted, no provider's `boundOnClose` runs, and every
+  // provider keeps `synced === true` through the teardown. `onceSynced()`
+  // short-circuits on that field, so the re-promotion would report a handshake
+  // that never happened — for every document — and then disarm the watchdog via
+  // its own `docs.synced > 0` guard. Reached by exactly the #118 scenario: a
+  // link that was healthy and then went quiet for 30 s.
+  // FAIL-FIRST: drop the `resetSyncedOnDrop` status watcher → red.
+  test('a status drop clears the handshake flag even when no close event is raised', async () => {
+    const statusCbs: Array<(a: unknown) => void> = [];
+    const socket = {
+      status: 'connected',
+      on(evt: string, cb: (a: unknown) => void) {
+        if (evt === 'status') statusCbs.push(cb);
+      },
+      off(evt: string, cb: (a: unknown) => void) {
+        if (evt !== 'status') return;
+        const i = statusCbs.indexOf(cb);
+        if (i >= 0) statusCbs.splice(i, 1);
+      },
+      emit() {},
+      // The library's force-close: emits `status`, never `close`.
+      forceClose() {
+        socket.status = 'disconnected';
+        for (const cb of [...statusCbs]) cb({ status: 'disconnected' });
+      },
+      destroy() {},
+    };
+    const self = { isSynced: true };
+    const { createDefaultProviderFactory } = await import('../sync/index.ts');
+    const factory = createDefaultProviderFactory(async () => ({
+      HocuspocusProviderWebsocket: function () {
+        return socket;
+      } as unknown as new () => unknown,
+      HocuspocusProvider: function () {
+        return {
+          document: new Y.Doc(),
+          attach() {},
+          on() {},
+          off() {},
+          destroy() {},
+          get synced() {
+            return self.isSynced;
+          },
+          // Mirrors the library setter: emits only on true, no-op if unchanged.
+          set synced(v: boolean) {
+            if (self.isSynced === v) return;
+            self.isSynced = v;
+          },
+        };
+      } as unknown as new () => unknown,
+    }));
+    const wrapped = await factory({
+      url: 'https://hub.example.com',
+      token: 't',
+      documentName: 'd',
+    });
+    expect(self.isSynced).toBe(true);
+
+    // The library tears the socket down WITHOUT a close event.
+    socket.forceClose();
+
+    // If the flag survived, onceSynced() would resolve instantly and the
+    // re-promotion would invent a handshake for every document.
+    expect(self.isSynced).toBe(false);
+
+    wrapped.destroy();
+    expect(statusCbs).toHaveLength(0);
+  });
+
+  // F1 (both seats, Critical) — `reconnect()` must not wedge the socket shut.
+  // `disconnect()` clears `shouldConnect` without touching `status`, and
+  // `connect()` early-returns on `status === Connected` BEFORE restoring it —
+  // so the pair left the link permanently dead in exactly the state the
+  // watchdog fires from. FAIL-FIRST: restore disconnect()+connect() → red.
+  test('factory reconnect drives the close path and leaves the socket re-arming', async () => {
+    const calls: string[] = [];
+    class FakeSocket {
+      status = 'connected';
+      shouldConnect = true;
+      webSocket: { close(): void } | null = { close: () => calls.push('ws.close') };
+      handlers: Array<(a: unknown) => void> = [];
+      on(evt: string, cb: (a: unknown) => void) {
+        if (evt === 'close') this.handlers.push(cb);
+      }
+      off() {}
+      emit(evt: string, arg: unknown) {
+        if (evt !== 'close') return;
+        calls.push('emit:close');
+        // The library ctor wires the close EVENT to its own handler.
+        for (const cb of this.handlers) cb(arg);
+        this.onClose(arg);
+      }
+      disconnect() {
+        calls.push('disconnect');
+        this.shouldConnect = false;
+      }
+      connect() {
+        calls.push('connect');
+        if (this.status === 'connected') return Promise.resolve();
+        this.shouldConnect = true;
+        return Promise.resolve();
+      }
+      onClose(_arg: unknown) {
+        calls.push('onClose');
+        this.webSocket = null;
+        this.status = 'disconnected';
+        // The library re-arms here iff shouldConnect survived.
+        if (this.shouldConnect) calls.push('rearmed');
+      }
+      destroy() {}
+    }
+    const socket = new FakeSocket();
+    const { createDefaultProviderFactory } = await import('../sync/index.ts');
+    const factory = createDefaultProviderFactory(async () => ({
+      HocuspocusProviderWebsocket: function () {
+        return socket;
+      } as unknown as new () => unknown,
+      HocuspocusProvider: function () {
+        return { document: new Y.Doc(), attach() {}, on() {}, off() {}, destroy() {} };
+      } as unknown as new () => unknown,
+    }));
+    await factory({ url: 'https://hub.example.com', token: 't', documentName: 'd' });
+
+    factory.reconnect();
+
+    // The socket must still WANT to be connected — that is the whole bug.
+    expect(socket.shouldConnect).toBe(true);
+    expect(calls).toContain('rearmed');
+    expect(calls).not.toContain('disconnect');
+  });
+
   test('writes _sync.json on a clean fast connect (regression: status must not read "idle" while sync is healthy)', async () => {
     const url = 'https://hub.example.com';
     writeHubsConfig(url, 'mau_test');

@@ -100,6 +100,7 @@ back to prose parsing (degraded mode).
 | `attachments.*` | ✅ | counts/flags of what the user consented to send |
 | `logs.serverLogTail` | opt-in | ≤ 200 lines, **already scrubbed server-side** (see below) |
 | `logs.crashLogs[]` | opt-in | desktop only; scrubbed `crash-*.log` bodies, max 3 |
+| `process.*` | opt-in | server `rssBytes` / `heapUsedBytes` / `uptimeSeconds`. Three integers, no paths or content, so it is **public** like every non-`logs` field. Rides the log-tail checkbox rather than its own (invariant 1) — it is diagnostics of the same kind and is only meaningful next to the tail. Added after issue #119 arrived as a RAM figure read off Activity Monitor with nothing in the report to confirm it. |
 
 `logs.*` travel in the POST body but are **stripped from the public issue's
 JSON block** — the worker writes them to `media/<yyyy-mm>/<id>-logs.txt` in the
@@ -108,7 +109,10 @@ private media repo and links that file from the issue instead.
 ## Privacy invariants (enforced upstream, asserted by consumers)
 
 1. Nothing in the payload is collected without the consent screen; every
-   optional field has its own checkbox in the dialog.
+   optional field has its own checkbox in the dialog — with one documented
+   exception: `process.*` shares the `logs.serverLogTail` checkbox (whose label
+   names it explicitly), because the two are one diagnostic and splitting them
+   would add a checkbox for three integers.
 2. `logs.*` values pass through the deterministic scrubber
    (`apps/studio/debug-bundle.ts` `scrub()`): home dirs → `~`, repo-absolute
    paths → `<project>/…`, token/bearer/key material → `[redacted]`,

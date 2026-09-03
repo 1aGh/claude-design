@@ -8,7 +8,6 @@
 // (env.ts): the child inherits the environment MINUS `ANTHROPIC_API_KEY`, so
 // auth precedence falls through to the user's Pro/Max subscription.
 
-import { readFileSync } from 'node:fs';
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
@@ -32,6 +31,7 @@ import {
 import { scrubAgentEnv } from './env.ts';
 import type { SdkPluginConfig } from './plugin-bootstrap.ts';
 import { resolveAdapterEntry, resolveAgentRuntime, resolveClaudePath } from './probe.ts';
+import { countTranscriptLinesAt, stripInlineBlobs } from './transcript-io.ts';
 import {
   isWriteToolName,
   looksLikeWriteToolCall,
@@ -207,18 +207,16 @@ type Spawned = ReturnType<typeof Bun.spawn>;
 const VALID_SESSION_ID = /^[A-Za-z0-9_-]{1,128}$/;
 
 /** Raw non-empty line count of a transcript file — the re-attach seam's seed.
- *  Deliberately duplicated from `transcript.ts`'s `chatTranscriptSeq` rather
- *  than imported: importing would pull the transcript READER (and its
- *  designRoot/chatId path convention) into the bridge, which knows only an
- *  absolute file path. The two MUST count identically — raw non-empty lines,
- *  never parsed lines, since a corrupt line would otherwise shift every later
- *  seq and permanently desync the seam. */
+ *  Delegates to the ONE shared implementation in `transcript-io.ts`, which
+ *  `transcript.ts`'s `chatTranscriptSeq` also calls. These two counters MUST
+ *  agree — a disagreement shifts every later seq and permanently desyncs the
+ *  seam — and until #119 they were two hand-copied bodies kept in step only by
+ *  a comment. `transcript-io.ts` takes an absolute path and nothing else, so
+ *  sharing it does NOT drag the reader's designRoot/chatId path convention into
+ *  the bridge (the original reason for the duplication). It also counts in
+ *  bounded chunks rather than materializing a multi-hundred-MB file. */
 function countTranscriptLines(path: string): number {
-  try {
-    return readFileSync(path, 'utf8').split('\n').filter(Boolean).length;
-  } catch {
-    return 0; // no transcript yet — first turn of this chat
-  }
+  return countTranscriptLinesAt(path);
 }
 
 // `loadSession`'s replay can, in principle, never settle if the underlying
@@ -1760,7 +1758,14 @@ export class AcpBridge {
     if (claimedSeq === undefined) this.transcriptLines += 1;
     try {
       await mkdir(dirname(path), { recursive: true });
-      await appendFile(path, `${JSON.stringify({ ts: Date.now(), ...entry })}\n`);
+      // #119 — elide inline binary payloads (base64 image/audio `data`, `data:`
+      // URIs) before they reach disk. A tool result carrying a screenshot was
+      // persisted verbatim at up to 1.36 MB PER LINE, and nothing ever read it
+      // back: `readChatMessages` projects a tool call down to its name and
+      // done-flag. In a screenshot-heavy design project that was 66–76% of the
+      // transcript's bytes. Prose, tool arguments and file contents are NOT
+      // touched — those are the audit record of what steered the agent.
+      await appendFile(path, `${JSON.stringify(stripInlineBlobs({ ts: Date.now(), ...entry }))}\n`);
     } catch {
       /* transcript is best-effort; never block the chat on disk errors */
     }

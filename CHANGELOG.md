@@ -1,5 +1,11 @@
 # @1agh/maude
 
+## 1.1.0
+
+### Minor Changes
+
+- 3216371: Add the `maude harness` environment projector for managed, fail-closed OpenCode and Codex configuration.
+
 ## 1.0.11
 
 ### Patch Changes

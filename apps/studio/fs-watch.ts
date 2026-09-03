@@ -15,6 +15,34 @@ export interface FsWatch {
 
 const DEBOUNCE_MS = 50;
 
+/**
+ * Runtime-state DIRECTORIES with no `fs:any` subscriber — see the note at the
+ * skip site for why this is deliberately NOT the sync taxonomy.
+ *
+ * `_comments/`, `_canvas-state/` and `_state/` are POINTEDLY absent: the first
+ * drives comment collab, and the other two are small and per-user, so there is
+ * no volume argument for suppressing them and a real risk in guessing. Add to
+ * this list only after confirming no `bus.on('fs:any' | 'fs:json' | …)`
+ * subscriber acts on the path.
+ */
+const RUNTIME_DIRS = ['_history', '_chat', '_trash', '_smoke'] as const;
+
+/**
+ * True when `rel` is one of `RUNTIME_DIRS` or a path inside one, on either
+ * separator (`fs.watch` hands back platform-native separators on Windows).
+ *
+ * Matching the BARE directory name is load-bearing, not tidiness: macOS raises
+ * an event for the containing directory as well as the file, so a write to
+ * `_chat/c-1.jsonl` arrives as BOTH `_chat/c-1.jsonl` and a bare `_chat`.
+ * Suppressing only the prefixed form would leave every streamed ACP update
+ * still waking every `fs:any` subscriber — the wakeup this list exists to stop.
+ */
+function isUnderRuntimeDir(rel: string): boolean {
+  return RUNTIME_DIRS.some(
+    (d) => rel === d || rel.startsWith(`${d}/`) || rel.startsWith(`${d}${path.sep}`)
+  );
+}
+
 export function createFsWatch(ctx: Context): FsWatch {
   let watcher: ReturnType<typeof watch> | null = null;
   const seen = new Map<string, number>();
@@ -48,10 +76,26 @@ export function createFsWatch(ctx: Context): FsWatch {
       watcher = watch(ctx.paths.designRoot, { recursive: true }, (_event, filename) => {
         if (!filename) return;
         // Skip our own runtime artifacts.
+        //
+        // NOT `isRuntimeStateRel` (sync/file-membership.ts), even though this
+        // list looks like a narrower copy of it. That classifier answers "may
+        // this file travel to a peer", and it excludes `_comments/` — but
+        // `_comments/` IS needed on this bus: collab/index.ts matches
+        // `^_comments/(.+)\.json$` on `fs:any`, and git/watch.ts treats it as
+        // versionable. Routing this list through the sync taxonomy would
+        // silently kill comment collaboration. The two lists answer different
+        // questions and are deliberately not the same list.
+        //
+        // What IS added here (#119) are the high-volume runtime directories
+        // with no `fs:any` subscriber. `_chat/` matters most: the bridge
+        // appends to it on every streamed update, so each chunk of an agent
+        // turn was raising an `fs:any` that woke canvas-list-watch, the
+        // activity tracker and gitWatch (the last running git status against
+        // the project's whole repo) for a file none of them can act on.
         if (filename.startsWith('_server.json')) return;
         if (filename.startsWith('_active.json')) return;
         if (filename.startsWith('_sync.json')) return;
-        if (filename.startsWith(`_history${path.sep}`) || filename.startsWith('_history/')) return;
+        if (isUnderRuntimeDir(filename)) return;
         emit(filename);
       });
     } catch (err) {

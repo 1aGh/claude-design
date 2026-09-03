@@ -310,7 +310,21 @@ export function createConnectionMonitor(opts: ConnectionMonitorOptions = {}): Co
     const wasOffline = state === 'offline' || state === 'offline-long';
     clearAllTimers();
     state = 'online';
-    lastSyncAt = now();
+    // NOT `lastSyncAt = now()`.
+    //
+    // A SOCKET TRANSITION IS NOT A SYNC. This line used to stamp the
+    // last-synced clock from the WS coming back — an event that, by itself,
+    // has moved no document and settled no handshake. The field's own contract
+    // one screen up already says otherwise ("updated on REAL sync activity
+    // (noteSyncActivity), not just on offline→online transitions"); the code
+    // simply did not honour it.
+    //
+    // It was not a cosmetic drift. Live on the reported project (issue #118):
+    // `state:"online", docs:{synced:0,pending:85}` with `lastSyncAt` refreshed
+    // to the exact millisecond of that transition — so the one number a reader
+    // could have used to notice that nothing had synced in 15 minutes was
+    // being refreshed BY the failure. `noteSyncActivity` is the only honest
+    // source, and it is now the only one.
     offlineSince = null;
     queuedOps = 0;
     if (wasOffline) {

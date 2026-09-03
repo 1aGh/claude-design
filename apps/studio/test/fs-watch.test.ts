@@ -38,4 +38,63 @@ describe('fs-watch.ts', () => {
       process.argv = origArgv;
     }
   });
+
+  // #119 — the bridge appends to `_chat/` on every streamed update, so each
+  // chunk of an agent turn used to raise an `fs:any` that woke
+  // canvas-list-watch, the activity tracker and gitWatch (running git status
+  // against the whole repo) for a file none of them can act on.
+  test('suppresses high-volume runtime dirs but KEEPS _comments (collab needs it)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mdcc-fswatch-'));
+    mkdirSync(join(root, '.design', '_chat'), { recursive: true });
+    mkdirSync(join(root, '.design', '_trash'), { recursive: true });
+    mkdirSync(join(root, '.design', '_comments'), { recursive: true });
+    mkdirSync(join(root, '.design', 'ui'), { recursive: true });
+    writeFileSync(join(root, '.design', 'config.json'), '{"name":"t"}');
+
+    const origArgv = process.argv;
+    process.argv = [...origArgv, '--root', root];
+    let watch: ReturnType<typeof createFsWatch> | null = null;
+    try {
+      const ctx = createContext();
+      watch = createFsWatch(ctx);
+      const seen: string[] = [];
+      ctx.bus.on('fs:any', (file) => seen.push(String(file)));
+      watch.start();
+      await Bun.sleep(80);
+
+      writeFileSync(join(root, '.design', '_chat', 'c-1.jsonl'), '{"ts":1}\n');
+      writeFileSync(join(root, '.design', '_trash', 'gone.tsx'), 'x');
+      writeFileSync(join(root, '.design', '_comments', 'ui-Pricing.json'), '[]');
+      writeFileSync(join(root, '.design', 'ui', 'Real.tsx'), 'x');
+
+      // Wait for the events that MUST arrive rather than for a fixed delay —
+      // a machine under parallel test load misses a flat 300 ms and turns this
+      // into a phantom failure. Once both expected events have landed, any
+      // suppressed sibling written in the same batch has had at least as long
+      // to arrive, so the negative assertions below are meaningful.
+      const deadline = Date.now() + 5000;
+      while (
+        Date.now() < deadline &&
+        !(seen.some((f) => f.endsWith('Real.tsx')) && seen.some((f) => f.includes('_comments')))
+      ) {
+        await Bun.sleep(25);
+      }
+      await Bun.sleep(150); // grace for a straggler we would want to CATCH
+
+      // Neither the file event NOR the bare-directory event macOS raises
+      // alongside it: the directory form is what actually reached subscribers
+      // on every streamed ACP append.
+      expect(seen.filter((f) => f.includes('_chat'))).toEqual([]);
+      expect(seen.filter((f) => f.includes('_trash'))).toEqual([]);
+      // POINTEDLY still emitted: collab/index.ts matches `^_comments/…\.json$`
+      // on this bus, and git/watch.ts treats it as versionable. Routing this
+      // skip list through the sync runtime-state taxonomy (which DOES exclude
+      // `_comments/`) would silently kill comment collaboration.
+      expect(seen.some((f) => f.includes('_comments'))).toBe(true);
+      expect(seen.some((f) => f.endsWith('Real.tsx'))).toBe(true);
+    } finally {
+      watch?.stop();
+      process.argv = origArgv;
+    }
+  });
 });

@@ -94,8 +94,19 @@ export interface SyncProvider {
    * the bridge.
    */
   readonly awareness?: Awareness;
-  /** Resolves when the first hub sync handshake completes. */
-  onceSynced(): Promise<void>;
+  /**
+   * Resolves when the first hub sync handshake completes.
+   *
+   * `signal` lets a caller that gives up ALSO detach the underlying listener.
+   * Without it, every abandoned wait leaks a `synced` listener plus its closure
+   * for the life of the provider — bounded at one per slug while a wedged
+   * single-flight latch kept the caller from retrying, and UNBOUNDED the moment
+   * that latch was correctly fixed to release (verification review 2026-09-03,
+   * N2): one per slug per settle window per flap, all firing at once if a sync
+   * ever lands. Optional, so a test stub or a provider without the plumbing is
+   * unaffected.
+   */
+  onceSynced(signal?: AbortSignal): Promise<void>;
   /**
    * Subscribe to WS connection-status transitions (Phase 9 Task 8 offline
    * mode). Returns an unsubscribe fn. Optional — a test stub or a provider
@@ -166,6 +177,41 @@ export const DISCOVERY_DEBOUNCE_MS = 400;
  * and it is the ONLY discovery lane a hub of any version can serve.
  */
 export const REMOTE_POLL_MS = 20_000;
+/** How often the stall watchdog looks (issue #118). Cheap — one snapshot. */
+export const STALL_CHECK_MS = 30_000;
+/**
+ * "Socket connected, not one document synced" for this long is a stall, not a
+ * slow handshake. Comfortably above a cold cell's worst observed wake (a
+ * measured `/health` on a sleeping cell answered in 14 s) and above the boot
+ * settle ceiling, so a healthy-but-slow link is never interrupted.
+ */
+export const STALL_RECONNECT_AFTER_MS = 3 * 60 * 1000;
+/** Floor between watchdog-forced reconnects — a hub that is simply down must
+ *  not be turned into a reconnect storm by its own silence. */
+export const STALL_RECONNECT_MIN_MS = 5 * 60 * 1000;
+/**
+ * Per-ATTEMPT deadline for the shared hub socket.
+ *
+ * The provider defaults to `timeout: 0` — no deadline at all — and its retry
+ * attempt resolves only on the first MESSAGE. A DO holding an upgrade open
+ * while a container boots therefore parks one attempt indefinitely, and
+ * `onClose` refuses to re-arm while a retry chain is live
+ * (`if (!this.cancelWebsocketRetry …)`), so the whole socket goes deaf. A
+ * finite attempt is what turns that into a retry.
+ */
+/**
+ * Random spread added ONCE per runtime to the stall threshold.
+ *
+ * A cell sleeping (or a hub restarting) drops every peer's socket in the same
+ * instant, so without this every peer's threshold expires inside one
+ * `STALL_CHECK_MS` tick of every other and they all re-authenticate N documents
+ * at once — the DDR-102 2026-06-11 retry storm, re-armed automatically every
+ * few minutes (attacker review 2026-09-03, F6). The floor below backs off on
+ * repeat for the same reason.
+ */
+export const STALL_JITTER_MS = 120 * 1000;
+/** Ceiling for the backed-off floor between forced reconnects. */
+export const STALL_RECONNECT_MAX_MS = 30 * 60 * 1000;
 
 /**
  * Settle window before a local write triggers a file-plane pass.
@@ -361,6 +407,22 @@ export interface CreateSyncRuntimeOptions {
    * unit tests that only exercise the file-sync path.
    */
   registry?: AwarenessRegistry;
+  /**
+   * Stall-watchdog timings + clock. TEST INJECTION ONLY (see `stallCheck`).
+   *
+   * The watchdog shipped with no behavioural coverage at all — three review
+   * rounds each found a HIGH inside it, and none of them could have been caught
+   * by a test, because nothing could reach it: it required the OWNED factory
+   * and real wall-clock minutes. This is the seam that makes its predicate,
+   * its jitter and its backoff assertable.
+   */
+  stall?: {
+    checkMs?: number;
+    afterMs?: number;
+    minMs?: number;
+    jitterMs?: number;
+    now?: () => number;
+  };
   /**
    * Override the offline-mode connection monitor (Task 8 test injection —
    * lets tests pass injectable timers/clock). Defaults to a real monitor that
@@ -769,6 +831,18 @@ export function createSyncRuntime(
   const pendingAuthWarn = new Map<AuthFailureClass, Set<string>>();
   /** Latest rejection class per slug — feeds the boot summary detail. */
   const rejectedReasons = new Map<string, AuthFailureClass>();
+  /**
+   * EVERY document the hub has refused this episode, in ANY class.
+   *
+   * `rejectedPermanent` holds only the two classes that destroy the provider;
+   * `generic` (what every pre-DDR-102 hub sends) and `rate-limit` are absent
+   * from it by design. Anything asking "has the hub refused this document?"
+   * must ask HERE — reading `rejectedPermanent` for that question is how a
+   * transient refusal got laundered into a green row (attacker review
+   * 2026-09-03, F3). Emptied only by `clearRejection`, i.e. by a handshake the
+   * hub actually completed.
+   */
+  const rejectedAny = new Set<string>();
   /** Permanently-rejected docs awaiting a slow re-probe (provider destroyed). */
   const rejectedPermanent = new Map<
     string,
@@ -797,6 +871,14 @@ export function createSyncRuntime(
    *  anything — stop, and let the link surface as refused/stalled. Reset to 0
    *  at every `connected` doc (the handshake-success point). */
   let renewalsSinceProgress = 0;
+  /**
+   * When a document last reached `connected` — the ONLY evidence that this link
+   * is doing its job. Seeded at runtime construction so the stall watchdog
+   * (`armStallWatchdog`) measures from "when we started trying", exactly like
+   * `SyncStatusSnapshot.startedAt`, rather than from a promotion that may never
+   * come. Moves on first connect, on re-probe and on reconnect re-promotion.
+   */
+  let lastPromotionAt = 0;
   // Silent credential renewal (cloud). Absent under cell pairing — the cell's
   // token arrives via its environment and is the hub's own to rotate.
   const renewCredential = cellPairing
@@ -804,7 +886,13 @@ export function createSyncRuntime(
     : (opts.auth?.renewCredential ??
       (async () => {
         const r = await renewHubCredential(linkedHub.url);
-        return r.ok ? { token: r.token, expiresAt: r.expiresAt } : null;
+        if (r.ok) return { token: r.token, expiresAt: r.expiresAt };
+        // The reason was computed and thrown away. `renewHubCredential`
+        // distinguishes signed-out from revoked from removed-from-project from
+        // unreachable — each a different sentence to a person — and every one of
+        // them reached the log as the same silence. Say which.
+        console.warn(`[sync] hub credential renewal declined: ${r.reason}`);
+        return null;
       }));
   const settleTimers = new Set<TimerHandle>();
   /** Pending synthetic `fs:any` emissions (cell pairing only), keyed by the
@@ -831,6 +919,23 @@ export function createSyncRuntime(
   let createdUnsub: (() => void) | null = null;
   /** Periodic remote-document poll — the hub-side half of discovery. */
   let remotePollTimer: ReturnType<typeof setInterval> | null = null;
+  /** The stall watchdog's tick — see `stallCheck` in `start()`. */
+  let stallTimer: ReturnType<typeof setInterval> | null = null;
+  /** Wall-clock of the last watchdog-forced reconnect (0 = never). The floor
+   *  that keeps a silent hub from becoming a reconnect storm. */
+  let lastForcedReconnectAt = 0;
+  /** Forced reconnects so far — the exponent of the backing-off floor. */
+  let forcedReconnects = 0;
+  /** This runtime's slice of `STALL_JITTER_MS`, drawn once so peers that lost
+   *  their sockets together do not fire together. */
+  const stallNow = opts.stall?.now ?? (() => Date.now());
+  // Seeded from the same clock the watchdog reads, so "nothing has settled
+  // since we started trying" is measured against a consistent origin.
+  lastPromotionAt = stallNow();
+  const stallCheckMs = opts.stall?.checkMs ?? STALL_CHECK_MS;
+  const stallAfterMs = opts.stall?.afterMs ?? STALL_RECONNECT_AFTER_MS;
+  const stallMinMs = opts.stall?.minMs ?? STALL_RECONNECT_MIN_MS;
+  const stallJitterMs = opts.stall?.jitterMs ?? Math.floor(Math.random() * STALL_JITTER_MS);
   /**
    * The file-event control channel (Sync v2 Increment 2), when the hub
    * advertises one. Null on a journal-less hub, in a cell (the child holds it
@@ -1883,6 +1988,9 @@ export function createSyncRuntime(
       // hub's raw message).
       mon.noteDocState(canvas.slug, 'auth-rejected', reasonClass);
       rejectedReasons.set(canvas.slug, reasonClass);
+      // Every class, including the transient ones that keep their provider —
+      // see `rejectedAny`. This is the set the reconnect path consults.
+      rejectedAny.add(canvas.slug);
       // Aggregate console output: ONE debounced warn for the whole burst.
       if (!pendingAuthWarn.has(reasonClass)) pendingAuthWarn.set(reasonClass, new Set());
       pendingAuthWarn.get(reasonClass)?.add(canvas.slug);
@@ -1931,6 +2039,7 @@ export function createSyncRuntime(
      */
     const clearRejection = (slug: string): void => {
       rejectedPermanent.delete(slug);
+      rejectedAny.delete(slug);
       if (!rejectedReasons.delete(slug)) return;
       console.log(`[sync/${slug}] the hub accepted this document — clearing its refusal.`);
     };
@@ -2079,6 +2188,8 @@ export function createSyncRuntime(
       // DDR-102 — honest status: the handshake + reconcile completed.
       mon.noteDocState(canvas.slug, 'connected');
       mon.noteSyncActivity(canvas.slug);
+      lastPromotionAt = stallNow();
+      forcedReconnects = 0;
       // F1 — a completed handshake IS progress: a renewal actually helped, so
       // the no-progress cap resets. Without this a healthy link that renews
       // legitimately every 12 h would burn one cap slot per renewal forever.
@@ -2105,6 +2216,122 @@ export function createSyncRuntime(
         await handleSynced(canvas, canvasPaths, provider);
       } catch (err) {
         console.error(`[sync/${canvas.slug}] post-handshake reconcile failed:`, err);
+      }
+    };
+
+    /**
+     * A DOCUMENT THAT RE-HANDSHAKES IS A SYNCED DOCUMENT AGAIN.
+     *
+     * The bug this closes (issue #118), stated plainly: `noteDocState(slug,
+     * 'connected')` had exactly ONE call site — the post-handshake reconcile
+     * inside `connectCanvas`, which runs at attach, adopt and auth-re-probe and
+     * at no other time. A dropped socket demotes every `connected` document to
+     * `pending` (`noteProviderStatus`, deliberately — a document whose socket is
+     * gone is not a synced document), and NOTHING re-promoted it when the socket
+     * came back. The demotion was therefore permanent for the life of the
+     * runtime: observed live as `state:"online", docs:{synced:0, pending:85}`
+     * fifteen minutes after a boot whose own log line read `85/87 synced`.
+     *
+     * Downstream that reads as the worst kind of wrong: `syncPresentation` sees
+     * "connected to the hub, zero documents settled, and it has been like that a
+     * while" and reports a STALL blamed on the credential — so the remedy the
+     * product offered (reconnect the workspace) was the one thing that could not
+     * help, and the Resync it prompts re-handshakes every document against a
+     * cold cell and lands on `offline`.
+     *
+     * What this does NOT do is re-run `handleSynced`. That path carries
+     * migrate-seed, cold-start divergence resolution and history snapshots — a
+     * one-time authoritative seed, correctly named as such, and firing it for
+     * every canvas on every reconnect would turn a network blip into a
+     * conflict-resolution storm. The honest signal is narrower and sufficient:
+     * the hub completed a sync handshake for THIS document, so it is connected
+     * again. Nothing on disk is touched.
+     *
+     * Single-flight per slug — a flapping socket must not stack one pending
+     * promise per transition — and every guard is re-checked AFTER the await,
+     * because a runtime can stop, and a canvas can be released, while we wait.
+     */
+    const repromoting = new Set<string>();
+    const repromoteOnReconnect = async (slug: string, provider: SyncProvider): Promise<void> => {
+      if (stopped || repromoting.has(slug)) return;
+      // REFUSED IS REFUSED, WHATEVER THE CLASS.
+      //
+      // This guard read `rejectedPermanent`, and that map holds only the two
+      // PERMANENT classes — `handleAuthFailure` puts `generic` and `rate-limit`
+      // nowhere (they keep their provider and its backoff). `generic` is what
+      // EVERY pre-DDR-102 hub sends. So a refusal in a transient class passed
+      // straight through this guard and got overwritten with `connected`
+      // (attacker review 2026-09-03, F3): the hub was dropping this document's
+      // writes while the panel rendered it green, `docs.rejected` fell back to
+      // 0, and the `refused` branch — plus the offline-long "git push as
+      // backup" escalation — could never fire. `rejectedAny` is the honest set:
+      // every class enters it, `clearRejection` is the only thing that empties
+      // it, and it is checked on BOTH sides of the await because the refusal
+      // that matters is the one that lands while we are waiting.
+      if (rejectedAny.has(slug)) return;
+      repromoting.add(slug);
+      try {
+        // BOUNDED, because `onceSynced()` can never settle.
+        //
+        // `handleAuthFailure` on a permanent class calls `provider.destroy()`,
+        // and destroy emits `destroy`, never `synced` — so the promise below
+        // stays pending for the life of the process, `finally` never runs, and
+        // the slug stays latched in `repromoting` forever. Every later genuine
+        // reconnect for that document would then return at the guard above:
+        // issue #118 recreated per-document, permanently, by its own fix
+        // (attacker review 2026-09-03, F4). `settleWait` already exists for
+        // exactly this ("never hangs the summary on an auth-rejected provider
+        // whose handshake never completes") — reuse it rather than invent a
+        // second ceiling.
+        //
+        // `settleWait` resolves on the TIMEOUT as well as on success, so the
+        // flag is what separates "the handshake landed" from "we stopped
+        // waiting for it". Without it the timeout would promote the document.
+        let landed = false;
+        // The ceiling below stops us WAITING; the abort is what stops us
+        // LISTENING. Skipping it leaked a `synced` listener + closure per
+        // abandoned wait, forever (N2) — invisible while the latch bug meant we
+        // never retried, unbounded once that was fixed.
+        const giveUp = new AbortController();
+        try {
+          await settleWait(
+            provider.onceSynced(giveUp.signal).then(() => {
+              landed = true;
+            })
+          );
+        } finally {
+          giveUp.abort();
+        }
+        if (!landed || stopped) return;
+        // Still ours, still not refused — either can have changed in flight.
+        if (providers.get(slug) !== provider || rejectedAny.has(slug)) return;
+        // ONE mutator, not two. `noteSyncActivity` promotes pending→connected
+        // AND stamps the clock in a single emit, and it is the one that refuses
+        // to resurrect an `auth-rejected` document — so it is both cheaper and
+        // safer here than pairing it with `noteDocState`. Every emit is a
+        // synchronous `_sync.json` write plus a fan-out to every open tab, and
+        // `noteSyncActivity` has no change-dedupe of its own: on an 85-canvas
+        // project the pair cost ~340 writes per hub-driven flap against ~170
+        // for the demotion alone (defender F4 / attacker F5).
+        //
+        // Residual, stated rather than hidden: a completed handshake is not
+        // proof that a byte was persisted, so a hub that flaps the socket and
+        // completes empty sync steps can keep `lastSyncAt` fresh. That is
+        // narrower than the socket-transition stamp this change removed from
+        // `goOnline`, but it is the same shape, and it wants a separate
+        // `noteHandshake()` the day the monitor grows one.
+        mon.noteSyncActivity(slug);
+        lastPromotionAt = stallNow();
+        // A recovery that WORKED must not leave the floor ratcheted. Without
+        // this, seven stall-and-recover cycles over a long session pin the
+        // watchdog's floor at its 30-minute cap, so the next genuine stall waits
+        // half an hour for help (verification review 2026-09-03, N3).
+        forcedReconnects = 0;
+        // A completed handshake is progress, exactly as it is on the first
+        // connect — see the `renewalsSinceProgress` reset in `handleSynced`.
+        renewalsSinceProgress = 0;
+      } finally {
+        repromoting.delete(slug);
       }
     };
 
@@ -2310,7 +2537,14 @@ export function createSyncRuntime(
             // wanted here: a genuine one-off reconnect (nothing poked
             // recently) runs immediately; a churn folds into the scheduled
             // tick, costing latency and never correctness.
-            if (s === 'connected' && wasDisconnected) pollRemoteSoon({ cooled: true });
+            if (s === 'connected' && wasDisconnected) {
+              pollRemoteSoon({ cooled: true });
+              // …and re-establish this DOCUMENT's truth, not just the project's.
+              // The poll above asks the hub what canvases exist; it says nothing
+              // about whether THIS one is synced again, and for a long time
+              // nothing did. See `repromoteOnReconnect`.
+              void repromoteOnReconnect(canvas.slug, provider);
+            }
             wasDisconnected = s !== 'connected';
           })
         );
@@ -2954,6 +3188,77 @@ export function createSyncRuntime(
     // dev server to refuse to exit.
     remotePollTimer.unref?.();
 
+    // ── The stall watchdog (issue #118) ────────────────────────────────────
+    //
+    // WE CANNOT TRUST THE SOCKET TO NOTICE. `HocuspocusProviderWebsocket`
+    // reports `connected` from the raw WS `open` event — before a token is
+    // presented, before a byte comes back — and its own silence watchdog
+    // (`checkConnection`) returns early while `lastMessageReceived === 0`,
+    // which is precisely the state every fresh connection starts in. So a
+    // socket that upgrades at the edge and then hears nothing (a cell woken
+    // from `sleepAfter`, still restoring behind a DO that has accepted the
+    // request) is PERMANENTLY "connected" with its watchdog switched off. No
+    // close event, no retry, no reconnect — and therefore, before this, no
+    // recovery short of the person pressing Resync.
+    //
+    // This is the liveness check the runtime should have owned all along: it
+    // judges the link by whether any DOCUMENT has settled, which is the thing
+    // the user actually wants, and it is the one signal a half-open socket
+    // cannot fake. When nothing has settled for long enough, force the socket
+    // down and back up; every provider re-authenticates on the new one and
+    // `repromoteOnReconnect` collects the result.
+    //
+    // Deliberately narrow, because a false positive costs a full re-handshake
+    // of every canvas:
+    //   • `state === 'online'`  — offline already has its own recovery path.
+    //   • `synced === 0 && pending > 0` — some progress means it is working,
+    //     just slowly; this is only for the total stall.
+    //   • `rejected === 0` — a refusal is the auth lane's (renew + re-probe).
+    //   • a floor between forced reconnects, so a hub that is simply down
+    //     cannot be turned into a reconnect storm by its own silence.
+    // The socket-cycling capability, resolved once.
+    //
+    // Was `ownedFactory`, which is null whenever a factory is INJECTED — so the
+    // watchdog silently no-op'd in every test that could have exercised it, and
+    // its jitter and backoff had no coverage at all (verification review
+    // 2026-09-03). An injected factory that offers `reconnect()` is just as
+    // usable. The `typeof` check is also the N4 guard: `sockets` is a
+    // `Map<string, any>` and the provider is a caret dependency, so a 4.x minor
+    // that renames this would otherwise degrade to a watchdog that can never
+    // recover, saying nothing.
+    const reconnectable: { reconnect(): void } | null =
+      ownedFactory ??
+      (typeof (providerFactory as Partial<DisposableProviderFactory>).reconnect === 'function'
+        ? (providerFactory as DisposableProviderFactory)
+        : null);
+    const stallCheck = (): void => {
+      if (stopped || !reconnectable) return;
+      const snap = mon.snapshot();
+      const docs = snap.docs;
+      if (snap.state !== 'online' || !docs) return;
+      if (docs.synced > 0 || docs.pending === 0 || docs.rejected > 0) return;
+      const now = stallNow();
+      if (now - lastPromotionAt < stallAfterMs + stallJitterMs) return;
+      // The floor DOUBLES per forced reconnect (5 → 10 → 20 → capped at 30 min).
+      // A hub that is simply down would otherwise buy a fresh N-document auth
+      // burst from every peer every five minutes, forever.
+      const floor = Math.min(STALL_RECONNECT_MAX_MS, stallMinMs * 2 ** forcedReconnects);
+      if (lastForcedReconnectAt !== 0 && now - lastForcedReconnectAt < floor) return;
+      lastForcedReconnectAt = now;
+      forcedReconnects += 1;
+      console.warn(
+        `[sync] the hub socket says connected but not one of ${docs.pending} document(s) has ` +
+          `synced in ${Math.round((now - lastPromotionAt) / 60_000)} minute(s) — forcing a reconnect.`
+      );
+      try {
+        reconnectable.reconnect();
+      } catch (err) {
+        console.warn(`[sync] forced reconnect failed: ${(err as Error).message}`);
+      }
+    };
+    stallTimer = setInterval(stallCheck, stallCheckMs);
+    stallTimer.unref?.();
+
     // ── Sync v2 Increment 2 — the poke, desktop side (DDR-226 §4) ──────────
     //
     // CAPABILITY-GATED, and the gate is the compat matrix (§10, BINDING): a
@@ -3096,6 +3401,8 @@ export function createSyncRuntime(
     discoveryRescan = null;
     if (remotePollTimer !== null) clearInterval(remotePollTimer);
     remotePollTimer = null;
+    if (stallTimer !== null) clearInterval(stallTimer);
+    stallTimer = null;
     if (remotePollSoonTimer !== null) clearTimeout(remotePollSoonTimer);
     remotePollSoonTimer = null;
     remotePull = null;
@@ -3775,6 +4082,16 @@ export interface DisposableProviderFactory extends ProviderFactory {
   /** Destroy the shared HocuspocusProviderWebsocket(s). Call AFTER provider
    *  destroys — a provider detach sends a Close message over the socket. */
   dispose(): void;
+  /**
+   * Take every shared socket down and bring it back up (issue #118).
+   *
+   * The escape hatch for a socket that reports `connected` and carries nothing
+   * — see the stall watchdog in `start()`. Providers are NOT destroyed and are
+   * NOT re-created: they stay attached across the cycle and re-authenticate on
+   * the new socket, exactly as they do after any ordinary drop, so this costs a
+   * handshake and never a re-attach.
+   */
+  reconnect(): void;
 }
 
 /**
@@ -3824,7 +4141,31 @@ export function createDefaultProviderFactory(
     const wsUrl = toWsUrl(args.url);
     let socket = sockets.get(wsUrl);
     if (!socket) {
-      socket = new mod.HocuspocusProviderWebsocket({ url: wsUrl });
+      // CONFIGURED, not defaulted (issue #118). The socket used to be built
+      // from the URL alone, which inherited `timeout: 0` — no per-attempt
+      // deadline — and that is the property that let one parked connection
+      // attempt silence the whole link for as long as the process lived. The
+      // other two are pinned rather than inherited so a provider upgrade cannot
+      // move them without someone noticing here.
+      // NO `timeout`. It is tempting — the default is 0, meaning a connection
+      // attempt has no deadline at all — and it is a TRAP: `@lifeomic/attempt`
+      // handles a timeout by calling `reject` DIRECTLY, bypassing the `onError`
+      // path that is the only thing which schedules another attempt. So the
+      // deadline does not retry the attempt, it ENDS THE CHAIN — and since
+      // every one of hocuspocus's `connect()` call sites floats the promise and
+      // this process registers no `unhandledRejection` handler, a hub merely
+      // being slow would take the dev server down (security review 2026-09-03,
+      // F2). A hub slower than the deadline is the NORMAL case this whole fix
+      // is about: a sleeping cell's `/health` measured 14 s, and a container
+      // cold-boot is routinely worse.
+      //
+      // Liveness is the runtime's job instead — see the stall watchdog in
+      // `start()`, which is a layer we control and can make safe.
+      socket = new mod.HocuspocusProviderWebsocket({
+        url: wsUrl,
+        messageReconnectTimeout: 30_000,
+        maxDelay: 30_000,
+      });
       sockets.set(wsUrl, socket);
     }
     // Phase 9.2 (DDR-064) — attach to the shared room doc when the runtime
@@ -3848,6 +4189,40 @@ export function createDefaultProviderFactory(
     // With an injected websocketProvider the provider does NOT auto-attach
     // (manageSocket=false in @hocuspocus/provider 4.x) — attach explicitly.
     provider.attach();
+
+    // `provider.synced` IS NOT TRUSTWORTHY ACROSS A STATUS TRANSITION.
+    //
+    // A provider learns a socket died only from the `close` EVENT, and the
+    // library itself does not always raise one: `checkConnection()`'s
+    // force-close branch (`closeTries > 2`) CALLS `this.onClose({code:4408})`
+    // directly, and `cleanupWebSocket()` has already detached the raw handlers
+    // by then — so no `close` is emitted, no provider's `boundOnClose` runs,
+    // and every provider keeps `isSynced === true` through the teardown. That
+    // branch is reached by exactly the failure this whole change is about: a
+    // link that WAS healthy and then went quiet for 30 s.
+    //
+    // It gets worse quietly. `set synced` is a no-op when the value is
+    // unchanged, so a provider left stale-true does not emit `synced` on its
+    // NEXT genuine handshake either — the flag is wrong in both directions.
+    //
+    // Before this change the staleness was inert (nothing re-promoted on it).
+    // `repromoteOnReconnect` makes it authoritative: `onceSynced()`
+    // short-circuits on that field, so it would resolve instantly and report a
+    // handshake that never happened, for every document, then disarm the stall
+    // watchdog through its own `docs.synced > 0` guard (verification review
+    // 2026-09-03, NEW-1 — the same defect as N1, arriving through the library
+    // instead of through us).
+    //
+    // So: model the reset the missing event would have done. Assigning `false`
+    // only flips the flag (the setter emits on `true` alone), which is exactly
+    // the `synced` half of `HocuspocusProvider.onClose()` and none of its
+    // awareness side effects — those belong to the real close event, and still
+    // run when there is one.
+    const resetSyncedOnDrop = (evt: { status?: string }): void => {
+      if (evt?.status && evt.status !== 'connected' && provider.synced) provider.synced = false;
+    };
+    socket.on('status', resetSyncedOnDrop);
+
     return {
       document,
       // HocuspocusProvider creates a hub-synced Awareness by default; expose it
@@ -3875,20 +4250,34 @@ export function createDefaultProviderFactory(
         authFailedCbs.add(cb);
         return () => authFailedCbs.delete(cb);
       },
-      onceSynced(): Promise<void> {
+      onceSynced(signal?: AbortSignal): Promise<void> {
         return new Promise<void>((resolve) => {
           if (provider.synced) {
             resolve();
             return;
           }
           const handler = () => {
-            provider.off('synced', handler);
+            cleanup();
             resolve();
           };
+          // Detach on abort as well as on success — see the interface doc. The
+          // promise is deliberately NOT rejected: callers race it against their
+          // own ceiling and read a separate flag, so a rejection here would be
+          // an unhandled one at every site that stops waiting.
+          const cleanup = () => {
+            provider.off('synced', handler);
+            signal?.removeEventListener('abort', cleanup);
+          };
+          if (signal?.aborted) {
+            resolve();
+            return;
+          }
           provider.on('synced', handler);
+          signal?.addEventListener('abort', cleanup, { once: true });
         });
       },
       destroy() {
+        socket.off('status', resetSyncedOnDrop);
         // Detaches from the shared socket (sends a per-document Close); the
         // socket itself is destroyed by dispose() after all providers.
         provider.destroy();
@@ -3906,6 +4295,63 @@ export function createDefaultProviderFactory(
         }
       }
       sockets.clear();
+    },
+    reconnect(): void {
+      for (const socket of sockets.values()) {
+        try {
+          // NOT `disconnect()` + `connect()` — that pair WEDGES THE SOCKET SHUT,
+          // deterministically, in exactly the state this is called from
+          // (security review 2026-09-03, F1). `disconnect()` sets
+          // `shouldConnect = false` and closes the WS without touching
+          // `status`; the close event is asynchronous, so the immediately
+          // following `connect()` hits its own first guard —
+          // `if (this.status === WebSocketStatus.Connected) return;` — which
+          // sits ABOVE the line that would restore `shouldConnect`. When the
+          // close finally lands, `onClose`'s re-arm reads
+          // `!cancelWebsocketRetry && shouldConnect` → false, and nothing else
+          // re-arms it. The recovery action would have turned a stall that
+          // survives a restart into a link that never reconnects again.
+          //
+          // So take the path the library is actually built around: close the
+          // raw socket and let its OWN close-driven reconnect run — byte for
+          // byte what happens when the hub drops us, which is the best-tested
+          // path in the provider. `shouldConnect` stays true, and
+          // `cancelWebsocketRetry` is already clear (only `onOpen` clears it,
+          // and a socket reporting `connected` has been through `onOpen`).
+          //
+          // `connect()` is the fallback for the no-live-socket case ONLY, where
+          // status is not `Connected` and it therefore does not early-return.
+          //
+          // EMIT THE EVENT — do not call the handler.
+          //
+          // `HocuspocusProviderWebsocket.onClose()` looks like the right entry
+          // point (`checkConnection()` calls it with this exact 4408 frame) and
+          // calling it directly is WRONG in a way that is invisible until you
+          // read who else listens. That method emits `status` and `disconnect`
+          // — never `close`. Each attached PROVIDER learns about a drop through
+          // `websocketProvider.on('close', boundOnClose)`, and
+          // `HocuspocusProvider.onClose()` is the only thing that resets
+          // `isAuthenticated` and `synced`. Skip the event and every provider
+          // keeps `synced === true` across the reconnect; `set synced` is a
+          // no-op when unchanged, so the NEXT real handshake emits nothing
+          // either, and `onceSynced()` — which short-circuits on that field —
+          // resolves instantly for all 85 documents against a socket that has
+          // completed no handshake at all. The recovery would have manufactured
+          // `docs.synced = 85` out of nothing, and then disarmed the watchdog
+          // permanently through its own `docs.synced > 0` guard (verification
+          // review 2026-09-03, N1).
+          //
+          // Emitting is what the raw socket's own handler does
+          // (`onCloseHandler = (payload) => this.emit('close', {event: payload})`),
+          // and the constructor registers `this.on('close', this.onClose)` —
+          // so this runs every provider's reset AND the socket's own cleanup +
+          // re-arm. THAT is "byte for byte what happens when the hub drops us";
+          // the handler call only resembled it.
+          socket.emit('close', { event: { code: 4408, reason: 'forced' } });
+        } catch (err) {
+          console.warn(`[sync] socket reconnect failed: ${(err as Error).message}`);
+        }
+      }
     },
   });
 }

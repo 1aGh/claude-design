@@ -1,7 +1,7 @@
 {
-  "version": "v1.0.12",
+  "version": "v1.1.0",
   "nodeRange": ">=20",
-  "publishedDate": "2026-08-26",
+  "publishedDate": "2026-09-02",
   "contributors": 1,
   "plugins": {
     "design": {
@@ -15,7 +15,7 @@
       "agents": 12
     },
     "maude": {
-      "subcommands": 22
+      "subcommands": 24
     }
   },
   "pageUpdated": {

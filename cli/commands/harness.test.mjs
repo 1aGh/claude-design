@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { hashFile } from '../lib/harness/managed-state.mjs';
-import { EXIT_CODES, run } from './harness.mjs';
+import { EXIT_CODES, observeTargetVersion, run } from './harness.mjs';
 
 const roots = [];
 const CLI = fileURLToPath(new URL('../bin/maude.mjs', import.meta.url));
@@ -15,6 +15,29 @@ const CLI = fileURLToPath(new URL('../bin/maude.mjs', import.meta.url));
 afterEach(async () => {
   process.exitCode = 0;
   await Promise.all(roots.splice(0).map((root) => rm(root, { force: true, recursive: true })));
+});
+
+test('target version discovery skips the Maude Codex launcher shim', async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'maude-codex-version-')));
+  roots.push(root);
+  const shimRoot = join(root, 'shim');
+  const realRoot = join(root, 'real');
+  await mkdir(shimRoot);
+  await mkdir(realRoot);
+  await writeFile(
+    join(shimRoot, 'codex'),
+    '#!/bin/sh\n# exec maude codex "$@"\necho shim-must-not-run >&2\nexit 2\n'
+  );
+  await writeFile(join(realRoot, 'codex'), '#!/bin/sh\necho "codex-cli 0.152.0"\n');
+  await chmod(join(shimRoot, 'codex'), 0o755);
+  await chmod(join(realRoot, 'codex'), 0o755);
+  const previousPath = process.env.PATH;
+  process.env.PATH = `${shimRoot}:${realRoot}`;
+  try {
+    assert.equal(observeTargetVersion('codex'), '0.152.0');
+  } finally {
+    process.env.PATH = previousPath;
+  }
 });
 
 test('every projection verb uses explicit project scope and sync is a byte-identical no-op', async () => {
@@ -48,6 +71,22 @@ test('every projection verb uses explicit project scope and sync is a byte-ident
   assert.equal(typeof value.lastValidation, 'string');
   assert.deepEqual(value.observedTargetVersions, { opencode: null });
   assert.equal(value.rollbackAvailable, false);
+});
+
+test('byte-identical unmanaged target files remain user-owned without adoption', async () => {
+  const fixture = await createFixture();
+  const args = ['sync', '--targets', 'codex', '--project', fixture.project, '--json'];
+  assert.equal(cli(fixture, args).exitCode, EXIT_CODES.clean);
+
+  const manifestPath = await projectManifestPath(fixture);
+  const first = JSON.parse(await readFile(manifestPath, 'utf8'));
+  assert.equal(first.outputs.length > 0, true);
+  await rm(manifestPath);
+
+  const second = cli(fixture, args);
+  assert.equal(second.exitCode, EXIT_CODES.clean, second.stderr);
+  assert.deepEqual(JSON.parse(second.stdout).conflicts, []);
+  assert.equal(await readOptional(manifestPath), null);
 });
 
 test('global scope, target lists, and all-target transactional sync stay inside isolated homes', async () => {
