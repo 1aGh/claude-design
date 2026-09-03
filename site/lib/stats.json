@@ -1,7 +1,7 @@
 {
   "version": "v1.1.0",
   "nodeRange": ">=20",
-  "publishedDate": "2026-09-02",
+  "publishedDate": "2026-09-03",
   "contributors": 1,
   "plugins": {
     "design": {
@@ -72,12 +72,12 @@
     "commands-flow/setup-context.mdx": "2026-06-11",
     "commands-flow/setup-prd.mdx": "2026-06-11",
     "commands-flow/status.mdx": "2026-06-11",
-    "commands-flow/utils-verify.mdx": "2026-06-11",
+    "commands-flow/utils-verify.mdx": "2026-09-02",
     "commands-flow/validate-a11y.mdx": "2026-06-11",
     "commands-flow/validate-security.mdx": "2026-06-11",
     "commands-flow/validate-visual.mdx": "2026-06-11",
     "commands-flow/validate.mdx": "2026-06-11",
-    "config-schema.mdx": "2026-08-10",
+    "config-schema.mdx": "2026-09-02",
     "config.mdx": "2026-05-20",
     "design/bootstrap.mdx": "2026-07-03",
     "design/categories.mdx": "2026-07-28",
@@ -104,7 +104,7 @@
     "legal/terms.mdx": "2026-08-01",
     "orchestration.mdx": "2026-08-16",
     "recipes/expo.mdx": "2026-05-30",
-    "recipes/monorepo.mdx": "2026-05-23",
+    "recipes/monorepo.mdx": "2026-09-02",
     "recipes/nextjs.mdx": "2026-05-23",
     "security.mdx": "2026-08-16"
   }

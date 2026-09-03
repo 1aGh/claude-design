@@ -9902,6 +9902,22 @@ function App() {
       setLoadingPath((p) => (p === path ? null : p));
     }, 2500);
   }, []);
+  // Loaded at boot from /_config and re-fetched on the server's
+  // `config-updated` push (config.json hot-reload — /design:setup-ds rewrites
+  // it mid-session) — informs canvasUrl() so TSX iframes can pass the right
+  // ?designRel + ?tokens query to the canvas mount shell.
+  // `cloud` is deliberately TRI-STATE, and the third state is the useful one:
+  //   undefined — `/_config` has not answered yet; which shell this is is
+  //               UNKNOWN, and anything that would behave differently in the
+  //               two shells must wait rather than assume the desktop.
+  //   null      — desktop or plain local browser.
+  //   object    — a cloud tab (`{ dashboardUrl?, projectName, user, role }`).
+  //
+  // Collapsing unknown into "not cloud" is what made the cloud studio open with
+  // two console 404s every time: the sign-in bar and the export centre mounted
+  // for one frame, each fired the request its shell exists to refuse, and then
+  // unmounted. Nothing was broken and everything looked broken.
+  const [cfg, setCfg] = useState({ designRel: '.design', cloud: undefined });
   // THE CAP MUST NOT CLEAR TO WHITE — issue #115. This used to be a bare
   // `setLoadingPath(null)`, which is the most useless thing it could do: when
   // the canvas origin is unreachable the shell HTML never loads, so the shell's
@@ -9911,6 +9927,17 @@ function App() {
   // the two failures apart — a dead server (the #115 stale-origin case, and any
   // sidecar crash) versus a canvas that genuinely never finished compiling —
   // and hand the user the recovery in both cases.
+  //
+  // DECLARED AFTER `cfg`, ON PURPOSE — the same rule the block below states for
+  // the git flags, and this effect is what taught us it is not decorative. Its
+  // dependency array reads `cfg?.canvasOrigin`, and A DEPENDENCY ARRAY IS
+  // EVALUATED DURING RENDER: sitting above the `useState` above, it hit `cfg` in
+  // its temporal dead zone, so `App` threw `Cannot access 'cfg' before
+  // initialization` on its very first render and the WHOLE STUDIO mounted
+  // nothing — a white page for every user, not only the desktop shell the fix
+  // was written for. It reached the branch because the PR carried a merge
+  // conflict, which stops GitHub from building a merge ref, which means the
+  // client-boot gate never ran on it (issue #112 close-out).
   useEffect(() => {
     if (!loadingPath) return;
     const path = loadingPath;
@@ -9929,22 +9956,6 @@ function App() {
     }, 15000);
     return () => clearTimeout(cap);
   }, [loadingPath, cfg?.canvasOrigin]);
-  // Loaded at boot from /_config and re-fetched on the server's
-  // `config-updated` push (config.json hot-reload — /design:setup-ds rewrites
-  // it mid-session) — informs canvasUrl() so TSX iframes can pass the right
-  // ?designRel + ?tokens query to the canvas mount shell.
-  // `cloud` is deliberately TRI-STATE, and the third state is the useful one:
-  //   undefined — `/_config` has not answered yet; which shell this is is
-  //               UNKNOWN, and anything that would behave differently in the
-  //               two shells must wait rather than assume the desktop.
-  //   null      — desktop or plain local browser.
-  //   object    — a cloud tab (`{ dashboardUrl?, projectName, user, role }`).
-  //
-  // Collapsing unknown into "not cloud" is what made the cloud studio open with
-  // two console 404s every time: the sign-in bar and the export centre mounted
-  // for one frame, each fired the request its shell exists to refuse, and then
-  // unmounted. Nothing was broken and everything looked broken.
-  const [cfg, setCfg] = useState({ designRel: '.design', cloud: undefined });
   // WHO IS SAVING THIS PROJECT — one expression, read by every surface that
   // would otherwise offer to save it, poll for it, or badge it (DDR-218, widened
   // by feature-cloud-managed-git-posture).

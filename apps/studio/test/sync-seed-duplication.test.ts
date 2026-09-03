@@ -26,8 +26,8 @@ import {
   htmlFromDoc,
   Y_SYNC_TYPES,
 } from '../sync/codec.ts';
-import { dedupeCommentsById } from '../sync/comment-identity.ts';
 import { decideColdStart, decideCssColdStart, unionCommentsById } from '../sync/cold-start.ts';
+import { dedupeCommentsById } from '../sync/comment-identity.ts';
 import { hashBytes } from '../sync/echo-guard.ts';
 
 const BODY = 'export default function Canvas() {\n  return <div>Alligators</div>;\n}\n';
