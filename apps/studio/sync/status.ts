@@ -113,6 +113,25 @@ export interface FilePlaneStatus {
     detail: string;
   }[];
   /**
+   * Files this lane could NOT move on the last pass — issue #109.
+   *
+   * `held` covers the breakers, which are deliberate refusals this machine
+   * made. This covers the other half: a transfer the hub refused, or a write
+   * that failed. It had no field at all, so ~200 refused assets rendered as a
+   * status bar reading `synced` and a person seeing broken images with no
+   * cause anywhere but a terminal they never open. Same disease `held` was
+   * added to cure, one lane over.
+   */
+  failed?: number;
+  /**
+   * The hub asked us to slow down and the WHOLE LANE is paused until `until`.
+   *
+   * Distinguished from `failed` because the answer is different: nothing is
+   * wrong, nothing is lost, and there is nothing to do but wait — which is
+   * exactly what a person cannot infer from a count of failures.
+   */
+  rateLimited?: { until: number; waiting: number };
+  /**
    * THE DORUČENKA (DDR-226 §7) — per-path delivery state.
    *
    * The counts above are what the old lane reported, and they are exactly

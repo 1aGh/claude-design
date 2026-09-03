@@ -223,6 +223,18 @@ export const STALL_RECONNECT_MAX_MS = 30 * 60 * 1000;
 export const FILE_PASS_DEBOUNCE_MS = 400;
 
 /**
+ * The floor between two file-plane passes — issue #109.
+ *
+ * The debounce coalesces a burst of local writes; it does nothing about a
+ * steady drip, and a hub's file-event channel is a steady drip by design
+ * ("cloud changes now arrive in seconds"). 400 ms of spacing times 200
+ * requests a pass is 30k requests a minute at a door that opens 600 times.
+ * Two seconds is still well inside "arrives in seconds" and puts the client's
+ * ceiling an order of magnitude below the server's instead of above it.
+ */
+export const MIN_PASS_INTERVAL_MS = 2_000;
+
+/**
  * Settling delay for an OFF-SCHEDULE poll (reconnect).
  *
  * Not zero: a reconnect is a burst — every provider re-handshakes — and asking
@@ -986,12 +998,69 @@ export function createSyncRuntime(
     if (stopped || filePassTimer !== null) return;
     filePassTimer = setTimeout(() => {
       filePassTimer = null;
-      if (stopped || !filePlane) return;
-      void filePlane
-        .reconcile()
-        .then((r) => planeResultSink?.(r))
-        .catch((err) => console.error('[sync/files] pass failed:', err));
+      void runPlanePass();
     }, FILE_PASS_DEBOUNCE_MS);
+    filePassTimer.unref?.();
+  }
+  /**
+   * The ONE way a pass runs — issue #109.
+   *
+   * There were two entry points (this debounce and the 20 s poll) and no
+   * mutual exclusion between them, so a busy file-event channel could start a
+   * pass every 400 ms and overlap it with the poll's. Each pass is up to
+   * `MAX_REQUESTS_PER_PASS` requests against a hub that meters per minute, so
+   * the client's own ceiling was an order of magnitude above the server's and
+   * it manufactured the rate limit it then failed on.
+   *
+   * A pass in flight absorbs the request (the running pass reads the same
+   * disk and the same cursor, so a second one would decide the identical
+   * work), and passes are floored `MIN_PASS_INTERVAL_MS` apart.
+   */
+  let planePassInFlight = false;
+  let lastPlanePassAt = 0;
+  let planePassWaiter: Promise<void> | null = null;
+  async function runPlanePass(opts?: { floor?: boolean }): Promise<void> {
+    // Captured, not re-read: `stop()` clears `filePlane`, and a pass that has
+    // already decided to run must not dereference the field it was cleared to.
+    const lane = filePlane;
+    if (stopped || !lane) return;
+    // A pass already running IS this pass: it reads the same disk and the same
+    // cursor, so the caller waits for its answer rather than racing it. The
+    // poll's `await` therefore still means "a pass has happened".
+    if (planePassInFlight) return await (planePassWaiter ?? Promise.resolve());
+    const since = Date.now() - lastPlanePassAt;
+    // The floor governs POKES. The 20 s poll and the explicit `pullRemoteNow`
+    // seam are already bounded by their own callers, and silently deferring a
+    // caller that awaited a pass would be its own lie.
+    if (opts?.floor !== false && since < MIN_PASS_INTERVAL_MS) {
+      // Not dropped — deferred. A poke that arrives inside the floor still has
+      // news, and losing it means a local edit waits for the next 20 s tick.
+      schedulePlanePassAfter(MIN_PASS_INTERVAL_MS - since);
+      return;
+    }
+    planePassInFlight = true;
+    lastPlanePassAt = Date.now();
+    const run = (async () => {
+      try {
+        const r = await lane.reconcile();
+        planeResultSink?.(r);
+      } catch (err) {
+        console.error('[sync/files] pass failed:', err);
+      } finally {
+        planePassInFlight = false;
+        planePassWaiter = null;
+      }
+    })();
+    planePassWaiter = run;
+    await run;
+  }
+  /** Re-arm the debounce timer at a specific delay (the floor's deferral). */
+  function schedulePlanePassAfter(ms: number): void {
+    if (stopped || filePassTimer !== null) return;
+    filePassTimer = setTimeout(() => {
+      filePassTimer = null;
+      void runPlanePass();
+    }, ms);
     filePassTimer.unref?.();
   }
   /** Assigned by `start()` so a pass reports into the same status the poll does. */
@@ -3132,7 +3201,34 @@ export function createSyncRuntime(
         pushed: filePushed,
         ...(filePlane ? { delivery: filePlane.doruceka() } : {}),
         ...(held.length > 0 ? { held } : {}),
+        // A FAILED TRANSFER IS NOT A SYNCED ONE (issue #109). These had no
+        // field to land in, so a pass that refused every file still rendered
+        // as `synced` and the only trace was the console lines below — on a
+        // product whose premise is that nobody opens a terminal.
+        ...(result.failed.length > 0 ? { failed: result.failed.length } : {}),
+        ...(result.rateLimited
+          ? {
+              rateLimited: {
+                until: result.rateLimited.until,
+                waiting: result.rateLimited.waiting,
+              },
+            }
+          : {}),
       });
+      if (result.rateLimited) {
+        // Once per boot (the store dedupes by id): a pause is not an error,
+        // and the panel should say so in words rather than leave a person to
+        // read a failure count and guess.
+        statusStore?.notice?.({
+          id: 'files-rate-limited',
+          severity: 'info',
+          text: `The workspace asked this machine to slow down, so file syncing is paused for a moment. ${
+            result.rateLimited.waiting > 0
+              ? `${result.rateLimited.waiting} file(s) are still on their way — nothing is lost, they arrive when the pause lifts.`
+              : 'Nothing is lost; it resumes by itself.'
+          }`,
+        });
+      }
       for (const f of result.failed) {
         console.warn(`[sync/files] ${f.rel}: ${f.reason}`);
       }
@@ -3161,8 +3257,10 @@ export function createSyncRuntime(
       // journal-less hubs, which the compat matrix keeps working through the
       // burn-down window.
       if (filePlane) {
-        const result = await filePlane.reconcile();
-        noteFilePlane(result);
+        // Through the SAME door as the poke path, so the two can never overlap
+        // (issue #109). `floor: false` — this caller is already bounded, and a
+        // deferral would make an awaited pass silently not happen.
+        await runPlanePass({ floor: false });
         return;
       }
       const result = await pullFiles({

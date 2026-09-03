@@ -44,6 +44,7 @@ import { type Dirent, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 import { type CanvasGroupLike, classifyProjectFile, isFilePlaneClass } from './file-membership.ts';
+import { failureReason, retryAfterMs } from './retry-after.ts';
 
 /** Max designRoot-relative depth (matches the classifier's 8-segment cap). */
 const MAX_SEGMENTS = 8;
@@ -84,26 +85,11 @@ export interface AssetPushProgress {
  *  the payload reaches `_sync.json` + every open tab, so it stays bounded). */
 export const MAX_LISTED_FAILURES = 20;
 
-/** Longest single pause the hub can ask for. Matches the hub's rate-limit
- *  window (60 s) — a `Retry-After` larger than that is either a typo or a hub
- *  we should not be blocking a boot sweep on. */
-const MAX_RETRY_DELAY_MS = 60_000;
-
-/** Where an absent/unparsable `Retry-After` lands. Old hubs (pre-fix) send a
- *  bare 429 with no header, and their window is the same 60 s. */
-const DEFAULT_RETRY_DELAY_MS = 60_000;
-
 /** Total time ONE sweep may spend waiting out 429s. The paced retry exists to
  *  keep an un-upgraded hub livable, not to turn a boot into an hour-long
  *  background stall — past this, the remaining refusals fail fast and the
  *  next-boot backstop takes them. */
 const MAX_SWEEP_BACKOFF_MS = 5 * 60_000;
-
-/** How much of an error body reaches `failed[].reason`. Enough to tell "rate
- *  limit exceeded" from a Cloudflare error page — the distinction the 2026-08-11
- *  RCA had to reconstruct from edge logs because the client kept only a status
- *  code. Hub-supplied text ⇒ bounded and stripped before it reaches the UI. */
-const ERROR_SNIPPET_CHARS = 80;
 
 /**
  * Every upload closes its connection. NOT an optimization — a correctness
@@ -331,38 +317,6 @@ async function probePresent(ctx: {
   } catch {
     return null;
   }
-}
-
-/** `Retry-After: <seconds>` → ms, clamped. Only the delta-seconds form is
- *  parsed; the HTTP-date form is not something our hub emits. */
-function retryAfterMs(header: string | null): number {
-  const secs = Number(String(header ?? '').trim());
-  if (!Number.isFinite(secs) || secs <= 0) return DEFAULT_RETRY_DELAY_MS;
-  return Math.min(secs * 1000, MAX_RETRY_DELAY_MS);
-}
-
-/**
- * Why an upload was refused, in words — status PLUS a bounded snippet of the
- * body. The hub says `{"error":"rate limit exceeded"}`; an edge that never
- * reached the hub says HTML. Those are different bugs and the Sync panel should
- * not make a person read logs to tell them apart.
- *
- * The body is hub-supplied ⇒ untrusted (DDR-054): control characters stripped,
- * whitespace collapsed, hard length cap, and it only ever renders as text.
- */
-async function failureReason(res: Response): Promise<string> {
-  let snippet = '';
-  try {
-    snippet = (await res.text())
-      // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping them is the point.
-      .replace(/[\u0000-\u001f\u007f]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, ERROR_SNIPPET_CHARS);
-  } catch {
-    /* a body we cannot read tells us nothing — the status still does */
-  }
-  return snippet ? `HTTP ${res.status} — ${snippet}` : `HTTP ${res.status}`;
 }
 
 /**

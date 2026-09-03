@@ -68,6 +68,7 @@ import {
 } from './file-membership.ts';
 import { fetchJournal, type JournalEntry } from './journal-client.ts';
 import { createPullBudget } from './pull-budget.ts';
+import { failureReason, isRateLimited, retryAfterMs } from './retry-after.ts';
 
 /** How long to wait for one file's bytes. Generous — these run to videos. */
 const GET_TIMEOUT_MS = 120_000;
@@ -78,6 +79,21 @@ const MAX_FILE_BYTES = 512 * 1024 * 1024;
 
 /** How many files one pass will move. The remainder is the next pass's work. */
 const MAX_FILES_PER_PASS = 200;
+
+/**
+ * How many HTTP REQUESTS one pass will issue. Issue #109.
+ *
+ * `MAX_FILES_PER_PASS` counts what MOVED, and `applyOne` returns false when a
+ * transfer fails — so under any refusal the counter stood still and the loop
+ * ran to the end of `work`, one request per path, with no ceiling at all. The
+ * cap stopped bounding the request rate at exactly the moment it was the only
+ * thing that could. Against a hub that meters per minute, that is not a client
+ * hitting a limit, it is a client manufacturing one.
+ *
+ * So the hard ceiling counts REQUESTS, which is the quantity the hub actually
+ * meters, and it is charged whether the answer was bytes or a refusal.
+ */
+export const MAX_REQUESTS_PER_PASS = 200;
 
 /**
  * How many consecutive `reanchor` answers before we stop obeying them.
@@ -187,6 +203,19 @@ export interface FilePlaneResult {
   reanchored: boolean;
   /** The pass stopped on the aggregate byte budget. */
   budgetExhausted?: true;
+  /**
+   * The hub asked us to slow down (429), so the WHOLE PLANE is held until
+   * `until` — not this file, not this pass.
+   *
+   * A rate limit is the one refusal where retrying is the thing making it
+   * worse, so it is the one refusal that must reach further than the request
+   * that met it. `waiting` is how many paths this pass had left to do, so a
+   * person is told the size of the pause rather than left reading a status
+   * line that says `synced`.
+   */
+  rateLimited?: { until: number; retryAfterMs: number; waiting: number };
+  /** The pass stopped because it had spent its request ceiling. */
+  requestsExhausted?: true;
   /** Files removed this pass — `parked` names the `_trash/` copy when there is one. */
   deleted: { rel: string; parked: string | null }[];
   /** A delete burst tripped a breaker; nothing was removed. */
@@ -357,13 +386,53 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
   let reanchorsInARow = 0;
   let reanchorHeldSince = 0;
 
+  /**
+   * When the plane may talk to the hub again. Issue #109.
+   *
+   * A 429 is the one refusal where the retry IS the cause: every re-request
+   * inside the window keeps the bucket empty, and the pass only advances its
+   * cursor on a clean run, so the identical work set came round every 400 ms.
+   * The hold therefore belongs to the PLANE, not to the file that met the
+   * wall — the same shape as the re-anchor hold above, and for the same
+   * reason: obedience to a hub has to be capped somewhere.
+   */
+  let rateLimitedUntil = 0;
+  /** Set when a refusal this pass was a 429; the pass stops on it. */
+  let hitRateLimit: { retryAfterMs: number } | null = null;
+  /** HTTP requests issued by THIS pass — the ceiling the hub actually meters. */
+  let requestsThisPass = 0;
+
+  /**
+   * Turn a refusal into words, and a 429 into the plane's hold.
+   *
+   * Every non-ok response on this lane comes through here, so there is one
+   * answer to "was that a fault or a wall" rather than one per call site.
+   */
+  async function refusal(
+    res: Response
+  ): Promise<{ ok: false; reason: string; rateLimited?: true }> {
+    const reason = await failureReason(res);
+    if (!isRateLimited(res)) return { ok: false, reason };
+    const wait = retryAfterMs(res.headers?.get?.('retry-after') ?? null);
+    // The LONGEST wait any refusal this pass asked for. Coming back early is
+    // how a hold becomes another storm.
+    if (hitRateLimit === null || wait > hitRateLimit.retryAfterMs) {
+      hitRateLimit = { retryAfterMs: wait };
+    }
+    return { ok: false, reason, rateLimited: true };
+  }
+
   /** Fetch one file's bytes and verify them against the hash we were promised. */
   async function fetchVerified(
     rel: string,
     expectHash: string,
     ceiling: number
-  ): Promise<{ ok: true; bytes: Uint8Array } | { ok: false; reason: string; overCap?: true }> {
+  ): Promise<
+    | { ok: true; bytes: Uint8Array }
+    | { ok: false; reason: string; overCap?: true; rateLimited?: true }
+  > {
     let res: Response;
+    requestsThisPass += 1;
     try {
       res = await fetchImpl(
         `${base}/_project-file/${rel.split('/').map(encodeURIComponent).join('/')}`,
@@ -372,7 +441,7 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
     } catch (err) {
       return { ok: false, reason: (err as Error).message };
     }
-    if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
+    if (!res.ok) return await refusal(res);
 
     // The cap is consulted BEFORE the body exists, and again as it arrives.
     // Buffering first and measuring after is not a cap at all: a hub answering
@@ -608,7 +677,7 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
   ): Promise<
     | { ok: true; seq: number | null }
     | { ok: false; conflict: true; current: string | null }
-    | { ok: false; conflict?: false; reason: string }
+    | { ok: false; conflict?: false; reason: string; rateLimited?: true }
   > {
     let bytes: Uint8Array;
     try {
@@ -619,6 +688,7 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
     // In flight, so a journal row carrying this hash reads as our own echo
     // rather than as a remote change we must react to.
     ledger.outboxAdd(local.hash);
+    requestsThisPass += 1;
     try {
       const res = await fetchImpl(
         `${base}/api/file/${local.rel.split('/').map(encodeURIComponent).join('/')}`,
@@ -642,7 +712,7 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
           current: typeof body?.current === 'string' ? body.current : null,
         };
       }
-      if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
+      if (!res.ok) return await refusal(res);
       const body = (await res.json().catch(() => ({}))) as { seq?: unknown };
       return { ok: true, seq: typeof body?.seq === 'number' ? body.seq : null };
     } catch (err) {
@@ -665,7 +735,10 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
   async function pushDelete(
     rel: string,
     expect: string | null
-  ): Promise<{ ok: true } | { ok: false; conflict: true } | { ok: false; reason: string }> {
+  ): Promise<
+    { ok: true } | { ok: false; conflict: true } | { ok: false; reason: string; rateLimited?: true }
+  > {
+    requestsThisPass += 1;
     try {
       const res = await fetchImpl(
         `${base}/api/file/${rel.split('/').map(encodeURIComponent).join('/')}`,
@@ -676,7 +749,7 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
         }
       );
       if (res.status === 409) return { ok: false, conflict: true };
-      if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
+      if (!res.ok) return await refusal(res);
       return { ok: true };
     } catch (err) {
       return { ok: false, reason: (err as Error).message };
@@ -711,6 +784,29 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
     }
   }
 
+  /**
+   * Arm the plane-wide hold if this pass met a 429, and say so on the result.
+   *
+   * Called on EVERY exit from a pass, including the early ones — a refusal on
+   * the cursor read is the same wall as a refusal on a file, and the pass that
+   * discovers it is usually the cheap one.
+   */
+  function holdIfRateLimited(out: FilePlaneResult, waiting: number): FilePlaneResult {
+    // Idempotent: the apply loop arms the hold itself (it is the only caller
+    // that knows how many paths were left), and the pass tail then calls this
+    // again as a backstop. Re-arming would push the window out and log twice.
+    if (hitRateLimit === null || out.rateLimited) return out;
+    const wait = hitRateLimit.retryAfterMs;
+    rateLimitedUntil = now() + wait;
+    out.rateLimited = { until: rateLimitedUntil, retryAfterMs: wait, waiting };
+    log.warn?.(
+      `[sync/files] the project is asking this machine to slow down (HTTP 429). Pausing the file lane for ${Math.round(wait / 1000)} s${
+        waiting > 0 ? `; ${waiting} file(s) still to come` : ''
+      }. Nothing is lost — they arrive when the pause lifts.`
+    );
+    return out;
+  }
+
   async function reconcile(): Promise<FilePlaneResult> {
     const out: FilePlaneResult = {
       pulled: [],
@@ -723,6 +819,26 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
       reanchored: false,
     };
 
+    // ── 0. Is the door shut? ─────────────────────────────────────────────
+    //
+    // BEFORE the journal read, because the journal read is a request too, and
+    // it draws on the very bucket we are waiting to refill. A held pass that
+    // still asks the hub for a page is not held.
+    if (now() < rateLimitedUntil) {
+      out.rateLimited = {
+        until: rateLimitedUntil,
+        retryAfterMs: rateLimitedUntil - now(),
+        // The pass that armed the hold counted what it had LEFT; a held pass
+        // has not looked, so it reports what the ledger still calls stuck.
+        // Close enough to be useful, and honest about being a count of rows
+        // rather than a promise about the next pass.
+        waiting: Object.values(ledger.rows()).filter((r) => r.state === 'stuck').length,
+      };
+      return out;
+    }
+    hitRateLimit = null;
+    requestsThisPass = 0;
+
     // ── 1. The hub's side ────────────────────────────────────────────────
     const startedFrom = ledger.cursor();
     let fullRead = startedFrom === 0;
@@ -732,10 +848,13 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
       since: startedFrom,
       epoch: ledger.epoch(),
       fetchImpl,
+      onRefused: async (res) => {
+        await refusal(res);
+      },
     });
     // Unreachable / refused / journal-less: this pass does nothing, and the
     // next one asks again. NEVER "nothing changed".
-    if (page === null) return out;
+    if (page === null) return holdIfRateLimited(out, 0);
 
     // Whether our ANCESTORS still describe the hub's log.
     //
@@ -789,8 +908,11 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
         token: opts.token(),
         since: 0,
         fetchImpl,
+        onRefused: async (res) => {
+          await refusal(res);
+        },
       });
-      if (page === null || page.reanchor) return out;
+      if (page === null || page.reanchor) return holdIfRateLimited(out, 0);
     }
 
     if (!out.reanchored) {
@@ -1017,10 +1139,18 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
     });
 
     let moved = 0;
+    let seen = 0;
     for (const item of work) {
-      if (moved >= MAX_FILES_PER_PASS) {
+      // TWO CEILINGS, because they bound different things and only one of them
+      // survives a bad day. `moved` bounds what LANDS — disk writes, parked
+      // copies, ledger churn — and it is the one a healthy pass hits. Requests
+      // bound what we ASK, and it is the one that matters when nothing is
+      // landing, which is precisely when the first counter stops moving
+      // (issue #109).
+      if (moved >= MAX_FILES_PER_PASS || requestsThisPass >= MAX_REQUESTS_PER_PASS) {
+        if (requestsThisPass >= MAX_REQUESTS_PER_PASS) out.requestsExhausted = true;
         log.warn?.(
-          `[sync/files] ${work.length - moved} more path(s) to reconcile; taking them next pass.`
+          `[sync/files] ${work.length - seen} more path(s) to reconcile; taking them next pass.`
         );
         break;
       }
@@ -1028,8 +1158,16 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
         out.budgetExhausted = true;
         break;
       }
+      seen += 1;
       const handled = await applyOne(item, out, budget);
       if (handled) moved += 1;
+      // A RATE LIMIT ENDS THE PASS. Every other refusal is about one file and
+      // the next one is worth trying; this one is about the door, and the
+      // remaining requests would do nothing but hold it shut for longer.
+      if (hitRateLimit !== null) {
+        holdIfRateLimited(out, work.length - seen);
+        break;
+      }
     }
 
     // ── 5. Position ──────────────────────────────────────────────────────
@@ -1065,7 +1203,10 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
       DELETE_BUDGET_WINDOW_MS
     );
 
-    return out;
+    // The backstop. The loop arms the hold itself so it can report how many
+    // paths it had left; this catches a 429 met anywhere else in the pass —
+    // and is idempotent, because arming a hold twice is arming it once.
+    return holdIfRateLimited(out, 0);
   }
 
   async function applyOne(

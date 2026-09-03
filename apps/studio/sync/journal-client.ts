@@ -86,6 +86,13 @@ function parseEntry(raw: unknown): JournalEntry | null {
  * Returns null when the hub is unreachable, refuses, or does not have the
  * route — the `fetchRemoteListing` posture: sync continues either way and we
  * ask again later. A null is never "nothing changed".
+ *
+ * It is also never "and there is nothing to learn from it". The cursor read
+ * shares the hub's per-label read bucket with the file pulls, so during a rate
+ * limit THIS is the request that meets the wall first — and collapsing that to
+ * a bare null is how issue #109 stayed invisible: a held plane and a
+ * quiet, ordinary, do-nothing pass are indistinguishable to the caller.
+ * `onRefused` hands the response to whoever can tell the difference.
  */
 export async function fetchJournal(opts: {
   hubUrl: string;
@@ -94,6 +101,8 @@ export async function fetchJournal(opts: {
   /** Send the epoch a cursor belongs to so a mismatch fails closed hub-side. */
   epoch?: string | null;
   fetchImpl?: typeof fetch;
+  /** Called with the response before a non-ok status becomes `null`. */
+  onRefused?: (res: Response) => void | Promise<void>;
 }): Promise<JournalPage | null> {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const base = opts.hubUrl.replace(/\/+$/, '');
@@ -105,7 +114,10 @@ export async function fetchJournal(opts: {
       headers: { authorization: `Bearer ${opts.token}` },
       signal: AbortSignal.timeout(JOURNAL_TIMEOUT_MS),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      await opts.onRefused?.(res);
+      return null;
+    }
     const body = (await res.json()) as Record<string, unknown>;
     // The head and the epoch are the anchor the whole cursor protocol rests
     // on, and both arrive from a component DDR-054 calls untrusted. A
