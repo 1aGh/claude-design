@@ -3,6 +3,15 @@
   "entries": [
     {
       "date": null,
+      "id": "sync-recovers-after-the-workspace-sleeps",
+      "kind": "fix",
+      "summary": "If you left Maude alone for a while, your cloud workspace went to sleep and syncing quietly stopped — the indicator still said it was connected, and only pressing Resync got it moving again. Maude now notices when the connection has gone quiet, brings it back on its own, and only reports canvases as synced once they really are.",
+      "surface": "design-ui",
+      "title": "Sync comes back on its own",
+      "version": null
+    },
+    {
+      "date": null,
       "id": "long-chats-no-longer-freeze",
       "kind": "fix",
       "summary": "In a project with a long chat history, Maude could slow to a crawl and stop responding for many minutes while using enormous amounts of memory — often needing a force-quit. Screenshots the agent took were being stored inside the chat history at full size, and every chat you opened re-read all of it. Chats now stay small and are read in fixed-size pieces, so a long history costs the same as a short one.",

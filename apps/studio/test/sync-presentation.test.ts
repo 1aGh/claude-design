@@ -195,7 +195,33 @@ describe('zero progress has a deadline — the stalled phase', () => {
     expect(p?.phase).toBe('stalled');
     expect(p?.online).toBe(false);
     expect(p?.title).toContain('Nothing has synced');
-    expect(p?.next).toContain('Reconnect');
+    expect(p?.next).toContain('retrying');
+  });
+
+  // Issue #118 — the stall advice used to name a cause we have evidence
+  // AGAINST. With `rejected: 0` the hub has refused nothing, so "the sign-in
+  // may have expired" is not a hedge, it is a wrong diagnosis — and it is the
+  // one that sends a person to Resync, which re-handshakes every canvas against
+  // a hub that is not answering and lands the display on `offline`.
+  test('a stall with zero refusals must NOT blame the sign-in', () => {
+    const p = syncPresentation(
+      { ...base, state: 'online', startedAt: 1, docs: { synced: 0, pending: 85, rejected: 0 } },
+      { project: 'alligators', now: NOW }
+    );
+    expect(p?.phase).toBe('stalled');
+    expect(p?.next).not.toContain('sign-in');
+    expect(p?.next).toContain('not completing handshakes');
+  });
+
+  // The legacy payload is the one place a refusal cannot be ruled out, so the
+  // hedge survives there — written as a possibility, not as the diagnosis.
+  test('a pre-DDR-102 payload keeps the credential hedge, because it cannot know', () => {
+    const p = syncPresentation(
+      { ...base, state: 'connecting', startedAt: 1 },
+      { project: 'alligators', now: NOW }
+    );
+    expect(p?.phase).toBe('stalled');
+    expect(p?.next).toContain('sign-in');
   });
 
   test('a fresh connect is NOT stalled — the handshake gets its moment', () => {

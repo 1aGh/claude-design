@@ -256,6 +256,19 @@ describe('F-12 (post-1.0 burn-down) — the reconnect trigger is cooled', () => 
     // one-off reconnect immediate (nothing poked recently ⇒ runs at once) and
     // folds a churn into the scheduled tick.
     const src = readFileSync(join(import.meta.dir, '../sync/index.ts'), 'utf8');
-    expect(src).toMatch(/wasDisconnected\) pollRemoteSoon\(\{ cooled: true \}\)/);
+    // The reconnect branch gained a second statement (issue #118 — the document
+    // re-promotion), so this pins the two facts rather than one line's exact
+    // text: the trigger is still the disconnected→connected edge, and the poll
+    // it fires is still the COOLED one.
+    expect(src).toMatch(/if \(s === 'connected' && wasDisconnected\) \{/);
+    expect(src).toMatch(/pollRemoteSoon\(\{ cooled: true \}\);/);
+  });
+
+  test('the same edge also re-establishes per-DOCUMENT truth (issue #118)', () => {
+    // The cooled poll asks the hub what canvases EXIST. It says nothing about
+    // whether this document is synced again — and for a long time nothing did,
+    // which is how `state:"online", docs:{synced:0,pending:85}` survived.
+    const src = readFileSync(join(import.meta.dir, '../sync/index.ts'), 'utf8');
+    expect(src).toMatch(/void repromoteOnReconnect\(canvas\.slug, provider\);/);
   });
 });

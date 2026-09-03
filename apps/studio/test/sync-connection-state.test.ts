@@ -221,6 +221,30 @@ describe('connection monitor — per-doc states (DDR-102)', () => {
     expect(snap.docs?.pending).toBe(0);
   });
 
+  // Issue #118 — a socket transition is not a sync. `goOnline()` used to stamp
+  // `lastSyncAt = now()`, so the one number a reader could have used to notice
+  // that nothing had synced in fifteen minutes was being refreshed BY the
+  // failure: observed live as `state:"online", docs:{synced:0,pending:85}` with
+  // `lastSyncAt` equal to the millisecond of the reconnect.
+  test('coming back online does NOT stamp lastSyncAt — only real activity does', () => {
+    const { clock, monitor } = makeMonitor();
+    // Offline first, so the reconnect below is a real goOnline() transition.
+    monitor.noteProviderStatus('ui-a', 'disconnected');
+    clock.advance(31_000);
+    expect(monitor.snapshot().state).toBe('offline');
+    expect(monitor.snapshot().lastSyncAt).toBeNull();
+
+    clock.advance(5_000);
+    monitor.noteProviderStatus('ui-a', 'connected');
+    const snap = monitor.snapshot();
+    expect(snap.state).toBe('online');
+    expect(snap.lastSyncAt).toBeNull();
+
+    // …and the honest source still works.
+    monitor.noteSyncActivity('ui-a');
+    expect(monitor.snapshot().lastSyncAt).toBe(clock.now());
+  });
+
   test('noteSyncActivity does NOT resurrect an auth-rejected doc', () => {
     const { monitor } = makeMonitor();
     monitor.noteDocState('ui-a', 'auth-rejected');
