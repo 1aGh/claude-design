@@ -78,16 +78,23 @@ let collab: ReturnType<typeof createCollab> | null = null;
 let inspectHandle: ReturnType<typeof createInspectRegistry> | null = null;
 
 const api = createApi(ctx, {
-  onCommentsChanged: async (file) => {
-    // After every comments mutation, re-broadcast the updated list.
-    const comments = await api.loadCommentsForFile(file);
-    ctx.bus.emit('comments', { file, comments });
+  onCommentsChanged: (file, comments) => {
     // Phase 8 Task 3 — bridge into the live Y.Array so collab peers see the
     // change without waiting for cold-open re-seeding. No-op when no room is
     // live for this canvas slug.
+    //
+    // Issue #111 — this runs BEFORE the mutation reaches disk (see
+    // `publishComments`), and `comments` is the post-mutation list handed over
+    // in memory. It used to be `await api.loadCommentsForFile(file)`: a disk
+    // round-trip sitting between the file write and this publish, wide enough
+    // for a `Room.flush()` to project the pre-mutation doc back over the file.
+    // Nothing here touches disk any more, and the doc is updated synchronously,
+    // so there is no window for a flush to be the stale writer.
     if (collab) {
       collab.registry.syncRoomFromComments(api.fileSlug(file), comments);
     }
+    // After every comments mutation, re-broadcast the updated list.
+    ctx.bus.emit('comments', { file, comments });
   },
   // Phase 8 Task 5 — same bridge for annotations. PUT /_api/annotations writes
   // the SVG blob to disk; we mirror it into the live Y.Map for collab peers.

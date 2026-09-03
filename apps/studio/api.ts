@@ -723,7 +723,20 @@ export interface Api {
 }
 
 export interface ApiHooks {
-  onCommentsChanged: (file: string) => void;
+  /**
+   * Publish a comments mutation to the SHARED DOC (and the shell's sidebar).
+   *
+   * `comments` is the post-mutation list, handed over IN MEMORY — issue #111.
+   * The hook used to take only `file` and re-read `_comments/<slug>.json`
+   * itself, which put a full disk round-trip between the mutation's write and
+   * the doc publish. `Room.flush()` fires on ANY doc update (every hub update
+   * re-arms it), so on a hub-linked project a flush landed inside that window,
+   * projected the PRE-mutation doc back over the file, and the new comment was
+   * gone before the hook's own read reached it — "only the first comment
+   * stays". Passing the list removes the read, and `publishComments` awaits
+   * this hook BEFORE touching disk so the doc is never the stale side.
+   */
+  onCommentsChanged: (file: string, comments: Comment[]) => void | Promise<void>;
   /** Phase 8 Task 5 — fires after a successful PUT /_api/annotations write. */
   onAnnotationsChanged?: (file: string, svg: string) => void;
   /**
@@ -1155,6 +1168,31 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     await Bun.write(commentsPath(file), JSON.stringify(dedupeCommentsById(list), null, 2));
   }
 
+  /**
+   * Land one comments mutation: SHARED DOC FIRST, disk second (issue #111).
+   *
+   * The order is the fix, not a style choice. Under DDR-064 the room's Y.Doc is
+   * the shared object and `_comments/<slug>.json` is its projection — and
+   * `Room.flush()` projects doc→file on an 800 ms trailing debounce that ANY
+   * doc update re-arms, hub traffic included. So on a linked project a flush is
+   * almost always pending, and any window in which the doc is behind the file
+   * is a window in which that flush silently writes the older list back.
+   *
+   * Publishing to the doc first removes the window instead of narrowing it: a
+   * flush firing at any point from here on carries a doc that already holds the
+   * mutation. Both halves are awaited, so the HTTP response cannot report a
+   * comment the doc never received.
+   *
+   * The list is deduped ONCE here so the doc and the file are handed byte-equal
+   * content — otherwise the file→doc import that follows the write would see a
+   * difference and re-enter the loop.
+   */
+  async function publishComments(file: string, list: Comment[]): Promise<void> {
+    const settled = dedupeCommentsById(list);
+    await onCommentsChanged(file, settled);
+    await saveCommentsForFile(file, settled);
+  }
+
   async function loadAllComments(): Promise<Record<string, Comment[]>> {
     const out: Record<string, Comment[]> = {};
     let entries: Dirent[];
@@ -1331,8 +1369,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       if (anchor.clipStableId != null || anchor.frame != null) c.timeline = anchor;
     }
     list.push(c);
-    await saveCommentsForFile(payload.file, list);
-    onCommentsChanged(payload.file);
+    await publishComments(payload.file, list);
     return c;
   }
 
@@ -1360,8 +1397,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       };
       entry.thread = [...entry.thread, reply];
       entry.mentions = mentionsUnion(entry);
-      await saveCommentsForFile(file, list);
-      onCommentsChanged(file);
+      await publishComments(file, list);
       return entry;
     }
     return null;
@@ -1391,8 +1427,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
           entry.mentions = mentionsUnion(entry);
         }
       }
-      await saveCommentsForFile(file, list);
-      onCommentsChanged(file);
+      await publishComments(file, list);
       return first;
     }
     return null;
@@ -1403,8 +1438,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     for (const [file, list] of Object.entries(all)) {
       const remaining = list.filter((c) => c.id !== id);
       if (remaining.length === list.length) continue;
-      await saveCommentsForFile(file, remaining);
-      onCommentsChanged(file);
+      await publishComments(file, remaining);
       return true;
     }
     return false;
