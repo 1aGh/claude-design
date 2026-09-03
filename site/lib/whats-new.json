@@ -12,6 +12,15 @@
       "surface": "design-ui"
     },
     {
+      "id": "images-arrive-again",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "Images arrive again on linked projects",
+      "summary": "On a project synced with a workspace, images and other project files could quietly never arrive — broken placeholders on the canvas while the Sync panel still said everything was synced. When a workspace asks Maude to slow down, it now waits as long as it was asked instead of retrying straight into the same wall, and the Sync panel says so in plain words: syncing is paused for a moment, nothing is lost, the rest arrives when the pause lifts.",
+      "surface": "design-ui"
+    },
+    {
       "id": "comments-stop-disappearing",
       "version": null,
       "date": null,

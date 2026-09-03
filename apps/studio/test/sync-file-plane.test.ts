@@ -31,6 +31,7 @@ import {
   createFilePlane,
   DELETE_BUDGET_PER_WINDOW,
   foldRemote,
+  MAX_REQUESTS_PER_PASS,
   REANCHOR_HOLD_RECOVERY_MS,
   REANCHOR_STORM_LIMIT,
   scanLocalFiles,
@@ -972,5 +973,198 @@ describe('the deletion breakers — the only protection now that this ships ON',
     const res = await p.reconcile();
     expect(res.deleteHeld).toBeUndefined();
     expect(hub.deletes).toEqual(['system/ds/f3.css']);
+  });
+});
+
+// ── The wall (issue #109) ───────────────────────────────────────────────────
+//
+// A 429 is not a failure, it is an instruction — and it is the one refusal
+// where retrying is what causes it. The shipped plane read every non-ok status
+// as `HTTP <n>`, kept firing the rest of the pass at a shut door, and (because
+// the cursor only advances on a clean pass) came back 400 ms later with the
+// identical work set. Every asset of a linked project refused, forever, while
+// the status bar said `synced` and a person saw broken images.
+//
+// The asset lane learned this in 2026-08-11. These are the tests that stop the
+// file plane having to learn it a third time.
+describe('rate limits', () => {
+  /** Wrap a hub so some routes answer 429, and count what reached the wire. */
+  function metered(
+    hub: ReturnType<typeof fakeHub>,
+    opts: { refuse: (pathname: string) => number | null; retryAfter?: string | null } = {
+      refuse: () => null,
+    }
+  ) {
+    const calls: string[] = [];
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      const u = new URL(String(url));
+      calls.push(u.pathname);
+      const status = opts.refuse(u.pathname);
+      if (status !== null) {
+        const headers: Record<string, string> = { 'content-type': 'application/json' };
+        const retryAfter = opts.retryAfter === undefined ? '30' : opts.retryAfter;
+        if (retryAfter !== null) headers['retry-after'] = retryAfter;
+        return new Response(JSON.stringify({ error: 'rate limit exceeded' }), { status, headers });
+      }
+      return hub.fetchImpl(url as never, init as never);
+    }) as unknown as typeof fetch;
+    return {
+      fetchImpl,
+      calls,
+      files: () => calls.filter((c) => c.startsWith('/_project-file/')),
+      journals: () => calls.filter((c) => c === '/api/journal'),
+    };
+  }
+
+  const remoteSet = (n: number) => {
+    const files: Record<string, string> = {};
+    for (let i = 0; i < n; i += 1) files[`system/ds/f${i}.css`] = `.a${i}{}`;
+    return files;
+  };
+
+  test('the first refusal ends the pass — the rest is not fired at a shut door', async () => {
+    const hub = fakeHub(remoteSet(5));
+    const wire = metered(hub, { refuse: (p) => (p.startsWith('/_project-file/') ? 429 : null) });
+    const result = await plane(hub, { fetchImpl: wire.fetchImpl }).reconcile();
+
+    // ONE file request, not five. Before the fix every remaining path was
+    // asked for, and each one kept the bucket empty a little longer.
+    expect(wire.files()).toHaveLength(1);
+    expect(result.rateLimited).toBeTruthy();
+    expect(result.rateLimited?.retryAfterMs).toBe(30_000);
+    // And it says how much is still coming, so a person is told the size of
+    // the pause instead of reading a status line that claims `synced`.
+    expect(result.rateLimited?.waiting).toBe(4);
+  });
+
+  test('the refusal names the WALL, not just a number', async () => {
+    const hub = fakeHub(remoteSet(1));
+    const wire = metered(hub, { refuse: (p) => (p.startsWith('/_project-file/') ? 429 : null) });
+    const result = await plane(hub, { fetchImpl: wire.fetchImpl }).reconcile();
+    // "HTTP 429" alone is what made the 2026-08-11 RCA reconstruct the cause
+    // from edge logs. A hub saying "rate limit exceeded" and an edge that never
+    // reached the hub are different bugs.
+    expect(result.failed[0]?.reason).toContain('429');
+    expect(result.failed[0]?.reason).toContain('rate limit exceeded');
+  });
+
+  test('and the WHOLE PLANE waits out the window the hub named', async () => {
+    const hub = fakeHub(remoteSet(5));
+    const wire = metered(hub, { refuse: (p) => (p.startsWith('/_project-file/') ? 429 : null) });
+    let clock = 1_700_000_000_000;
+    const p = plane(hub, { fetchImpl: wire.fetchImpl, now: () => clock });
+
+    await p.reconcile();
+    const afterFirst = wire.calls.length;
+
+    // Inside the window: NOT ONE REQUEST — not even the cursor read, which
+    // draws on the same bucket we are waiting to refill.
+    clock += 29_000;
+    const held = await p.reconcile();
+    expect(wire.calls.length).toBe(afterFirst);
+    expect(held.rateLimited).toBeTruthy();
+    expect(held.pulled).toEqual([]);
+
+    // Past it, the plane goes back to work — and now the hub is willing.
+    clock += 2_000;
+    const wire2 = metered(hub, { refuse: () => null });
+    const p2 = plane(hub, { fetchImpl: wire2.fetchImpl, now: () => clock });
+    const done = await p2.reconcile();
+    expect(done.rateLimited).toBeUndefined();
+    expect(done.pulled.length).toBe(5);
+  });
+
+  test('a bare 429 — no header at all — still pauses, for the default window', async () => {
+    // The un-upgraded hub. The fleet rolls only on a release tag, so a client
+    // that only understands `Retry-After` still storms every hub older than it.
+    const hub = fakeHub(remoteSet(3));
+    const wire = metered(hub, {
+      refuse: (p) => (p.startsWith('/_project-file/') ? 429 : null),
+      retryAfter: null,
+    });
+    const result = await plane(hub, { fetchImpl: wire.fetchImpl }).reconcile();
+    expect(result.rateLimited?.retryAfterMs).toBe(60_000);
+  });
+
+  test('a nonsense Retry-After is not obeyed literally', async () => {
+    const hub = fakeHub(remoteSet(3));
+    const wire = metered(hub, {
+      refuse: (p) => (p.startsWith('/_project-file/') ? 429 : null),
+      retryAfter: '86400',
+    });
+    const result = await plane(hub, { fetchImpl: wire.fetchImpl }).reconcile();
+    // Clamped to the hub's own window. A day-long pause is a bricked plane
+    // with extra steps, and a hub should not be able to ask for one.
+    expect(result.rateLimited?.retryAfterMs).toBe(60_000);
+  });
+
+  test('and a hub cannot talk us out of pausing at all', async () => {
+    // The header is HUB-CONTROLLED, and `0.001` is a perfectly valid number of
+    // seconds. A one-millisecond hold is not a hold: a hub that refuses
+    // everything and asks us straight back puts the client into the same
+    // refusal loop this whole fix exists to end, while it believes it is
+    // being obedient. Clamped at both ends, not just the top.
+    const hub = fakeHub(remoteSet(3));
+    const wire = metered(hub, {
+      refuse: (p) => (p.startsWith('/_project-file/') ? 429 : null),
+      retryAfter: '0.001',
+    });
+    let clock = 1_700_000_000_000;
+    const p = plane(hub, { fetchImpl: wire.fetchImpl, now: () => clock });
+
+    const first = await p.reconcile();
+    expect(first.rateLimited?.retryAfterMs).toBe(1_000);
+
+    // And the hold is real: a pass 100 ms later still does not reach the wire.
+    const afterFirst = wire.calls.length;
+    clock += 100;
+    await p.reconcile();
+    expect(wire.calls.length).toBe(afterFirst);
+  });
+
+  test('a refusal on the CURSOR READ holds the plane too', async () => {
+    // The cursor read shares the hub's per-label read bucket with the file
+    // pulls, so during a rate limit this is the request that meets the wall
+    // FIRST — and it used to collapse to a bare null, indistinguishable from a
+    // quiet do-nothing pass.
+    const hub = fakeHub(remoteSet(3));
+    const wire = metered(hub, { refuse: (p) => (p === '/api/journal' ? 429 : null) });
+    let clock = 1_700_000_000_000;
+    const p = plane(hub, { fetchImpl: wire.fetchImpl, now: () => clock });
+
+    const first = await p.reconcile();
+    expect(first.rateLimited).toBeTruthy();
+    expect(wire.journals()).toHaveLength(1);
+
+    clock += 1_000;
+    await p.reconcile();
+    expect(wire.journals()).toHaveLength(1);
+  });
+
+  test('the request ceiling bounds a pass that lands NOTHING', async () => {
+    // THE DEFECT, isolated. `MAX_FILES_PER_PASS` counted what MOVED, and a
+    // failed transfer moves nothing — so the counter stood still and the loop
+    // ran to the end of `work`, one request per path, unbounded. A non-429
+    // failure is used deliberately: this must hold for any refusal, not only
+    // the one that now ends the pass early.
+    const hub = fakeHub(remoteSet(MAX_REQUESTS_PER_PASS + 120));
+    const wire = metered(hub, { refuse: (p) => (p.startsWith('/_project-file/') ? 503 : null) });
+    const result = await plane(hub, { fetchImpl: wire.fetchImpl }).reconcile();
+
+    expect(wire.files().length).toBe(MAX_REQUESTS_PER_PASS);
+    expect(result.requestsExhausted).toBe(true);
+    // Nothing landed, nothing was lost, and the pass said so.
+    expect(result.pulled).toEqual([]);
+    expect(result.rateLimited).toBeUndefined();
+  });
+
+  test('a healthy pass is untouched by any of it', async () => {
+    const hub = fakeHub(remoteSet(4));
+    const wire = metered(hub, { refuse: () => null });
+    const result = await plane(hub, { fetchImpl: wire.fetchImpl }).reconcile();
+    expect(result.pulled.length).toBe(4);
+    expect(result.rateLimited).toBeUndefined();
+    expect(result.requestsExhausted).toBeUndefined();
+    expect(result.failed).toEqual([]);
   });
 });

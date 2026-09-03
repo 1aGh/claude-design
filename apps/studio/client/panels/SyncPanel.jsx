@@ -660,6 +660,33 @@ export default function SyncPanel({
               </div>
             )}
             {/*
+              A PAUSE IS NOT A FAILURE, and it gets its own words. The
+              workspace asked us to slow down; nothing is wrong, nothing is
+              lost, and the only correct action is to wait — which is exactly
+              what a person cannot infer from a count of failures (issue #109).
+              It comes FIRST because it explains the failure line below it.
+            */}
+            {files.rateLimited && (
+              <div className="sp-assets-retry" data-testid="sync-files-rate-limited">
+                <strong>syncing paused for a moment.</strong> The workspace asked this machine to
+                slow down.{' '}
+                {files.rateLimited.waiting > 0
+                  ? `${files.rateLimited.waiting} file${files.rateLimited.waiting === 1 ? '' : 's'} still on the way — nothing is lost, they arrive when the pause lifts.`
+                  : 'It resumes by itself.'}
+              </div>
+            )}
+            {/*
+              AND A FAILURE IS NOT A SYNC. This had no field at all, so a pass
+              that refused every file rendered as "N synced" and a person saw
+              broken images with the cause only in a terminal they never open.
+            */}
+            {files.failed > 0 && !files.rateLimited && (
+              <div className="sp-assets-retry" data-testid="sync-files-failed">
+                {files.failed} file{files.failed === 1 ? '' : 's'} did not come through on the last
+                check — sync retries them by itself. The list is below.
+              </div>
+            )}
+            {/*
               A HELD BREAKER, said out loud. These used to exist only as a
               console.warn, which on a machine whose user never opens a
               terminal is the same as not existing — while the release leaned
