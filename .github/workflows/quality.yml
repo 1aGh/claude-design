@@ -269,6 +269,15 @@ jobs:
       - name: Install (apps/studio, own bun.lock per DDR-009)
         run: cd apps/studio && bun install --frozen-lockfile
 
+      # The FULL suite includes `export-capture-fidelity.test.ts`, which drives a
+      # real browser — so this job needs the same chromium the export-lanes job
+      # installs. Without it the run died with `Playwright's Chromium browser
+      # isn't installed` and exit 3, which read as "the suite is red" when the
+      # suite had not finished running. An unmeasured suite is this job's whole
+      # reason to exist; a missing browser measures nothing.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
       - name: Full studio suite
         env:
           MAUDE_SYNC_IN_CI: '1' # see the required sync-lane step in the job above
