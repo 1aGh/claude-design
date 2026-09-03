@@ -63,9 +63,9 @@ export async function bootServer(
     stdout: 'pipe',
     stderr: 'pipe',
   });
-  // Wait up to 10 s for the server to bind — the first spawn cold-compiles the
-  // whole studio TS, which under parallel test load regularly blows a 3 s
-  // budget (the flaky "server did not start" class of failure).
+  // Wait for the server to bind — the first spawn cold-compiles the whole
+  // studio TS, which under parallel test load regularly blows a 3 s budget
+  // (the flaky "server did not start" class of failure).
   //
   // THIS BUDGET IS ONLY REACHABLE BECAUSE THE SUITE RAISES THE PER-TEST TIMEOUT.
   // bun's default is 5 s, so the TEST was killed while this loop still had half
@@ -74,8 +74,15 @@ export async function bootServer(
   // exactly 5000ms, a different one every run. `test:dev-server` therefore
   // passes `--timeout 20000` (bunfig's `[test] timeout` is NOT honored on bun
   // 1.3.3 — measured, not assumed). Change one, change the other.
+  // 15 s, raised from 10 s. The full 390-file suite still lost ONE boot to this
+  // budget per run — a different test each time, which is the signature the
+  // comment above already names. It is a flake in the BUDGET, not a defect in
+  // whichever test drew the short straw: the suite that reported it passes 21/21
+  // in isolation. Still strictly under the runner's per-test 20 s, which is the
+  // invariant that matters — exceed that and the failure stops saying "server
+  // did not start" and goes back to naming an innocent test at the timeout mark.
   const start = Date.now();
-  while (Date.now() - start < 10000) {
+  while (Date.now() - start < 15000) {
     try {
       const r = await fetch(`http://localhost:${port}/_health`, {
         signal: AbortSignal.timeout(200),
@@ -95,7 +102,7 @@ export async function bootServer(
     await Bun.sleep(50);
   }
   proc.kill();
-  throw new Error(`server did not start on port ${port} within 10 s`);
+  throw new Error(`server did not start on port ${port} within 15 s`);
 }
 
 export async function killProc(proc: Subprocess) {
