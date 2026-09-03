@@ -136,3 +136,47 @@ test('a desktop URL is byte-identical to before — no capability, no query', ()
   const url = canvasUrl('.design/ui/Home.tsx', { designRel: '.design' });
   expect(new URL(url, 'http://x').searchParams.has('t')).toBe(false);
 });
+
+// issue #115 — the canvas origin is an OS-assigned ephemeral port
+// (`startCanvasServer(0)`), so it is DIFFERENT in every dev-server process. When
+// the desktop supervisor respawns a crashed sidecar, the page's cached `cfg` is
+// still the dead process's, and every canvas iframe navigates at a port that no
+// longer exists. The shell stays live (the main origin reclaims its
+// deterministic port from 4399), so only *switching* canvases goes white — and
+// silently, since the canvas shell never loads and its own error surface never
+// exists to report anything.
+//
+// The fix is in app.jsx (re-read `/_config` on a WS reconnect). What these pin
+// is the property that makes the fix work at all: `canvasUrl` must be a pure
+// function of the `cfg` it is handed, holding no memo of a previous origin.
+
+test('a canvas URL follows a changed canvasOrigin — nothing is cached across configs', () => {
+  const before = canvasUrl('.design/ui/Home.tsx', {
+    designRel: '.design',
+    canvasOrigin: 'http://localhost:51234',
+  });
+  const after = canvasUrl('.design/ui/Home.tsx', {
+    designRel: '.design',
+    canvasOrigin: 'http://localhost:51999',
+  });
+
+  expect(before.startsWith('http://localhost:51234/_canvas-shell.html?')).toBe(true);
+  expect(after.startsWith('http://localhost:51999/_canvas-shell.html?')).toBe(true);
+  // Only the origin moved — the canvas identity and every resolved param are
+  // unchanged, so a respawn re-navigates the SAME canvas at the live port.
+  expect(new URL(after).search).toBe(new URL(before).search);
+});
+
+test('a canvasOrigin that disappears falls back to same-origin, never to the stale one', () => {
+  // If `/_config` comes back without a canvasOrigin (older server, or the split
+  // turned off), the URL must go relative rather than keep pointing at a port
+  // the previous process owned.
+  const stale = canvasUrl('.design/ui/Home.tsx', {
+    designRel: '.design',
+    canvasOrigin: 'http://localhost:51234',
+  });
+  const fresh = canvasUrl('.design/ui/Home.tsx', { designRel: '.design' });
+
+  expect(stale.startsWith('http://localhost:51234/')).toBe(true);
+  expect(fresh.startsWith('/_canvas-shell.html?')).toBe(true);
+});

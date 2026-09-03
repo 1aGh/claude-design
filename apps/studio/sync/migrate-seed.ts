@@ -49,8 +49,13 @@ import {
   Y_SYNC_TYPES,
 } from './codec.ts';
 import type { ColdStartAction } from './cold-start.ts';
-import { decideAnnotationsColdStart, decideColdStart, unionCommentsById } from './cold-start.ts';
-import { applyColdStart } from './cold-start-apply.ts';
+import {
+  decideAnnotationsColdStart,
+  decideColdStart,
+  decideCssColdStart,
+  unionCommentsById,
+} from './cold-start.ts';
+import { applyColdStart, type ColdStartSnapshotReason } from './cold-start-apply.ts';
 import { hashBytes } from './echo-guard.ts';
 import type { SyncJournal } from './journal.ts';
 import { ORIGINS } from './origins.ts';
@@ -74,7 +79,7 @@ export interface MigrateSeedOptions {
   /** DDR-102 — per-machine journal; gates fast-forward vs conflict. */
   journal?: SyncJournal;
   /** DDR-102 — body snapshot writer (history.ts), same contract as the agent's. */
-  snapshot?: (content: string, reason: 'pre-sync-local' | 'pre-sync-hub') => Promise<string | null>;
+  snapshot?: (content: string, reason: ColdStartSnapshotReason) => Promise<string | null>;
   /**
    * Does the HUB hold state for this slug, per its last document listing?
    *
@@ -296,6 +301,38 @@ export async function migrateSeed(opts: MigrateSeedOptions): Promise<MigrateSeed
     }
     // winner 'hub' → nothing to write here: the collab room owns the
     // annotations doc→file half and materializes it (persistJson).
+  }
+
+  // ---- css: PER-LANE resolution (issue #114), the same table agent.ts uses.
+  // `rebuildBodyFromLocal` above already re-seeds css when the BODY winner was
+  // local; this block is what covers every other row — above all the exact-repeat
+  // collapse, which is how a `CSS × N` lane from a concurrent cold seed gets
+  // back to one copy on a hub-wins boot. It no-ops when the two sides already
+  // agree, so running after the body applier costs nothing.
+  if (paths.css) {
+    const docCssNow = doc.getText(Y_SYNC_TYPES.css).toString();
+    const cssDecision = decideCssColdStart({
+      local: localCss,
+      doc: docCssNow.length > 0 ? docCssNow : null,
+      journalHash: opts.journal?.get(slug)?.cssHash ?? null,
+      hash: hashBytes,
+      bodyWinner: applied.bodyWinner,
+    });
+    if (cssDecision.recoveredDuplication) {
+      // Warn, don't snapshot — see the note on the same branch in agent.ts
+      // reconcile. An exact integer repeat carries no unique bytes to recover,
+      // and snapshotting it hands a hostile hub an eviction lever against the
+      // `_history/` copies that DO.
+      console.warn(`[sync/${slug}] shared-doc cold-start css: ${cssDecision.reason}`);
+    }
+    if (cssDecision.winner === 'local' && localCss !== null) {
+      doc.transact(() => {
+        applyCssToDoc(doc, localCss, ORIGINS.MIGRATION);
+      }, ORIGINS.MIGRATION);
+      opts.journal?.record(slug, { cssHash: hashBytes(localCss) });
+    }
+    // winner 'hub' → nothing to write here: the projection materializes the
+    // doc's css to disk, exactly as it does for the body.
   }
 
   // Comments id-union (DDR-102): rebuild from merged JSON via the

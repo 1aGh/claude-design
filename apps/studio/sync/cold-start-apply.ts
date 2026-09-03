@@ -39,6 +39,13 @@
 
 import type { ColdStartAction, ColdStartDecision } from './cold-start.ts';
 
+/** Why a cold-start snapshot was taken.
+ *
+ *  Deliberately NOT extended for the duplication collapse (issue #114). A
+ *  collapse only ever fires on an exact integer repeat, so the discarded copies
+ *  hold nothing the retained one doesn't — and `pruneSnapshots` evicts
+ *  oldest-first per slug, so a valueless snapshot on a hub-triggerable path is
+ *  an eviction lever against the copies that carry real bytes. */
 export type ColdStartSnapshotReason = 'pre-sync-local' | 'pre-sync-hub';
 
 export interface ColdStartConflictInfo {

@@ -51,6 +51,7 @@
     "test:e2e:desktop:onboarding": "pnpm --filter @maude/desktop-e2e e2e:onboarding",
     "test:e2e:desktop:acp-cold-start": "pnpm --filter @maude/desktop-e2e e2e:acp-cold-start",
     "test:e2e:desktop:parity": "pnpm --filter @maude/desktop-e2e e2e:parity",
+    "test:e2e:desktop:sidecar-respawn": "pnpm --filter @maude/desktop-e2e e2e:sidecar-respawn",
     "test:e2e:desktop:parity:cloud": "pnpm --filter @maude/desktop-e2e e2e:parity:cloud"
   },
   "optionalDependencies": {

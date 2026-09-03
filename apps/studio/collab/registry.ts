@@ -8,16 +8,11 @@
 
 import type { Awareness } from 'y-protocols/awareness';
 
+import { applyCommentsToDoc } from '../sync/codec.ts';
 import { bridgeAwareness } from './awareness-bridge.ts';
 import { Y_TYPES } from './persistence.ts';
 import type { Room, RoomCallbacks } from './room.ts';
 import { createRoom } from './room.ts';
-
-/** Structural equality via canonical JSON — used by the syncRoomFrom* no-op
- *  guards. Comment lists are small; stringify is cheap + dependency-free. */
-function jsonEqual(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
-}
 
 export interface Registry {
   /** Get-or-create. Reuses an existing room for the same slug. */
@@ -186,18 +181,15 @@ export function createRegistry(callbacks: RoomCallbacks): Registry {
   function syncRoomFromComments(slug: string, comments: readonly unknown[]): void {
     const room = rooms.get(slug);
     if (!room) return;
-    const arr = room.doc.getArray<unknown>(Y_TYPES.comments);
-    // No-op guard (load-bearing): skip when the room already holds this exact
-    // list. The wholesale delete+push always emits a doc update, which schedules
-    // a persist → file write → fs event → re-seed … so without this equality
-    // short-circuit, re-seeding the live room from a disk change (sync-agent or
-    // design:edit write — see createCollab's fs hook) would spin an 800ms
-    // persist storm. Equality breaks the loop after a single convergence.
-    if (jsonEqual(arr.toArray(), comments)) return;
-    room.doc.transact(() => {
-      if (arr.length > 0) arr.delete(0, arr.length);
-      if (comments.length > 0) arr.push(comments as unknown[]);
-    }, 'inspector-write');
+    // Through the codec's identity-keyed diff, NOT a local delete-all + push
+    // (issue #112). This bridge fires after EVERY comment mutation, so it was
+    // one of the three writers that could collide with an in-flight hub update
+    // and leave the array holding both runs. The codec keeps the no-op guard
+    // this function used to carry inline — an unchanged list emits no
+    // transaction, so re-seeding the live room from a disk change (sync-agent
+    // or design:edit write — see createCollab's fs hook) still can't spin the
+    // 800 ms persist storm the old equality short-circuit existed to prevent.
+    applyCommentsToDoc(room.doc, comments as unknown[], 'inspector-write');
   }
 
   function syncRoomFromAnnotations(slug: string, svg: string): void {

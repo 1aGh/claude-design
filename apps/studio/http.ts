@@ -4509,7 +4509,13 @@ export function createHttp(
       const serviceUrl = process.env.MAUDE_RENDER_URL;
       if (!serviceUrl) return Response.json({ ok: false, lane: resolveRenderLane() });
       try {
-        const r = await fetch(`${serviceUrl.replace(/\/+$/, '')}/_health`, {
+        // `globalThis.fetch`, never a bare `fetch(` — this module scope has
+        // carried a same-named local handler before, and a bare call silently
+        // resolved to it instead of the network (RCA
+        // issue-report-a-bug-http-500). The handler is `handleFallthrough`
+        // today; the rule stands so a rename can never reintroduce that, and
+        // `report-proxy.test.ts` fails the build on any bare call site here.
+        const r = await globalThis.fetch(`${serviceUrl.replace(/\/+$/, '')}/_health`, {
           signal: AbortSignal.timeout(8_000),
         });
         const body = (await r.json().catch(() => null)) as { ok?: boolean } | null;

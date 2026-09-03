@@ -272,6 +272,31 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
     let state = app.state::<SidecarState>();
     let project_root = project_root.to_string();
 
+    // RETIRE THE PREVIOUS PROCESS'S `_server.json` BEFORE WE SPAWN — issue #115.
+    //
+    // The dev-server unlinks this file only on a GRACEFUL shutdown (server.ts),
+    // so a crash leaves the dead process's `{pid, port, url, canvasOrigin}` on
+    // disk. Every reader here treats the file's existence as "a server is
+    // listening": the respawn path below calls `wait_for_server` the instant
+    // this function returns, and with a stale file that wait satisfies itself in
+    // ~0 ms with the dead URL — so the recovery re-navigate fires before the
+    // fresh child has bound anything, and the one mechanism that would have
+    // reloaded a page holding a stale `canvasOrigin` spends itself for nothing.
+    //
+    // The BOOT path (lib.rs, whose comment already names the symptom: "the
+    // webview navigates to the old port before the new server binds →
+    // connection refused → intermittent white screen") and `switch_project`
+    // have both always done this. The RESPAWN path and the DDR-235 "Try again"
+    // path never did — which is why a crash-respawn behaved worse than a cold
+    // start. Doing it HERE covers all four, so they cannot drift again.
+    // Best-effort by design: a file that isn't there, or can't be removed, must
+    // not stop us from starting a server.
+    let _ = std::fs::remove_file(
+        std::path::Path::new(&project_root)
+            .join(".design")
+            .join("_server.json"),
+    );
+
     let mut command = app
         .shell()
         .sidecar("maude-server")
@@ -497,26 +522,31 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
         let mut server_log = ServerLog::open(&app);
         while let Some(event) = rx.recv().await {
             match event {
+                // PANIC-FREE LOGGING IS LOAD-BEARING HERE — see `log_line`. A
+                // broken stderr pipe (the normal state of a Finder-launched
+                // .app) made `eprint!` panic out of this very task, which is
+                // the only consumer of `Terminated` below: no respawn, no
+                // drained output, no give-up modal.
                 CommandEvent::Stdout(line) => {
-                    eprint!("[maude:server] {}", String::from_utf8_lossy(&line));
+                    log_raw(&format!("[maude:server] {}", String::from_utf8_lossy(&line)));
                     if let Some(log) = server_log.as_mut() {
                         log.write(&line);
                     }
                 }
                 CommandEvent::Stderr(line) => {
-                    eprint!("[maude:server] {}", String::from_utf8_lossy(&line));
+                    log_raw(&format!("[maude:server] {}", String::from_utf8_lossy(&line)));
                     if let Some(log) = server_log.as_mut() {
                         log.write(&line);
                     }
                 }
                 CommandEvent::Error(err) => {
-                    eprintln!("[maude:server] error: {err}");
+                    log_line(&format!("[maude:server] error: {err}"));
                 }
                 CommandEvent::Terminated(payload) => {
-                    eprintln!(
+                    log_line(&format!(
                         "[maude:server] terminated (code={:?}) — root {supervised_root}",
                         payload.code
-                    );
+                    ));
                     let state = app.state::<SidecarState>();
                     if state.shutting_down.load(Ordering::SeqCst) {
                         break; // expected — app is quitting
@@ -541,22 +571,26 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
                                 let uptime = inst.spawned_at.elapsed();
                                 inst.restarts = next_restart_count(inst.restarts, uptime);
                                 inst.child = None;
-                                eprintln!(
+                                log_line(&format!(
                                     "[maude] dev-server was up {}s before it died — restart {}/{}",
                                     uptime.as_secs(),
                                     inst.restarts,
                                     MAX_RESTARTS
-                                );
+                                ));
                                 inst.restarts
                             }
                             None => {
-                                eprintln!("[maude] {supervised_root} was retired — not respawning");
+                                log_line(&format!(
+                                    "[maude] {supervised_root} was retired — not respawning"
+                                ));
                                 break;
                             }
                         }
                     };
                     if attempt > MAX_RESTARTS {
-                        eprintln!("[maude] sidecar gave up after {MAX_RESTARTS} restarts ({supervised_root})");
+                        log_line(&format!(
+                            "[maude] sidecar gave up after {MAX_RESTARTS} restarts ({supervised_root})"
+                        ));
                         state
                             .instances
                             .lock()
@@ -572,10 +606,17 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
                         report_sidecar_gave_up(&app, &supervised_root);
                         break;
                     }
-                    eprintln!("[maude] respawning dev-server (attempt {attempt}/{MAX_RESTARTS})");
+                    log_line(&format!(
+                        "[maude] respawning dev-server (attempt {attempt}/{MAX_RESTARTS})"
+                    ));
                     tokio::time::sleep(Duration::from_millis(500 * attempt as u64)).await;
+                    // Stamped BEFORE the spawn so the recovery wait below can
+                    // tell the fresh child's `_server.json` from the dead one's
+                    // (issue #115). `spawn_for` also removes the stale file; this
+                    // is the half that does not depend on that removal working.
+                    let spawn_at = std::time::SystemTime::now();
                     if let Err(e) = spawn_for(&app, &supervised_root) {
-                        eprintln!("[maude] respawn failed: {e}");
+                        log_line(&format!("[maude] respawn failed: {e}"));
                     } else {
                         // The dead process took the webview's open WebSocket(s)
                         // with it — sync status, active-canvas tracking, HMR —
@@ -593,7 +634,13 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
                         let root2 = supervised_root.clone();
                         tauri::async_runtime::spawn(async move {
                             let design_root = std::path::Path::new(&root2).join(".design");
-                            match crate::server_json::wait_for_server(design_root, 120_000).await {
+                            match crate::server_json::wait_for_server_since(
+                                design_root,
+                                120_000,
+                                Some(spawn_at),
+                            )
+                            .await
+                            {
                                 Ok(url) => {
                                     let still_shown = app2
                                         .state::<SidecarState>()
@@ -611,23 +658,27 @@ pub fn spawn_for(app: &AppHandle, project_root: &str) -> Result<(), String> {
                                         {
                                             if let Some(window) = app2.get_webview_window("main")
                                             {
-                                                eprintln!(
+                                                log_line(&format!(
                                                     "[maude] dev-server recovered — reloading webview for {root2}"
-                                                );
+                                                ));
                                                 if let Err(e) = window.navigate(parsed) {
-                                                    eprintln!("[maude] post-respawn navigate failed: {e}");
+                                                    log_line(&format!(
+                                                        "[maude] post-respawn navigate failed: {e}"
+                                                    ));
                                                 }
                                             }
                                         }
-                                        Ok(parsed) => eprintln!(
+                                        Ok(parsed) => log_line(&format!(
                                             "[maude] refusing non-loopback navigate (DDR-109): {parsed}"
-                                        ),
-                                        Err(e) => eprintln!("[maude] invalid server url {url}: {e}"),
+                                        )),
+                                        Err(e) => {
+                                            log_line(&format!("[maude] invalid server url {url}: {e}"))
+                                        }
                                     }
                                 }
-                                Err(e) => {
-                                    eprintln!("[maude] post-respawn: dev-server did not come back up: {e}")
-                                }
+                                Err(e) => log_line(&format!(
+                                    "[maude] post-respawn: dev-server did not come back up: {e}"
+                                )),
                             }
                         });
                     }
@@ -991,8 +1042,34 @@ fn terminate(child: CommandChild) {
 ///
 /// A teardown path may not depend on anybody listening.
 pub fn log_shutdown(line: &str) {
+    log_line(line);
+}
+
+/// Write one line to stderr, DISCARDING the result — the panic-free `eprintln!`.
+///
+/// NOT only for teardown (issue #115 follow-up). `eprintln!`/`eprint!` panic
+/// when stderr cannot be written, and an unwritable stderr is the ORDINARY
+/// state of a `.app` launched from Finder, the Dock, or `gtk-launch` — the
+/// pipe is broken from the start or breaks when the launching terminal goes
+/// away. Any code that can run in that state and prints must use this.
+///
+/// The supervisor task below is the load-bearing case. It is the only consumer
+/// of `CommandEvent::Terminated`, so a panic unwinding out of it does far more
+/// than lose a log line: the sidecar is never respawned, its output stops being
+/// drained (so the child eventually blocks on a full pipe and hangs), and the
+/// `MAX_RESTARTS` give-up modal never fires either — the app goes quiet with no
+/// crash, no reason, and no way back. Three crash reports on one install showed
+/// exactly this, twice at the `eprint!` in the Stdout/Stderr arms.
+fn log_line(line: &str) {
     use std::io::Write;
     let _ = writeln!(std::io::stderr(), "{line}");
+}
+
+/// `log_line` without the trailing newline — for mirroring sidecar output that
+/// already carries its own.
+fn log_raw(chunk: &str) {
+    use std::io::Write;
+    let _ = write!(std::io::stderr(), "{chunk}");
 }
 
 /// Kill EVERY sidecar (called on app quit). Flags shutdown first so no

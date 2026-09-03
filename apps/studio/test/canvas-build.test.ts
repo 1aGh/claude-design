@@ -6,6 +6,8 @@
 //   3. expose the default export so _shell.html can mount it.
 
 import { describe, expect, test } from 'bun:test';
+import { realpathSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 
 import { buildCanvasModule } from '../canvas-build.ts';
 
@@ -95,8 +97,18 @@ describe('canvas-build / sandbox scheme handling (M9)', () => {
   // symlink never matches, the allowlist silently disarms (returns null → the
   // native resolver), and every "denied" assertion here would be testing
   // nothing. Discovered by this very suite going green for the wrong reason.
+  //
+  // RESOLVED, not hardcoded. The first fix wrote `/private/tmp` literally —
+  // macOS's answer to this question, baked in — so on Linux, where that path
+  // does not exist, all three tests died in `Bun.write` with ENOENT before
+  // reaching a single assertion. Green for the wrong reason on one platform,
+  // red for an unrelated reason on the other. `realpathSync(tmpdir())` asks the
+  // OS instead: `/tmp` on Linux, `/private/var/folders/…` on macOS, symlink
+  // already resolved on both, which is the only property the sandbox needs.
+  const TMP_REAL = realpathSync(tmpdir());
+
   async function tmpProject(): Promise<{ dir: string; abs: string; src: string }> {
-    const dir = `/private/tmp/canvas-build-m9-${Math.random().toString(36).slice(2, 8)}`;
+    const dir = `${TMP_REAL}/canvas-build-m9-${Math.random().toString(36).slice(2, 8)}`;
     await Bun.write(`${dir}/style.css`, GRAIN);
     const src = `import "./style.css";\nexport default function G() { return <div className="grain" />; }\n`;
     const abs = `${dir}/canvas.tsx`;
@@ -111,7 +123,7 @@ describe('canvas-build / sandbox scheme handling (M9)', () => {
   });
 
   test('the sandbox still denies a bare npm specifier — the scheme pass-through is not a hole', async () => {
-    const dir = `/private/tmp/canvas-build-m9-deny-${Math.random().toString(36).slice(2, 8)}`;
+    const dir = `${TMP_REAL}/canvas-build-m9-deny-${Math.random().toString(36).slice(2, 8)}`;
     const src = `import x from "left-pad";\nexport default function D() { return <i>{x}</i>; }\n`;
     const abs = `${dir}/canvas.tsx`;
     await Bun.write(abs, src);
@@ -126,7 +138,7 @@ describe('canvas-build / sandbox scheme handling (M9)', () => {
     // must keep refusing it even now that data:/blob: pass. (A plain
     // `url(https://…)` image reference never reaches onResolve — Bun's CSS
     // loader leaves it external for the browser, where the cell CSP owns it.)
-    const dir = `/private/tmp/canvas-build-m9-http-${Math.random().toString(36).slice(2, 8)}`;
+    const dir = `${TMP_REAL}/canvas-build-m9-http-${Math.random().toString(36).slice(2, 8)}`;
     await Bun.write(
       `${dir}/style.css`,
       `@import url("https://api.fontshare.com/v2/css?f=x");\n.x { color: red; }\n`

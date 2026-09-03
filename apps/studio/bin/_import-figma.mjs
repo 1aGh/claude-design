@@ -29,12 +29,14 @@
 
 import { createHash } from 'node:crypto';
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   renameSync,
   rmSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
@@ -141,6 +143,50 @@ const SLUG_RE = /^[a-z0-9-]{1,64}$/;
  */
 function makeStagingDir() {
   return mkdtempSync(join(tmpdir(), 'maude-figma-'));
+}
+
+/**
+ * Promote one staged file into the project tree.
+ *
+ * A bare `renameSync` is atomic — and SAME-FILESYSTEM ONLY. Staging lives under
+ * the OS temp root (or `~/.cache/maude/figma-staging` for the codegen lane)
+ * while the project can be anywhere: a second partition, an external drive, a
+ * container volume, a tmpfs `/tmp`. Those are different devices, so the rename
+ * threw `EXDEV: cross-device link not permitted` and the whole import died at
+ * the final step, after every byte of work was already done. It reproduces on
+ * any Linux box where `/tmp` is a tmpfs, which is most of them, and it is why
+ * the figma-explode suite was red.
+ *
+ * The atomicity is not negotiable — nothing may land half-written in the
+ * versioned tree — so this does NOT fall back to a plain copy. It copies into a
+ * sibling temp file IN THE DESTINATION DIRECTORY and renames within that
+ * directory: same filesystem by construction, so the step that publishes the
+ * file is still a single atomic rename.
+ */
+function promoteFile(src, dest) {
+  try {
+    renameSync(src, dest);
+    return;
+  } catch (err) {
+    if (err?.code !== 'EXDEV') throw err;
+  }
+  const tmp = `${dest}.${process.pid}.promote-tmp`;
+  copyFileSync(src, tmp);
+  try {
+    renameSync(tmp, dest);
+  } catch (err) {
+    try {
+      unlinkSync(tmp);
+    } catch {
+      /* best effort — the staged original is still intact */
+    }
+    throw err;
+  }
+  try {
+    unlinkSync(src);
+  } catch {
+    /* staging is reaped wholesale by its own finally */
+  }
 }
 
 /**
@@ -548,9 +594,9 @@ export async function importBoard({
     mkdirSync(join(root, designRootRel, 'ui'), { recursive: true });
     // Promote by rename — atomic, and nothing lands in the versioned tree
     // until the whole translation has succeeded.
-    renameSync(stagedTsx, finalTsx);
-    renameSync(stagedMeta, finalMeta);
-    renameSync(stagedSvg, finalPath);
+    promoteFile(stagedTsx, finalTsx);
+    promoteFile(stagedMeta, finalMeta);
+    promoteFile(stagedSvg, finalPath);
     return {
       slug: annSlug,
       canvas: canvasRel,
@@ -977,8 +1023,8 @@ export async function importPages({
         mkdirSync(outDir, { recursive: true });
         const finalTsx = assertContained(root, designRootRel, join(outDir, `${title}.tsx`));
         const finalMeta = assertContained(root, designRootRel, join(outDir, `${title}.meta.json`));
-        renameSync(stagedTsx, finalTsx);
-        renameSync(stagedMeta, finalMeta);
+        promoteFile(stagedTsx, finalTsx);
+        promoteFile(stagedMeta, finalMeta);
 
         // The page's annotation layer has TWO sources, and the second one is the
         // reason a tree-walking import felt half-migrated:
@@ -1060,7 +1106,7 @@ export async function importPages({
             designRootRel,
             join(root, designRootRel, `${annSlug}.annotations.svg`)
           );
-          renameSync(stagedAnn, finalAnn);
+          promoteFile(stagedAnn, finalAnn);
         }
         written.push({
           title,
@@ -1240,8 +1286,8 @@ export async function importFrames({
       mkdirSync(uiDir, { recursive: true });
       const finalTsx = assertContained(root, designRootRel, join(uiDir, `${base}.tsx`));
       const finalMeta = assertContained(root, designRootRel, join(uiDir, `${base}.meta.json`));
-      renameSync(stagedTsx, finalTsx);
-      renameSync(stagedMeta, finalMeta);
+      promoteFile(stagedTsx, finalTsx);
+      promoteFile(stagedMeta, finalMeta);
       written.push({
         slug: base,
         path: finalTsx,
@@ -1559,8 +1605,8 @@ export async function explodeArtboard({
     const stagedMeta = join(staging, 'canvas.meta.json');
     writeFileSync(stagedTsx, tsxOut, 'utf8');
     writeFileSync(stagedMeta, `${JSON.stringify(nextMeta, null, 2)}\n`, 'utf8');
-    renameSync(stagedTsx, tsxPath);
-    renameSync(stagedMeta, metaPath);
+    promoteFile(stagedTsx, tsxPath);
+    promoteFile(stagedMeta, metaPath);
 
     return {
       canvas: rel,
@@ -1624,7 +1670,7 @@ export async function importTokens({ url, root, designRootRel = '.design', dryRu
       designRootRel,
       join(outDir, `figma-tokens-${target.fileKey.slice(0, 8).toLowerCase()}.json`)
     );
-    renameSync(staged, finalPath);
+    promoteFile(staged, finalPath);
     return { ...result, path: finalPath };
   } finally {
     rmSync(staging, { recursive: true, force: true });

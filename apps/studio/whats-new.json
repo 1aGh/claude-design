@@ -2,6 +2,24 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "comments-stop-duplicating",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "Comments stop duplicating, and resolve works",
+      "summary": "On a project linked to a hub, a comment could come back two, four, then eight times, and clicking resolve appeared to do nothing — every copy had to be dealt with separately, and new ones kept arriving. Maude now recognises the copies as one comment, so they collapse back to a single pin, and resolving or deleting one clears all of it. A project that already filled up with duplicates repairs itself the next time you open it.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "synced-canvases-stop-duplicating",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "Synced canvases stop duplicating themselves",
+      "summary": "On a project linked to a hub, a canvas could come back with its whole contents pasted onto itself — twice, sometimes more — which broke the build and left the canvas unopenable. It happened when two people (or your machine and the hub) first picked up the same canvas at the same moment. Maude now recognises that exact shape and collapses it back to one copy, on the styles as well as the body. Moving a canvas into another folder also fixes up its imports instead of breaking them.",
+      "surface": "design-ui"
+    },
+    {
       "date": null,
       "id": "sync-recovers-after-the-workspace-sleeps",
       "kind": "fix",

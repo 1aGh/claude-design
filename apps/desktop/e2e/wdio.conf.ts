@@ -30,6 +30,8 @@ const DEDICATED: Record<string, string> = {
   'git-switch-repos.e2e.ts': 'pnpm test:e2e:desktop:switchrepos',
   'onboarding.e2e.ts': 'pnpm test:e2e:desktop:onboarding',
   'shell-parity.e2e.ts': 'pnpm test:e2e:desktop:parity',
+  // Needs the canvas-origin split ON, which this config forces OFF below.
+  'sidecar-respawn-canvas-switch.e2e.ts': 'pnpm test:e2e:desktop:sidecar-respawn',
 };
 
 // Drift tripwire. Adding a wdio.<name>.conf.ts without listing its spec above

@@ -81,7 +81,25 @@ describe('the cloud shell offers nothing it cannot honour', () => {
   });
 
   test('the local export queue does not hydrate before the shell is known', () => {
-    expect(APP).toContain('useExportCenter({ enabled: cfg.cloud === null })');
+    // Asserted as the RULE, not as one exact call expression. This pinned the
+    // literal `useExportCenter({ enabled: cfg.cloud === null })`, so when the
+    // remote export lane legitimately widened the guard to
+    // `cfg.cloud === null || cfg.exportLane === 'remote'` (and prettier split it
+    // over three lines), the test went red against correct code and stayed red
+    // on main — a guard rule that cries at every edit teaches people to edit the
+    // test, which is how the rule dies.
+    //
+    // What actually matters, and what the sibling CloudBar test above spells
+    // out: the gate is `=== null`, never truthiness. `cfg.cloud` is `undefined`
+    // until `/_config` answers, and treating unknown as "not cloud" is the bug —
+    // it hydrates the local queue for one frame inside a cloud tab. (The
+    // `exportLane` disjunct is safe for the same reason it is invisible here:
+    // it arrives in the SAME `/_config` payload, so it is undefined for exactly
+    // as long as `cloud` is.)
+    const call = /useExportCenter\(\{[\s\S]*?\}\)/.exec(APP)?.[0] ?? '';
+    expect(call).toContain('cfg.cloud === null');
+    expect(call).not.toMatch(/enabled:\s*!cfg\.cloud/);
+    expect(call).not.toMatch(/enabled:\s*cfg\.cloud\s*[?&|]/);
   });
 
   test('every component that gates on the shell is actually GIVEN the flag', () => {

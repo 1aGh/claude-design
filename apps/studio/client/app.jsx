@@ -4548,6 +4548,10 @@ function Viewport({
   cfg,
   loadingPath,
   onIframeLoad,
+  canvasError,
+  canvasReloadNonce,
+  onRetryCanvasLoad,
+  loadedPath,
   showQuickSetup,
   onStartQuickSetup,
   previewPath,
@@ -4564,8 +4568,21 @@ function Viewport({
   useEffect(() => {
     if (previewPath) previewRef.current?.focus();
   }, [previewPath]);
+  // One observable word for "what is the canvas pane actually doing" — the
+  // top-frame signal the #115 E2E scenario waits on, and the only place these
+  // three states are named together. `ready` is `dgn:'loaded'`-backed, so it
+  // cannot be faked by a timer expiring (which is exactly how the bug used to
+  // look successful: skeleton gone, pane white).
+  const canvasState =
+    canvasError && canvasError.path === activePath
+      ? 'error'
+      : activePath && activePath !== SYSTEM_TAB && loadedPath === activePath
+        ? 'ready'
+        : loadingPath && loadingPath === activePath
+          ? 'loading'
+          : 'idle';
   return (
-    <div className="viewport st-stage" data-tour="viewport">
+    <div className="viewport st-stage" data-tour="viewport" data-canvas-state={canvasState}>
       {previewPath && (
         // feature-studio-file-preview — an overlay, not a tab: the canvas
         // iframe (if any) stays mounted underneath so switching back to it
@@ -4638,7 +4655,10 @@ function Viewport({
         }
         return (
           <iframe
-            key={t.path}
+            // The nonce is part of the key ONLY so the #115 Retry can force a
+            // remount; it is otherwise constant, so normal switching keys on the
+            // path exactly as before.
+            key={`${t.path}#${canvasReloadNonce}`}
             ref={(el) => registerIframe(t.path, el)}
             src={canvasUrl(t.path, cfg)}
             className={t.path === activePath ? 'active' : ''}
@@ -4666,6 +4686,45 @@ function Viewport({
             <span className="skel st-skel-thumb" />
             <span className="skel st-skel-line" style={{ width: '72%' }} />
             <span className="skel st-skel-line" style={{ width: '46%' }} />
+          </div>
+        </div>
+      )}
+      {canvasError && canvasError.path === activePath && (
+        // issue #115 — what the blank pane used to be. Names which of the two
+        // failures happened and offers the recovery that used to require
+        // quitting the app (or knowing that switching projects and back
+        // re-reads /_config).
+        <div className="st-canvas-error" role="alert" data-testid="canvas-load-error">
+          <div className="st-canvas-error-card">
+            <div className="st-canvas-error-title">
+              {canvasError.kind === 'server'
+                ? "Maude's server isn't responding"
+                : "This canvas didn't finish loading"}
+            </div>
+            <div className="st-canvas-error-body">
+              {canvasError.kind === 'server' ? (
+                <>
+                  The canvas couldn't be reached. This usually means Maude's
+                  server restarted underneath this window — your files on disk
+                  are untouched.
+                </>
+              ) : (
+                <>
+                  The server is up, but{' '}
+                  <code>{sanitizeDisplayText(basename(canvasError.path))}</code>{' '}
+                  never finished compiling. Its own error, if it has one, is in
+                  the canvas frame.
+                </>
+              )}
+            </div>
+            <button
+              type="button"
+              className="btn btn--primary"
+              data-testid="canvas-load-retry"
+              onClick={() => onRetryCanvasLoad?.(canvasError.path)}
+            >
+              Reload canvas
+            </button>
           </div>
         </div>
       )}
@@ -9790,6 +9849,24 @@ function App() {
   // Canvas-compile skeleton (single-canvas model → one path at a time).
   const [loadingPath, setLoadingPath] = useState(null);
   const loadFallbackTimer = useRef(null);
+  // issue #115 — a canvas that never reported `loaded`. `{ path, kind }`, where
+  // kind is 'server' (the canvas origin did not answer /_health — a dead or
+  // respawned sidecar) or 'compile' (the origin is up, the canvas itself never
+  // mounted). Rendered instead of the blank pane the cap used to leave behind.
+  const [canvasError, setCanvasError] = useState(null);
+  // Bumped by the error panel's Retry. Folded into the iframe `key` so a retry
+  // REMOUNTS the frame — re-setting `src` to the identical URL would not
+  // re-navigate, and after a respawn the URL is identical in every case except
+  // the port that `loadServerConfig()` is about to correct.
+  const [canvasReloadNonce, setCanvasReloadNonce] = useState(0);
+  // The canvas whose SHELL DOCUMENT has actually loaded, per its `dgn:'loaded'`
+  // post. Distinct from `!loadingPath`, which the 2.5 s onLoad fallback and the
+  // 15 s cap also clear — this one only ever means "the shell ran". That makes
+  // it the honest signal for `data-canvas-state` below, and the one the #115 E2E
+  // scenario asserts: the shell's inline script posts it whether or not the
+  // canvas TSX went on to build, so it isolates "the origin was reachable" from
+  // "the canvas compiled" — exactly the axis #115 is about.
+  const [loadedPath, setLoadedPath] = useState(null);
   // Resizable side panels (DS components-resize-panels) + the active drag side.
   const sbSize = usePanelSize('maude-sb-w', { min: 200, max: 420, def: 252 });
   const rpSize = usePanelSize('maude-rp-w', { min: 260, max: 480, def: 304 });
@@ -9825,11 +9902,6 @@ function App() {
       setLoadingPath((p) => (p === path ? null : p));
     }, 2500);
   }, []);
-  useEffect(() => {
-    if (!loadingPath) return;
-    const cap = setTimeout(() => setLoadingPath(null), 15000);
-    return () => clearTimeout(cap);
-  }, [loadingPath]);
   // Loaded at boot from /_config and re-fetched on the server's
   // `config-updated` push (config.json hot-reload — /design:setup-ds rewrites
   // it mid-session) — informs canvasUrl() so TSX iframes can pass the right
@@ -9846,6 +9918,44 @@ function App() {
   // for one frame, each fired the request its shell exists to refuse, and then
   // unmounted. Nothing was broken and everything looked broken.
   const [cfg, setCfg] = useState({ designRel: '.design', cloud: undefined });
+  // THE CAP MUST NOT CLEAR TO WHITE — issue #115. This used to be a bare
+  // `setLoadingPath(null)`, which is the most useless thing it could do: when
+  // the canvas origin is unreachable the shell HTML never loads, so the shell's
+  // own `#canvas-mount-error` surface (templates/_shell.html) does not exist to
+  // report anything, and dropping the skeleton left a blank pane with no error,
+  // no reason and no way back inside the app. Probe the canvas origin to tell
+  // the two failures apart — a dead server (the #115 stale-origin case, and any
+  // sidecar crash) versus a canvas that genuinely never finished compiling —
+  // and hand the user the recovery in both cases.
+  //
+  // DECLARED AFTER `cfg`, ON PURPOSE — the same rule the block below states for
+  // the git flags, and this effect is what taught us it is not decorative. Its
+  // dependency array reads `cfg?.canvasOrigin`, and A DEPENDENCY ARRAY IS
+  // EVALUATED DURING RENDER: sitting above the `useState` above, it hit `cfg` in
+  // its temporal dead zone, so `App` threw `Cannot access 'cfg' before
+  // initialization` on its very first render and the WHOLE STUDIO mounted
+  // nothing — a white page for every user, not only the desktop shell the fix
+  // was written for. It reached the branch because the PR carried a merge
+  // conflict, which stops GitHub from building a merge ref, which means the
+  // client-boot gate never ran on it (issue #112 close-out).
+  useEffect(() => {
+    if (!loadingPath) return;
+    const path = loadingPath;
+    const cap = setTimeout(async () => {
+      let kind = 'compile';
+      try {
+        const r = await fetch(`${cfg?.canvasOrigin || ''}/_health`, {
+          cache: 'no-store',
+        });
+        if (!r.ok) kind = 'server';
+      } catch {
+        kind = 'server';
+      }
+      setCanvasError({ path, kind });
+      setLoadingPath((p) => (p === path ? null : p));
+    }, 15000);
+    return () => clearTimeout(cap);
+  }, [loadingPath, cfg?.canvasOrigin]);
   // WHO IS SAVING THIS PROJECT — one expression, read by every surface that
   // would otherwise offer to save it, poll for it, or badge it (DDR-218, widened
   // by feature-cloud-managed-git-posture).
@@ -11471,12 +11581,30 @@ function App() {
     // 25 s keeps the socket active (Bun resets the idle timer on any frame,
     // inbound OR outbound); the server ignores an unknown message type.
     let pingTimer = null;
+    // A RECONNECT MEANS THE PEER MAY BE A DIFFERENT PROCESS — issue #115.
+    // The desktop supervisor respawns the sidecar when it dies (DDR-235's Bun
+    // fault is a recurring one), and everything this page cached from `/_config`
+    // was published by the process that just went away. `canvasOrigin` is the
+    // one that bites: it is an OS-assigned ephemeral port (server.ts's
+    // `startCanvasServer(0)`), so it is DIFFERENT in every process, while the
+    // main origin walks a deterministic ladder from 4399 and usually reclaims
+    // its old port. The result was a half-live page — socket back up, status bar
+    // `live`, tree and panels fine — whose every canvas iframe navigated to a
+    // dead port. Since a canvas switch mounts a FRESH iframe (single-canvas
+    // model, keyed by path), the already-open canvas kept rendering and only
+    // switching went white, silently and permanently.
+    //
+    // So: re-derive the config from whoever is answering now. Only on a
+    // RE-connect — the boot effect above already did the first fetch.
+    let everConnected = false;
     function connect() {
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
       const ws = new WebSocket(proto + '//' + location.host + '/_ws');
       wsRef.current = ws;
       ws.addEventListener('open', () => {
         setWsConnected(true);
+        if (everConnected) loadServerConfig();
+        everConnected = true;
         clearInterval(pingTimer);
         pingTimer = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) ws.send('{"type":"ping"}');
@@ -11826,10 +11954,26 @@ function App() {
     setActivePath(path);
     setFocusedCommentId(null);
     setPreviewPath(null);
+    setCanvasError(null);
+    setLoadedPath(null);
     // Canvas-compile skeleton — cleared by the iframe's dgn:'loaded' message,
     // the onLoad fallback timer (legacy .html), or a hard 15s cap.
     if (path !== SYSTEM_TAB) setLoadingPath(path);
   }, []);
+
+  // Retry from the #115 error panel: re-read /_config FIRST (the stale
+  // `canvasOrigin` is the likeliest reason we are here at all), then remount the
+  // iframe via the nonce so it navigates against the corrected origin.
+  const retryCanvasLoad = useCallback(
+    (path) => {
+      setCanvasError(null);
+      setLoadedPath(null);
+      loadServerConfig();
+      setCanvasReloadNonce((n) => n + 1);
+      if (path && path !== SYSTEM_TAB) setLoadingPath(path);
+    },
+    [loadServerConfig]
+  );
 
   /**
    * First open lands on a rendered canvas — Cloud Phase 27 C3.
@@ -13132,6 +13276,10 @@ function App() {
         // iframe finished loading — drop the compile skeleton, push current
         // comments + carry over focused pin if any
         setLoadingPath((p) => (p === m.file ? null : p));
+        setLoadedPath(m.file);
+        // …and retire any #115 error panel for this canvas: it just proved it
+        // can load (a late load, or a successful Retry).
+        setCanvasError((e) => (e && e.path === m.file ? null : e));
         // Presentation Mode suppresses comment pins (same gate as the push
         // effect above), so a canvas opened while presenting starts pin-free.
         const list = presentMode ? [] : commentsByFile[m.file] || [];
@@ -15259,6 +15407,10 @@ function App() {
               cfg={cfg}
               loadingPath={loadingPath}
               onIframeLoad={onIframeLoad}
+              canvasError={canvasError}
+              canvasReloadNonce={canvasReloadNonce}
+              onRetryCanvasLoad={retryCanvasLoad}
+              loadedPath={loadedPath}
               showQuickSetup={
                 isNativeApp() && !viewerMode && !!setupReadiness && !setupReadiness.ready
               }

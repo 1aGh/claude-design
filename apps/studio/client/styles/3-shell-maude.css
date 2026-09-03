@@ -1594,6 +1594,40 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .st-skel-thumb { height: 96px; border-radius: var(--radius-sm); }
 .st-skel-line { height: 10px; }
 
+/* ─── Canvas failed to load (issue #115) ──────────────────────────────────────
+ * Replaces the blank pane the 15s skeleton cap used to leave behind. Same card
+ * geometry as the skeleton so the transition from "compiling" to "it didn't"
+ * reads as one surface changing state, not a new thing appearing. Interactive
+ * (the skeleton is `pointer-events: none`; this one has a button). */
+.st-canvas-error {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  z-index: 6;
+  background: var(--canvas-bg);
+}
+.st-canvas-error-card {
+  width: 360px; max-width: calc(100% - var(--space-8));
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-5);
+  background: var(--bg-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  animation: st-pop var(--dur-panel) var(--ease-out);
+}
+.st-canvas-error-title {
+  font-family: var(--font-display); font-size: var(--type-base); font-weight: 600;
+  color: var(--fg-0);
+}
+.st-canvas-error-body { font-size: var(--type-sm); line-height: 1.6; color: var(--fg-2); }
+.st-canvas-error-body code {
+  font-family: var(--font-mono); font-size: var(--type-xs);
+  background: var(--bg-2); color: var(--accent);
+  padding: 1px 5px; border-radius: var(--radius-xs);
+}
+.st-canvas-error-card .btn { align-self: flex-start; }
+@media (prefers-reduced-motion: reduce) { .st-canvas-error-card { animation: none; } }
+
 /* ─── Micro-motion — hover/disclosure transitions on the dense surfaces ───── */
 .st-row,
 .st-comment,

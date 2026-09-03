@@ -17,7 +17,10 @@ import path from 'node:path';
 import { createAssetMirror, s3ConfigFromEnv } from './assets-s3.ts';
 import { canvasArtifacts, locatorKeyFor, relocatedName } from './canvas-artifacts.ts';
 import { renderBriefBoard, validateCanvasName, validateFolderName } from './canvas-create.ts';
+import { rewriteRelativeImports } from './canvas-imports.ts';
 import { canvasSlugFromRel } from './canvas-slug.ts';
+import { atomicWrite } from './sync/atomic-write.ts';
+import { dedupeCommentsById } from './sync/comment-identity.ts';
 
 // Re-exported so existing external callers (canvas-list-watch.ts, tests) keep
 // importing it from api.ts — the actual implementation now lives in
@@ -1095,7 +1098,14 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       // Phase 6 — default-fill `author` / `thread` / `mentions` for legacy
       // rows. No write-back here; the on-disk shape stays stable until the
       // next mutation persists the upgraded record.
-      return arr.map(backfillComment);
+      //
+      // Deduped by comment identity first (issue #112). This is the read half
+      // of the repair: a project whose `_comments/<slug>.json` was already
+      // doubled by the pre-fix sync lane heals the moment it is loaded, and no
+      // consumer — pins, sidebar, `/_comments`, the /design:edit agent — ever
+      // sees the same comment eight times. First occurrence wins, matching the
+      // rule the codec and the cold-start union use.
+      return dedupeCommentsById(arr).map(backfillComment);
     } catch {
       return [];
     }
@@ -1135,7 +1145,14 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
   }
 
   async function saveCommentsForFile(file: string, list: Comment[]) {
-    await Bun.write(commentsPath(file), JSON.stringify(list, null, 2));
+    // The write half of the #112 repair, and the reason it belongs HERE: this
+    // is the one choke point every writer passes through — the API mutations,
+    // and the collab room's `persistJson`, which materializes the Y.Array
+    // straight to disk. Deduping at the door means a doc caught mid-convergence
+    // (or a peer still running the old wholesale write) cannot persist a
+    // duplicated list as the canvas's new truth, which is how the doubling
+    // survived restarts and compounded.
+    await Bun.write(commentsPath(file), JSON.stringify(dedupeCommentsById(list), null, 2));
   }
 
   async function loadAllComments(): Promise<Record<string, Comment[]>> {
@@ -1350,24 +1367,33 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     return null;
   }
 
+  // Mutations are ID-TOTAL, not first-match (issue #112). `loadAllComments`
+  // dedupes, so under normal operation there is exactly one entry per id and
+  // these behave as they always did. They stay total as defense in depth: the
+  // reporter's second symptom — "I can't then close or resolve the comments" —
+  // was a `findIndex` + `return` marking copy 1 of 8 resolved while the overlay
+  // (which filters `status !== 'resolved'`) kept drawing the other seven, and a
+  // delete removing one copy per click. A duplicated list can still reach these
+  // from an older peer mid-upgrade; resolve must resolve either way.
   async function commentsPatch(id: string, patch: Partial<Comment>) {
     const all = await loadAllComments();
     for (const [file, list] of Object.entries(all)) {
-      const i = list.findIndex((c) => c.id === id);
-      if (i < 0) continue;
-      const entry = list[i];
-      if (!entry) continue;
-      if (patch.status === 'resolved' || patch.status === 'open') {
-        entry.status = patch.status;
-        entry.resolved_at = patch.status === 'resolved' ? new Date().toISOString() : null;
-      }
-      if (typeof patch.text === 'string' && patch.text.trim()) {
-        entry.text = patch.text.trim().slice(0, 4000);
-        entry.mentions = mentionsUnion(entry);
+      const matches = list.filter((c) => c.id === id);
+      const first = matches[0];
+      if (!first) continue;
+      for (const entry of matches) {
+        if (patch.status === 'resolved' || patch.status === 'open') {
+          entry.status = patch.status;
+          entry.resolved_at = patch.status === 'resolved' ? new Date().toISOString() : null;
+        }
+        if (typeof patch.text === 'string' && patch.text.trim()) {
+          entry.text = patch.text.trim().slice(0, 4000);
+          entry.mentions = mentionsUnion(entry);
+        }
       }
       await saveCommentsForFile(file, list);
       onCommentsChanged(file);
-      return entry;
+      return first;
     }
     return null;
   }
@@ -1375,10 +1401,9 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
   async function commentsDelete(id: string): Promise<boolean> {
     const all = await loadAllComments();
     for (const [file, list] of Object.entries(all)) {
-      const i = list.findIndex((c) => c.id === id);
-      if (i < 0) continue;
-      list.splice(i, 1);
-      await saveCommentsForFile(file, list);
+      const remaining = list.filter((c) => c.id !== id);
+      if (remaining.length === list.length) continue;
+      await saveCommentsForFile(file, remaining);
       onCommentsChanged(file);
       return true;
     }
@@ -2946,6 +2971,44 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     return realTarget === realRoot || realTarget.startsWith(`${realRoot}${path.sep}`);
   }
 
+  /**
+   * Re-root a moved canvas's relative imports for its new folder depth
+   * (issue #114). `fromDir` / `toDir` are POSIX, design-root-relative.
+   *
+   * Runs AFTER the rename, on the file at its destination. Best-effort by
+   * design: the move has already committed, and failing it here would leave a
+   * half-moved tree — strictly worse than the un-rewritten imports that were
+   * the status quo. A no-op rewrite writes nothing.
+   */
+  async function rewriteCanvasImports(abs: string, fromDir: string, toDir: string): Promise<void> {
+    if (fromDir === toDir) return;
+    try {
+      // NEVER DEREFERENCE A SYMLINK HERE. The move's containment checks cover
+      // the source *directory* (`assertRealpathContained(path.dirname(...))`)
+      // and the destination, but never the source FILE — which was inert while
+      // the move was a bare `rename()`, because renaming a symlink moves the
+      // LINK and no out-of-root byte is ever touched. This function is the
+      // first code on the path that reads and writes the file's contents, so
+      // without this guard a planted `ui/evil.tsx -> /elsewhere/secrets.ts`
+      // would turn an ordinary drag-and-drop into an out-of-root read AND an
+      // out-of-root write. `lstat` does not follow; a link is skipped, not
+      // repaired — its target is not ours to rewrite.
+      const st = await lstat(abs);
+      if (!st.isFile()) return;
+      const source = await readFile(abs, 'utf8');
+      const next = rewriteRelativeImports(source, fromDir, toDir);
+      // atomicWrite, not `writeFile` — this lands on a `.tsx` the fs-mirror is
+      // watching, so a truncate-then-write can surface a partial-content watch
+      // event (the exact hazard atomic-write.ts was built for), and a crash
+      // mid-write would leave a truncated canvas.
+      if (next !== source) atomicWrite(abs, next);
+    } catch (err) {
+      console.warn(
+        `[move] could not rewrite relative imports in ${abs}: ${(err as Error).message}`
+      );
+    }
+  }
+
   // feature-file-tree-drag-drop-folders (Task 3) — move/rename a canvas + its
   // full artifact set (POST /_api/fs-move). Same main-origin-only trust
   // boundary as createCanvas/deleteCanvas (DDR-054): never reachable from the
@@ -3123,6 +3186,14 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     } catch (err) {
       return { ok: false, status: 500, error: err instanceof Error ? err.message : 'move failed' };
     }
+
+    // The canvas is at a new depth now, so its relative specifiers point at the
+    // wrong place (issue #114). Bytes used to move without them, and the canvas
+    // 500s on the next build with `Could not resolve`. Best-effort: the move
+    // itself already succeeded, and a rewrite failure must not leave the tree
+    // half-moved — it leaves a build error the user can fix by hand, which is
+    // exactly where they were before this existed.
+    await rewriteCanvasImports(toAbs, path.posix.dirname(rel), path.posix.dirname(toRel));
 
     const moved: string[] = [path.relative(paths.repoRoot, toAbs)];
     for (const artifact of canvasArtifacts({ rel, paths })) {
@@ -3371,6 +3442,14 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       const toRel = toRelDir + fromRel.slice(relDir.length);
       const fromSlug = fileSlug(fromRel);
       const toSlug = fileSlug(toRel);
+      // Same depth change as moveCanvas, once per nested canvas (issue #114).
+      // A folder move relocates every canvas inside it by the same delta, but
+      // each one's own dir differs, so the rewrite is per file, not per folder.
+      await rewriteCanvasImports(
+        path.join(paths.designRoot, toRel),
+        path.posix.dirname(fromRel),
+        path.posix.dirname(toRel)
+      );
       for (const artifact of canvasArtifacts({ rel: fromRel, paths })) {
         if (artifact.kind !== 'slug-keyed') continue; // primary/siblings already moved with the dir
         const dest = relocatedName(artifact, fromRel, toRel, paths);
