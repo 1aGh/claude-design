@@ -24,9 +24,12 @@ describe it to the Assistant, iterate, export.
   multiplier.
 - **Print-ready PDF** — correct `MediaBox ⊇ BleedBox ⊇ TrimBox` nesting, with
   optional vector crop + registration marks. The PDF stays fully vector
-  (Chromium's own print pipeline draws it — selectable text, embedded fonts);
-  the bleed/marks/box work is a pdf-lib pass over that same vector page, never
-  a re-render.
+  (Chromium's own print pipeline draws it — selectable text, real embedded
+  fonts *for most faces*, see **Fonts** below); the bleed/marks/box work is a
+  pdf-lib pass over that same vector page, never a re-render.
+- **Font preflight + outlining** — every PDF export checks whether its fonts
+  are actually printable, and the **Text** picker can convert all text to
+  curves for a print shop that will not take anything less.
 
 ## Author one
 
@@ -53,14 +56,18 @@ extend to the artboard's own edge, not just the trim-inset area.
 # Print-ready PDF — bleed included, crop + registration marks
 /design:export pdf --scope artboard --option includeBleed=true --option marks=crop,registration
 
+# ...and with all text on curves, so no font can fail the printer's preflight
+/design:export pdf --scope artboard --option includeBleed=true --option marks=crop,registration --option text=outline
+
 # Large-format PDF (e.g. a billboard authored at 1:10 scale) — 300 dpi
 # capture for any dropped photo/art on the artboard; the page stays vector
 /design:export pdf --scope artboard --option dpi=300
 ```
 
 The same options are available from the `⌘E` export dialog — the PDF card
-has an **Image quality** (DPI) picker, an **Include bleed** checkbox, and a
-**Marks** disclosure (crop / registration); a `canvas-as-separate` scope
+has an **Image quality** (DPI) picker, a **Text** picker (keep selectable /
+verify fonts embedded / convert to outlines), an **Include bleed** checkbox,
+and a **Marks** disclosure (crop / registration); a `canvas-as-separate` scope
 exports one PDF page per artboard, each resolving its own bleed
 independently from its own `print` prop.
 
@@ -80,3 +87,36 @@ independently from its own `print` prop.
 - **Prefer TTF over OTF** for any custom font on a print artboard — Chromium's
   print pipeline outlines OTF glyphs to paths, which looks correct but loses
   text selectability in the exported PDF.
+
+## Fonts — the one thing that can still fail preflight
+
+Chromium embeds most faces properly, but two cases it cannot: a **colour font**
+(COLRv1 / `@font-palette-values`) and a **synthetic italic** (your CSS asks for
+`italic` and no real italic face is loaded). Both come out as **Type 3** fonts —
+a per-glyph content stream rather than a font program. On screen they look
+right; a print shop's preflight reports them as *not embedded* and rejects the
+file, and Acrobat or Illustrator renders them broken.
+
+Every PDF export now checks for this and tells you, naming the faces. The
+**Text** picker decides what to do about it:
+
+| Text | What you get |
+| ---- | ------------ |
+| **Keep selectable** (default) | Unchanged output. You get a warning naming any font that would fail preflight. |
+| **Verify fonts embedded** | The export **fails** instead of handing you a file a printer will reject. |
+| **Convert to outlines** | Every glyph becomes a vector path. Nothing left to break — but the text is no longer selectable or searchable, and the file can grow a lot. |
+
+Outlining preserves the print boxes, the vector crop/registration marks, and
+every photo's pixel count and ppi — it will not quietly resample or recompress
+your raster content.
+
+A flagged **synthetic italic** is worth fixing at the source instead: load the
+real italic face and the Type 3 font disappears, with the text still selectable.
+
+<Callout>
+  **Convert to outlines** needs [Ghostscript](https://www.ghostscript.com/)
+  installed — `brew install ghostscript`, `apt-get install ghostscript`, or
+  `choco install ghostscript`. Exports run in a cloud workspace already have it.
+  Maude does not bundle it (Ghostscript is AGPL-licensed), and will tell you how
+  to install it rather than silently giving you un-outlined text.
+</Callout>
