@@ -606,25 +606,35 @@ pub fn run() {
 
             // 2. Poll `_server.json`, then navigate the webview to the server URL.
             let nav_handle = handle.clone();
+            // Panic-free prints (issue #115). This task is the ONLY thing that
+            // points the webview at the dev-server on boot, and a `.app` opened
+            // from Finder or the Dock normally has an unwritable stderr — an
+            // `eprintln!` here would panic the task and leave a blank window.
             tauri::async_runtime::spawn(async move {
                 match server_json::wait_for_server(design_root, SERVER_WAIT_MS).await {
                     Ok(url) => {
-                        eprintln!("[maude] dev-server ready at {url} — navigating webview");
+                        sidecar::log_line(&format!(
+                            "[maude] dev-server ready at {url} — navigating webview"
+                        ));
                         if let Some(window) = nav_handle.get_webview_window("main") {
                             match url.parse::<tauri::Url>() {
                                 Ok(parsed) if server_json::is_loopback_url(&parsed) => {
                                     if let Err(e) = window.navigate(parsed) {
-                                        eprintln!("[maude] navigate failed: {e}");
+                                        sidecar::log_line(&format!("[maude] navigate failed: {e}"));
                                     }
                                 }
-                                Ok(parsed) => {
-                                    eprintln!("[maude] refusing non-loopback navigate (DDR-109): {parsed}")
-                                }
-                                Err(e) => eprintln!("[maude] invalid server url {url}: {e}"),
+                                Ok(parsed) => sidecar::log_line(&format!(
+                                    "[maude] refusing non-loopback navigate (DDR-109): {parsed}"
+                                )),
+                                Err(e) => sidecar::log_line(&format!(
+                                    "[maude] invalid server url {url}: {e}"
+                                )),
                             }
                         }
                     }
-                    Err(e) => eprintln!("[maude] dev-server did not come up: {e}"),
+                    Err(e) => {
+                        sidecar::log_line(&format!("[maude] dev-server did not come up: {e}"))
+                    }
                 }
             });
 

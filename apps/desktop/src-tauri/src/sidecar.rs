@@ -826,26 +826,30 @@ pub fn switch_project(app: &AppHandle, new_root: PathBuf) {
     // spawn path; instant for the attach path, since `_server.json` is already
     // there from the live instance. The DDR-109 loopback guard applies per
     // instance exactly as before — a pool does not relax it.
+    //
+    // Every print in the task below goes through `log_line` (issue #115): a
+    // panic here is silent and would take `window.navigate` with it, so the
+    // user switches project and the webview simply never follows.
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         match crate::server_json::wait_for_server(design_root, 120_000).await {
             Ok(url) => {
-                eprintln!("[maude] project switched — navigating to {url}");
+                log_line(&format!("[maude] project switched — navigating to {url}"));
                 if let Some(window) = app.get_webview_window("main") {
                     match url.parse::<tauri::Url>() {
                         Ok(parsed) if crate::server_json::is_loopback_url(&parsed) => {
                             if let Err(e) = window.navigate(parsed) {
-                                eprintln!("[maude] navigate failed: {e}");
+                                log_line(&format!("[maude] navigate failed: {e}"));
                             }
                         }
-                        Ok(parsed) => {
-                            eprintln!("[maude] refusing non-loopback navigate (DDR-109): {parsed}")
-                        }
-                        Err(e) => eprintln!("[maude] invalid server url {url}: {e}"),
+                        Ok(parsed) => log_line(&format!(
+                            "[maude] refusing non-loopback navigate (DDR-109): {parsed}"
+                        )),
+                        Err(e) => log_line(&format!("[maude] invalid server url {url}: {e}")),
                     }
                 }
             }
-            Err(e) => eprintln!("[maude] switch: dev-server did not come up: {e}"),
+            Err(e) => log_line(&format!("[maude] switch: dev-server did not come up: {e}")),
         }
     });
 }
@@ -1060,7 +1064,7 @@ pub fn log_shutdown(line: &str) {
 /// `MAX_RESTARTS` give-up modal never fires either — the app goes quiet with no
 /// crash, no reason, and no way back. Three crash reports on one install showed
 /// exactly this, twice at the `eprint!` in the Stdout/Stderr arms.
-fn log_line(line: &str) {
+pub(crate) fn log_line(line: &str) {
     use std::io::Write;
     let _ = writeln!(std::io::stderr(), "{line}");
 }
@@ -1161,5 +1165,128 @@ mod tests {
         n = next_restart_count(n, Duration::from_secs(1));
         assert_eq!(n, 3);
         assert!(next_restart_count(n, Duration::from_secs(1)) > MAX_RESTARTS);
+    }
+
+    // ---- issue #115: printing must never be able to kill a spawned task ----
+
+    /// Child half of the two probes below. A no-op unless the parent asked for
+    /// it, so an ordinary `cargo test` run just skips straight past it.
+    #[test]
+    fn broken_stderr_probe_child() {
+        let Ok(mode) = std::env::var("MAUDE_BROKEN_STDERR_PROBE") else {
+            return;
+        };
+        // Let the parent close the read end of the pipe it handed us.
+        std::thread::sleep(Duration::from_millis(300));
+        for _ in 0..64 {
+            if mode == "eprintln" {
+                eprintln!("[maude:server] probe");
+            } else {
+                log_line("[maude:server] probe");
+            }
+        }
+    }
+
+    /// Re-exec this test binary with a stderr nobody is reading.
+    fn broken_stderr_probe(mode: &str) -> Option<i32> {
+        let exe = std::env::current_exe().expect("test binary path");
+        let mut child = std::process::Command::new(exe)
+            .args([
+                "--exact",
+                "sidecar::tests::broken_stderr_probe_child",
+                // Without this libtest swallows the write into its own buffer
+                // and the pipe is never touched.
+                "--nocapture",
+            ])
+            .env("MAUDE_BROKEN_STDERR_PROBE", mode)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("re-exec the test binary");
+        // THE POINT. Dropping the read end leaves the child holding a broken
+        // stderr pipe — the ordinary state of a .app launched from Finder or
+        // the Dock, and what #115's three crash reports were.
+        drop(child.stderr.take());
+        child.wait().expect("probe child exits").code()
+    }
+
+    #[test]
+    fn eprintln_dies_when_stderr_is_a_broken_pipe() {
+        assert_eq!(
+            broken_stderr_probe("eprintln"),
+            Some(101),
+            "`eprintln!` is expected to PANIC on a broken stderr pipe — this is \
+             the fault behind #115, and the reason log_line exists"
+        );
+    }
+
+    #[test]
+    fn log_line_survives_a_broken_stderr_pipe() {
+        assert_eq!(
+            broken_stderr_probe("log_line"),
+            Some(0),
+            "log_line must swallow the write error and let the task carry on"
+        );
+    }
+
+    /// The tripwire. A panic inside a spawned task is silent — it takes the
+    /// task's REMAINING work with it and nothing reports the loss — so no print
+    /// inside one may go through a macro that can panic.
+    #[test]
+    fn no_spawned_task_prints_through_a_panicking_macro() {
+        // Both files that navigate the webview from inside a spawned task:
+        // lib.rs on boot, sidecar.rs on respawn and on a project switch.
+        let sources = [
+            ("sidecar.rs", include_str!("sidecar.rs")),
+            ("lib.rs", include_str!("lib.rs")),
+        ];
+
+        let mut offenders: Vec<String> = Vec::new();
+        for (name, src) in sources {
+            // Comments here legitimately NAME `eprint!` while explaining why it
+            // is banned, so strip them before scanning.
+            let code = src
+                .lines()
+                .map(|l| match l.find("//") {
+                    Some(i) => &l[..i],
+                    None => l,
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            let mut rest = code.as_str();
+            while let Some(at) = rest.find("async_runtime::spawn(") {
+                let block = &rest[at..];
+                // Walk to the end of the spawn call on paren/brace balance.
+                let mut depth = 0i32;
+                let mut end = block.len();
+                for (i, ch) in block.char_indices() {
+                    match ch {
+                        '(' | '{' => depth += 1,
+                        ')' | '}' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                end = i + 1;
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                for line in block[..end].lines() {
+                    if line.contains("eprintln!") || line.contains("eprint!") {
+                        offenders.push(format!("    {name}: {}", line.trim()));
+                    }
+                }
+                rest = &block[end..];
+            }
+        }
+
+        assert!(
+            offenders.is_empty(),
+            "issue #115 — these prints sit inside a spawned task and can panic \
+             it dead; use log_line / log_raw:\n{}",
+            offenders.join("\n")
+        );
     }
 }
