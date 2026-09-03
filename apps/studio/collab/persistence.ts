@@ -83,15 +83,91 @@ export function createPersistence(deps: PersistenceDeps): RoomCallbacks {
   const { ctx, api, fileForSlug } = deps;
   const stateDir = ensureStateDir(ctx.paths.designRoot);
 
-  // Per-slug latch: have we ever projected a NON-empty comments array for this
-  // canvas? We write an empty `[]` to disk only AFTER content has been seen — a
-  // genuine delete-all — never from a doc that was never populated (cold start
-  // before seed/migrate completes), which would clobber a non-empty local file.
-  // This closes the receiving-peer gap where a delete-all on one peer left
-  // stragglers on the other: the old `arr.length > 0` guard skipped the write
-  // when the array emptied, so the deletion never reached the peer's JSON file
-  // (the file the sidebar reads), even though the Y.Doc had converged (DDR-064).
-  const seenComments = new Set<string>();
+  // Per-slug: every comment identity this doc has EVER carried (issue #111).
+  //
+  // This subsumes the old `seenComments` latch — "have we ever projected a
+  // NON-empty array for this canvas", which gated the delete-all write so a
+  // never-populated doc could not clobber a non-empty local file with `[]`
+  // (DDR-064's receiving-peer gap). Same question, better evidence.
+  //
+  // It also answers the question the projection could not ask at all before,
+  // and the one this issue is about: is the doc AHEAD of the file (a real
+  // change, write it) or BEHIND it (a write the doc has not caught up with —
+  // writing would erase it)?
+  //
+  // Identity settles it without a wire-format change. An id on disk that the
+  // doc has held and dropped is a genuine delete and must materialize. An id on
+  // disk the doc has NEVER held is something the doc has not seen yet, and
+  // dropping it is silent data loss — the reporter's "add a second comment and
+  // it disappears after a few seconds". `Room.flush()` fires on ANY doc update
+  // and every hub update re-arms it, so on a linked project a flush lands in
+  // that window constantly; on a local one it essentially never does, which is
+  // exactly the scoping the reporter gave ("connected to a custom hub").
+  const docSeenComments = new Map<string, Set<string>>();
+
+  /**
+   * Ceiling on identities remembered per canvas — DDR-054 §2d applied to a set
+   * rather than a byte length.
+   *
+   * The doc is populated by the hub, so what lands in this set is peer-supplied
+   * and the set only ever grows: without a bound, a hostile hub streaming
+   * distinct comment ids is unbounded memory on every linked peer. Eviction is
+   * oldest-first (JS sets keep insertion order), and it degrades in the SAFE
+   * direction — an evicted id reads as "never seen", so the projection defers
+   * the write instead of deleting. The cost is that a delete of a very old
+   * comment on a canvas that has carried more than this many distinct comments
+   * may not materialize, which is a far better failure than losing one.
+   */
+  const MAX_SEEN_COMMENT_IDS = 10_000;
+
+  /**
+   * Docs already wired to their slug's identity set.
+   *
+   * WEAK on purpose: a room dropped when its last browser leaves destroys its
+   * doc, and a strong reference here would keep every doc of every canvas the
+   * user ever opened alive for the process's lifetime. The observer closes over
+   * the SET, not the other way round, so nothing else pins the doc either.
+   */
+  const observedCommentDocs = new WeakSet<Y.Doc>();
+
+  /**
+   * The identity set for `slug`, observing `doc` so it records an id the moment
+   * it ENTERS the array.
+   *
+   * Sampling at flush time alone is not enough, and the gap is a real delete
+   * bug rather than a theoretical one: an id that arrives and is deleted again
+   * between two flushes (a local add, then a remote delete inside the same
+   * 800 ms debounce — every doc update re-arms the timer, so this is the common
+   * shape, not a rare one) would never be recorded, the guard below would read
+   * the surviving disk copy as "never seen", and the delete could never
+   * materialize. The observer only ever ADDS, which is what makes it a record
+   * of what the doc has held rather than of what it holds.
+   *
+   * The set is per SLUG and the wiring is per DOC: a slug's room can be rebuilt
+   * on a fresh doc, and the ids carry over because this peer did see them.
+   */
+  function commentIdsSeenBy(slug: string, doc: Y.Doc): Set<string> {
+    let ids = docSeenComments.get(slug);
+    if (!ids) {
+      ids = new Set<string>();
+      docSeenComments.set(slug, ids);
+    }
+    if (observedCommentDocs.has(doc)) return ids;
+    observedCommentDocs.add(doc);
+
+    const seen = ids;
+    const arr = doc.getArray<unknown>(Y_TYPES.comments);
+    const absorb = () => {
+      for (const c of arr.toArray()) seen.add(commentKey(c));
+      for (const stale of seen) {
+        if (seen.size <= MAX_SEEN_COMMENT_IDS) break;
+        seen.delete(stale); // oldest first — insertion order
+      }
+    };
+    absorb();
+    arr.observe(absorb);
+    return ids;
+  }
 
   function ydocBinPath(slug: string): string {
     return path.join(stateDir, `${slug}.ydoc.bin`);
@@ -109,6 +185,13 @@ export function createPersistence(deps: PersistenceDeps): RoomCallbacks {
   }
 
   async function seed(slug: string, doc: Y.Doc): Promise<void> {
+    // Start recording comment identities at ROOM MOUNT, before anything can
+    // gate out (issue #111). `persistJson` would otherwise be the first thing
+    // to observe this doc, which is one flush too late: an id added and deleted
+    // before that flush would never be recorded, and its delete could never
+    // materialize. This is the earliest callback that sees the doc.
+    commentIdsSeenBy(slug, doc);
+
     // Phase 9.2 (DDR-064) — under sharedDoc the migrate-seed + hub provider own
     // initial population for a pinned slug; a local file-seed here would push
     // fresh Y.Array items that DUPLICATE the hub's canonical items on merge
@@ -167,14 +250,31 @@ export function createPersistence(deps: PersistenceDeps): RoomCallbacks {
 
     // Comments — Y.Array projection back to JSON. Write whenever the doc holds
     // comments, OR when it just emptied after previously holding some (so a
-    // delete-all materializes on EVERY peer's disk, not just the originator's).
-    // The seenComments latch keeps a never-populated doc (cold start) from
-    // clobbering a non-empty local file with [].
+    // delete-all materializes on EVERY peer's disk, not just the originator's),
+    // and never from a doc that was never populated at all (cold start before
+    // seed/migrate completes), which would clobber a non-empty local file.
+    //
+    // `everSeen` is that latch as well as the freshness oracle below — one
+    // notion of "this doc has held comments" instead of two that can disagree.
+    // It replaces a per-slug flag sampled HERE, which could not see a comment
+    // that arrived and was deleted again between two flushes: the flag stayed
+    // unset, so the delete-all read as "never populated" and never reached
+    // disk. Both readings need the same fact, and only the observer has it.
     const arr = doc.getArray(Y_TYPES.comments);
     const list = arr.toArray() as Parameters<Api['saveCommentsForFile']>[1];
-    if (list.length > 0) seenComments.add(slug);
-    if (list.length > 0 || seenComments.has(slug)) {
-      if (withinCap(slug, 'comments', JSON.stringify(list), MAX_COMMENTS_BYTES)) {
+    const everSeen = commentIdsSeenBy(slug, doc);
+    if (list.length > 0 || everSeen.size > 0) {
+      // Issue #111 — refuse to project a doc that is BEHIND the file. An id on
+      // disk this doc has never carried is a write still in flight towards it
+      // (a mutation whose file→doc import has not landed, an external edit to
+      // `_comments/<slug>.json`); overwriting it deletes a real comment with no
+      // error and no recovery. Deferring is safe and self-clearing: whatever
+      // brings that id into the doc is itself a doc update, which re-arms the
+      // flush, and the next pass writes the merged state. A delete still
+      // materializes — its id IS in `everSeen`, so the write proceeds.
+      const onDisk = await api.loadCommentsForFile(file);
+      const behind = onDisk.some((c) => !everSeen.has(commentKey(c)));
+      if (!behind && withinCap(slug, 'comments', JSON.stringify(list), MAX_COMMENTS_BYTES)) {
         await api.saveCommentsForFile(file, list);
       }
     }

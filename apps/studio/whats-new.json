@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "comments-stop-disappearing",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "Comments stop disappearing",
+      "summary": "On a project linked to a hub, a comment you had just added could vanish a few seconds later, leaving only the first one on the canvas — with nothing to undo and no sign anything had gone wrong. A new comment now reaches the shared project before it is written to disk, and Maude will not overwrite a comment it has not seen yet, so what you write stays put.",
+      "surface": "design-ui"
+    },
+    {
       "id": "comments-stop-duplicating",
       "version": null,
       "date": null,
