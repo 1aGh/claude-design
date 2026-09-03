@@ -10,6 +10,7 @@ import type { Api } from '../api.ts';
 import type { Context } from '../context.ts';
 // From the LEAF, never from `sync/codec.ts` — codec imports `Y_TYPES` from this
 // file, so reaching for it here would close a cycle (see sync/limits.ts).
+import { commentKey } from '../sync/comment-identity.ts';
 import { MAX_ANNOTATIONS_BYTES, MAX_COMMENTS_BYTES, withinByteCap } from '../sync/limits.ts';
 import { ensureStateDir, type RoomCallbacks } from './room.ts';
 
@@ -136,7 +137,22 @@ export function createPersistence(deps: PersistenceDeps): RoomCallbacks {
     doc.transact(() => {
       if (comments.length > 0) {
         const arr = doc.getArray<unknown>(Y_TYPES.comments);
-        arr.push(comments);
+        // Push only what the array does not already hold (issue #112). This was
+        // an unconditional `arr.push(comments)`, which concatenates whenever the
+        // doc is NOT empty at seed time — the DDR-064 Risk 1 window that
+        // `shouldSeed`/`isPinned` closes only when the pin already exists, i.e.
+        // not when a room is mounted a beat before the hub provider attaches.
+        // The identity rule is `commentKey`, shared with the codec's diff and
+        // the cold-start union; the leaf import is deliberate — this file owns
+        // `Y_TYPES`, so it can never import `sync/codec.ts` back (see above).
+        const present = new Set(arr.toArray().map(commentKey));
+        const missing = comments.filter((c) => {
+          const k = commentKey(c);
+          if (present.has(k)) return false;
+          present.add(k);
+          return true;
+        });
+        if (missing.length > 0) arr.push(missing);
       }
       if (svg && typeof svg === 'string') {
         const map = doc.getMap<string>(Y_TYPES.annotations);

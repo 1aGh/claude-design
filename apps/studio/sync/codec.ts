@@ -26,6 +26,7 @@ import { hostname } from 'node:os';
 import type * as Y from 'yjs';
 
 import { Y_TYPES } from '../collab/persistence.ts';
+import { commentKey } from './comment-identity.ts';
 import {
   MAX_ANNOTATIONS_BYTES,
   MAX_COMMENTS_BYTES,
@@ -173,14 +174,41 @@ export function commentsFromDoc(doc: Y.Doc): CommentsSnapshot {
   return arr.toArray();
 }
 
+/**
+ * Apply `next` to the comments Y.Array as a MINIMAL, IDENTITY-KEYED DIFF.
+ *
+ * THIS SHAPE IS A CONVERGENCE PROPERTY, NOT AN OPTIMIZATION (issue #112) —
+ * the same law `applyTextLane` states for the text lanes, which this lane was
+ * missing. It used to be `delete(0, len)` + `push(next)`, and under concurrency
+ * that is not a replace at all: two peers delete the SAME items (idempotent)
+ * but insert two runs at the same position, and Yjs keeps both. The array
+ * becomes `list + list`, `persistJson` writes that to `_comments/<slug>.json`,
+ * the file re-imports clean, and the duplication IS the new truth. Every
+ * reconciliation round doubled it — 1 → 2 → 4 → 8, the count the #112 reporter
+ * saw — and the cold-start union repair, published through the same wholesale
+ * write, re-created the duplication it had just undone. Verbatim the css lesson
+ * from issue #114, one lane later.
+ *
+ * The diff gives the lane the property the text lanes got:
+ *
+ *   - Collapsing a duplicated array is a PURE DELETE of items every peer holds,
+ *     and concurrent deletes of the same items are idempotent — so two peers
+ *     repairing at once converge instead of re-doubling.
+ *   - Dedupe happens on EVERY apply, not only at cold start, so an array that
+ *     doubled anyway (an older peer still on the wholesale write, a genuine
+ *     concurrent edit of one entry) collapses at the next apply rather than
+ *     compounding. Duplication became self-healing instead of exponential.
+ *   - Untouched comments keep their CRDT items, so a peer replacing one entry
+ *     no longer rewrites the whole list under everyone else's feet.
+ *
+ * Ordering follows the doc for surviving entries, with genuinely new ones
+ * appended. Reordering is deliberately NOT synced: it would be a delete+insert
+ * per moved entry — churn with the one shape this fix exists to avoid — and
+ * comment order carries no meaning (pins are placed by selector, the sidebar
+ * sorts by `created`).
+ */
 export function applyCommentsToDoc(doc: Y.Doc, next: CommentsSnapshot, origin?: unknown): boolean {
-  const arr = doc.getArray(Y_TYPES.comments);
-  // Comments are LWW on the JSON file (the snapshot is the source of truth);
-  // collapse Y.Array to the new state. For v1.1 we just replace wholesale —
-  // structural comment-level merge is deferred along with structured HTML.
-  // Check whether anything actually changed to avoid no-op transactions
-  // (transactions still fire `update` events, which would re-enter the loop).
-  const before = JSON.stringify(arr.toArray());
+  const arr = doc.getArray<unknown>(Y_TYPES.comments);
   const after = JSON.stringify(next);
   if (byteLengthUtf8(after) > MAX_COMMENTS_BYTES) {
     console.warn(
@@ -188,11 +216,51 @@ export function applyCommentsToDoc(doc: Y.Doc, next: CommentsSnapshot, origin?: 
     );
     return false;
   }
-  if (before === after) return false;
+
+  // Desired state, keyed by comment identity. `next` can itself arrive
+  // duplicated (a file written before this fix, a list pushed by an older
+  // peer), so it is deduped on the way in — first occurrence wins, matching
+  // `unionCommentsById` and `dedupeCommentsById`.
+  const desired = new Map<string, unknown>();
+  for (const c of next) {
+    const k = commentKey(c);
+    if (!desired.has(k)) desired.set(k, c);
+  }
+
+  // Classify every item currently in the array: keep it, replace it in place,
+  // or delete it. Duplicates of an identity we already kept are deletes — that
+  // is what makes EVERY apply a repair, not just the cold-start union.
+  const current = arr.toArray();
+  const deletes: number[] = [];
+  const replaces: { index: number; value: unknown }[] = [];
+  const kept = new Set<string>();
+  for (let i = 0; i < current.length; i++) {
+    const k = commentKey(current[i]);
+    if (!desired.has(k) || kept.has(k)) {
+      deletes.push(i);
+      continue;
+    }
+    kept.add(k);
+    const want = desired.get(k);
+    if (JSON.stringify(current[i]) !== JSON.stringify(want))
+      replaces.push({ index: i, value: want });
+  }
+  const appends: unknown[] = [];
+  for (const [k, v] of desired) if (!kept.has(k)) appends.push(v);
+
+  // No-op guard. Transactions fire `update` events even when they change
+  // nothing, and an update re-enters the file→doc→file loop.
+  if (deletes.length === 0 && replaces.length === 0 && appends.length === 0) return false;
 
   doc.transact(() => {
-    if (arr.length > 0) arr.delete(0, arr.length);
-    if (next.length > 0) arr.push(next);
+    // Replaces first, while the indices computed above are still valid.
+    for (const r of replaces) {
+      arr.delete(r.index, 1);
+      arr.insert(r.index, [r.value]);
+    }
+    // Then deletes, descending, so each index stays valid as we go.
+    for (let i = deletes.length - 1; i >= 0; i--) arr.delete(deletes[i]!, 1);
+    if (appends.length > 0) arr.push(appends);
   }, origin);
   return true;
 }

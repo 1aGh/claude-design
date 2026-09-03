@@ -20,6 +20,7 @@ import { renderBriefBoard, validateCanvasName, validateFolderName } from './canv
 import { rewriteRelativeImports } from './canvas-imports.ts';
 import { canvasSlugFromRel } from './canvas-slug.ts';
 import { atomicWrite } from './sync/atomic-write.ts';
+import { dedupeCommentsById } from './sync/comment-identity.ts';
 
 // Re-exported so existing external callers (canvas-list-watch.ts, tests) keep
 // importing it from api.ts — the actual implementation now lives in
@@ -1097,7 +1098,14 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       // Phase 6 — default-fill `author` / `thread` / `mentions` for legacy
       // rows. No write-back here; the on-disk shape stays stable until the
       // next mutation persists the upgraded record.
-      return arr.map(backfillComment);
+      //
+      // Deduped by comment identity first (issue #112). This is the read half
+      // of the repair: a project whose `_comments/<slug>.json` was already
+      // doubled by the pre-fix sync lane heals the moment it is loaded, and no
+      // consumer — pins, sidebar, `/_comments`, the /design:edit agent — ever
+      // sees the same comment eight times. First occurrence wins, matching the
+      // rule the codec and the cold-start union use.
+      return dedupeCommentsById(arr).map(backfillComment);
     } catch {
       return [];
     }
@@ -1137,7 +1145,14 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
   }
 
   async function saveCommentsForFile(file: string, list: Comment[]) {
-    await Bun.write(commentsPath(file), JSON.stringify(list, null, 2));
+    // The write half of the #112 repair, and the reason it belongs HERE: this
+    // is the one choke point every writer passes through — the API mutations,
+    // and the collab room's `persistJson`, which materializes the Y.Array
+    // straight to disk. Deduping at the door means a doc caught mid-convergence
+    // (or a peer still running the old wholesale write) cannot persist a
+    // duplicated list as the canvas's new truth, which is how the doubling
+    // survived restarts and compounded.
+    await Bun.write(commentsPath(file), JSON.stringify(dedupeCommentsById(list), null, 2));
   }
 
   async function loadAllComments(): Promise<Record<string, Comment[]>> {
@@ -1352,24 +1367,33 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     return null;
   }
 
+  // Mutations are ID-TOTAL, not first-match (issue #112). `loadAllComments`
+  // dedupes, so under normal operation there is exactly one entry per id and
+  // these behave as they always did. They stay total as defense in depth: the
+  // reporter's second symptom — "I can't then close or resolve the comments" —
+  // was a `findIndex` + `return` marking copy 1 of 8 resolved while the overlay
+  // (which filters `status !== 'resolved'`) kept drawing the other seven, and a
+  // delete removing one copy per click. A duplicated list can still reach these
+  // from an older peer mid-upgrade; resolve must resolve either way.
   async function commentsPatch(id: string, patch: Partial<Comment>) {
     const all = await loadAllComments();
     for (const [file, list] of Object.entries(all)) {
-      const i = list.findIndex((c) => c.id === id);
-      if (i < 0) continue;
-      const entry = list[i];
-      if (!entry) continue;
-      if (patch.status === 'resolved' || patch.status === 'open') {
-        entry.status = patch.status;
-        entry.resolved_at = patch.status === 'resolved' ? new Date().toISOString() : null;
-      }
-      if (typeof patch.text === 'string' && patch.text.trim()) {
-        entry.text = patch.text.trim().slice(0, 4000);
-        entry.mentions = mentionsUnion(entry);
+      const matches = list.filter((c) => c.id === id);
+      const first = matches[0];
+      if (!first) continue;
+      for (const entry of matches) {
+        if (patch.status === 'resolved' || patch.status === 'open') {
+          entry.status = patch.status;
+          entry.resolved_at = patch.status === 'resolved' ? new Date().toISOString() : null;
+        }
+        if (typeof patch.text === 'string' && patch.text.trim()) {
+          entry.text = patch.text.trim().slice(0, 4000);
+          entry.mentions = mentionsUnion(entry);
+        }
       }
       await saveCommentsForFile(file, list);
       onCommentsChanged(file);
-      return entry;
+      return first;
     }
     return null;
   }
@@ -1377,10 +1401,9 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
   async function commentsDelete(id: string): Promise<boolean> {
     const all = await loadAllComments();
     for (const [file, list] of Object.entries(all)) {
-      const i = list.findIndex((c) => c.id === id);
-      if (i < 0) continue;
-      list.splice(i, 1);
-      await saveCommentsForFile(file, list);
+      const remaining = list.filter((c) => c.id !== id);
+      if (remaining.length === list.length) continue;
+      await saveCommentsForFile(file, remaining);
       onCommentsChanged(file);
       return true;
     }

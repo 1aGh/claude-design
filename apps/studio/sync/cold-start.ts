@@ -19,6 +19,7 @@
 // unavailable) or equal → hub wins, exactly the v1.1 default — but now both
 // sides are snapshotted first, so even a wrong pick costs one /design:rollback.
 
+import { commentKey } from './comment-identity.ts';
 import { hashBytes } from './echo-guard.ts';
 
 export type ColdStartAction =
@@ -75,13 +76,6 @@ export function isExactRepeat(docBody: string, localBody: string): boolean {
   return docBody === localBody.repeat(n);
 }
 
-function commentId(c: unknown): string | null {
-  if (c && typeof c === 'object' && typeof (c as { id?: unknown }).id === 'string') {
-    return (c as { id: string }).id;
-  }
-  return null;
-}
-
 /**
  * Union-merge two comment snapshots by stable `id` (DDR-102): doc order first,
  * local-only entries appended. Comments carry stable ids, so union loses
@@ -91,8 +85,7 @@ function commentId(c: unknown): string | null {
  */
 export function unionCommentsById(docList: unknown[], localList: unknown[]): unknown[] {
   const out: unknown[] = [];
-  const seenIds = new Set<string>();
-  const seenJson = new Set<string>();
+  const seen = new Set<string>();
   // THE DOC IS DEDUPED AGAINST ITSELF, not just against local (issue #114/#112).
   // `out` used to be seeded as `[...docList]`, which made this union a filter on
   // the LOCAL side only — so a doc whose comments array had already been
@@ -102,16 +95,14 @@ export function unionCommentsById(docList: unknown[], localList: unknown[]): unk
   // behind "the comment self duplicated like 8 times": 2 → 4 → 8, one doubling
   // per concurrent round, with nothing in the loop able to shrink it again.
   // Deduping the doc half turns the same pass into the repair.
+  // `commentKey` is the SHARED identity rule (comment-identity.ts) — the same
+  // one `applyCommentsToDoc`'s diff and the room seed use. It has to be shared:
+  // if the union's notion of "same comment" ever drifted from the codec's, one
+  // layer's repair would be the other's duplicate.
   const admit = (c: unknown): void => {
-    const id = commentId(c);
-    if (id !== null) {
-      if (seenIds.has(id)) return;
-      seenIds.add(id);
-    } else {
-      const json = JSON.stringify(c);
-      if (seenJson.has(json)) return;
-      seenJson.add(json);
-    }
+    const k = commentKey(c);
+    if (seen.has(k)) return;
+    seen.add(k);
     out.push(c);
   };
   // Doc order first (same-id entries keep the doc's version), local-only appended.

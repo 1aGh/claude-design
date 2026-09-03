@@ -16,6 +16,7 @@
 import { describe, expect, test } from 'bun:test';
 import * as Y from 'yjs';
 
+import { Y_TYPES } from '../collab/persistence.ts';
 import {
   applyCommentsToDoc,
   applyCssToDoc,
@@ -25,6 +26,7 @@ import {
   htmlFromDoc,
   Y_SYNC_TYPES,
 } from '../sync/codec.ts';
+import { dedupeCommentsById } from '../sync/comment-identity.ts';
 import { decideColdStart, decideCssColdStart, unionCommentsById } from '../sync/cold-start.ts';
 import { hashBytes } from '../sync/echo-guard.ts';
 
@@ -69,10 +71,138 @@ describe('concurrent seeding really does duplicate (the premise)', () => {
     expect(cssFromDoc(doc!)).toBe(CSS.repeat(3));
   });
 
-  test('two peers replacing one comments array keep both pushes', () => {
-    const comment = { id: 'c1', text: 'looks good' };
-    const [doc] = seedConcurrently(2, (d) => applyCommentsToDoc(d, [comment]));
-    expect(commentsFromDoc(doc!)).toEqual([comment, comment]);
+  // The comments lane USED to be listed here, asserting `[comment, comment]` —
+  // the premise held for it too, because its codec was the same delete-all +
+  // push (issue #112: the reporter's comment reached EIGHT copies). It is no
+  // longer a premise but a guarantee, so it moved to the law below: the entry
+  // has a stable id, so the lane can converge on identity rather than needing
+  // an exact-repeat proof over opaque bytes.
+});
+
+describe('the comments lane converges on identity — issue #112', () => {
+  const C1 = { id: 'c1', text: 'looks good' };
+  const C2 = { id: 'c2', text: 'and this one' };
+
+  /** Put a doubled array into `doc` the way a CRDT merge does — past the
+   *  codec, which now refuses to create one. */
+  function forceDoubled(doc: Y.Doc, list: unknown[]): void {
+    doc.getArray<unknown>(Y_TYPES.comments).push([...list, ...list]);
+  }
+
+  // The premise still holds for the initial collision — a diffing codec cannot
+  // stop N peers inserting into N empty replicas; Yjs keeps all N runs, exactly
+  // as it does for the body and css lanes. What changed is everything after: on
+  // the text lanes the collapse needed an exact-repeat proof and an elected
+  // writer, and here it is automatic on the next apply.
+  for (const peers of [2, 3, 5]) {
+    test(`${peers}-way concurrent seed duplicates, then collapses on the next apply`, () => {
+      const docs = seedConcurrently(peers, (d) => applyCommentsToDoc(d, [C1, C2]));
+      expect(commentsFromDoc(docs[0]!)).toHaveLength(2 * peers); // premise
+
+      // ANY peer writing the lane repairs it — no election, no seed window.
+      applyCommentsToDoc(docs[0]!, dedupeCommentsById(commentsFromDoc(docs[0]!)));
+      mergeAll(docs);
+      for (const d of docs) expect(commentsFromDoc(d)).toEqual([C1, C2]);
+    });
+  }
+
+  // THE TEST THAT MATTERS, same as for the text lanes: a repair that only
+  // works when ONE peer runs it is not a repair. Here every peer starts from a
+  // doubled array (the state a pre-fix release left in the field) and collapses
+  // it without having heard from the others.
+  test('two peers collapsing the SAME duplication converge (idempotent repair)', () => {
+    const docs = [new Y.Doc(), new Y.Doc()];
+    // Both replicas hold the doubled array to begin with — one authored it, the
+    // other received it, exactly as a hub round-trip leaves them.
+    forceDoubled(docs[0]!, [C1, C2]);
+    Y.applyUpdate(docs[1]!, Y.encodeStateAsUpdate(docs[0]!));
+    expect(commentsFromDoc(docs[1]!)).toEqual([C1, C2, C1, C2]); // premise
+
+    for (const d of docs) applyCommentsToDoc(d, unionCommentsById(commentsFromDoc(d), []));
+    mergeAll(docs);
+
+    for (const d of docs) expect(commentsFromDoc(d)).toEqual([C1, C2]);
+  });
+
+  test('three peers collapsing concurrently, twice, reach a stable fixpoint', () => {
+    const docs = [new Y.Doc(), new Y.Doc(), new Y.Doc()];
+    forceDoubled(docs[0]!, [C1, C2]);
+    for (const d of docs.slice(1)) Y.applyUpdate(d, Y.encodeStateAsUpdate(docs[0]!));
+
+    for (let round = 0; round < 2; round++) {
+      for (const d of docs) applyCommentsToDoc(d, dedupeCommentsById(commentsFromDoc(d)));
+      mergeAll(docs);
+    }
+    for (const d of docs) expect(commentsFromDoc(d)).toEqual([C1, C2]);
+  });
+
+  test('the doubling ladder cannot climb: 3 concurrent rounds stay at one copy', () => {
+    // 1 → 2 → 4 → 8 was the field behaviour. Every round here is a full
+    // concurrent write on every replica, which is what used to double it.
+    const docs = [new Y.Doc(), new Y.Doc(), new Y.Doc()];
+    for (let round = 0; round < 3; round++) {
+      for (const d of docs) applyCommentsToDoc(d, [C1, C2]);
+      mergeAll(docs);
+    }
+    for (const d of docs) expect(commentsFromDoc(d)).toEqual([C1, C2]);
+  });
+
+  test('an 8× doubled array collapses on the very next apply — no union needed', () => {
+    // The reporter's exact state (#112). Dedupe now happens on EVERY apply, so
+    // a doc that arrived doubled from an older peer heals as soon as anything
+    // writes the lane — the union pass is no longer the only repair.
+    const doc = new Y.Doc();
+    doc.getArray<unknown>(Y_TYPES.comments).push([C1, C2, C1, C2, C1, C2, C1, C2]);
+    expect(applyCommentsToDoc(doc, [C1, C2])).toBe(true);
+    expect(commentsFromDoc(doc)).toEqual([C1, C2]);
+  });
+
+  test('a duplicated list handed to the codec cannot re-enter the doc', () => {
+    // The other direction: `next` itself arrives doubled (a `_comments.json`
+    // written by a pre-fix release). It must land as one copy, not eight.
+    const doc = new Y.Doc();
+    applyCommentsToDoc(doc, [C1, C2, C1, C2, C1, C2, C1, C2]);
+    expect(commentsFromDoc(doc)).toEqual([C1, C2]);
+  });
+
+  test('collapsing is a PURE DELETE — the shape that makes it idempotent', () => {
+    const doc = new Y.Doc();
+    applyCommentsToDoc(doc, [C1, C2]);
+    // Force the duplicated state past the codec, the way a CRDT merge does.
+    doc.getArray<unknown>(Y_TYPES.comments).push([C1, C2]);
+    expect(commentsFromDoc(doc)).toEqual([C1, C2, C1, C2]);
+
+    const clockBefore = Y.decodeStateVector(Y.encodeStateVector(doc)).get(doc.clientID);
+    applyCommentsToDoc(doc, [C1, C2]);
+    expect(commentsFromDoc(doc)).toEqual([C1, C2]);
+    // A pure delete creates no items, so this client's clock does not advance.
+    // If the collapse INSERTED, a concurrent collapse would keep both inserts —
+    // precisely how the css lane re-doubled itself in issue #114.
+    expect(Y.decodeStateVector(Y.encodeStateVector(doc)).get(doc.clientID)).toBe(clockBefore);
+  });
+
+  test('a real edit to one comment still propagates (the repair is not a freeze)', () => {
+    const doc = new Y.Doc();
+    applyCommentsToDoc(doc, [C1, C2]);
+    const edited = { ...C2, status: 'resolved' };
+    expect(applyCommentsToDoc(doc, [C1, edited])).toBe(true);
+    expect(commentsFromDoc(doc)).toEqual([C1, edited]);
+  });
+
+  test('a deletion still propagates, and an unchanged list is a no-op', () => {
+    const doc = new Y.Doc();
+    applyCommentsToDoc(doc, [C1, C2]);
+    expect(applyCommentsToDoc(doc, [C1])).toBe(true);
+    expect(commentsFromDoc(doc)).toEqual([C1]);
+    expect(applyCommentsToDoc(doc, [C1])).toBe(false); // no transaction, no loop
+  });
+
+  test('entries without an id dedupe conservatively, by JSON identity', () => {
+    const doc = new Y.Doc();
+    const anon = { text: 'no id here' };
+    const other = { text: 'different' };
+    applyCommentsToDoc(doc, [anon, anon, other]);
+    expect(commentsFromDoc(doc)).toEqual([anon, other]);
   });
 });
 

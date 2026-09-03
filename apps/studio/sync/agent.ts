@@ -70,6 +70,7 @@ import {
   unionCommentsById,
 } from './cold-start.ts';
 import { applyColdStart, type ColdStartSnapshotReason } from './cold-start-apply.ts';
+import { dedupeCommentsById, hasDuplicateComments } from './comment-identity.ts';
 import { type EchoGuard, hashBytes } from './echo-guard.ts';
 import type { SyncJournal } from './journal.ts';
 
@@ -206,6 +207,7 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
     // concurrent peer's identical seed onto ours. Collapse it (single elected
     // writer) BEFORE the flush below can mirror a doubled body to disk.
     maybeRepairSeedDuplication();
+    maybeCollapseCommentsDuplication();
     scheduleFlush();
   }
 
@@ -294,6 +296,37 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
     }
   }
 
+  /**
+   * The comments half of the same collision (issue #112) — and deliberately
+   * NOT shaped like the body's.
+   *
+   * The body repair needs the `seededBy` election and an exact-repeat proof
+   * because collapsing a Y.Text can only be justified when the discarded bytes
+   * are provably a copy. Comments carry stable ids, so "the same comment twice"
+   * is decidable per entry, not per lane: the collapse keeps one of two
+   * byte-identical-by-identity entries and discards nothing a reader could
+   * want. That makes it safe for EVERY peer to run — no election, no seed
+   * window, no snapshot (per issue #114's follow-up, a collapse that preserves
+   * zero unique bytes must not consume the `_history/` snapshot ring).
+   *
+   * It converges because `applyCommentsToDoc` emits the collapse as a pure
+   * delete of items every peer holds, and concurrent deletes of the same items
+   * are idempotent. Running it here — on the remote-update path, before the
+   * flush — is what stops a duplicated array from reaching disk and becoming
+   * the canvas's new truth.
+   */
+  function maybeCollapseCommentsDuplication(): void {
+    const current = commentsFromDoc(doc);
+    if (!hasDuplicateComments(current)) return;
+    const collapsed = dedupeCommentsById(current);
+    doc.transact(() => {
+      applyCommentsToDoc(doc, collapsed, origin);
+    }, origin);
+    console.warn(
+      `[sync/${slug}] comments lane held ${current.length} entries for ${collapsed.length} distinct comments — collapsed (#112).`
+    );
+  }
+
   async function flush(): Promise<void> {
     if (!dirty || stopped) return;
     // A RETIRED document is write-inert. Its canvas moved to a new path in a
@@ -333,6 +366,12 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
   }
 
   function writeCommentsIfChanged(): void {
+    // This lane writes `_comments/<slug>.json` DIRECTLY, not through the api's
+    // `saveCommentsForFile` — so it does not inherit that boundary's dedupe.
+    // Collapse first (issue #112): a duplicated array reaching disk is how the
+    // doubling outlived restarts and became the canvas's truth. Idempotent, and
+    // self-originated, so it can't re-enter `onDocUpdate`.
+    maybeCollapseCommentsDuplication();
     const next = commentsFromDoc(doc);
     const serialized = next.length > 0 ? `${JSON.stringify(next, null, 2)}\n` : '';
     if (serialized === lastComments) return;
