@@ -25,6 +25,7 @@
 - [ ] You have npm publish permission for `@1agh/maude` + all 7 `@1agh/maude-<slug>` packages, and push access to `main`
 - [ ] `NPM_TOKEN` repo secret is set (one-time, only after rotation)
 - [ ] 1Password is unlocked AND the SSH key is approved for the session (signing failures mid-tag-move leave the repo in a partial state — see "When things break")
+- [ ] **No stray local annotated tags** — `git push --follow-tags --dry-run` must show only the tag you are about to create. A stale local tag from an interrupted release rides along with `--follow-tags` and fires a SECOND release pipeline, whose concurrency group can cancel the real one's `cells-deploy` (the v1.0.12-vs-v1.2.0 incident, 2026-09-04: stray tag pushed, its create-release grabbed "Latest", and the real release's cell run was auto-cancelled). Note `git tag -l <name>` exits 0 even when nothing matches — don't gate on its exit code.
 
 ```bash
 git switch main && git pull --ff-only
@@ -37,6 +38,8 @@ ls .changeset/*.md 2>/dev/null | grep -v README.md   # at least one pending chan
 ### Config health + quality gates (blocker)
 
 The release walker runs the workspace's own config sanity check, then every declared quality gate — a schema error or a failing gate aborts before the bump (per the `flow:quality-gates` skill, release pre-flight runs **all** gates, no filter):
+
+> When the release being prepared ADDS a new config-schema key that this repo's own `.ai/workflows.config.json` already uses, the globally installed `maude` validates against its bundled (previous-release) schema and false-positives. Fall back to the working-tree CLI: `node cli/bin/maude.mjs doctor --json`.
 
 ```bash
 # Step 1: config schema must be clean
@@ -92,6 +95,8 @@ pnpm biome check --fix
 pnpm lint                                            # confirm clean
 ```
 
+> **Eyeball what `--fix` touched beyond the manifests** (`git status --short`). Biome's "safe" fixes are not always behavior-safe: `useArrowFunction` rewrote a test's `function () {}` constructor mocks into arrow functions (not constructible — 3 tests silently broke, 2026-09-04). If the sweep fixed any non-manifest file, re-run that file's tests or revert the file — the rule is warning-level, so reverting keeps lint green.
+
 After `pnpm run changeset:version`, re-run the `format` + `lint` gates. **If only `format` errors remain**, the bump expanded the sub-package arrays (the `JSON.stringify` mechanism above) — apply the format-fix and re-stage:
 
 ```bash
@@ -134,6 +139,7 @@ git add package.json \
         plugins/flow/.claude-plugin/plugin.json \
         packages/maude-*/package.json \
         apps/cells/wrangler.toml \
+        apps/render/wrangler.toml \
         apps/desktop/src-tauri/tauri.conf.json \
         apps/desktop/src-tauri/Cargo.toml \
         apps/desktop/src-tauri/Cargo.lock \
