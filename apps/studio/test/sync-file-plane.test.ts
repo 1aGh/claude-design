@@ -29,11 +29,11 @@ import { join } from 'node:path';
 import { createFileLedger, type FileLedger } from '../sync/file-ledger.ts';
 import {
   createFilePlane,
-  MAX_TRUSTED_QUOTA_PAUSE_MS,
-  MIN_TRUSTED_MAX_FILE_BYTES,
   DELETE_BUDGET_PER_WINDOW,
   foldRemote,
   MAX_REQUESTS_PER_PASS,
+  MAX_TRUSTED_QUOTA_PAUSE_MS,
+  MIN_TRUSTED_MAX_FILE_BYTES,
   REANCHOR_HOLD_RECOVERY_MS,
   REANCHOR_STORM_LIMIT,
   scanLocalFiles,

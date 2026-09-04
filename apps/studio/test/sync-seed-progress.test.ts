@@ -83,7 +83,7 @@ describe('computeSeedProgress', () => {
     expect(p.phase).toBe('blocked');
   });
 
-  it('classifies from the row\'s OWN blockedClass, not from hub-influenceable text', () => {
+  it("classifies from the row's OWN blockedClass, not from hub-influenceable text", () => {
     // `reason` can embed a bounded snippet of a hub error body, so a hostile hub
     // answering with a body containing "too big" could otherwise steer how its
     // own refusals are labelled. The writer records the class; the reader trusts
@@ -104,7 +104,10 @@ describe('computeSeedProgress', () => {
   it('falls back to OUR sentence prefixes for rows written before the field', () => {
     const p = computeSeedProgress({
       rows: rows([
-        { state: 'refused', reason: 'Too big for this workspace — 465.8 MB, and the limit is 95.0 MB' },
+        {
+          state: 'refused',
+          reason: 'Too big for this workspace — 465.8 MB, and the limit is 95.0 MB',
+        },
         { state: 'refused', reason: 'HTTP 500 — a hub body mentioning too big' },
       ]),
       now: NOW,

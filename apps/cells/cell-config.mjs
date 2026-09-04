@@ -409,8 +409,13 @@ async function readJsonSafely(res) {
 /** Strip control characters before a peer-supplied string reaches a log line —
  *  an ANSI/CR sequence in a terminal is output the writer did not intend. */
 function safeForLog(raw) {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping them is the point.
-  return String(raw ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+  return (
+    String(raw ?? '')
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping them is the point.
+      .replace(/[\u0000-\u001f\u007f]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  );
 }
 
 /**
