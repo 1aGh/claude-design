@@ -3,6 +3,17 @@
   "currentPhase": null,
   "phases": [
     {
+      "id": "feature-large-project-seed-and-sync-progress",
+      "title": "Feature: Large-project seed — stop the amplification loop, and make the seed visible on every surface",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-large-project-seed-and-sync-progress.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
       "id": "phase-1-contribute-infra-changesets",
       "title": "Phase 1: Contribute infrastructure + Changesets bootstrap",
       "status": "done",
@@ -2192,17 +2203,6 @@
       "phaseKey": null
     },
     {
-      "id": "feature-large-project-seed-and-sync-progress",
-      "title": "Feature: Large-project seed — stop the amplification loop, and make the seed visible on every surface",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-large-project-seed-and-sync-progress.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
       "id": "feature-local-media-generation",
       "title": "Feature: Power-user local media generation + native keychain (post-v1)",
       "status": "planned",
@@ -2210,17 +2210,6 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is the extracted Phase 5 of feature-ai-media-generation (closed at Phase 4, 2026-...",
       "planPath": ".ai/plans/feature-local-media-generation.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-pdf-text-outline-and-font-preflight",
-      "title": "Feature: PDF export — `text` mode (keep / embed / outline) + font preflight",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/feature-pdf-text-outline-and-font-preflight.md",
       "archived": false,
       "phaseKey": null
     },
