@@ -14,6 +14,7 @@
 
 import type { AssetPushProgress } from './asset-push.ts';
 import type { SyncStatusSnapshot } from './connection-state.ts';
+import type { SeedProgress } from './seed-progress.ts';
 
 // `cold-start-hub-wins` stays in the union for OLD payload readers (additive
 // evolution — the NoSyncablePayload discriminator pattern); new conflicts are
@@ -41,6 +42,11 @@ export interface SyncStatusPayload extends SyncStatusSnapshot {
   canvases: number;
   /** Recent conflict notifications (most-recent-last, capped). */
   conflicts: SyncConflict[];
+  /**
+   * When the ConnectionMonitor last spoke, as distinct from when this payload
+   * was built (`updatedAt`). Additive — see the note in `payload()`.
+   */
+  connectionUpdatedAt?: number;
   /**
    * Phase 9.2 (DDR-064) — true when the unified single-shared-doc model is
    * active (MAUDE_SHARED_DOC). Lets `maude design status` + the browser banner
@@ -145,6 +151,26 @@ export interface FilePlaneStatus {
    * as the thing to disagree with.
    */
   delivery?: Record<string, string>;
+  /**
+   * How many delivery rows were dropped from `delivery` by its cap.
+   *
+   * The map used to be unbounded — one entry per ledger row, so 2 961 keys for
+   * a real project, re-serialized into `_sync.json` AND broadcast over the
+   * WebSocket on EVERY status change, including 200 ms-throttled asset-progress
+   * emits. Same bounding shape `items`/`itemsTruncated` already uses.
+   */
+  deliveryTruncated?: number;
+  /**
+   * THE DENOMINATOR (feature-large-project-seed).
+   *
+   * Derived from the LEDGER rather than from per-pass results — see
+   * `seed-progress.ts` for why the per-pass counters read zero for twenty
+   * minutes while 2 961 rows changed underneath them. The raw counters above
+   * stay beside it deliberately: a panel derived from the same source it
+   * displays cannot be cross-checked, and DDR-214's lesson is that a status
+   * surface has to be falsifiable.
+   */
+  progress?: SeedProgress;
 }
 
 export interface SyncStatusStoreOptions {
@@ -158,6 +184,8 @@ export interface SyncStatusStoreOptions {
   broadcast?: (payload: SyncStatusPayload) => void;
   /** Max conflict notifications retained. Default 20. */
   maxConflicts?: number;
+  /** Floor between two writes/broadcasts. 0 disables coalescing (tests). */
+  flushIntervalMs?: number;
   now?: () => number;
 }
 
@@ -183,9 +211,17 @@ export interface SyncStatusStore {
 
 const DEFAULT_MAX_CONFLICTS = 20;
 
+/** Floor between two status writes/broadcasts. Matches `asset-push.ts`'s own
+ *  `PROGRESS_INTERVAL_MS` — the lane that emits fastest sets the pace. */
+export const STATUS_FLUSH_MS = 200;
+
+/** Delivery rows one payload carries, actionable-first. See `deliveryTruncated`. */
+export const MAX_DELIVERY_ROWS = 300;
+
 export function createSyncStatusStore(opts: SyncStatusStoreOptions): SyncStatusStore {
   const now = opts.now ?? Date.now;
   const maxConflicts = opts.maxConflicts ?? DEFAULT_MAX_CONFLICTS;
+  const flushIntervalMs = opts.flushIntervalMs ?? STATUS_FLUSH_MS;
   const conflicts: SyncConflict[] = [];
 
   let snapshot: SyncStatusSnapshot = {
@@ -207,6 +243,18 @@ export function createSyncStatusStore(opts: SyncStatusStoreOptions): SyncStatusS
   function payload(): SyncStatusPayload {
     return {
       ...snapshot,
+      // WHEN THIS PAYLOAD WAS BUILT, not when the connection monitor last
+      // spoke. `updatedAt` arrived here by spreading the monitor's snapshot,
+      // which only `update()` refreshes — so `updateFiles()` and
+      // `updateAssets()` flushed payloads carrying a stale timestamp ABOUT
+      // THEMSELVES. Measured at 130 s stale against a ledger that was current
+      // to within a second, on a file being rewritten continuously. A
+      // freshness stamp that lies is worse than none: it is what a person (and
+      // `maude design status`) uses to decide whether sync is alive at all.
+      updatedAt: now(),
+      // The monitor's own stamp, preserved under a name that says what it is,
+      // so nothing that depended on the old meaning silently changes meaning.
+      connectionUpdatedAt: snapshot.updatedAt,
       url: opts.url,
       canvases: opts.canvases,
       conflicts: conflicts.slice(),
@@ -217,7 +265,23 @@ export function createSyncStatusStore(opts: SyncStatusStoreOptions): SyncStatusS
     };
   }
 
-  function flush(): void {
+  /**
+   * Write + broadcast, COALESCED.
+   *
+   * Every emit used to re-serialize the whole payload — including an unbounded
+   * per-path delivery map — to disk and to every open tab. During a seed the
+   * asset lane alone emits every 200 ms, and the file lane emits per pass, so
+   * the cost was paid continuously for a payload nobody could read that fast.
+   *
+   * `immediate` is not an optimisation escape hatch: conflicts, notices and
+   * terminal transitions are the events a person is waiting on, and delaying
+   * those by even a debounce window is the class of lie this file exists to
+   * avoid.
+   */
+  let flushTimer: ReturnType<typeof setTimeout> | null = null;
+  let pendingFlush = false;
+
+  function emit(): void {
     const p = payload();
     try {
       opts.write(p);
@@ -231,15 +295,47 @@ export function createSyncStatusStore(opts: SyncStatusStoreOptions): SyncStatusS
     }
   }
 
+  function flush(immediate = false): void {
+    if (flushIntervalMs <= 0) {
+      emit();
+      return;
+    }
+    if (!immediate && flushTimer !== null) {
+      pendingFlush = true;
+      return;
+    }
+    // An immediate flush jumps the queue but still OPENS the window — without
+    // that, every urgent write was followed by a free un-coalesced one, so a
+    // conflict during a seed re-admitted the whole burst it was jumping ahead of.
+    if (flushTimer !== null) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    pendingFlush = false;
+    emit();
+    flushTimer = setTimeout(() => {
+      flushTimer = null;
+      // Only if something arrived while we were waiting — an idle store must
+      // not keep a timer alive forever.
+      if (pendingFlush) {
+        pendingFlush = false;
+        flush();
+      }
+    }, flushIntervalMs);
+    flushTimer.unref?.();
+  }
+
   return {
     update(next) {
+      const changed = snapshot.state !== next.state;
       snapshot = next;
-      flush();
+      // A connection state CHANGE is the headline; a heartbeat is not.
+      flush(changed);
     },
     addConflict(conflict) {
       conflicts.push({ ...conflict, at: now() });
       if (conflicts.length > maxConflicts) conflicts.splice(0, conflicts.length - maxConflicts);
-      flush();
+      flush(true);
     },
     updateAssets(progress) {
       assets = progress;
@@ -247,12 +343,14 @@ export function createSyncStatusStore(opts: SyncStatusStoreOptions): SyncStatusS
     },
     updateFiles(next) {
       files = next;
-      flush();
+      // A finished or stalled seed is what a person is waiting to see; a
+      // mid-seed tick is not.
+      flush(next.progress?.phase === 'converged' || next.progress?.phase === 'blocked');
     },
     notice(next) {
       if (notices.some((n) => n.id === next.id)) return;
       notices.push({ ...next, at: now() });
-      flush();
+      flush(true);
     },
     get: payload,
   };

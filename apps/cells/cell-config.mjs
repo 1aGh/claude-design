@@ -271,8 +271,40 @@ export async function fetchTenantConfig({ tenantId, env, storage = null, fetchIm
  * refusal to start (unless the legacy shared-key fallback is still configured
  * during the migration window), never as "run local-only".
  */
+/**
+ * Does this cell have to resolve start-up state (its config and its storage
+ * credentials) for the request in hand?
+ *
+ * NO when the container is already running: both are applied at container
+ * START — `startOptions.envVars` REPLACES the image's environment and nothing
+ * re-reads them afterwards — so resolving them per request is pure cost. On
+ * 2026-09-03 it was a catastrophic cost: `MaudeCell.fetch()` runs for every
+ * proxied request, so a file-plane pass of up to 200 PUTs drove up to 200
+ * Cloudflare `temp-access-credentials` mints, tripped the account rate limit,
+ * and turned the fail-closed refusal into a restart loop (30 starts / 10 s).
+ *
+ * ONLY the literal `true` counts as running. Anything else — absent, unknown,
+ * a truthy value from some future platform shape — falls to the safe side and
+ * resolves, because starting a container that is already up is idempotent
+ * while proxying to one that is down is not.
+ *
+ * Pure and exported so it is testable without the container runtime, exactly
+ * like `cellEnv` (this module's whole reason for existing).
+ */
+export function needsStartupState(container) {
+  return container?.running !== true;
+}
+
 export async function fetchTenantS3Credentials({ tenantId, env, fetchImpl = fetch }) {
-  if (!env.CELL_SECRET_MASTER) return null;
+  if (!env.CELL_SECRET_MASTER) {
+    return {
+      ok: false,
+      retryable: false,
+      status: null,
+      retryAfterMs: null,
+      detail: 'no CELL_SECRET_MASTER',
+    };
+  }
   const controlPlane = env.CONTROL_PLANE_URL ?? 'https://cloud.maude.sh';
   try {
     const secret = await deriveSecret(env.CELL_SECRET_MASTER, tenantId);
@@ -280,14 +312,105 @@ export async function fetchTenantS3Credentials({ tenantId, env, fetchImpl = fetc
       `${controlPlane}/internal/cell-r2-credentials?tenant=${encodeURIComponent(tenantId)}`,
       { headers: { authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(15_000) }
     );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      // READ THE BODY. This used to be `throw new Error(\`HTTP ${res.status}\`)`,
+      // which discarded the one thing that said WHY — the control plane sends
+      // `{error, retryable}`, and on 2026-09-03 the whole diagnosis had to be
+      // reconstructed from `wrangler tail` on the other side of the hop because
+      // this line kept only a number.
+      const body = await readJsonSafely(res);
+      const retryable =
+        typeof body?.retryable === 'boolean'
+          ? body.retryable
+          : res.status === 429 || res.status >= 500;
+      const detail = safeForLog(body?.error ?? `HTTP ${res.status}`).slice(0, MAX_DETAIL_CHARS);
+      console.error(
+        `[cell] ${tenantId} could not mint R2 credentials: HTTP ${res.status}${
+          retryable ? ' (retryable)' : ''
+        } — ${detail}`
+      );
+      return {
+        ok: false,
+        retryable,
+        status: res.status,
+        retryAfterMs: retryAfterMsFromHeader(res.headers?.get?.('retry-after')),
+        detail,
+      };
+    }
     const body = await res.json();
-    if (!body?.accessKeyId || !body?.secretAccessKey) throw new Error('malformed credentials');
-    return body;
+    if (!body?.accessKeyId || !body?.secretAccessKey) {
+      console.error(`[cell] ${tenantId} could not mint R2 credentials: malformed credentials`);
+      return {
+        ok: false,
+        retryable: false,
+        status: res.status,
+        retryAfterMs: null,
+        detail: 'malformed credentials',
+      };
+    }
+    return { ok: true, credentials: body };
   } catch (err) {
-    console.error(`[cell] ${tenantId} could not mint R2 credentials: ${err.message}`);
+    // A transport failure never reached the control plane — transient by
+    // nature, so the caller should come back rather than read it as a broken
+    // deployment.
+    const detail = safeForLog(err?.message ?? err).slice(0, MAX_DETAIL_CHARS);
+    console.error(`[cell] ${tenantId} could not mint R2 credentials: ${detail}`);
+    return { ok: false, retryable: true, status: null, retryAfterMs: null, detail };
+  }
+}
+
+/** How much of a control-plane error string reaches a log line. */
+const MAX_DETAIL_CHARS = 200;
+
+/** `Retry-After: <seconds>` → ms, or null. Clamped at 5 min so a confused
+ *  upstream cannot park a cell indefinitely. */
+function retryAfterMsFromHeader(header) {
+  const secs = Number(String(header ?? '').trim());
+  if (!Number.isFinite(secs) || secs <= 0) return null;
+  return Math.min(secs * 1000, 5 * 60_000);
+}
+
+/** How much of an error body we will read. The non-ok branch is exactly where
+ *  an edge error page — not our Worker — produced the body, so it is bounded
+ *  the same way `apps/studio/sync/retry-after.ts` bounds its own snippet read. */
+const MAX_ERROR_BODY_BYTES = 8 * 1024;
+
+/** Parse a bounded JSON body without letting a non-JSON error page throw. */
+async function readJsonSafely(res) {
+  try {
+    const reader = res.body?.getReader?.();
+    if (!reader) {
+      const text = (await res.text()).slice(0, MAX_ERROR_BODY_BYTES);
+      return JSON.parse(text);
+    }
+    const chunks = [];
+    let total = 0;
+    while (total < MAX_ERROR_BODY_BYTES) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        chunks.push(value);
+        total += value.byteLength;
+      }
+    }
+    void reader.cancel().catch(() => {});
+    const joined = new Uint8Array(total);
+    let at = 0;
+    for (const c of chunks) {
+      joined.set(c, at);
+      at += c.byteLength;
+    }
+    return JSON.parse(new TextDecoder().decode(joined));
+  } catch {
     return null;
   }
+}
+
+/** Strip control characters before a peer-supplied string reaches a log line —
+ *  an ANSI/CR sequence in a terminal is output the writer did not intend. */
+function safeForLog(raw) {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping them is the point.
+  return String(raw ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 /**

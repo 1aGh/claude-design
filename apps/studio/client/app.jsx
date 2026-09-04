@@ -9879,6 +9879,47 @@ function App() {
   // Phase 9 Task 8 — hub-down offline mode banner. Driven by the 'sync:status'
   // WS message the linked-mode sync runtime emits. null in solo mode.
   const [syncStatus, setSyncStatus] = useState(null);
+  // feature-large-project-seed — the NATIVE half of seed progress.
+  //
+  // A seed against a large project is minutes to hours of work, and the target
+  // user (DDR-177) never opens a terminal. The Sync panel is the detail view;
+  // this is what reaches them when the panel is not on screen: the window
+  // title while it runs, and ONE notification per phase transition.
+  //
+  // Per TRANSITION, never per file. A 2 961-file seed must produce two
+  // notifications, not 2 961 — `send_notification` throttles on the Rust side
+  // too, but a client that leans on that is a client that would spam a plain
+  // browser tab through the Web fallback.
+  const seedPhaseRef = useRef(null);
+  useEffect(() => {
+    const p = syncStatus?.files?.progress;
+    if (!p) return;
+    const prev = seedPhaseRef.current;
+    seedPhaseRef.current = p.phase;
+    if (prev === null || prev === p.phase) return;
+    if (p.phase === 'converged' && (prev === 'seeding' || prev === 'paused')) {
+      notifyDesktop('Project synced', `${p.delivered} files are up to date.`);
+    } else if (p.phase === 'blocked') {
+      const total = (p.blocked ?? []).reduce((n, b) => n + b.count, 0);
+      notifyDesktop(
+        'Sync needs a decision',
+        `${total} file${total === 1 ? '' : 's'} could not be sent. Open the Sync panel for the reason.`
+      );
+    }
+  }, [syncStatus?.files?.progress]);
+  // The title carries the count while a seed runs, and is restored afterwards —
+  // it is the one surface visible without opening anything.
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const p = syncStatus?.files?.progress;
+    const base = document.title.replace(/\s+—\s+syncing\s+\d+\/\d+$/, '');
+    if (p && (p.phase === 'seeding' || p.phase === 'paused') && p.tracked > 0) {
+      document.title = `${base} — syncing ${p.delivered}/${p.tracked}`;
+    } else {
+      document.title = base;
+    }
+    return undefined;
+  }, [syncStatus?.files?.progress]);
   // DDR-218 — the folder's cloud link ({url, credentialed} | null), lifted from
   // CloudBar (status resolve / attach / detach). Gates the GitPanel's
   // cloud-managed posture; linked-but-uncredentialed keeps the full panel.

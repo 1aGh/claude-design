@@ -202,10 +202,14 @@ async function mintForCell(request, env) {
   }
 }
 
-function json(body, status = 200) {
+function json(body, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json', 'x-content-type-options': 'nosniff' },
+    headers: {
+      'content-type': 'application/json',
+      'x-content-type-options': 'nosniff',
+      ...extraHeaders,
+    },
   });
 }
 
@@ -414,7 +418,21 @@ export default {
       }
       if (!state || state === 'purged') return json({ error: 'unknown tenant' }, 404);
       const minted = await mintTenantCredentials({ env, tenantId: tenant });
-      if (!minted.ok) return json({ error: minted.error }, minted.status ?? 502);
+      if (!minted.ok) {
+        // A REFUSAL THE CALLER CAN ACT ON. `retryable` + `Retry-After` are what
+        // let the cell tell "come back in a minute" from "this deployment is
+        // broken" — without them it fail-closes and re-mints immediately,
+        // which is the restart loop an account rate limit produced on
+        // 2026-09-03. The message itself stays the bounded string `r2-creds`
+        // built; a cell log is not an operator console.
+        return json(
+          { error: minted.error, retryable: minted.retryable === true },
+          minted.status ?? 502,
+          minted.retryable && minted.retryAfterMs
+            ? { 'retry-after': String(Math.ceil(minted.retryAfterMs / 1000)) }
+            : {}
+        );
+      }
       return json(minted.credentials);
     }
 

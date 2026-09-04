@@ -83,28 +83,55 @@ export function saveHubsConfig(config) {
  *
  * @param {string} url
  * @param {string} token
- * `role` is the ONE prior field carried across a relink (Cloud Phase 25 C2).
- * It records what the workspace vouched for at sign-in, and this path has no
- * fresher answer — the CLI does not sign in. Dropping it would silently show
- * a viewer the editing UI again, which is the exact experience the flag
+ * `role` and `expiresAt` are the prior fields carried across a relink (Cloud
+ * Phase 25 C2; `expiresAt` added 2026-09-03).
+ *
+ * `role` records what the workspace vouched for at sign-in, and this path has
+ * no fresher answer — the CLI does not sign in. Dropping it would silently
+ * show a viewer the editing UI again, which is the exact experience the flag
  * exists to prevent; a stale value costs a redundant hidden affordance and
- * self-corrects at the next workspace sign-in. Nothing ELSE is preserved:
- * `adoptedAt` is a per-machine attestation that a relink is entitled to clear.
+ * self-corrects at the next workspace sign-in.
+ *
+ * `expiresAt` is carried ONLY when the incoming token is byte-identical to the
+ * stored one — it describes the token, not the machine, so a new token
+ * invalidates it. Dropping it unconditionally is what left a linked project
+ * with no pre-expiry renewal timer at all.
+ *
+ * Nothing ELSE is preserved: `adoptedAt` is a per-machine attestation that a
+ * relink is entitled to clear.
  *
  * @param {{ adoptedAt?: number }} [extra]
  */
 export function addHub(url, token, extra = {}) {
   const norm = normalizeUrl(url);
   const cfg = loadHubsConfig();
-  const priorRole = cfg.hubs[norm]?.role;
+  const prior = cfg.hubs[norm];
+  const priorRole = prior?.role;
   // LOCAL CONSENT SURVIVES EVERY RE-SAVE. `role` is a cache of what the hub
   // said about you at sign-in; `codeModulesAllowed` is what YOU said about the
   // hub, and a login response must not be able to change it.
-  const priorConsent = cfg.hubs[norm]?.codeModulesAllowed;
+  const priorConsent = prior?.codeModulesAllowed;
+  // THE EXPIRY BELONGS TO THE TOKEN, so it survives exactly when the token does.
+  //
+  // `expiresAt` is written only by the sign-in and renew paths in
+  // `apps/studio/` — the CLI has never written it and, before this, never
+  // carried it either. So `maude design link --adopt` after a workspace
+  // sign-in silently dropped it, and a record with no expiry means
+  // `scheduleRenewal()` arms no timer at all (sync/index.ts): the credential
+  // then dies mid-session with nothing having tried to renew it.
+  //
+  // CONDITIONAL ON TOKEN IDENTITY, and that is the whole subtlety. Carrying it
+  // unconditionally would be worse than dropping it: a stale expiry against a
+  // NEW token arms the timer at the wrong instant and burns a slot in the
+  // `renewalsSinceProgress` cap for nothing. Same argument as `role` above —
+  // "this path has no fresher answer" — except that a relink CAN supply a new
+  // token, which is what makes the check necessary.
+  const priorExpiry = prior?.token === token ? prior?.expiresAt : undefined;
   cfg.hubs[norm] = {
     token,
     linkedAt: Date.now(),
     ...(priorRole ? { role: priorRole } : {}),
+    ...(typeof priorExpiry === 'number' ? { expiresAt: priorExpiry } : {}),
     ...(typeof priorConsent === 'boolean' ? { codeModulesAllowed: priorConsent } : {}),
     ...extra,
   };

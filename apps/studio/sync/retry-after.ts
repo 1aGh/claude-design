@@ -134,3 +134,36 @@ export interface RateLimited {
 export function isRateLimited(res: Pick<Response, 'status'>): boolean {
   return res.status === 429;
 }
+
+/**
+ * Is this response BACKPRESSURE — the peer is willing, just not right now?
+ *
+ * Wider than `isRateLimited`, and the two are deliberately both exported:
+ * a 429 has one precise meaning that other call sites depend on, while this is
+ * the question the transfer lanes actually want to ask.
+ *
+ * Two cases:
+ *   - 429, always. It has one meaning even bare, and `retryAfterMs` supplies a
+ *     sane default when the header is missing.
+ *   - 503 or 502 that CARRIES a `Retry-After`. The header is the peer saying
+ *     "come back at this time", which is precisely what distinguishes a busy
+ *     peer from a broken one.
+ *
+ * THE HEADER IS THE DISCRIMINATOR, and it is doing real work rather than being
+ * a formality. A cell that is starting answers `503 Retry-After: <n>` (see
+ * `cell-do.mjs` `#resolveStorageCredentials`), and firing this pass's whole
+ * request budget into that window is how a slow start becomes a failed one.
+ * A cell that genuinely cannot obtain storage answers a BARE 503 — a broken
+ * deployment, not a wall — and that one must stay an ordinary refusal so the
+ * request ceiling bounds it and the failure surfaces per file.
+ *
+ * Treating every 5xx as backpressure would erase exactly that distinction and
+ * make a broken hub look like a busy one, forever.
+ */
+export function isBackpressure(res: Pick<Response, 'status'> & { headers?: Headers }): boolean {
+  if (res.status === 429) return true;
+  if (res.status === 503 || res.status === 502) {
+    return Boolean(res.headers?.get?.('retry-after'));
+  }
+  return false;
+}

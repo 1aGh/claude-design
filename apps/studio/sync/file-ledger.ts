@@ -46,6 +46,28 @@ import { atomicWrite } from './atomic-write.ts';
 export const LEDGER_FLUSH_MS = 1_000;
 
 /**
+ * Per-path failure backoff: base delay, ceiling, and the jitter that keeps a
+ * few hundred failing paths from re-arriving in lockstep.
+ *
+ * The ceiling is ten minutes rather than something larger because a path that
+ * is waiting is a path a person is waiting for. Ten minutes is long enough to
+ * stop being the hub's problem and short enough that a recovered hub converges
+ * without anyone restarting anything.
+ */
+export const BACKOFF_BASE_MS = 5_000;
+export const MAX_BACKOFF_MS = 10 * 60_000;
+
+/** Exponential with full jitter, clamped. Exported for the tests to reason
+ *  about the bounds rather than the draw. */
+export function backoffDelayMs(attempts: number, random: () => number = Math.random): number {
+  const n = Math.max(1, Math.min(32, Math.trunc(attempts)));
+  const ceiling = Math.min(MAX_BACKOFF_MS, BACKOFF_BASE_MS * 2 ** (n - 1));
+  // Full jitter: a uniform draw over the whole window, not a band around it.
+  // The band shape still lets a synchronised cohort stay synchronised.
+  return Math.max(BACKOFF_BASE_MS, Math.round(ceiling * (0.5 + 0.5 * random())));
+}
+
+/**
  * How recently a file must have been written for its stat cache to be
  * distrusted. Comfortably above any filesystem's timestamp granularity, and
  * well below "a file somebody stopped editing".
@@ -65,6 +87,15 @@ export type DeliveryState =
   | 'conflict'
   /** We tried and could not — the reason says what to fix. */
   | 'stuck'
+  /**
+   * The workspace will NOT take this file, and no amount of waiting changes
+   * that — it is over the door's size ceiling, or the hourly allowance is
+   * spent. Distinct from `stuck` because the answer is different: `stuck` is
+   * retried, this is not, and a path that cannot succeed must stop costing a
+   * request slot on every pass (2026-09-03: a 465.8 MB video did exactly that,
+   * on every boot, forever).
+   */
+  | 'refused'
   /** Something references this asset and NO peer has ever offered it. */
   | 'referenced-but-unoffered'
   /** On this disk, and the hub has not acknowledged it. */
@@ -122,6 +153,33 @@ export interface LedgerRow {
   reason?: string;
   /** Where the conflict copy was parked, so the panel can point at it. */
   conflictCopy?: string;
+  /**
+   * WHY this row is blocked, as a value WE chose — never re-derived from the
+   * reason string.
+   *
+   * `reason` can embed a bounded snippet of a hub-supplied error body
+   * (`failureReason()`), so matching on its text means a hostile hub can steer
+   * how its own refusals are classified. The writer knows the class at the
+   * moment it refuses; recording it removes the guess.
+   */
+  blockedClass?: 'too-large' | 'quota' | 'unreachable' | 'refused';
+  /**
+   * PER-PATH FAILURE BACKOFF — consecutive failed attempts for this path.
+   *
+   * The plane had none, so every pass re-attempted the identical failing set at
+   * full rate: on 2026-09-03 a single sponsor logo went up 24 times in 10
+   * seconds, and 314 PUTs covered only 44 distinct paths. That is not a retry
+   * policy, it is the client helping a struggling hub struggle.
+   */
+  attempts?: number;
+  /**
+   * Earliest wall-clock this path may be attempted again.
+   *
+   * ON THE LEDGER, not in memory, for the same reason the deletion budget is:
+   * otherwise "restart the app" is the bypass, and a restart is the ordinary
+   * response to "sync seems stuck".
+   */
+  nextAttemptAt?: number;
   /**
    * The remote hash whose bytes we have ALREADY parked aside.
    *
@@ -226,6 +284,20 @@ export interface FileLedger {
 
   setState(rel: string, state: DeliveryState, extra?: Partial<LedgerRow>): void;
   forget(rel: string): void;
+
+  /**
+   * Is this path inside its backoff window right now?
+   *
+   * A path answering true must be skipped WITHOUT spending a request slot —
+   * charging it against `MAX_REQUESTS_PER_PASS` would let a few permanently
+   * failing paths starve every healthy one, which is the shape that made two
+   * alligators runs move zero files while sending 616 MB.
+   */
+  isBackedOff(rel: string, now: number): boolean;
+  /** Record one failed attempt and arm the next window. Returns the new delay. */
+  noteAttemptFailed(rel: string, now: number): number;
+  /** A path that worked: clear the counter and the window. */
+  noteAttemptOk(rel: string): void;
 
   /** The outbox: hashes this machine has in flight, for self-echo detection. */
   outboxAdd(hash: string): void;
@@ -335,6 +407,21 @@ export function createFileLedger(opts: FileLedgerOptions): FileLedger {
         ...(typeof r.state === 'string' ? { state: r.state as DeliveryState } : {}),
         ...(typeof r.reason === 'string' ? { reason: r.reason.slice(0, 200) } : {}),
         ...(typeof r.conflictCopy === 'string' ? { conflictCopy: r.conflictCopy } : {}),
+        ...(r.blockedClass === 'too-large' ||
+        r.blockedClass === 'quota' ||
+        r.blockedClass === 'unreachable' ||
+        r.blockedClass === 'refused'
+          ? { blockedClass: r.blockedClass }
+          : {}),
+        // BACKOFF STATE IS PART OF THE ROW, so it has to be part of the
+        // allowlist. This is an allowlist, not a merge: a field missing from
+        // here is written to disk and silently dropped on the next load, which
+        // would make the backoff reset on every restart — the exact bypass
+        // persisting it was meant to close.
+        ...(Number.isFinite(r.attempts) && (r.attempts as number) >= 0
+          ? { attempts: Math.min(Math.trunc(r.attempts as number), 1_000) }
+          : {}),
+        ...(Number.isFinite(r.nextAttemptAt) ? { nextAttemptAt: r.nextAttemptAt } : {}),
       };
     }
     return out;
@@ -551,6 +638,36 @@ export function createFileLedger(opts: FileLedgerOptions): FileLedger {
 
     forget(rel) {
       delete data.rows[rel];
+      schedule();
+    },
+
+    isBackedOff(rel, now) {
+      const next = data.rows[rel]?.nextAttemptAt;
+      if (!Number.isFinite(next)) return false;
+      // A window that ends absurdly far out is a corrupted or hostile row, not
+      // a backoff — treat it as expired rather than letting it park a path
+      // forever. The ledger is a local file, but a restore or a clock jump can
+      // still put nonsense in it.
+      if ((next as number) - now > MAX_BACKOFF_MS) return false;
+      return now < (next as number);
+    },
+
+    noteAttemptFailed(rel, now) {
+      const r = rowFor(rel);
+      const attempts = (Number.isFinite(r.attempts) ? (r.attempts as number) : 0) + 1;
+      r.attempts = attempts;
+      const delay = backoffDelayMs(attempts);
+      r.nextAttemptAt = now + delay;
+      schedule();
+      return delay;
+    },
+
+    noteAttemptOk(rel) {
+      const r = data.rows[rel];
+      if (!r) return;
+      if (r.attempts === undefined && r.nextAttemptAt === undefined) return;
+      r.attempts = undefined;
+      r.nextAttemptAt = undefined;
       schedule();
     },
 

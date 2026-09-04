@@ -119,6 +119,71 @@ export function resetQuotas() {
  * then handed to the classifier — which is what actually decides admission.
  * Anything malformed is null rather than a guess.
  */
+/** `GET /api/file-limits` — what this door will and will not accept. */
+export const FILE_LIMITS_PATH = '/api/file-limits';
+
+/**
+ * The ceilings, as data, so a client can stop guessing them.
+ *
+ * WHY THIS ROUTE EXISTS. The push side used its OWN constant — 512 MB, the
+ * PULL cap — while this door has always refused anything over 95 MB. So a
+ * client would scan, queue, hash, and upload a 465 MB video that was never
+ * going to be accepted, burn a request slot on it every single pass, and store
+ * an anonymous `stuck` against it forever. Two files in one real project
+ * (164.9 MB and 465.8 MB) did exactly that. A ceiling only one side knows is
+ * not a contract, it is a trap.
+ *
+ * Unauthenticated on purpose: it reveals only what the door would answer to
+ * any caller anyway, and a client needs it BEFORE it has decided to trust the
+ * hub with bytes. The per-token quota figures are only included when a token
+ * identifies itself.
+ */
+export function fileLimits(label = null, now = Date.now()) {
+  const base = {
+    maxFileBytes: MAX_FILE_BYTES,
+    quotaBytesPerWindow: QUOTA_BYTES_PER_WINDOW,
+    quotaWindowMs: QUOTA_WINDOW_MS,
+  };
+  if (!label) return base;
+  const row = quotaFor(label, now);
+  return {
+    ...base,
+    quotaUsed: row.used,
+    quotaResetsAt: row.since + QUOTA_WINDOW_MS,
+  };
+}
+
+/**
+ * Handle `GET /api/file-limits`. Returns true when it answered.
+ *
+ * @param {object} ctx
+ * @param {(req: object) => boolean} [ctx.checkRateLimit] per-IP throttle, same
+ *   shape the file door and the asset routes use.
+ */
+export function handleFileLimits(ctx) {
+  const { request, response, pathname, method, dataDir, secret } = ctx;
+  if (pathname !== FILE_LIMITS_PATH) return false;
+  if (method !== 'GET') {
+    respond(response, 405, 'method not allowed');
+    return true;
+  }
+  // Metered BEFORE the token verification below, which is HMAC + a SQLite
+  // lookup and therefore the expensive half. Unauthenticated by design (a
+  // client needs the ceilings before it decides to trust this hub with bytes),
+  // which is exactly why it needs the same throttle its siblings carry.
+  if (ctx.checkRateLimit && !ctx.checkRateLimit(request)) {
+    respond(response, 429, 'too many requests');
+    return true;
+  }
+  // A token is OPTIONAL here — with one, the caller also learns its own quota
+  // position; without one, it still learns the ceilings.
+  const auth = request.headers?.authorization;
+  const token = typeof auth === 'string' ? auth.replace(/^Bearer\s+/i, '').trim() : '';
+  const match = token ? verifyToken(dataDir, token, secret) : null;
+  respondJson(response, 200, fileLimits(match?.label ?? null));
+  return true;
+}
+
 export function parseFileDoorPath(pathname) {
   if (!pathname.startsWith(FILE_DOOR_PREFIX)) return null;
   const raw = pathname.slice(FILE_DOOR_PREFIX.length);

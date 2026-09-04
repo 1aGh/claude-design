@@ -12,9 +12,13 @@ import { deriveCellSecret } from './cell-token.mjs';
 import { d1FromSqlite } from './db.mjs';
 import { applySchema } from './migrate.mjs';
 import {
+  DEFAULT_RETRY_AFTER_MS,
   DEFAULT_TTL_SECONDS,
+  isRetryableStatus,
+  MAX_RETRY_AFTER_MS,
   mintingConfigured,
   mintTenantCredentials,
+  retryAfterMsFrom,
   tenantPrefix,
 } from './r2-creds.mjs';
 import { SCHEMA_SQL } from './schema.mjs';
@@ -89,6 +93,105 @@ test('a Cloudflare refusal surfaces as 502 with the message, not as credentials'
   assert.equal(out.ok, false);
   assert.equal(out.status, 502);
   assert.match(out.error, /no permission/);
+});
+
+// ── retryable vs reportable (2026-09-03: the 429→502 flattening) ────────────
+//
+// A rate limit is an instruction and a permission error is a fault. Collapsing
+// both into 502 is what turned an account-level Cloudflare rate limit into a
+// cell restart loop: the cell could not tell "come back" from "broken", so it
+// fail-closed and re-minted immediately, at 30 container starts per 10 s.
+
+test('a 429 keeps its status and carries a retry hint', async () => {
+  const fetchImpl = async () =>
+    new Response(JSON.stringify({ success: false, errors: [{ message: 'rate limited' }] }), {
+      status: 429,
+      headers: { 'content-type': 'application/json', 'retry-after': '30' },
+    });
+  const out = await mintTenantCredentials({ env: CONFIGURED, tenantId: 't1', fetchImpl });
+  assert.equal(out.ok, false);
+  assert.equal(out.status, 429, 'the instruction must survive the hop');
+  assert.equal(out.retryable, true);
+  assert.equal(out.retryAfterMs, 30_000);
+});
+
+test('a 429 with no Retry-After still names a wait', async () => {
+  const fetchImpl = async () =>
+    new Response(JSON.stringify({ success: false, errors: [{ message: 'slow down' }] }), {
+      status: 429,
+      headers: { 'content-type': 'application/json' },
+    });
+  const out = await mintTenantCredentials({ env: CONFIGURED, tenantId: 't1', fetchImpl });
+  assert.equal(out.retryable, true);
+  assert.equal(out.retryAfterMs, DEFAULT_RETRY_AFTER_MS);
+});
+
+test('an upstream 5xx is retryable; a 403 is a fault reported as 502', async () => {
+  const upstream = async (status) =>
+    await mintTenantCredentials({
+      env: CONFIGURED,
+      tenantId: 't1',
+      fetchImpl: async () =>
+        new Response(JSON.stringify({ success: false, errors: [{ message: 'x' }] }), {
+          status,
+          headers: { 'content-type': 'application/json' },
+        }),
+    });
+  const five = await upstream(503);
+  assert.equal(five.status, 503);
+  assert.equal(five.retryable, true);
+
+  // Forwarding this one would tell the CELL it is forbidden, when it is the
+  // control plane's own parent token that is wrong.
+  const forbidden = await upstream(403);
+  assert.equal(forbidden.status, 502);
+  assert.equal(forbidden.retryable, false);
+});
+
+test('a transport failure is retryable — it never reached Cloudflare', async () => {
+  const out = await mintTenantCredentials({
+    env: CONFIGURED,
+    tenantId: 't1',
+    fetchImpl: async () => {
+      throw new Error('Unable to connect. Is the computer able to access the url?');
+    },
+  });
+  assert.equal(out.ok, false);
+  assert.equal(out.retryable, true);
+  assert.equal(out.retryAfterMs, DEFAULT_RETRY_AFTER_MS);
+});
+
+test('an unconfigured control plane is NOT retryable', async () => {
+  const out = await mintTenantCredentials({
+    env: {},
+    tenantId: 't1',
+    fetchImpl: async () => {
+      throw new Error('must not be called');
+    },
+  });
+  assert.equal(out.status, 503);
+  assert.equal(out.retryable, false);
+});
+
+test('retryAfterMsFrom parses, defaults and clamps', () => {
+  assert.equal(retryAfterMsFrom('12'), 12_000);
+  assert.equal(retryAfterMsFrom(null), DEFAULT_RETRY_AFTER_MS);
+  assert.equal(retryAfterMsFrom('nonsense'), DEFAULT_RETRY_AFTER_MS);
+  assert.equal(retryAfterMsFrom('-5'), DEFAULT_RETRY_AFTER_MS);
+  assert.equal(
+    retryAfterMsFrom('99999'),
+    MAX_RETRY_AFTER_MS,
+    'a hostile value cannot park the fleet'
+  );
+});
+
+test('isRetryableStatus covers 429 and 5xx only', () => {
+  assert.equal(isRetryableStatus(429), true);
+  assert.equal(isRetryableStatus(500), true);
+  assert.equal(isRetryableStatus(599), true);
+  assert.equal(isRetryableStatus(403), false);
+  assert.equal(isRetryableStatus(404), false);
+  assert.equal(isRetryableStatus(400), false);
 });
 
 // ── the Worker route ────────────────────────────────────────────────────────

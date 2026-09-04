@@ -320,16 +320,48 @@ test('fetchTenantS3Credentials asks with the tenant-derived secret and fails clo
   });
   assert.equal(seen.url, 'https://cloud.test/internal/cell-r2-credentials?tenant=alligators');
   assert.equal(seen.auth, `Bearer ${await deriveSecret(MASTER, 'alligators')}`);
-  assert.equal(creds.accessKeyId, 'tmp');
+  assert.equal(creds.ok, true);
+  assert.equal(creds.credentials.accessKeyId, 'tmp');
 
-  // A refusal (or outage) is null — the CALLER decides that a cell without
-  // storage must not start; there is no cached fallback for credentials.
+  // A refusal is a VERDICT, not a null — the CALLER still decides that a cell
+  // without storage must not start (there is no cached fallback for a genuine
+  // absence), but it can now tell "come back" from "broken". Returning a bare
+  // null is what made an account rate limit indistinguishable from a bad
+  // deployment, and therefore a restart loop (2026-09-03).
   const refused = await fetchTenantS3Credentials({
     tenantId: 'alligators',
     env: baseEnv,
-    fetchImpl: async () => new Response('no', { status: 503 }),
+    fetchImpl: async () =>
+      new Response(JSON.stringify({ error: 'mint refused: rate limited', retryable: true }), {
+        status: 429,
+        headers: { 'content-type': 'application/json', 'retry-after': '30' },
+      }),
   });
-  assert.equal(refused, null);
+  assert.equal(refused.ok, false);
+  assert.equal(refused.retryable, true);
+  assert.equal(refused.status, 429);
+  assert.equal(refused.retryAfterMs, 30_000);
+  assert.match(refused.detail, /rate limited/, 'the body said WHY — keep it');
+
+  // A fault is not retryable, and a non-JSON error page must not throw.
+  const broken = await fetchTenantS3Credentials({
+    tenantId: 'alligators',
+    env: baseEnv,
+    fetchImpl: async () => new Response('<html>gateway</html>', { status: 403 }),
+  });
+  assert.equal(broken.ok, false);
+  assert.equal(broken.retryable, false);
+
+  // A transport failure never reached the control plane ⇒ transient.
+  const offline = await fetchTenantS3Credentials({
+    tenantId: 'alligators',
+    env: baseEnv,
+    fetchImpl: async () => {
+      throw new Error('Unable to connect. Is the computer able to access the url?');
+    },
+  });
+  assert.equal(offline.ok, false);
+  assert.equal(offline.retryable, true);
 });
 
 // Cloud Phase 27 (DDR-209) — the cell runs the real studio, and the studio's

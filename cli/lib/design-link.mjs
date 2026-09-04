@@ -11,7 +11,7 @@
 // Token NEVER lands in .design/config.json — that's git-committed.
 
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 
 import { parseArgs } from './argv.mjs';
@@ -385,7 +385,8 @@ export async function runDetach({ args, cwd = process.cwd() }) {
 
 export async function runStatus({ args, cwd = process.cwd() }) {
   const tail = args.slice(args.indexOf('status') + 1);
-  const { flags } = parseArgs(tail, { booleans: ['json'] });
+  const { flags } = parseArgs(tail, { booleans: ['json', 'watch'] });
+  if (flags.watch) return await runStatusWatch({ cwd, intervalMs: watchInterval(flags) });
   const designConfigPath = resolve(cwd, DESIGN_CONFIG_PATH);
 
   if (!existsSync(designConfigPath)) {
@@ -457,6 +458,14 @@ export async function runStatus({ args, cwd = process.cwd() }) {
   }
 
   const uptimeS = Math.round((probe.uptimeMs ?? 0) / 1000);
+  // THE FILE PLANE, which this command did not mention at all.
+  //
+  // It rendered `docs:` and nothing else, so a project whose doc lane was
+  // healthy (85/87 synced, 0 pending) and whose file plane had 803 undelivered
+  // files reported `0 pending` — and a person read that as "finished". This is
+  // the single worst item in the 2026-09-03 report: not a wrong number, an
+  // absent lane.
+  const filesLine = renderFilesLine(sync, cwd);
   // DDR-102 — per-doc rollup (old payloads without `docs` render unchanged).
   const docsLine = sync?.docs
     ? `, docs: ${sync.docs.synced} synced · ${sync.docs.pending} pending · ${sync.docs.rejected} rejected`
@@ -471,6 +480,7 @@ export async function runStatus({ args, cwd = process.cwd() }) {
   process.stdout.write(
     `Maude design — linked mode\n  hub URL:      ${url}\n  linked at:    ${new Date(cfg.linkedHub.linkedAt).toISOString()}\n  adopt mode:   ${cfg.linkedHub.adopt ? 'yes (push-on-first-sync)' : 'no (hub-wins)'}\n  TSX sync:     ${cfg.linkedHub.syncTsx === false ? 'off (opted out — linkedHub.syncTsx: false)' : 'on (default — DDR-079)'}\n  token stored: ${hubRecord ? 'yes (~/.config/maude/hubs.json)' : "NO — re-run 'maude design link'"}\n  hub status:   ${probe.ok ? `up — v${probe.version}, ${uptimeS}s uptime, ${probe.tokenCount} token(s), ${probe.authMode}` : `UNREACHABLE — ${probe.error}`}\n  sync agent:   ${syncLine}\n`
   );
+  if (filesLine) process.stdout.write(filesLine);
   // DDR-102 — auth-rejected canvases (per-slug honesty).
   if (Array.isArray(sync?.rejectedSlugs) && sync.rejectedSlugs.length > 0) {
     const total = sync.docs?.rejected ?? sync.rejectedSlugs.length;
@@ -543,6 +553,184 @@ async function maybeWriteGitignoreBlock(cwd, assumeYes) {
   }
   const { action } = writeGitignoreBlock(cwd, { designRel: '.design' });
   process.stdout.write(`[design link] .gitignore: ${action} maude design-runtime block.\n`);
+}
+
+function watchInterval(flags) {
+  const raw = Number(flags.interval);
+  return Number.isFinite(raw) && raw >= 1 ? Math.min(raw, 300) * 1000 : 2_000;
+}
+
+/**
+ * `maude design status --watch` — the seed, live.
+ *
+ * A seed against a large project is minutes to hours of work (an 8.8 GB
+ * project needs at least two hourly quota windows), and the one-shot status
+ * was the only way to look at it. Asking a person to re-run a command in a
+ * loop is how "is it still going?" goes unanswered.
+ *
+ * EXIT CODES ARE THE CONTRACT: 0 on converged, 1 on blocked. `paused` is
+ * neither — nothing is wrong and nothing is lost, so it keeps waiting. That
+ * makes this usable as a script gate without it failing on an ordinary wall.
+ */
+async function runStatusWatch({ cwd, intervalMs }) {
+  const tty = process.stdout.isTTY;
+  let last = '';
+  for (;;) {
+    const sync = readSyncState(resolve(cwd, '.design', '_sync.json'));
+    const fresh =
+      sync && Number.isFinite(sync.updatedAt) && Date.now() - sync.updatedAt < SYNC_JSON_STALE_MS;
+    const p = (fresh ? sync?.files?.progress : null) ?? readLedgerProgress(cwd);
+    if (!p) {
+      process.stdout.write('[design status] nothing to watch — no file plane state yet.\n');
+      return;
+    }
+    const line = watchLine(p);
+    if (tty) {
+      process.stdout.write(`\r\x1b[2K${line}`);
+    } else if (line !== last) {
+      process.stdout.write(`${line}\n`);
+    }
+    last = line;
+    if (p.phase === 'converged') {
+      if (tty) process.stdout.write('\n');
+      return;
+    }
+    if (p.phase === 'blocked') {
+      if (tty) process.stdout.write('\n');
+      process.exitCode = 1;
+      return;
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+}
+
+function watchLine(p) {
+  const pct = p.tracked > 0 ? Math.floor((p.delivered / p.tracked) * 100) : 100;
+  const width = 24;
+  const filled = Math.round((pct / 100) * width);
+  const bar = `${'█'.repeat(filled)}${'░'.repeat(width - filled)}`;
+  const blockedTotal = (p.blocked ?? []).reduce((n, b) => n + b.count, 0);
+  const bits = [`${p.delivered}/${p.tracked}`];
+  if (p.remaining > 0) bits.push(`${p.remaining} waiting`);
+  if (blockedTotal > 0) bits.push(`${blockedTotal} need attention`);
+  const phase =
+    { paused: ' · paused', blocked: ' · blocked', scanning: ' · scanning' }[p.phase] ?? '';
+  return `${bar} ${String(pct).padStart(3)}%  ${bits.join(' · ')}${phase}`;
+}
+
+/** How stale `_sync.json` may be before we stop believing it. Two poll ticks. */
+const SYNC_JSON_STALE_MS = 60_000;
+
+/**
+ * The `files:` block — from `_sync.json`, or from the LEDGER when that file is
+ * missing or stale.
+ *
+ * The fallback is not belt-and-braces. `_sync.json` froze for the whole of a
+ * 20-minute run on 2026-09-03 while the ledger under
+ * `.design/_state/file-ledger/` stayed current to within a second — the ledger
+ * is the source that was right, so a status command that cannot reach it is
+ * one restart away from lying again.
+ */
+function renderFilesLine(sync, cwd) {
+  const fresh =
+    sync && Number.isFinite(sync.updatedAt) && Date.now() - sync.updatedAt < SYNC_JSON_STALE_MS;
+  const p = fresh ? sync?.files?.progress : null;
+  if (p) return formatFiles(p, sync.files, '');
+  const fromLedger = readLedgerProgress(cwd);
+  if (!fromLedger) {
+    // Say nothing rather than imply everything is fine — but only when there
+    // is genuinely nothing to read.
+    return sync?.files
+      ? `  files:        ${sync.files.synced ?? 0} synced${
+          sync.files.pushed ? ` · ${sync.files.pushed} pushed` : ''
+        }  (no progress detail — older sync runtime)\n`
+      : '';
+  }
+  return formatFiles(fromLedger, null, fresh ? '' : ' (from the ledger — _sync.json is stale)');
+}
+
+function formatFiles(p, raw, note) {
+  const bits = [`${p.delivered} of ${p.tracked} delivered`];
+  if (p.remaining > 0) bits.push(`${p.remaining} waiting`);
+  const blockedTotal = (p.blocked ?? []).reduce((n, b) => n + b.count, 0);
+  if (blockedTotal > 0) {
+    bits.push(`${blockedTotal} need attention (${p.blocked.map((b) => b.class).join(', ')})`);
+  }
+  let out = `  files:        ${bits.join(' · ')}${note}\n`;
+  const phaseNote = {
+    paused: 'paused — nothing is lost; it resumes by itself',
+    blocked: 'nothing is moving without a decision',
+    scanning: 'still looking through the project',
+    converged: 'everything is up to date',
+  }[p.phase];
+  if (phaseNote && p.phase !== 'converged') out += `                ${phaseNote}\n`;
+  if (p.passCapped) {
+    out += `                more to come — the last pass hit its ${p.passCapped} ceiling\n`;
+  }
+  if (raw) {
+    // The raw counters, so the derived line above is falsifiable (DDR-214).
+    out += `                (raw: synced ${raw.synced ?? 0}, pushed ${raw.pushed ?? 0}, pulled ${raw.pulled ?? 0})\n`;
+  }
+  return out;
+}
+
+/**
+ * Fold the on-disk ledger into the same progress shape, WITHOUT importing the
+ * studio's TypeScript.
+ *
+ * The CLI is a Node shim (see CLAUDE.md); `sync/seed-progress.ts` runs under
+ * Bun inside the dev-server. Duplicating a ~15-line fold is the cheaper of the
+ * two evils here — the alternative is a build step for the CLI, or the CLI
+ * silently having no fallback at all, which is the state that let a frozen
+ * `_sync.json` be the only thing anyone could read.
+ */
+function readLedgerProgress(cwd) {
+  const dir = resolve(cwd, '.design', '_state', 'file-ledger');
+  if (!existsSync(dir)) return null;
+  let rows = {};
+  try {
+    const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
+    if (files.length === 0) return null;
+    // Newest ledger wins when a project has been linked to more than one hub.
+    const newest = files
+      .map((f) => ({ f, m: statSync(join(dir, f)).mtimeMs }))
+      .sort((a, b) => b.m - a.m)[0];
+    const parsed = JSON.parse(readFileSync(join(dir, newest.f), 'utf8'));
+    rows = parsed?.rows && typeof parsed.rows === 'object' ? parsed.rows : {};
+  } catch {
+    return null;
+  }
+  const DELIVERED = new Set(['on-hub', 'durable', 'at-peer', 'ui-healed', 'everywhere']);
+  const BLOCKED = new Set(['refused', 'referenced-but-unoffered']);
+  let tracked = 0;
+  let delivered = 0;
+  const blocked = new Map();
+  for (const row of Object.values(rows)) {
+    tracked += 1;
+    const st = row?.state;
+    if (st && DELIVERED.has(st)) {
+      delivered += 1;
+    } else if (st && BLOCKED.has(st)) {
+      const reason = String(row?.reason ?? '').toLowerCase();
+      const cls = reason.includes('too big')
+        ? 'too-large'
+        : reason.includes('allowance')
+          ? 'quota'
+          : reason.includes('could not reach')
+            ? 'unreachable'
+            : 'refused';
+      blocked.set(cls, (blocked.get(cls) ?? 0) + 1);
+    }
+  }
+  const blockedTotal = [...blocked.values()].reduce((n, c) => n + c, 0);
+  const remaining = Math.max(0, tracked - delivered - blockedTotal);
+  return {
+    phase: remaining > 0 ? 'seeding' : blockedTotal > 0 ? 'blocked' : 'converged',
+    tracked,
+    delivered,
+    remaining,
+    blocked: [...blocked.entries()].map(([cls, count]) => ({ class: cls, count })),
+  };
 }
 
 /** Read the sync agent's `_sync.json` runtime state, or null when absent. */

@@ -163,3 +163,61 @@ test('setting consent on an unlinked hub does nothing', () => {
     assert.equal(setHubCodeModules('https://nobody.example.test', true), false);
   });
 });
+
+// ── expiresAt across a relink (2026-09-03) ──────────────────────────────────
+//
+// The observed loss: a record written by workspace sign-in carried
+// `expiresAt`, and `maude design link … --adopt` replaced it with one that did
+// not. A record with no expiry means `scheduleRenewal()` (sync/index.ts) arms
+// no timer at all, so the credential dies mid-session with nothing having
+// tried to renew it — which, combined with the file plane having no 401
+// handling of its own, is a long seed dying silently.
+
+test('addHub carries expiresAt when the token is unchanged', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'maude-hubs-exp-'));
+  process.env.HUBS_CONFIG_PATH = join(dir, 'hubs.json');
+  try {
+    // What a workspace sign-in writes.
+    const cfg = {
+      hubs: {
+        'https://h.test': { token: 'tok-a', linkedAt: 1, role: 'member', expiresAt: 1788476063819 },
+      },
+    };
+    saveHubsConfig(cfg);
+
+    const relinked = addHub('https://h.test', 'tok-a', { adoptedAt: 2 });
+    assert.equal(relinked.expiresAt, 1788476063819, 'the same token keeps its expiry');
+    assert.equal(relinked.role, 'member');
+    assert.equal(relinked.adoptedAt, 2);
+  } finally {
+    delete process.env.HUBS_CONFIG_PATH;
+  }
+});
+
+test('addHub DROPS expiresAt when the token changes', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'maude-hubs-exp2-'));
+  process.env.HUBS_CONFIG_PATH = join(dir, 'hubs.json');
+  try {
+    saveHubsConfig({
+      hubs: { 'https://h.test': { token: 'tok-a', linkedAt: 1, expiresAt: 1788476063819 } },
+    });
+    // A stale expiry against a NEW token is worse than none: it would arm the
+    // renewal timer at the wrong instant and spend a no-progress slot.
+    const relinked = addHub('https://h.test', 'tok-b');
+    assert.equal(relinked.expiresAt, undefined);
+  } finally {
+    delete process.env.HUBS_CONFIG_PATH;
+  }
+});
+
+test('addHub on a fresh record is unchanged — no expiry invented', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'maude-hubs-exp3-'));
+  process.env.HUBS_CONFIG_PATH = join(dir, 'hubs.json');
+  try {
+    const fresh = addHub('https://h.test', 'tok-a');
+    assert.equal(fresh.expiresAt, undefined);
+    assert.equal(fresh.token, 'tok-a');
+  } finally {
+    delete process.env.HUBS_CONFIG_PATH;
+  }
+});

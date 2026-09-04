@@ -29,6 +29,8 @@ import { join } from 'node:path';
 import { createFileLedger, type FileLedger } from '../sync/file-ledger.ts';
 import {
   createFilePlane,
+  MAX_TRUSTED_QUOTA_PAUSE_MS,
+  MIN_TRUSTED_MAX_FILE_BYTES,
   DELETE_BUDGET_PER_WINDOW,
   foldRemote,
   MAX_REQUESTS_PER_PASS,
@@ -1147,8 +1149,19 @@ describe('rate limits', () => {
     // ran to the end of `work`, one request per path, unbounded. A non-429
     // failure is used deliberately: this must hold for any refusal, not only
     // the one that now ends the pass early.
+    //
+    // 500, and `retryAfter: null`, on purpose. `isBackpressure` treats a 5xx
+    // that CARRIES a `Retry-After` as the peer saying "come back at this time"
+    // — which ends the pass by design — so a refusal used to exercise the
+    // request CEILING has to be one that carries no such instruction. (This
+    // test used a bare-looking 503 until `metered` was found to attach
+    // `Retry-After: 30` by default, at which point it was testing the hold,
+    // not the ceiling.)
     const hub = fakeHub(remoteSet(MAX_REQUESTS_PER_PASS + 120));
-    const wire = metered(hub, { refuse: (p) => (p.startsWith('/_project-file/') ? 503 : null) });
+    const wire = metered(hub, {
+      refuse: (p) => (p.startsWith('/_project-file/') ? 500 : null),
+      retryAfter: null,
+    });
     const result = await plane(hub, { fetchImpl: wire.fetchImpl }).reconcile();
 
     expect(wire.files().length).toBe(MAX_REQUESTS_PER_PASS);
@@ -1156,6 +1169,330 @@ describe('rate limits', () => {
     // Nothing landed, nothing was lost, and the pass said so.
     expect(result.pulled).toEqual([]);
     expect(result.rateLimited).toBeUndefined();
+  });
+
+  test('a 5xx that CARRIES a Retry-After holds the lane — a starting cell', async () => {
+    // The shape Task 5 introduced: a cold cell answers `503 Retry-After` while
+    // it obtains storage credentials. Firing this pass's whole request budget
+    // into that window is how a slow start becomes a failed one — so the lane
+    // holds after the first one, rather than after the two-hundredth.
+    const hub = fakeHub(remoteSet(MAX_REQUESTS_PER_PASS + 120));
+    const wire = metered(hub, {
+      refuse: (p) => (p.startsWith('/_project-file/') ? 503 : null),
+      retryAfter: '5',
+    });
+    const result = await plane(hub, { fetchImpl: wire.fetchImpl }).reconcile();
+
+    expect(wire.files().length).toBe(1);
+    expect(result.rateLimited).toBeTruthy();
+    expect(result.rateLimited?.cause ?? 'hub-asked').toBe('hub-asked');
+    expect(result.requestsExhausted).toBeUndefined();
+    // Still nothing lost — the waiting count is what the panel renders.
+    expect(result.rateLimited?.waiting).toBeGreaterThan(0);
+  });
+
+  test('a BARE 5xx is an ordinary refusal, not a wall', async () => {
+    // The other half of the same rule. A cell that genuinely cannot obtain
+    // storage answers a bare 503 — a broken deployment, not a busy one — and
+    // that must surface per file rather than parking the whole lane.
+    const hub = fakeHub(remoteSet(6));
+    const wire = metered(hub, {
+      refuse: (p) => (p.startsWith('/_project-file/') ? 503 : null),
+      retryAfter: null,
+    });
+    const result = await plane(hub, { fetchImpl: wire.fetchImpl }).reconcile();
+
+    expect(result.rateLimited).toBeUndefined();
+    expect(wire.files().length).toBeGreaterThan(1);
+  });
+
+  test('an over-cap file is REFUSED locally — never uploaded, never retried', async () => {
+    // The two real files this exists for: a 164.9 MB image and a 465.8 MB
+    // video, re-uploaded on every pass of every boot against a door that
+    // refuses anything over 95 MB — each one burning a request slot forever
+    // and landing an anonymous `stuck` no retry could ever clear.
+    const hub = fakeHub({});
+    // Above the door's declared ceiling, which is itself at the narrowest value
+    // a hub is believed for (`MIN_TRUSTED_MAX_FILE_BYTES`) — a smaller one is
+    // refused as hostile, see the test below.
+    write('assets/huge.png', 'x'.repeat(MIN_TRUSTED_MAX_FILE_BYTES + 1024));
+    const wire = metered(hub, { refuse: () => null });
+    const limitsAware = (async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith('/api/file-limits')) {
+        return new Response(JSON.stringify({ maxFileBytes: MIN_TRUSTED_MAX_FILE_BYTES }), {
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return wire.fetchImpl(url as never, init as never);
+    }) as unknown as typeof fetch;
+
+    const result = await plane(hub, { fetchImpl: limitsAware }).reconcile();
+
+    // Not one byte offered to the door.
+    expect(wire.calls.filter((c) => c.includes('huge.bin'))).toEqual([]);
+    // Refused, not failed: the panel must not invite a retry that cannot work.
+    expect(result.failed).toEqual([]);
+    expect(result.dropped.some((d) => d.rel === 'assets/huge.png')).toBe(true);
+    const reason = result.dropped.find((d) => d.rel === 'assets/huge.png')?.reason ?? '';
+    // It names BOTH numbers — a limit without the actual size is unactionable.
+    expect(reason).toMatch(/Too big/i);
+    expect(reason).toMatch(/MB/);
+    expect(ledger.row('assets/huge.png')?.state).toBe('refused');
+  });
+
+  test('an old hub with no /api/file-limits still works — the fallback holds', async () => {
+    const hub = fakeHub({});
+    write('assets/small.png', 'ok');
+    const wire = metered(hub, { refuse: () => null });
+    const notFound = (async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith('/api/file-limits')) return new Response('nope', { status: 404 });
+      return wire.fetchImpl(url as never, init as never);
+    }) as unknown as typeof fetch;
+    const result = await plane(hub, { fetchImpl: notFound }).reconcile();
+    expect(result.pushed).toContain('assets/small.png');
+  });
+
+  test('a 507 holds the LANE and names the allowance, not a failure', async () => {
+    const hub = fakeHub({});
+    write('system/ds/assets/a.png', 'aaa');
+    write('system/ds/assets/b.png', 'bbb');
+    const wire = metered(hub, {
+      refuse: (pth) => (pth.startsWith('/api/file/') ? 507 : null),
+      retryAfter: null,
+    });
+    const result = await plane(hub, { fetchImpl: wire.fetchImpl }).reconcile();
+
+    // A quota is a WALL, with its own word: the credential is fine and the
+    // file is fine, and the only answer is the next window.
+    expect(result.rateLimited).toBeTruthy();
+    expect(result.rateLimited?.cause).toBe('quota');
+    expect(result.failed).toEqual([]);
+    expect(result.dropped.length).toBeGreaterThan(0);
+    expect(result.dropped[0]?.reason).toMatch(/allowance/i);
+  });
+
+  test('a 401 asks for ONE fresh credential and stops the pass', async () => {
+    // The plane had NO 401 handling: a refused credential fell through the
+    // generic path as a per-path `HTTP 401 — unauthorized`, so a token that
+    // expired mid-seed produced hundreds of stuck files and nothing anywhere
+    // asked for a new one. Renewal was reachable only from the doc lane's
+    // WebSocket auth failure — and a converged doc lane has none left to fail.
+    const hub = fakeHub(remoteSet(40));
+    const wire = metered(hub, {
+      refuse: (p) => (p.startsWith('/_project-file/') ? 401 : null),
+      retryAfter: null,
+    });
+    let renewals = 0;
+    const result = await plane(hub, {
+      fetchImpl: wire.fetchImpl,
+      onAuthFailure: () => {
+        renewals += 1;
+      },
+    }).reconcile();
+
+    expect(result.authRefused).toBe(true);
+    expect(renewals).toBe(1);
+    // ONE request, not forty: every remaining one would be refused the same way.
+    expect(wire.files()).toHaveLength(1);
+    // And the reason is ours, not the door's status line.
+    expect(result.failed[0]?.reason ?? '').not.toContain('401');
+  });
+
+  test('a delivered file counts as progress — the renewal cap must see it', async () => {
+    // `renewalsSinceProgress` counted only doc handshakes, so a long seed
+    // against a converged doc lane exhausted the cap and the runtime stopped
+    // renewing while the file plane was still working.
+    const hub = fakeHub({});
+    write('assets/p.png', 'PNG');
+    let progress = 0;
+    const result = await plane(hub, {
+      onProgress: () => {
+        progress += 1;
+      },
+    }).reconcile();
+    expect(result.pushed.length).toBeGreaterThan(0);
+    expect(progress).toBe(1);
+  });
+
+  test('a pass that delivers NOTHING does not claim progress', async () => {
+    const hub = fakeHub({});
+    let progress = 0;
+    await plane(hub, {
+      onProgress: () => {
+        progress += 1;
+      },
+    }).reconcile();
+    expect(progress).toBe(0);
+  });
+
+  test('THE 2026-09-03 INCIDENT: a restarting cell must not be fed', async () => {
+    // The measured shape, replayed. A cell minting R2 credentials on every
+    // request tripped the Cloudflare account rate limit; the 429 arrived as an
+    // opaque 502; the cell fail-closed and restarted; and the client answered
+    // by re-attempting the identical set at full rate — 314 PUTs across 44
+    // unique paths in 10 seconds, one sponsor logo 24 times, while an 8.8 GB
+    // project moved ZERO files across two runs.
+    //
+    // The property under test is the client's half: whatever the peer is
+    // doing, this machine must not be the thing keeping it down.
+    const hub = fakeHub(remoteSet(60));
+    let clock = 1_700_000_000_000;
+    // The cell is down until it has settled — a wall-clock recovery, which is
+    // what a restart loop actually looks like from the client's side.
+    const cellUpAt = clock + 5_500;
+    const calls: string[] = [];
+    const scripted = (async (url: string, init?: RequestInit) => {
+      const u = new URL(String(url));
+      calls.push(u.pathname);
+      if (u.pathname.startsWith('/_project-file/') && clock < cellUpAt) {
+        // Exactly what Task 5's starting cell now answers.
+        return new Response(JSON.stringify({ error: 'starting up' }), {
+          status: 503,
+          headers: { 'content-type': 'application/json', 'retry-after': '5' },
+        });
+      }
+      return hub.fetchImpl(url as never, init as never);
+    }) as unknown as typeof fetch;
+
+    const p = plane(hub, { fetchImpl: scripted, now: () => clock });
+    const first = await p.reconcile();
+
+    // ONE file request against a peer that said "come back", not sixty.
+    const fileCalls = calls.filter((c) => c.startsWith('/_project-file/'));
+    expect(fileCalls).toHaveLength(1);
+    expect(first.rateLimited).toBeTruthy();
+    // And the panel can say why, and how much is still coming.
+    expect(first.rateLimited?.waiting).toBeGreaterThan(0);
+    // Crucially NOT `synced` — the failure that hid this for two runs was a
+    // status line that read healthy while nothing moved.
+    expect(first.pulled).toEqual([]);
+
+    // Inside the window: not one request. The retries were what kept the door
+    // shut, so the fix has to be measurable as silence.
+    const afterFirst = calls.length;
+    clock += 4_000;
+    await p.reconcile();
+    expect(calls.length).toBe(afterFirst);
+
+    // Past it, the lane goes back to work by itself — no restart, no
+    // intervention. A hold that needs a human is a stall with extra steps.
+    clock += 2_000;
+    const done = await p.reconcile();
+    expect(done.rateLimited).toBeUndefined();
+    expect(done.pulled.length).toBeGreaterThan(0);
+  });
+
+  test('THE 2026-09-03 INCIDENT: an unreachable peer reads as ONE wall', async () => {
+    // 484 of 803 undelivered files carried Bun's own connect-failure text as
+    // their user-facing reason, so the panel showed hundreds of individually
+    // broken files instead of one workspace that was not answering.
+    const hub = fakeHub(remoteSet(40));
+    const dead = (async (url: string) => {
+      if (String(url).includes('/_project-file/')) {
+        throw new Error('Unable to connect. Is the computer able to access the url?');
+      }
+      return hub.fetchImpl(url as never, undefined as never);
+    }) as unknown as typeof fetch;
+
+    const result = await plane(hub, { fetchImpl: dead }).reconcile();
+
+    // The lane holds after a short streak rather than draining its ceiling.
+    expect(result.rateLimited?.cause).toBe('unreachable');
+    // And no user-facing reason quotes the runtime.
+    for (const f of result.failed) {
+      expect(f.reason).not.toContain('typo');
+      expect(f.reason).not.toContain('url');
+    }
+  });
+
+  test('a HOSTILE ceiling cannot declare a project unsendable', async () => {
+    // DDR-054: the hub is untrusted to peers. `/api/file-limits` hands it a
+    // lever nothing else does — a `maxFileBytes` of 1 would push every file
+    // into the terminal `refused` state, i.e. a peer telling you your own disk
+    // is permanently unsendable. Below our floor, the answer is not believed.
+    const hub = fakeHub({});
+    write('assets/ordinary.png', 'PNG');
+    const wire = metered(hub, { refuse: () => null });
+    const hostile = (async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith('/api/file-limits')) {
+        return new Response(JSON.stringify({ maxFileBytes: 1 }), {
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return wire.fetchImpl(url as never, init as never);
+    }) as unknown as typeof fetch;
+    const result = await plane(hub, { fetchImpl: hostile }).reconcile();
+    expect(result.pushed).toContain('assets/ordinary.png');
+    expect(result.dropped).toEqual([]);
+  });
+
+  test('a HOSTILE quota reset cannot park the lane for a year', async () => {
+    const hub = fakeHub({});
+    write('assets/a.png', 'aaa');
+    const far = 1_700_000_000_000 + 365 * 24 * 3_600_000;
+    const wire = metered(hub, {
+      refuse: (pth) => (pth.startsWith('/api/file/') ? 507 : null),
+      retryAfter: null,
+    });
+    const hostile = (async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith('/api/file-limits')) {
+        return new Response(
+          JSON.stringify({ maxFileBytes: 95 * 1024 * 1024, quotaResetsAt: far }),
+          {
+            headers: { 'content-type': 'application/json' },
+          }
+        );
+      }
+      return wire.fetchImpl(url as never, init as never);
+    }) as unknown as typeof fetch;
+    const now = 1_700_000_000_000;
+    const result = await plane(hub, { fetchImpl: hostile, now: () => now }).reconcile();
+    expect(result.rateLimited).toBeTruthy();
+    // Bounded: a hostile peer buys a delay, never a stop.
+    expect(result.rateLimited!.until - now).toBeLessThanOrEqual(MAX_TRUSTED_QUOTA_PAUSE_MS);
+  });
+
+  test('a spent quota at boot does NOT strand the client forever', async () => {
+    // The bug this pins: `quotaUsed` is a point-in-time reading, and the limits
+    // were asked for exactly once per boot. A client that started while the
+    // allowance was nearly spent computed a headroom of ~0 and then refused
+    // every upload for the rest of the process's life — long after the hub's
+    // hourly window had reset. A stale ceiling is a slow client; a stale quota
+    // reading is a client that has silently stopped.
+    const hub = fakeHub({});
+    write('assets/a.png', 'aaa');
+    let clock = 1_700_000_000_000;
+    const windowEnds = clock + 60_000;
+    let asked = 0;
+    const wire = metered(hub, { refuse: () => null });
+    const quotaAware = (async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith('/api/file-limits')) {
+        asked += 1;
+        const spent = clock < windowEnds;
+        return new Response(
+          JSON.stringify({
+            maxFileBytes: 95 * 1024 * 1024,
+            quotaBytesPerWindow: 1024,
+            quotaUsed: spent ? 1024 : 0,
+            quotaResetsAt: windowEnds,
+          }),
+          { headers: { 'content-type': 'application/json' } }
+        );
+      }
+      return wire.fetchImpl(url as never, init as never);
+    }) as unknown as typeof fetch;
+
+    const p = plane(hub, { fetchImpl: quotaAware, now: () => clock });
+    const first = await p.reconcile();
+    expect(first.pushed).toEqual([]);
+    expect(asked).toBe(1);
+
+    // The window rolls. The client must ASK AGAIN rather than keep believing
+    // the reading it took while the allowance was spent.
+    clock = windowEnds + 1;
+    const second = await p.reconcile();
+    expect(asked).toBe(2);
+    expect(second.pushed).toContain('assets/a.png');
   });
 
   test('a healthy pass is untouched by any of it', async () => {

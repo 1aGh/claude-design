@@ -11,6 +11,15 @@
       "surface": "design-ui"
     },
     {
+      "id": "seed-progress-you-can-watch",
+      "version": null,
+      "date": null,
+      "kind": "improvement",
+      "title": "You can watch a large project sync",
+      "summary": "Linking a big project used to be a black box: the Sync panel counted files it had moved but never how many there were, so \"1 412\" looked the same whether it was a quarter done or finished — and `maude design status` reported only canvases, so a project with hundreds of files still on their way could read as fully synced. Now every surface shows the same thing: how many of how many have arrived, what is waiting, and what is stuck and why. The panel has a progress bar, `maude design status` has a files line (and a `--watch` mode), and the desktop app puts the count in the window title and tells you once when it finishes. Files the workspace will never take — something over its size limit, or an hourly upload allowance that is used up — now say so by name instead of retrying forever.",
+      "surface": "design-ui"
+    },
+    {
       "id": "images-arrive-again",
       "version": null,
       "date": null,

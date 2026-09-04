@@ -2157,3 +2157,29 @@
   color: var(--fg-3);
   overflow-wrap: anywhere;
 }
+
+/* Seed progress (feature-large-project-seed).
+   A bar rather than a number alone: a large project's seed is minutes to hours
+   of work, and "1 412" reads the same whether it is a quarter done or finished.
+   Track and fill use existing tokens — no new colours enter the system here. */
+.sp-progress-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-2);
+  overflow: hidden;
+  margin: 6px 0 4px;
+}
+.sp-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width var(--dur-2, 240ms) ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sp-progress-fill { transition-duration: 1ms; }
+}
+/* The falsifiable half (DDR-214) — present, quiet, never the headline. */
+.sp-raw-counters {
+  opacity: 0.6;
+  font-size: 0.9em;
+}

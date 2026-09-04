@@ -98,6 +98,39 @@ function readFiles(raw) {
   return raw;
 }
 
+/**
+ * The seed progress model, or null when absent/untrustworthy.
+ *
+ * Absent is the norm on an older dev-server, and this panel must render
+ * exactly as it did before when it is — every field here is additive.
+ */
+function readProgress(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  if (![raw.tracked, raw.delivered, raw.remaining].every(isCount)) return null;
+  if (typeof raw.phase !== 'string') return null;
+  const blocked = Array.isArray(raw.blocked)
+    ? raw.blocked.filter((b) => b && typeof b.class === 'string' && isCount(b.count))
+    : [];
+  return { ...raw, blocked };
+}
+
+/** One sentence per phase, in the user's terms — never the machine's. */
+const PHASE_TEXT = {
+  scanning: 'Looking through the project…',
+  seeding: null, // the counts say it better than a sentence would
+  paused: 'Paused — nothing is lost; this resumes by itself.',
+  blocked: 'Nothing is moving on its own — the files below need a decision.',
+  converged: 'Everything is up to date.',
+};
+
+/** What each wall means, and what a person can do about it. */
+const BLOCKED_TEXT = {
+  'too-large': 'too big for this workspace',
+  quota: "this hour's upload allowance is used up",
+  unreachable: 'the workspace could not be reached',
+  refused: 'the workspace would not take them',
+};
+
 /** Consent-class notices (feature-before-first-external-users Task 1), or []
  *  when the shape can't be trusted. Absent is the norm — the payload carries
  *  `notices` only when a boot raised one (shared-doc ON, TSX bodies). */
@@ -279,6 +312,7 @@ export default function SyncPanel({
   const files = readFiles(status?.files);
 
   const delivery = useMemo(() => readDelivery(status?.files?.delivery), [status?.files?.delivery]);
+  const progress = useMemo(() => readProgress(status?.files?.progress), [status?.files?.progress]);
 
   // Sync settings (Task 2) — fetched once on mount; `settings` stays null when
   // no hub is linked, which is also the render gate for the whole section.
@@ -648,11 +682,65 @@ export default function SyncPanel({
         {files && (
           <section aria-label="Project files" data-testid="sync-files">
             <div className="gp-sect-label">
-              project files <span className="gp-group-count">{files.synced}</span>
+              project files{' '}
+              <span className="gp-group-count">{progress ? progress.tracked : files.synced}</span>
             </div>
-            <div className="sp-assets-line">
-              {`${files.synced} synced` + (files.pulled > 0 ? ` · ${files.pulled} pulled` : '')}
-            </div>
+            {progress ? (
+              <>
+                <div className="sp-progress-track" data-testid="sync-files-progress">
+                  <div
+                    className="sp-progress-fill"
+                    style={{
+                      width: `${
+                        progress.tracked > 0
+                          ? Math.min(100, Math.round((progress.delivered / progress.tracked) * 100))
+                          : 100
+                      }%`,
+                    }}
+                  />
+                </div>
+                <div className="sp-assets-line" data-testid="sync-files-remaining">
+                  {`${progress.delivered} of ${progress.tracked} delivered`}
+                  {progress.remaining > 0 ? ` · ${progress.remaining} waiting` : ''}
+                </div>
+                {PHASE_TEXT[progress.phase] && (
+                  <div className="sp-assets-line" data-testid="sync-files-phase">
+                    {PHASE_TEXT[progress.phase]}
+                  </div>
+                )}
+                {progress.passCapped && progress.remaining > 0 && (
+                  <div className="sp-assets-line">
+                    More is on the way — the last pass reached its limit and picks up where it
+                    left off.
+                  </div>
+                )}
+                {progress.blocked.map((b) => (
+                  <div
+                    key={b.class}
+                    className="sp-assets-retry"
+                    data-testid={`sync-blocked-${b.class}`}
+                  >
+                    {b.count} file{b.count === 1 ? '' : 's'} —{' '}
+                    {BLOCKED_TEXT[b.class] ?? 'the workspace would not take them'}.
+                  </div>
+                ))}
+                {/*
+                  THE RAW COUNTERS STAY. A panel derived from the same source it
+                  displays cannot be cross-checked, and DDR-214's whole lesson is
+                  that a status surface has to be falsifiable — so the numbers the
+                  passes actually reported remain here to disagree with.
+                */}
+                <div className="sp-assets-line sp-raw-counters">
+                  {`raw: ${files.synced} synced`}
+                  {files.pushed ? ` · ${files.pushed} pushed` : ''}
+                  {files.pulled > 0 ? ` · ${files.pulled} pulled` : ''}
+                </div>
+              </>
+            ) : (
+              <div className="sp-assets-line">
+                {`${files.synced} synced` + (files.pulled > 0 ? ` · ${files.pulled} pulled` : '')}
+              </div>
+            )}
             {files.conflicts > 0 && (
               <div className="sp-assets-retry" data-testid="sync-files-conflicts">
                 {files.conflicts} conflict{files.conflicts === 1 ? '' : 's'} — the older copies are
@@ -744,6 +832,12 @@ export default function SyncPanel({
                     </li>
                   ))}
                   {delivery.fine.length > 200 && <li>…and {delivery.fine.length - 200} more</li>}
+                  {files.deliveryTruncated > 0 && (
+                    <li className="sp-truncated">
+                      …and {files.deliveryTruncated} more not listed here — the list is capped so
+                      the files that need attention always fit.
+                    </li>
+                  )}
                 </ul>
               </details>
             )}

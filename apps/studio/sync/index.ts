@@ -57,7 +57,7 @@ import { createRescanScheduler, diffCanvasSet, type RescanScheduler } from './di
 import { createDocNameResolver } from './doc-name.ts';
 import { createEchoGuard } from './echo-guard.ts';
 import { createFileLedger } from './file-ledger.ts';
-import { createFilePlane } from './file-plane.ts';
+import { createFilePlane, MAX_DORUCEKA_ROWS } from './file-plane.ts';
 import { type FilePullResult, pullFiles } from './file-pull.ts';
 import { createFsReader, type FsReader } from './fs-mirror.ts';
 import { type HubDocRow, hubHolds, indexHubDocs } from './hub-listing.ts';
@@ -80,6 +80,7 @@ import {
   stateDocumentGone,
   tombstonedSlugs,
 } from './remote-docs.ts';
+import { computeSeedProgress } from './seed-progress.ts';
 import { createSyncStatusStore, type SyncStatusStore } from './status.ts';
 import { quarantineCanvas } from './tombstone-apply.ts';
 import { writeUntrustedMarkers } from './untrusted.ts';
@@ -151,10 +152,23 @@ export const BOOT_SETTLE_TIMEOUT_MS = 15_000;
 /** F1 — minimum wall-clock between renewal attempts. A burst of rejections
  *  collapses to one renewal (single-flight); the NEXT burst waits this out. */
 export const RENEW_MIN_INTERVAL_MS = 60_000;
-/** F1 — consecutive successful renewals with no completed handshake in between
- *  before the runtime stops renewing and lets the link surface as
- *  refused/stalled. Small: a renewal that fixed the credential clears at least
- *  one doc, so >0 useless renewals means the credential was never the cause. */
+/**
+ * F1 — consecutive successful renewals with NO PROGRESS in between before the
+ * runtime stops renewing and lets the link surface as refused/stalled.
+ *
+ * The cap itself is load-bearing: it is what stopped a reproduced 2 342
+ * renewals/s storm (2026-08-10 security review). What changed on 2026-09-03 is
+ * the definition of "progress".
+ *
+ * It used to mean ONLY a completed doc handshake, on the reasoning that "a
+ * renewal that fixed the credential clears at least one doc". That is true
+ * exactly when the doc lane is the lane with work. During a long file seed
+ * against an already-converged doc lane (85/87 synced, no handshakes left to
+ * land) there is nothing to clear — so every legitimate pre-expiry renewal
+ * burned a slot, three of them exhausted the cap, and the runtime stopped
+ * renewing while the file plane was still transferring. A delivered FILE now
+ * counts too (`onProgress` on the file plane).
+ */
 export const RENEW_MAX_WITHOUT_PROGRESS = 3;
 /** F2 — setTimeout clamps delays above this (2^31-1) to 1 ms, turning a
  *  far-future expiry into a tight renewal loop. Clamp before we hand it over. */
@@ -177,6 +191,10 @@ export const DISCOVERY_DEBOUNCE_MS = 400;
  * and it is the ONLY discovery lane a hub of any version can serve.
  */
 export const REMOTE_POLL_MS = 20_000;
+
+/** Floor between two serve-log seed-progress lines. Long enough not to become
+ *  the next thing that buries the log. */
+export const SEED_PROGRESS_LOG_MS = 15_000;
 /** How often the stall watchdog looks (issue #118). Cheap — one snapshot. */
 export const STALL_CHECK_MS = 30_000;
 /**
@@ -3143,6 +3161,82 @@ export function createSyncRuntime(
     // Cumulative per boot — the Sync panel's one line. `synced` is the last
     // pass's converged count; `pulled`/`conflicts` accumulate.
     const fileTotals = { synced: 0, pulled: 0, conflicts: 0 };
+    /** Previous progress, for `startedAt` continuity across ticks. */
+    let lastSeedProgress: import('./seed-progress.ts').SeedProgress | null = null;
+    /** When the last serve-log progress line went out, and what it said. */
+    let lastProgressLogAt = 0;
+    let lastProgressLine = '';
+    /**
+     * ONE LINE, PERIODICALLY, WHILE A SEED IS RUNNING.
+     *
+     * After boot the file plane printed NOTHING. Two runs of 14 and 6 minutes
+     * that moved zero files were, from the terminal, indistinguishable from two
+     * runs that were working — the only repeated line was a delete-breaker
+     * warning that fired 47 times and buried everything else. The doc lane has
+     * printed its one-shot summary since Phase 9; this is the file plane's.
+     *
+     * Rate-limited AND deduped: a converged project prints nothing at all, and
+     * a stalled one prints the same line at most once every 15 s rather than
+     * once per pass.
+     */
+    const reportSeedProgress = (
+      p: import('./seed-progress.ts').SeedProgress,
+      r: import('./file-plane.ts').FilePlaneResult
+    ): void => {
+      if (p.phase === 'converged') return;
+      const blockedTotal = p.blocked.reduce((n, b) => n + b.count, 0);
+      const bits = [`${p.delivered} / ${p.tracked} delivered`];
+      if (p.remaining > 0) bits.push(`${p.remaining} waiting`);
+      if (blockedTotal > 0) bits.push(`${blockedTotal} need attention`);
+      if (r.backedOff) bits.push(`${r.backedOff} backing off`);
+      let tail = '';
+      if (r.rateLimited) {
+        const secs = Math.max(1, Math.round((r.rateLimited.until - Date.now()) / 1000));
+        const why =
+          r.rateLimited.cause === 'unreachable'
+            ? 'could not reach the workspace'
+            : r.rateLimited.cause === 'quota'
+              ? 'hourly upload allowance used up'
+              : 'the workspace asked us to slow down';
+        tail = ` · paused ${secs}s (${why})`;
+      } else if (p.passCapped) {
+        tail = ` · more next pass (${p.passCapped} ceiling)`;
+      }
+      const line = `[sync/files] ${bits.join(' · ')}${tail}`;
+      const nowMs = Date.now();
+      if (line === lastProgressLine && nowMs - lastProgressLogAt < SEED_PROGRESS_LOG_MS) return;
+      if (nowMs - lastProgressLogAt < SEED_PROGRESS_LOG_MS) return;
+      lastProgressLogAt = nowMs;
+      lastProgressLine = line;
+      console.log(line);
+    };
+    /** When the last pass ended, so a throughput sample has a window. */
+    let lastPassEndedAt = 0;
+    /**
+     * Bytes that actually LANDED in the last pass, over the wall-clock since
+     * the previous one.
+     *
+     * Bytes DELIVERED, never bytes sent. The 2026-09-03 misreading was exactly
+     * this distinction: 616 MB left the machine across two runs and zero files
+     * landed, so a rate computed from egress said "about ten minutes" when the
+     * true answer was "never".
+     */
+    const throughputSample = (
+      r: import('./file-plane.ts').FilePlaneResult
+    ): { bytes: number; ms: number } | null => {
+      const landed = r.pushed.length + r.pulled.length;
+      const nowMs = Date.now();
+      const ms = lastPassEndedAt > 0 ? nowMs - lastPassEndedAt : 0;
+      lastPassEndedAt = nowMs;
+      if (landed === 0 || ms <= 0) return null;
+      const rows = fileLedger?.rows() ?? {};
+      let bytes = 0;
+      for (const rel of [...r.pushed, ...r.pulled]) {
+        const size = rows[rel]?.size;
+        if (Number.isFinite(size)) bytes += size as number;
+      }
+      return bytes > 0 ? { bytes, ms } : null;
+    };
     const noteFilePull = (result: FilePullResult): void => {
       fileTotals.synced = result.skipped + result.pulled.length;
       fileTotals.pulled += result.pulled.length;
@@ -3196,10 +3290,46 @@ export function createSyncRuntime(
             'The project has asked to start over repeatedly, which is what a broken or hostile hub looks like. Nothing was overwritten. Sync retries by itself; if this persists, the hub needs looking at.',
         });
       }
+      // THE DENOMINATOR, from the LEDGER — not from this pass.
+      //
+      // `fileTotals` below is derived from per-pass results, and a pass that
+      // converges nothing is legitimately all zeros: that is why `_sync.json`
+      // read `synced: 0, pushed: 0, pulled: 0` for twenty minutes while 2 961
+      // ledger rows changed underneath it. The raw counters STAY beside this
+      // (DDR-214: a panel derived from the same source it displays cannot be
+      // cross-checked), but the progress a person reads comes from the source
+      // that was correct the whole time.
+      const progress = filePlane
+        ? computeSeedProgress({
+            rows: fileLedger?.rows() ?? {},
+            now: Date.now(),
+            pausedUntil: result.rateLimited?.until ?? null,
+            pauseCause: result.rateLimited?.cause ?? null,
+            ...(result.requestsExhausted
+              ? { passCapped: 'requests' as const }
+              : result.budgetExhausted
+                ? { passCapped: 'bytes' as const }
+                : {}),
+            previous: lastSeedProgress,
+            deliveredSince: throughputSample(result),
+          })
+        : null;
+      if (progress) {
+        lastSeedProgress = progress;
+        reportSeedProgress(progress, result);
+      }
       statusStore?.updateFiles?.({
         ...fileTotals,
         pushed: filePushed,
-        ...(filePlane ? { delivery: filePlane.doruceka() } : {}),
+        ...(progress ? { progress } : {}),
+        ...(filePlane
+          ? {
+              delivery: filePlane.doruceka(),
+              ...(filePlane.dorucekaTotal() > MAX_DORUCEKA_ROWS
+                ? { deliveryTruncated: filePlane.dorucekaTotal() - MAX_DORUCEKA_ROWS }
+                : {}),
+            }
+          : {}),
         ...(held.length > 0 ? { held } : {}),
         // A FAILED TRANSFER IS NOT A SYNCED ONE (issue #109). These had no
         // field to land in, so a pass that refused every file still rendered
@@ -3394,6 +3524,23 @@ export function createSyncRuntime(
               designRoot: ctx.paths.designRoot,
               hubUrl: linkedHub.url,
               token: () => token,
+              // THE FILE PLANE CAN NOW ASK FOR A CREDENTIAL. It could not
+              // before: renewal was reachable only from the doc lane's
+              // WebSocket auth failure, so a token that expired mid-seed left
+              // hundreds of files refused with nothing ever asking for a new
+              // one (2026-09-03). Same single-flight entry point the doc lane
+              // uses — never a second renewal path.
+              onAuthFailure: () => {
+                void renewCredentialNow();
+              },
+              // A DELIVERED FILE IS PROGRESS. `renewalsSinceProgress` counted
+              // only doc handshakes, and a converged doc lane has none left to
+              // land — so during a long seed the cap was reached and the
+              // runtime stopped renewing while the file plane was still
+              // working.
+              onProgress: () => {
+                renewalsSinceProgress = 0;
+              },
               ledger: fileLedger,
               canvasGroups: ctx.cfg.canvasGroups,
               allowCodeModules,

@@ -68,14 +68,51 @@ import {
 } from './file-membership.ts';
 import { fetchJournal, type JournalEntry } from './journal-client.ts';
 import { createPullBudget } from './pull-budget.ts';
-import { failureReason, isRateLimited, retryAfterMs } from './retry-after.ts';
+import { failureReason, isBackpressure, retryAfterMs } from './retry-after.ts';
+import { classifyTransportError } from './transport-error.ts';
 
 /** How long to wait for one file's bytes. Generous — these run to videos. */
 const GET_TIMEOUT_MS = 120_000;
 const PUT_TIMEOUT_MS = 120_000;
 
-/** Refuse an implausible body rather than streaming it to disk. */
+/** Refuse an implausible body rather than streaming it to disk. This is the
+ *  PULL/receive cap and is deliberately generous — it bounds what we will
+ *  accept, not what a hub will. */
 const MAX_FILE_BYTES = 512 * 1024 * 1024;
+
+/**
+ * What the door accepts, until it tells us otherwise.
+ *
+ * Mirrors `MAX_FILE_BYTES` in `apps/hub/src/file-door.mjs`, and the two used to
+ * disagree by a factor of five: the client queued anything under 512 MB, the
+ * door refused anything over 95 MB, and nothing anywhere reconciled the two.
+ * The result was a 164.9 MB image and a 465.8 MB video re-uploaded on every
+ * pass of every boot, forever, each one burning a request slot and landing an
+ * anonymous `stuck`. This constant is only the FALLBACK — a hub that answers
+ * `/api/file-limits` is authoritative, because a hardcoded mirror of someone
+ * else's constant is the same trap one level down.
+ */
+export const DEFAULT_HUB_MAX_FILE_BYTES = 95 * 1024 * 1024;
+
+/**
+ * The narrowest ceiling we will believe from a hub, and the longest quota pause
+ * we will accept from one.
+ *
+ * DDR-054 makes the hub untrusted to peers, and `/api/file-limits` hands it two
+ * levers over this client that nothing else does: a `maxFileBytes` of 1 would
+ * push a whole project into the terminal `refused` state — files reported as
+ * permanently unsendable, which is a lie a peer should not be able to tell
+ * about your disk — and a far-future `quotaResetsAt` would park the lane for as
+ * long as it liked. Both are clamped to a range where an honest hub is
+ * unaffected and a hostile one buys a bounded delay at worst.
+ */
+export const MIN_TRUSTED_MAX_FILE_BYTES = 1024 * 1024;
+
+/** How long a `/api/file-limits` answer is believed before we ask again. Short
+ *  relative to the hub's hourly quota window, so a reading can never strand a
+ *  client for the rest of its life. */
+export const HUB_LIMITS_TTL_MS = 10 * 60_000;
+export const MAX_TRUSTED_QUOTA_PAUSE_MS = 2 * 60 * 60_000;
 
 /** How many files one pass will move. The remainder is the next pass's work. */
 const MAX_FILES_PER_PASS = 200;
@@ -184,6 +221,53 @@ export const DELETE_BUDGET_PER_WINDOW = 25;
  */
 export const DELETE_BREAKER_MIN_FOR_FRACTION = 2;
 
+/**
+ * Consecutive unreachable transfers before the whole lane holds.
+ *
+ * Small, because the signal is unambiguous: five files in a row that could not
+ * open a socket is not five file problems. Larger would just mean more wasted
+ * requests before reaching the same conclusion.
+ */
+export const UNREACHABLE_STREAK_LIMIT = 5;
+
+/** How long the lane waits after deciding the peer is unreachable. Shorter than
+ *  a metering pause — nobody asked for this one, so we should check back sooner. */
+export const UNREACHABLE_HOLD_MS = 30_000;
+
+/**
+ * How many delivery rows one payload carries.
+ *
+ * The rows are sorted actionable-first so the cap only ever truncates the
+ * already-aggregated healthy tail — a person looking for one broken file still
+ * finds it, and the total they should compare against comes from
+ * `progress.tracked` rather than from counting keys.
+ */
+export const MAX_DORUCEKA_ROWS = 300;
+
+/** The last delete-hold we logged, so the same hold is not re-announced every
+ *  pass. Observed 47 times in a 72-line log, burying everything else. */
+let lastDeleteHoldKey = '';
+
+/** Sort key: what needs a person first. */
+function deliveryRank(state: DeliveryState): number {
+  switch (state) {
+    case 'conflict':
+      return 0;
+    case 'refused':
+      return 1;
+    case 'stuck':
+      return 2;
+    case 'referenced-but-unoffered':
+      return 3;
+    case 'pushing':
+      return 4;
+    case 'local-only':
+      return 5;
+    default:
+      return 6;
+  }
+}
+
 /** Walk depth ceiling — matches the classifier's own shape cap. */
 const MAX_WALK_DEPTH = 8;
 
@@ -213,9 +297,31 @@ export interface FilePlaneResult {
    * person is told the size of the pause rather than left reading a status
    * line that says `synced`.
    */
-  rateLimited?: { until: number; retryAfterMs: number; waiting: number };
+  rateLimited?: {
+    until: number;
+    retryAfterMs: number;
+    waiting: number;
+    /**
+     * WHY the lane is holding — the two need different words.
+     *
+     * `hub-asked` is a peer metering us: nothing is wrong, wait. `unreachable`
+     * is a peer we could not reach at all, which is the shape a restarting
+     * cell produces — and telling a person "the workspace asked us to slow
+     * down" when in fact nothing answered is a status surface that lies
+     * (DDR-214). Absent reads as `hub-asked`, the pre-existing meaning.
+     */
+    cause?: 'hub-asked' | 'unreachable' | 'quota';
+  };
   /** The pass stopped because it had spent its request ceiling. */
   requestsExhausted?: true;
+  /** The door refused our credential; a renewal was requested and the pass ended. */
+  authRefused?: true;
+  /**
+   * Paths skipped this pass because they are inside their per-path backoff
+   * window. NOT a failure and NOT converged — work that is deliberately
+   * waiting, which is a third thing the counters had no way to say.
+   */
+  backedOff?: number;
   /** Files removed this pass — `parked` names the `_trash/` copy when there is one. */
   deleted: { rel: string; parked: string | null }[];
   /** A delete burst tripped a breaker; nothing was removed. */
@@ -257,6 +363,31 @@ export interface FilePlaneOptions {
   log?: Pick<Console, 'log' | 'warn'>;
   now?: () => number;
   maxPassBytes?: number;
+  /**
+   * The door refused our CREDENTIAL (401/403), not our request.
+   *
+   * The plane had no 401 handling at all: a refusal fell through the generic
+   * path and landed as a per-path reason `HTTP 401 — unauthorized`, so a
+   * credential that expired mid-seed produced hundreds of "stuck" files and
+   * NOTHING ever asked for a new one. Renewal was reachable only from the doc
+   * lane's WebSocket auth failure — and on a converged project the doc lane has
+   * no handshakes left to fail.
+   *
+   * Wired by `sync/index.ts` to the same single-flight `renewCredentialNow()`
+   * the doc lane uses. Never a second renewal path: that one already has the
+   * 60 s floor and the no-progress cap that stopped a reproduced 2 342
+   * renewals/s storm.
+   */
+  onAuthFailure?: (rel: string, status: number) => void;
+  /**
+   * A pass delivered at least one file.
+   *
+   * Feeds `renewalsSinceProgress` in `sync/index.ts`, whose cap otherwise
+   * counts only DOC handshakes — so during a long seed against an already
+   * converged doc lane the runtime stopped renewing after three renewals while
+   * the file plane was still working.
+   */
+  onProgress?: () => void;
 }
 
 interface LocalFile {
@@ -354,8 +485,11 @@ export function foldRemote(entries: JournalEntry[]): Map<string, JournalEntry> {
 export interface FilePlane {
   /** One full pass. Never throws. */
   reconcile(): Promise<FilePlaneResult>;
-  /** Paths whose delivery state the panel should show. */
+  /** Paths whose delivery state the panel should show. BOUNDED — see
+   *  `MAX_DORUCEKA_ROWS`; `dorucekaTotal()` is how many there really are. */
   doruceka(): Record<string, DeliveryState>;
+  /** How many rows the ledger holds, before the doručenka's cap. */
+  dorucekaTotal(): number;
 }
 
 export function createFilePlane(opts: FilePlaneOptions): FilePlane {
@@ -380,6 +514,36 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
 
   const auth = () => ({ authorization: `Bearer ${opts.token()}` });
 
+  /**
+   * A thrown transfer error, in words a PERSON can act on.
+   *
+   * These used to store `(err as Error).message` verbatim, which is Bun's
+   * wording, not ours — so 484 undelivered files in an 8.8 GB project were
+   * labelled "Was there a typo in the url or port?" while the real fault was a
+   * cell restarting in a loop (2026-09-03). The runtime's own text is kept, but
+   * in the log where a maintainer reads it, not in the panel where a customer
+   * does.
+   */
+  function transportFailure(err: unknown, rel: string, logger: typeof log): string {
+    const c = classifyTransportError(err);
+    logger.warn?.(`[sync/files] ${rel}: ${c.text} — ${c.raw}`);
+    if (c.class === 'unreachable') {
+      unreachableInARow += 1;
+      // A PEER THAT IS NOT THERE IS A WALL, not N separate file failures.
+      //
+      // Without this, a restarting cell drained the whole request ceiling into
+      // a closed socket every pass — 314 PUTs across 44 paths in 10 s — and
+      // every one of them came back as a per-file `stuck`, so the panel showed
+      // hundreds of broken files instead of one unreachable workspace.
+      if (unreachableInARow >= UNREACHABLE_STREAK_LIMIT && hitRateLimit === null) {
+        hitRateLimit = { retryAfterMs: UNREACHABLE_HOLD_MS, cause: 'unreachable' };
+      }
+    } else {
+      unreachableInARow = 0;
+    }
+    return c.text;
+  }
+
   /** Consecutive passes the hub answered `reanchor` to. Reset by any that did
    *  not — and decayed by time once held (F-11), so a hold is a window, never
    *  a brick. */
@@ -398,7 +562,107 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
    */
   let rateLimitedUntil = 0;
   /** Set when a refusal this pass was a 429; the pass stops on it. */
-  let hitRateLimit: { retryAfterMs: number } | null = null;
+  let hitRateLimit: {
+    retryAfterMs: number;
+    cause: 'hub-asked' | 'unreachable' | 'quota';
+  } | null = null;
+  /** Consecutive `unreachable` classifications this pass. */
+  let unreachableInARow = 0;
+  /** The door refused our credential this pass. */
+  let authRefused = false;
+  /** Bytes this pass has successfully pushed, charged against the window. */
+  let quotaSpentThisPass = 0;
+  /** The door's own ceilings, learned once per boot. Null until asked. */
+  let hubLimits: {
+    maxFileBytes: number;
+    quotaResetsAt?: number;
+    quotaUsed?: number;
+    quotaBytesPerWindow?: number;
+  } | null = null;
+  /** When the limits were last learned. 0 = never. */
+  let hubLimitsAt = 0;
+
+  /**
+   * Ask the door what it accepts. Once per boot, best-effort.
+   *
+   * A hub too old to answer (404) is not an error — it gets the fallback, which
+   * is what every hub did before this route existed.
+   */
+  async function ensureHubLimits(): Promise<void> {
+    // RE-ASK WHEN THEY GO STALE, and when the quota window should have rolled.
+    //
+    // Asking exactly once per boot was a serious bug: `quotaUsed` is a point-in-
+    // time reading, so a client that booted with the allowance nearly spent
+    // computed a headroom of ~0 and then refused every upload FOREVER — long
+    // after the hub's hourly window had reset — until someone restarted the
+    // process. A stale ceiling is a slow client; a stale quota reading is a
+    // client that has silently stopped.
+    const stale = hubLimitsAt === 0 || now() - hubLimitsAt > HUB_LIMITS_TTL_MS;
+    const windowRolled =
+      hubLimits?.quotaResetsAt !== undefined && now() >= (hubLimits.quotaResetsAt as number);
+    if (!stale && !windowRolled) return;
+    hubLimitsAt = now();
+    try {
+      const res = await fetchImpl(`${base}/api/file-limits`, {
+        headers: auth(),
+        signal: AbortSignal.timeout(GET_TIMEOUT_MS),
+      });
+      if (!res.ok) return;
+      const body = (await res.json()) as {
+        maxFileBytes?: unknown;
+        quotaResetsAt?: unknown;
+        quotaUsed?: unknown;
+        quotaBytesPerWindow?: unknown;
+      };
+      if (
+        Number.isFinite(body?.maxFileBytes) &&
+        (body.maxFileBytes as number) >= MIN_TRUSTED_MAX_FILE_BYTES
+      ) {
+        hubLimits = {
+          // Never BELOW our own floor, never above our own receive cap. A hub
+          // may be stricter than the default; it may not declare a project
+          // unsendable.
+          maxFileBytes: Math.min(body.maxFileBytes as number, MAX_FILE_BYTES),
+          ...(Number.isFinite(body?.quotaResetsAt)
+            ? { quotaResetsAt: body.quotaResetsAt as number }
+            : {}),
+          ...(Number.isFinite(body?.quotaUsed) ? { quotaUsed: body.quotaUsed as number } : {}),
+          ...(Number.isFinite(body?.quotaBytesPerWindow)
+            ? { quotaBytesPerWindow: body.quotaBytesPerWindow as number }
+            : {}),
+        };
+      }
+    } catch {
+      /* the fallback is the pre-existing behaviour */
+    }
+  }
+
+  /** The push ceiling in force right now. */
+  function pushCeiling(): number {
+    return hubLimits?.maxFileBytes ?? DEFAULT_HUB_MAX_FILE_BYTES;
+  }
+
+  /**
+   * Bytes still available inside the hub's current write window, or null when
+   * the hub did not say.
+   *
+   * PACING, NOT A NEW LIMIT — the door's quota stays authoritative. The point
+   * is to stop cleanly at the wall instead of driving into it: an 8.8 GB
+   * project against a 2 GiB/hour allowance spends at least two full windows,
+   * and discovering that as a 507 once per remaining file turns an ordinary,
+   * expected wait into hundreds of refusals.
+   */
+  function quotaHeadroom(): number | null {
+    const cap = hubLimits?.quotaBytesPerWindow;
+    const used = hubLimits?.quotaUsed;
+    if (!Number.isFinite(cap) || !Number.isFinite(used)) return null;
+    return Math.max(0, (cap as number) - (used as number));
+  }
+
+  /** Human bytes, for a message a person reads. */
+  function mb(n: number): string {
+    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  }
   /** HTTP requests issued by THIS pass — the ceiling the hub actually meters. */
   let requestsThisPass = 0;
 
@@ -408,16 +672,44 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
    * Every non-ok response on this lane comes through here, so there is one
    * answer to "was that a fault or a wall" rather than one per call site.
    */
-  async function refusal(
-    res: Response
-  ): Promise<{ ok: false; reason: string; rateLimited?: true }> {
+  async function refusal(res: Response): Promise<{
+    ok: false;
+    reason: string;
+    rateLimited?: true;
+    quotaExhausted?: true;
+    quotaResetsAt?: number;
+  }> {
+    // 507 — the per-token hourly WRITE QUOTA is spent (file-door.mjs
+    // `QUOTA_BYTES_PER_WINDOW`, 2 GiB). Not a fault and not a rate limit: the
+    // credential is fine, the file is fine, and the only answer is the next
+    // window. On an 8.8 GB project this is at least two windows of ordinary
+    // waiting, so it needs its own word or a person reads it as broken.
+    if (res.status === 507) {
+      const resetsAt = hubLimits?.quotaResetsAt;
+      return {
+        ok: false,
+        reason: "This project's upload allowance for the hour is used up",
+        quotaExhausted: true,
+        ...(Number.isFinite(resetsAt) ? { quotaResetsAt: resetsAt as number } : {}),
+      };
+    }
+    // OUR CREDENTIAL, NOT OUR REQUEST. Ask for a new one — once, through the
+    // lane that already has the rate discipline — and end the pass: every
+    // remaining request would be refused the same way.
+    if (res.status === 401 || res.status === 403) {
+      authRefused = true;
+      return { ok: false, reason: 'The workspace did not accept this connection' };
+    }
     const reason = await failureReason(res);
-    if (!isRateLimited(res)) return { ok: false, reason };
+    // BACKPRESSURE, not just 429 — a cell that is starting answers 503 with a
+    // Retry-After, and firing this pass's remaining request budget into that
+    // window is how a slow start becomes a failed one.
+    if (!isBackpressure(res)) return { ok: false, reason };
     const wait = retryAfterMs(res.headers?.get?.('retry-after') ?? null);
     // The LONGEST wait any refusal this pass asked for. Coming back early is
     // how a hold becomes another storm.
     if (hitRateLimit === null || wait > hitRateLimit.retryAfterMs) {
-      hitRateLimit = { retryAfterMs: wait };
+      hitRateLimit = { retryAfterMs: wait, cause: 'hub-asked' };
     }
     return { ok: false, reason, rateLimited: true };
   }
@@ -439,7 +731,7 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
         { headers: auth(), signal: AbortSignal.timeout(GET_TIMEOUT_MS) }
       );
     } catch (err) {
-      return { ok: false, reason: (err as Error).message };
+      return { ok: false, reason: transportFailure(err, rel, log) };
     }
     if (!res.ok) return await refusal(res);
 
@@ -511,7 +803,7 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
         chunks.push(value);
       }
     } catch (err) {
-      return { ok: false, reason: (err as Error).message };
+      return { ok: false, reason: transportFailure(err, '<response body>', log) };
     }
     const bytes = new Uint8Array(total);
     let at = 0;
@@ -677,13 +969,52 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
   ): Promise<
     | { ok: true; seq: number | null }
     | { ok: false; conflict: true; current: string | null }
-    | { ok: false; conflict?: false; reason: string; rateLimited?: true }
+    | {
+        ok: false;
+        conflict?: false;
+        reason: string;
+        rateLimited?: true;
+        tooLarge?: true;
+        quotaExhausted?: true;
+        quotaResetsAt?: number;
+      }
   > {
+    // PRE-FLIGHT AGAINST THE DOOR'S OWN CEILING, before a byte is read.
+    //
+    // `tooLarge` is TERMINAL: the returned reason is stored and the caller
+    // parks the path rather than re-queueing it. A file the door will never
+    // accept must stop costing a request slot every pass — that is what the
+    // 465.8 MB video did, on every boot, forever.
+    // PACE AGAINST THE WINDOW. `quotaSpentThisPass` is what we know we have
+    // added since the hub last told us where it stood.
+    const headroom = quotaHeadroom();
+    if (headroom !== null && quotaSpentThisPass + local.size > headroom) {
+      holdForQuota(hubLimits?.quotaResetsAt ?? null);
+      return {
+        ok: false,
+        quotaExhausted: true,
+        reason: "This project's upload allowance for the hour is used up",
+        ...(hubLimits?.quotaResetsAt ? { quotaResetsAt: hubLimits.quotaResetsAt } : {}),
+      };
+    }
+    if (local.size > pushCeiling()) {
+      return {
+        ok: false,
+        tooLarge: true,
+        reason: `Too big for this workspace — ${mb(local.size)}, and the limit is ${mb(pushCeiling())}`,
+      };
+    }
     let bytes: Uint8Array;
     try {
       bytes = readFileSync(local.abs);
     } catch (err) {
-      return { ok: false, reason: (err as Error).message };
+      // A LOCAL DISK READ, not a transfer. Classifying it as a transport
+      // failure would tell a person the workspace is unreachable when the file
+      // is simply gone or unreadable — a wrong answer is worse than a vague one.
+      log.warn?.(
+        `[sync/files] ${local.rel}: could not read from disk — ${String((err as Error)?.message ?? err).slice(0, 200)}`
+      );
+      return { ok: false, reason: 'Could not read this file from disk' };
     }
     // In flight, so a journal row carrying this hash reads as our own echo
     // rather than as a remote change we must react to.
@@ -716,7 +1047,7 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
       const body = (await res.json().catch(() => ({}))) as { seq?: unknown };
       return { ok: true, seq: typeof body?.seq === 'number' ? body.seq : null };
     } catch (err) {
-      return { ok: false, reason: (err as Error).message };
+      return { ok: false, reason: transportFailure(err, local.rel, log) };
     } finally {
       ledger.outboxDone(local.hash);
     }
@@ -752,7 +1083,7 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
       if (!res.ok) return await refusal(res);
       return { ok: true };
     } catch (err) {
-      return { ok: false, reason: (err as Error).message };
+      return { ok: false, reason: transportFailure(err, rel, log) };
     }
   }
 
@@ -791,16 +1122,42 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
    * the cursor read is the same wall as a refusal on a file, and the pass that
    * discovers it is usually the cheap one.
    */
+  /**
+   * The hourly write quota is spent. Hold the LANE until it resets.
+   *
+   * Distinct from a rate limit even though both pause: a rate limit is the hub
+   * metering request RATE, a quota is a byte budget for a window. On an 8.8 GB
+   * project against a 2 GiB/hour quota this is not an edge case — it is at
+   * least two full windows of ordinary, expected waiting, and a person who is
+   * not told that reads a stalled panel as a broken one.
+   */
+  function holdForQuota(resetsAt: number | null): void {
+    // CLAMPED. `resetsAt` is hub-supplied; unclamped, a peer could name a reset
+    // a year out and stop this machine syncing until someone restarted it.
+    const raw = (resetsAt ?? now() + 3_600_000) - now();
+    const wait = Math.min(MAX_TRUSTED_QUOTA_PAUSE_MS, Math.max(60_000, raw));
+    if (hitRateLimit === null || wait > hitRateLimit.retryAfterMs) {
+      hitRateLimit = { retryAfterMs: wait, cause: 'quota' };
+    }
+  }
+
   function holdIfRateLimited(out: FilePlaneResult, waiting: number): FilePlaneResult {
     // Idempotent: the apply loop arms the hold itself (it is the only caller
     // that knows how many paths were left), and the pass tail then calls this
     // again as a backstop. Re-arming would push the window out and log twice.
     if (hitRateLimit === null || out.rateLimited) return out;
     const wait = hitRateLimit.retryAfterMs;
+    const cause = hitRateLimit.cause;
     rateLimitedUntil = now() + wait;
-    out.rateLimited = { until: rateLimitedUntil, retryAfterMs: wait, waiting };
+    out.rateLimited = { until: rateLimitedUntil, retryAfterMs: wait, waiting, cause };
+    const why =
+      cause === 'unreachable'
+        ? 'the project could not be reached'
+        : cause === 'quota'
+          ? "this project's upload allowance for the hour is used up"
+          : 'the project is asking this machine to slow down (HTTP 429)';
     log.warn?.(
-      `[sync/files] the project is asking this machine to slow down (HTTP 429). Pausing the file lane for ${Math.round(wait / 1000)} s${
+      `[sync/files] ${why}. Pausing the file lane for ${Math.round(wait / 1000)} s${
         waiting > 0 ? `; ${waiting} file(s) still to come` : ''
       }. Nothing is lost — they arrive when the pause lifts.`
     );
@@ -837,6 +1194,10 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
       return out;
     }
     hitRateLimit = null;
+    unreachableInARow = 0;
+    authRefused = false;
+    quotaSpentThisPass = 0;
+    await ensureHubLimits();
     requestsThisPass = 0;
 
     // ── 1. The hub's side ────────────────────────────────────────────────
@@ -1073,11 +1434,20 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
       const hits = work.filter((w) => w.decision.action === action);
       if (hits.length === 0 || !overBreaker(direction, hits.length)) continue;
       const paths = hits.map((w) => w.rel).sort();
-      log.warn?.(
-        direction === 'out'
-          ? `[sync/files] ${paths.length} of ${tracked} tracked files are gone from this machine — NOT telling the project. If that was a branch switch or a bad restore, nothing is lost; if you meant it, confirm the deletion.`
-          : `[sync/files] the project wants to remove ${paths.length} of ${tracked} tracked files here — holding. Nothing was deleted.`
-      );
+      // ONCE PER DISTINCT HOLD, not once per pass.
+      //
+      // The `held` entry reaches the Sync panel on every pass regardless, so
+      // this line is repetition rather than signal — and it repeated 47 times
+      // in a 72-line log, burying every other line a person needed to see.
+      const holdKey = `${direction}:${paths.join('|')}`;
+      const alreadyAnnounced = lastDeleteHoldKey === holdKey;
+      lastDeleteHoldKey = holdKey;
+      if (!alreadyAnnounced)
+        log.warn?.(
+          direction === 'out'
+            ? `[sync/files] ${paths.length} of ${tracked} tracked files are gone from this machine — NOT telling the project. If that was a branch switch or a bad restore, nothing is lost; if you meant it, confirm the deletion.`
+            : `[sync/files] the project wants to remove ${paths.length} of ${tracked} tracked files here — holding. Nothing was deleted.`
+        );
       out.deleteHeld = { direction, count: paths.length, paths: paths.slice(0, 200) };
       for (const w of hits) {
         ledger.setState(w.rel, 'conflict', {
@@ -1158,17 +1528,63 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
         out.budgetExhausted = true;
         break;
       }
+      // A PATH INSIDE ITS BACKOFF WINDOW COSTS NOTHING.
+      //
+      // Checked BEFORE the ceilings deliberately: charging a skipped path
+      // against `MAX_REQUESTS_PER_PASS` would let a handful of permanently
+      // failing paths starve every healthy one — which is how two runs against
+      // an 8.8 GB project moved zero files while sending 616 MB (2026-09-03).
+      if (ledger.isBackedOff(item.rel, now())) {
+        seen += 1;
+        out.backedOff = (out.backedOff ?? 0) + 1;
+        continue;
+      }
       seen += 1;
+      const before = {
+        failed: out.failed.length,
+        pushed: out.pushed.length,
+        pulled: out.pulled.length,
+      };
       const handled = await applyOne(item, out, budget);
       if (handled) moved += 1;
+      // Arm or clear this path's window from what the pass actually did with
+      // it. A rate limit is excluded: that is the DOOR's state, not this
+      // path's, and punishing the file for it would push a whole project into
+      // backoff for something none of its files did.
+      if (hitRateLimit === null) {
+        if (out.failed.length > before.failed) {
+          const delay = ledger.noteAttemptFailed(item.rel, now());
+          log.warn?.(
+            `[sync/files] ${item.rel}: backing off ${Math.round(delay / 1000)}s before the next attempt`
+          );
+        } else if (
+          out.pushed.length > before.pushed ||
+          out.pulled.length > before.pulled ||
+          handled
+        ) {
+          ledger.noteAttemptOk(item.rel);
+        }
+      }
       // A RATE LIMIT ENDS THE PASS. Every other refusal is about one file and
       // the next one is worth trying; this one is about the door, and the
       // remaining requests would do nothing but hold it shut for longer.
+      if (authRefused) {
+        // ONE notification for the whole pass. `renewCredentialNow()` is
+        // single-flight with a 60 s floor, so 803 refused paths collapse to one
+        // renewal — but there is no reason to call it 803 times to find out.
+        opts.onAuthFailure?.(item.rel, 401);
+        out.authRefused = true;
+        log.warn?.(
+          `[sync/files] the workspace did not accept this connection; asking for a fresh credential and stopping this pass (${work.length - seen} path(s) still to do).`
+        );
+        break;
+      }
       if (hitRateLimit !== null) {
         holdIfRateLimited(out, work.length - seen);
         break;
       }
     }
+    if (out.pushed.length > 0 || out.pulled.length > 0) opts.onProgress?.();
 
     // ── 5. Position ──────────────────────────────────────────────────────
     //
@@ -1271,7 +1687,10 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
             });
             out.conflicts.push({ rel, copy: copyRel });
           } catch (err) {
-            out.failed.push({ rel, reason: (err as Error).message });
+            log.warn?.(
+              `[sync/files] ${rel}: could not park the conflicting copy — ${String((err as Error)?.message ?? err).slice(0, 200)}`
+            );
+            out.failed.push({ rel, reason: 'Could not write the conflicting copy to disk' });
           }
         }
         return true;
@@ -1329,6 +1748,10 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
             mtimeMs: here.mtimeMs,
             state: 'on-hub',
           });
+          // Charge the window. The hub's own figure is authoritative and
+          // refreshes next boot; this is what keeps a single long pass from
+          // overrunning a window it was told the start of.
+          quotaSpentThisPass += here.size;
           out.pushed.push(rel);
           return true;
         }
@@ -1340,6 +1763,27 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
             reason: 'the hub changed this file while the upload was in flight',
           });
           out.conflicts.push({ rel, copy: null });
+          return true;
+        }
+        // A WALL, NOT A FAILURE — and the two need different answers.
+        //
+        // `tooLarge` will never succeed however long we wait, and `quota` will
+        // never succeed inside this window. Both used to land as an anonymous
+        // `stuck` that the next pass re-attempted at full rate: that is how two
+        // files (164.9 MB + 465.8 MB) spent every boot burning request slots,
+        // and how the panel showed "stuck" for something no retry could fix.
+        // `refused` is terminal for this pass and skipped by the backoff.
+        if (res.tooLarge || res.quotaExhausted) {
+          ledger.setState(rel, 'refused', {
+            reason: res.reason,
+            blockedClass: res.tooLarge ? 'too-large' : 'quota',
+          });
+          out.dropped.push({ rel, reason: res.reason });
+          if (res.quotaExhausted) {
+            // A quota is a WINDOW, so hold the whole lane until it resets
+            // rather than discovering it once per remaining file.
+            holdForQuota(res.quotaResetsAt ?? null);
+          }
           return true;
         }
         out.failed.push({ rel, reason: res.reason });
@@ -1475,11 +1919,22 @@ export function createFilePlane(opts: FilePlaneOptions): FilePlane {
   return {
     reconcile,
     doruceka() {
+      // BOUNDED, ACTIONABLE-FIRST. This used to return one entry per ledger
+      // row — 2 961 keys for a real project — and `status.ts` re-serialized the
+      // whole object into `_sync.json` and every open tab on EVERY status
+      // change. The cap only ever drops the healthy tail, so the row a person
+      // is looking for is the one that survives. Same shape as
+      // `items`/`itemsTruncated`, whose lesson this lane skipped.
+      const all = Object.entries(ledger.rows()).map(
+        ([rel, row]) => [rel, row.state ?? 'local-only'] as const
+      );
+      all.sort((a, b) => deliveryRank(a[1]) - deliveryRank(b[1]));
       const out: Record<string, DeliveryState> = {};
-      for (const [rel, row] of Object.entries(ledger.rows())) {
-        out[rel] = row.state ?? 'local-only';
-      }
+      for (const [rel, state] of all.slice(0, MAX_DORUCEKA_ROWS)) out[rel] = state;
       return out;
+    },
+    dorucekaTotal() {
+      return Object.keys(ledger.rows()).length;
     },
   };
 }

@@ -90,7 +90,12 @@ import {
   handleDocumentItemRoute,
   handleDocumentsRoute,
 } from './documents.mjs';
-import { FILE_DOOR_PREFIX, handleFileDoor } from './file-door.mjs';
+import {
+  FILE_DOOR_PREFIX,
+  FILE_LIMITS_PATH,
+  handleFileDoor,
+  handleFileLimits,
+} from './file-door.mjs';
 import {
   FILES_PATH,
   handleFilesRoute,
@@ -1178,6 +1183,34 @@ export function createHub(config = {}) {
       // Main origin only, like every other privileged route: the canvas origin
       // is untrusted content and has no business writing project files
       // (DDR-088 — a privileged route belongs to NEITHER allowlist).
+      // WHAT THIS DOOR WILL ACCEPT, as data. A client that has to guess the
+      // ceiling guesses wrong: the push side used the 512 MB PULL cap while
+      // this door refuses anything over 95 MB, so oversized files retried
+      // forever against a wall neither side named (2026-09-03).
+      if (authPath === FILE_LIMITS_PATH && !(studioProxy && isCanvasHost(request))) {
+        if (
+          handleFileLimits({
+            request,
+            response,
+            pathname: authPath,
+            method,
+            dataDir,
+            secret,
+            // METERED like every sibling route. The handler verifies a token
+            // when one is offered — HMAC-SHA256 plus a SQLite lookup — and
+            // answers observably differently for a valid one, so an
+            // unauthenticated caller must not be able to drive that path at
+            // will. Every neighbouring route threads this; the first version of
+            // this one did not (found in the security review of this change).
+            checkRateLimit: rateLimit
+              ? (req) => checkRateLimit(rateBuckets, req, { store: rateStore, ip: clientIp(req) })
+              : undefined,
+          })
+        ) {
+          bailFromOnRequest();
+          return;
+        }
+      }
       if (authPath.startsWith(FILE_DOOR_PREFIX) && !(studioProxy && isCanvasHost(request))) {
         const handled = await handleFileDoor({
           request,
