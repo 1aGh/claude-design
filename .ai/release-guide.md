@@ -115,6 +115,7 @@ pnpm test
 pnpm --filter @maude/site gen:stats              # refresh derived stats
 pnpm --filter @maude/site gen:reference          # refresh derived reference docs
 pnpm --filter @maude/site gen:roadmap            # refresh roadmap from .ai/plans + STATE.md
+pnpm --filter @maude/site gen:whatsnew           # refresh the site whats-new mirror — the bump STAMPS apps/studio/whats-new.json, so this drifts on every release (missing here until v1.2.0 turned quality.yml red)
 git diff --stat site/                                # capture any drift to commit
 ```
 
