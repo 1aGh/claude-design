@@ -1,9 +1,0 @@
----
-"@1agh/maude": patch
----
-
-Fix images (and every other project file) silently never arriving on a hub-linked project, while the Sync panel reported everything as synced (issue #109). The report was "nenačítají se obrázky" — broken image placeholders on a canvas — and the whole server log was one line repeated: `[sync/files] assets/<hash>.png: HTTP 429`.
-
-429 is the workspace saying "come back in a minute", and the file lane did not know that. It read a rate limit as an ordinary per-file failure, fired the rest of the pass at a door that was already shut, and — because a pass only advances its cursor when nothing failed — came back with the identical work set on the next tick. The retries were what kept the limit tripped. Three things made it self-sustaining rather than transient: the per-pass ceiling counted files that *moved*, and a failed transfer moves nothing, so under any refusal it stopped bounding the pass at all and one request went out per path with no ceiling; a pass could be started every 400 ms by the workspace's change channel with no floor and no mutual exclusion, so the client's own request ceiling sat an order of magnitude above the limit it was hitting; and none of it had anywhere to surface, so the status line kept saying `synced`.
-
-A refused request now pauses the whole file lane for as long as the workspace asked for (honouring `Retry-After`, clamped, with a sane default for hubs that send a bare 429), the first refusal ends the pass instead of spending it, the hard ceiling counts requests rather than successes, passes are floored two seconds apart and can no longer overlap, and both the pause and any failed transfers appear in the Sync panel in words — a pause says nothing is lost and it resumes by itself. The `Retry-After` handling the asset upload lane has carried since August now lives in one module both lanes import, so the two cannot drift apart again.

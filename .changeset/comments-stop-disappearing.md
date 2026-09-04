@@ -1,7 +1,0 @@
----
-"@1agh/maude": patch
----
-
-Fix a comment disappearing seconds after it is added on a hub-linked project (issue #111). Adding a second comment worked, then it vanished and only the first one was left. The comments lane had two authoritative writers and nothing arbitrating between them: a mutation wrote `_comments/<slug>.json` and only afterwards — across a disk re-read, in a call nobody awaited — published the new list into the room's shared document, while `Room.flush()` projects that document straight back over the same file on an 800 ms debounce that *any* document update re-arms, hub traffic included. On a linked project a flush is therefore almost always pending, so one landed inside that window, wrote the pre-mutation document over the file, and the comment was gone from disk and from the hub before anything read it back. Local projects were spared because nothing else drives their document, which is exactly the scoping the report gave.
-
-A mutation now publishes to the shared document **first** and to disk second, with both halves awaited, so a flush firing at any point carries a document that already holds the comment — the window is removed rather than narrowed. The projection also refuses to overwrite the file when it would drop a comment the document has never carried, while still materializing a genuine delete, so an edit made directly to the comments file (how `/design:edit` resolves them) can no longer be silently reverted either.

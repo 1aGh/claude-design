@@ -3,8 +3,8 @@
   "entries": [
     {
       "id": "pdf-export-print-safe-text",
-      "version": null,
-      "date": null,
+      "version": "1.2.0",
+      "date": "2026-09-04",
       "kind": "feature",
       "title": "PDF exports a print shop will actually accept",
       "summary": "A colour font or a faux-italic could come out of a PDF export in a form printers reject — the file looked perfect on screen, and you only found out when the print shop refused it. Maude now checks the fonts on every PDF export and warns you, by name, when one of them would fail preflight. Under Text you can also ask it to verify the fonts are properly embedded, or convert all text to curves so there is nothing left to break — bleed, crop marks and photo resolution all come through untouched.",
@@ -12,8 +12,8 @@
     },
     {
       "id": "seed-progress-you-can-watch",
-      "version": null,
-      "date": null,
+      "version": "1.2.0",
+      "date": "2026-09-04",
       "kind": "improvement",
       "title": "You can watch a large project sync",
       "summary": "Linking a big project used to be a black box: the Sync panel counted files it had moved but never how many there were, so \"1 412\" looked the same whether it was a quarter done or finished — and `maude design status` reported only canvases, so a project with hundreds of files still on their way could read as fully synced. Now every surface shows the same thing: how many of how many have arrived, what is waiting, and what is stuck and why. The panel has a progress bar, `maude design status` has a files line (and a `--watch` mode), and the desktop app puts the count in the window title and tells you once when it finishes. Files the workspace will never take — something over its size limit, or an hourly upload allowance that is used up — now say so by name instead of retrying forever.",
@@ -21,8 +21,8 @@
     },
     {
       "id": "images-arrive-again",
-      "version": null,
-      "date": null,
+      "version": "1.2.0",
+      "date": "2026-09-04",
       "kind": "fix",
       "title": "Images arrive again on linked projects",
       "summary": "On a project synced with a workspace, images and other project files could quietly never arrive — broken placeholders on the canvas while the Sync panel still said everything was synced. When a workspace asks Maude to slow down, it now waits as long as it was asked instead of retrying straight into the same wall, and the Sync panel says so in plain words: syncing is paused for a moment, nothing is lost, the rest arrives when the pause lifts.",
@@ -30,8 +30,8 @@
     },
     {
       "id": "comments-stop-disappearing",
-      "version": null,
-      "date": null,
+      "version": "1.2.0",
+      "date": "2026-09-04",
       "kind": "fix",
       "title": "Comments stop disappearing",
       "summary": "On a project linked to a hub, a comment you had just added could vanish a few seconds later, leaving only the first one on the canvas — with nothing to undo and no sign anything had gone wrong. A new comment now reaches the shared project before it is written to disk, and Maude will not overwrite a comment it has not seen yet, so what you write stays put.",
@@ -39,8 +39,8 @@
     },
     {
       "id": "comments-stop-duplicating",
-      "version": null,
-      "date": null,
+      "version": "1.2.0",
+      "date": "2026-09-04",
       "kind": "fix",
       "title": "Comments stop duplicating, and resolve works",
       "summary": "On a project linked to a hub, a comment could come back two, four, then eight times, and clicking resolve appeared to do nothing — every copy had to be dealt with separately, and new ones kept arriving. Maude now recognises the copies as one comment, so they collapse back to a single pin, and resolving or deleting one clears all of it. A project that already filled up with duplicates repairs itself the next time you open it.",
@@ -48,30 +48,30 @@
     },
     {
       "id": "synced-canvases-stop-duplicating",
-      "version": null,
-      "date": null,
+      "version": "1.2.0",
+      "date": "2026-09-04",
       "kind": "fix",
       "title": "Synced canvases stop duplicating themselves",
       "summary": "On a project linked to a hub, a canvas could come back with its whole contents pasted onto itself — twice, sometimes more — which broke the build and left the canvas unopenable. It happened when two people (or your machine and the hub) first picked up the same canvas at the same moment. Maude now recognises that exact shape and collapses it back to one copy, on the styles as well as the body. Moving a canvas into another folder also fixes up its imports instead of breaking them.",
       "surface": "design-ui"
     },
     {
-      "date": null,
+      "date": "2026-09-04",
       "id": "sync-recovers-after-the-workspace-sleeps",
       "kind": "fix",
       "summary": "If you left Maude alone for a while, your cloud workspace went to sleep and syncing quietly stopped — the indicator still said it was connected, and only pressing Resync got it moving again. Maude now notices when the connection has gone quiet, brings it back on its own, and only reports canvases as synced once they really are.",
       "surface": "design-ui",
       "title": "Sync comes back on its own",
-      "version": null
+      "version": "1.2.0"
     },
     {
-      "date": null,
+      "date": "2026-09-04",
       "id": "long-chats-no-longer-freeze",
       "kind": "fix",
       "summary": "In a project with a long chat history, Maude could slow to a crawl and stop responding for many minutes while using enormous amounts of memory — often needing a force-quit. Screenshots the agent took were being stored inside the chat history at full size, and every chat you opened re-read all of it. Chats now stay small and are read in fixed-size pieces, so a long history costs the same as a short one.",
       "surface": "design-ui",
       "title": "Long chats no longer freeze Maude",
-      "version": null
+      "version": "1.2.0"
     },
     {
       "id": "canvas-media-plays-on-linux",

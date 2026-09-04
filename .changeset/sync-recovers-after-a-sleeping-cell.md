@@ -1,5 +1,0 @@
----
-"@1agh/maude": patch
----
-
-Cloud sync now recovers on its own after the workspace cell sleeps, and stops claiming to be synced when it is not. A dropped WebSocket demoted every canvas to "pending" and nothing ever promoted them back, so a link that had been healthy for hours reported `online` with zero canvases synced — for the rest of the session, until you pressed Resync. Three fixes: a document that re-handshakes is marked synced again; the last-synced clock is only stamped by real sync activity, never by a socket reconnecting; and a new watchdog forces the hub socket down and back up when it claims to be connected but nothing has synced for three minutes (the Hocuspocus socket reports `connected` off the raw WS open — before authentication — and disables its own silence watchdog exactly then, so a socket that upgrades at the edge and hears nothing was permanently "connected"). The stall message also stops blaming your sign-in when the hub has refused nothing — that advice sent people to Resync, which made the display worse.
