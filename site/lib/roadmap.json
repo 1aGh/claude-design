@@ -1,18 +1,7 @@
 {
-  "generated": "2026-09-03T00:00:00.000Z",
+  "generated": "2026-09-04T00:00:00.000Z",
   "currentPhase": null,
   "phases": [
-    {
-      "id": "feature-large-project-seed-and-sync-progress",
-      "title": "Feature: Large-project seed — stop the amplification loop, and make the seed visible on every surface",
-      "status": "done",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/archive/feature-large-project-seed-and-sync-progress.md",
-      "archived": true,
-      "phaseKey": null
-    },
     {
       "id": "phase-1-contribute-infra-changesets",
       "title": "Phase 1: Contribute infrastructure + Changesets bootstrap",
@@ -2177,6 +2166,17 @@
       "date": "2026-09-03",
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/archive/feature-pdf-text-outline-and-font-preflight.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-large-project-seed-and-sync-progress",
+      "title": "Feature: Large-project seed — stop the amplification loop, and make the seed visible on every surface",
+      "status": "done",
+      "shipTarget": null,
+      "date": "2026-09-04",
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/feature-large-project-seed-and-sync-progress.md",
       "archived": true,
       "phaseKey": null
     },
