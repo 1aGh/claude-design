@@ -542,6 +542,45 @@ export const DEFAULT_HIGHLIGHTER_WIDTH = HIGHLIGHTER_WIDTHS[1];
 export const STICKY_DEFAULT_W = 200;
 export const STICKY_DEFAULT_H = 200;
 export const STICKY_MIN_SIZE = 40;
+/**
+ * Ceiling for the grow-to-fit in `grownStickyBox` — ~370 lines at the default
+ * type. `fontSize` comes from a synced stroke's `data-fs` and is only checked
+ * for finiteness, so without this a peer could set `data-fs="200000"`, wait for
+ * the local user to edit that note, and have THEIR client persist a card
+ * millions of units tall — grow-only, undoable by hand alone.
+ */
+export const STICKY_MAX_GROWN_H = 8000;
+
+/**
+ * issue-106 — the box a sticky needs so its committed text is not clipped, or
+ * null when the text already fits.
+ *
+ * `.dc-sticky-body` is `overflow: hidden` on a card whose size was fixed at
+ * creation, and nothing ever grew it: past a card's capacity every further line
+ * was simply invisible, which is what made Shift+Enter look inert on a full
+ * note. `measuredH` is the editor's own `scrollHeight` — same class, width and
+ * font as the committed body, in world units — so the growth is exact rather
+ * than estimated.
+ *
+ * GROWS ONLY, and never past `STICKY_MAX_GROWN_H`: a sticky the user
+ * deliberately made roomy never shrinks back on a text edit. The box is normalized on the way out (a sticky dragged bottom-up
+ * carries a negative w/h), which is idempotent — every renderer already reads
+ * it through the same min/abs pair.
+ */
+export function grownStickyBox(
+  s: Pick<StickyStroke, 'x' | 'y' | 'w' | 'h'>,
+  measuredH: number
+): { x: number; y: number; w: number; h: number } | null {
+  if (!Number.isFinite(measuredH) || measuredH <= 0) return null;
+  const next = Math.min(Math.ceil(measuredH), STICKY_MAX_GROWN_H);
+  if (next <= Math.abs(s.h)) return null;
+  return {
+    x: Math.min(s.x, s.x + s.w),
+    y: Math.min(s.y, s.y + s.h),
+    w: Math.abs(s.w),
+    h: next,
+  };
+}
 // Phase 24 — a bare tap with the Shape tool drops a default-sized shape at the
 // tap point (FigJam parity: click commits, drag sizes). Square aspect.
 export const SHAPE_DEFAULT_SIZE = 120;

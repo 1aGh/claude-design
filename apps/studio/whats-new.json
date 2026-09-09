@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "sticky-notes-take-a-second-line",
+      "version": null,
+      "date": null,
+      "kind": "fix",
+      "title": "Sticky notes take a second line",
+      "summary": "Shift+Enter in a sticky note could look like it did nothing. A note never grew, and its text is clipped at the card's edge, so on a full note the new line was inserted and then hidden — notes now grow as you type and keep that height. Opening a note from the keyboard selects all of its text so you can retype it, and Shift+Enter used to replace the lot; it now adds a line instead, while typing still replaces. And on a project synced to a workspace, what you have typed into an open note is no longer overwritten mid-keystroke when a collaborator edits the same note.",
+      "surface": "design-ui"
+    },
+    {
       "id": "pdf-export-print-safe-text",
       "version": "1.2.0",
       "date": "2026-09-04",

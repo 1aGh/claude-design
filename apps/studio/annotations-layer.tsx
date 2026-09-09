@@ -76,6 +76,7 @@ import {
   type EllipseStroke,
   FILL_PALETTE,
   fmtEqual,
+  grownStickyBox,
   HALO_PAD_PX,
   HIGHLIGHTER_PALETTE,
   HIGHLIGHTER_WIDTHS,
@@ -169,7 +170,7 @@ import { buildAnnotationStrokesRecord } from './commands/annotation-strokes-comm
 import { ensureMenuStyles as ensureCtxMenuStyles } from './context-menu.tsx';
 import { crossedDragThreshold, type Tool } from './input-router.tsx';
 import { createMediaCommitChain, type MediaCommitResult } from './media-commit-chain.ts';
-import { mountCaret, placeCaretAt } from './text-caret.ts';
+import { collapseEntrySelectAll, mountCaret, placeCaretAt } from './text-caret.ts';
 import {
   AnnotationResizeOverlay,
   bboxResize,
@@ -467,6 +468,17 @@ export function reconcileCommit(
  * ones that are still purely local, not-yet-synced optimistic previews (an
  * ephemeral blob:/data: href image mid-upload) that a foreign broadcast could
  * never have known about in the first place.
+ *
+ * issue-106 deliberately does NOT carve out the stroke a local editor has open.
+ * That was tried: hold back its `text` so a peer's commit could not overwrite
+ * the editor. But this function's output IS the persisted store — it is
+ * serialized to `*.annotations.svg` and re-broadcast on the next commit of ANY
+ * stroke — so holding a field back doesn't shield a view, it silently reverts
+ * the peer's write and republishes the stale text under the local user's name,
+ * for as long as the editor stays open. The editor never needed it: the clobber
+ * was React rewriting an UNCONTROLLED contentEditable, which `useSessionValue`
+ * fixes at the DOM, and the commit reads `innerText` off the node rather than
+ * off the stroke. Last-write-wins stays the model here.
  */
 export function reconcileForeignEcho(
   prev: readonly Stroke[],
@@ -2884,13 +2896,24 @@ export function AnnotationsLayer() {
   // Phase 21 — sticky body edit. Sticky text is freeform (newlines preserved,
   // no trim) and the card persists even when blank, so this only updates text.
   const commitStickyText = useCallback(
-    (id: string, text: string, fmt?: EditorFmt) => {
+    (id: string, text: string, fmt?: EditorFmt, measuredH?: number) => {
       const prev = strokesRef.current;
       const existing = prev.find((s) => s.id === id && s.tool === 'sticky') as
         | StickyStroke
         | undefined;
-      if (!existing || (existing.text === text && fmtEqual(existing, fmt))) return;
-      const next = prev.map((s) => (s.id === id ? { ...existing, text, ...normFmt(fmt) } : s));
+      if (!existing) return;
+      // issue-106 — grow the card to whatever the editor actually rendered, so
+      // the lines the user just typed survive the return to the clipped read
+      // view. Null when the text already fits (the common case).
+      // The growth rides along with a real edit — it is NOT itself a reason to
+      // write. Otherwise opening a peer's already-overflowing note and clicking
+      // away, having typed nothing, would produce an undo entry, a
+      // full-document PUT and a sync broadcast.
+      if (existing.text === text && fmtEqual(existing, fmt)) return;
+      const grown = measuredH == null ? null : grownStickyBox(existing, measuredH);
+      const next = prev.map((s) =>
+        s.id === id ? { ...existing, text, ...normFmt(fmt), ...(grown ?? {}) } : s
+      );
       commitStrokes(prev, next, 'edit sticky');
     },
     [commitStrokes]
@@ -2970,14 +2993,14 @@ export function AnnotationsLayer() {
   editingTargetRef.current = editingTarget;
 
   const commitEditing = useCallback(
-    (text: string, fmt?: EditorFmt) => {
+    (text: string, fmt?: EditorFmt, measuredH?: number) => {
       const target = editingTargetRef.current;
       setEditingId(null);
       setPendingText(null);
       setEditCaretPoint(null);
       if (!target) return;
       if (target.kind === 'anchored') commitText(target.anchorId, text, fmt);
-      else if (target.kind === 'sticky') commitStickyText(target.sticky.id, text, fmt);
+      else if (target.kind === 'sticky') commitStickyText(target.sticky.id, text, fmt, measuredH);
       else if (target.kind === 'standalone') commitStandaloneText(target.text.id, text, fmt);
       else if (target.kind === 'section') {
         const label = text.trim().replace(/\s*\n+\s*/g, ' ') || 'Section';
@@ -3902,7 +3925,7 @@ function AnnotationsSvg({
   editCaretPoint: { x: number; y: number } | null;
   /** Live default ink (theme-aware) for a not-yet-born pending text caret. */
   inkColor: string;
-  onCommitEdit: (text: string, fmt?: EditorFmt) => void;
+  onCommitEdit: (text: string, fmt?: EditorFmt, measuredH?: number) => void;
   onCancelEdit: () => void;
 }) {
   const [, force] = useState({});
@@ -4118,7 +4141,7 @@ function AnnotEditors({
   anchoredExisting: TextStroke | undefined;
   caretPoint: { x: number; y: number } | null;
   inkColor: string;
-  onCommitEdit: (text: string, fmt?: EditorFmt) => void;
+  onCommitEdit: (text: string, fmt?: EditorFmt, measuredH?: number) => void;
   onCancelEdit: () => void;
 }) {
   const target = worldRef?.current ?? null;
@@ -4346,6 +4369,33 @@ function useEditorCaret(
   return { onPointerDown, onPointerUp };
 }
 
+/**
+ * issue-106 — the body an annotation editor hands React as its contentEditable
+ * children, snapshotted for the life of ONE edit session.
+ *
+ * These editors are uncontrolled: the user types straight into the DOM. If the
+ * rendered children value changes while the session is open, React writes the
+ * new string into the live node and everything typed since — line breaks
+ * included — is gone. That is exactly what a peer's commit arriving over
+ * shared-doc sync (DDR-064) used to do, and what the hazard note above
+ * `useEditorFormat` warns about for local mutations. Snapshotting per target id
+ * makes the children a constant for the session, so no store update can reach
+ * the DOM; the commit path reads `innerText` from the node itself, which is the
+ * user's real content either way. Re-keys when the editor is reused for a
+ * different stroke.
+ *
+ * `listType` is snapshotted through the same hook: the body is prefixed with
+ * list markers at OPEN time and stripped again at commit, so if a peer flipped
+ * the stroke's list style mid-session the strip would run a different rule than
+ * the prefix did — turning a bullet into a literal "• " in the stored text, or
+ * eating a leading "1. " the user actually typed.
+ */
+function useSessionValue<T>(id: string, compute: () => T): T {
+  const ref = useRef<{ id: string; value: T } | null>(null);
+  if (ref.current === null || ref.current.id !== id) ref.current = { id, value: compute() };
+  return ref.current.value;
+}
+
 function TextEditor({
   anchorId,
   host,
@@ -4364,9 +4414,10 @@ function TextEditor({
   const ref = useRef<HTMLDivElement | null>(null);
   // Show list markers WHILE editing so the read↔edit swap doesn't flicker
   // (item 4c) — stripped back to raw text on commit.
-  const initial = listPrefixedBody(existing?.text ?? '', existing?.listType);
-  const initialRef = useRef(initial);
-  initialRef.current = initial;
+  const sessionListType = useSessionValue(anchorId, () => existing?.listType);
+  const initial = useSessionValue(anchorId, () =>
+    listPrefixedBody(existing?.text ?? '', sessionListType)
+  );
   // Cmd/Ctrl+B/I/U formatting while editing (item 4d).
   const {
     fmtRef,
@@ -4385,8 +4436,8 @@ function TextEditor({
   // effect below can depend on it directly instead of its own copy of
   // existing?.listType (lint/correctness/useExhaustiveDependencies).
   const toCommittedText = useCallback(
-    (raw: string) => stripEditorMarkers(stripJumpSentinel(raw), existing?.listType),
-    [existing?.listType]
+    (raw: string) => stripEditorMarkers(stripJumpSentinel(raw), sessionListType),
+    [sessionListType]
   );
 
   // Caret-at-click on entry + custom blinking caret + click re-placement
@@ -4471,6 +4522,14 @@ function TextEditor({
             onCancel();
             return;
           }
+          // issue-106 — Shift+Enter ADDS a line. On keyboard entry the whole
+          // body is still select-all'd (the retype convention), so letting the
+          // break replace the selection wiped the text. Collapse that entry
+          // selection to its end first; a user's own partial selection is left
+          // alone. See collapseEntrySelectAll.
+          if (e.key === 'Enter' && e.shiftKey && ref.current) {
+            collapseEntrySelectAll(ref.current, window);
+          }
           // Unified across every text surface: plain Enter commits,
           // Shift+Enter inserts a newline (falls through untouched). ⌘/Ctrl
           // +Enter also commits AND chains a connected sibling (quick-create).
@@ -4504,7 +4563,7 @@ function StickyEditor({
 }: {
   sticky: StickyStroke;
   caretPoint?: { x: number; y: number } | null;
-  onCommit: (text: string, fmt?: EditorFmt) => void;
+  onCommit: (text: string, fmt?: EditorFmt, measuredH?: number) => void;
   onCancel: () => void;
 }) {
   // A flex-centered contentEditable (NOT a textarea) so the edit view matches
@@ -4513,6 +4572,8 @@ function StickyEditor({
   // Esc cancels; blur commits; Cmd/Ctrl+B/I/U format (unified with the others).
   const ref = useRef<HTMLDivElement | null>(null);
   const doneRef = useRef(false);
+  const sessionListType = useSessionValue(sticky.id, () => sticky.listType);
+  const sessionBody = useSessionValue(sticky.id, () => stickyBodyText(sticky));
   const {
     fmtRef,
     style: fmtStyle,
@@ -4528,7 +4589,16 @@ function StickyEditor({
   const commit = () => {
     if (doneRef.current) return;
     doneRef.current = true;
-    onCommit(stripEditorMarkers(ref.current?.innerText ?? '', sticky.listType), fmtRef.current);
+    const el = ref.current;
+    // issue-106 — the editor IS the measurement: same class, same width, same
+    // font as the committed body, and laid out in world units (the pan/zoom
+    // transform on `.dc-world` doesn't change layout), so its scrollHeight is
+    // the height the card needs. No offscreen measuring rig required.
+    onCommit(
+      stripEditorMarkers(el?.innerText ?? '', sessionListType),
+      fmtRef.current,
+      el?.scrollHeight
+    );
   };
   // FigJam v3 — a toolbar click steals focus for a tick; don't treat it as
   // "done editing" (the button's onMouseDown preventDefault usually stops the
@@ -4544,10 +4614,33 @@ function StickyEditor({
   const y = Math.min(sticky.y, sticky.y + sticky.h);
   const w = Math.abs(sticky.w);
   const h = Math.abs(sticky.h);
+  const r = sticky.cornerRadius ?? STICKY_CORNER_RADIUS;
   return (
     <div
       data-annot-editor="1"
-      style={{ position: 'absolute', left: x, top: y, width: w, height: h, zIndex: 5 }}
+      style={{
+        position: 'absolute',
+        left: x,
+        top: y,
+        width: w,
+        // issue-106 — NOT a fixed `height: h`. The card clips at `overflow:
+        // hidden`, so on a sticky that is already full the line Shift+Enter
+        // inserts landed outside the box: the keystroke worked, nothing moved
+        // on screen, and it read as "shift+enter does nothing". While the
+        // editor is open it grows downward instead, painting its own paper so
+        // the overflow still reads as the note (the SVG card behind is still
+        // the old size until the commit below persists the grown height).
+        minHeight: h,
+        zIndex: 5,
+        // `backgroundColor`, never the `background` shorthand: `color` comes
+        // verbatim from a synced stroke's `fill` (peer-controlled, and the
+        // sanitizer does not touch `fill`), and the shorthand would accept a
+        // `url(...)` — an outbound request from the studio origin the moment a
+        // note is opened. `background-color` cannot take one.
+        backgroundColor: sticky.color,
+        // Mirrors stickyCornerPath: TL/TR/BL rounded, BR sharp.
+        borderRadius: `${r}px ${r}px 0 ${r}px`,
+      }}
     >
       <div
         ref={ref}
@@ -4561,6 +4654,11 @@ function StickyEditor({
           outline: 'none',
           cursor: 'text',
           ...CARET_FIX_STYLE,
+          // Beats `.dc-sticky-body { height: 100%; overflow: hidden }` for the
+          // duration of the edit — see the wrapper note above.
+          height: 'auto',
+          minHeight: h,
+          overflow: 'visible',
         }}
         onBlur={onBlur}
         onPointerDown={caretHandlers.onPointerDown}
@@ -4572,6 +4670,11 @@ function StickyEditor({
             doneRef.current = true; // suppress the unmount blur-commit
             onCancel();
             return;
+          }
+          // issue-106 — see the same guard in TextEditor: Shift+Enter must add
+          // a line, never consume the entry select-all and delete the body.
+          if (e.key === 'Enter' && e.shiftKey && ref.current) {
+            collapseEntrySelectAll(ref.current, window);
           }
           // Unified: plain Enter commits, Shift+Enter inserts a newline.
           // ⌘/Ctrl+Enter also commits AND chains the next sticky beside it.
@@ -4588,7 +4691,7 @@ function StickyEditor({
       >
         {/* Show the list markers while editing (item 4c) so the read↔edit swap
             doesn't flicker; stripped back to raw text on commit. */}
-        {stickyBodyText(sticky)}
+        {sessionBody}
       </div>
     </div>
   );
@@ -4735,6 +4838,11 @@ function StandaloneTextEditor({
             doneRef.current = true;
             onCancel();
             return;
+          }
+          // issue-106 — same guard as the other two editors, for the multi-line
+          // case only (a singleLine field commits on Shift+Enter anyway).
+          if (e.key === 'Enter' && e.shiftKey && !singleLine && ref.current) {
+            collapseEntrySelectAll(ref.current, window);
           }
           // Unified: plain Enter commits, Shift+Enter inserts a newline. A
           // singleLine field (section rename) is a title — Shift+Enter commits

@@ -34,6 +34,7 @@ import {
   strokesToSvg,
   type TextStroke,
 } from '../annotations-layer.tsx';
+import { grownStickyBox, STICKY_MAX_GROWN_H } from '../annotations-model.ts';
 
 describe('annotations-layer / penPathD', () => {
   test('empty points → empty string', () => {
@@ -545,6 +546,27 @@ describe('annotations-layer / reconcileForeignEcho (deletes must sync across tab
     const incoming = [a]; // the peer's broadcast was authored before our upload started
     expect(reconcileForeignEcho(prev, incoming)).toEqual([a, optimisticImage]);
   });
+
+  // issue-106 — the fix deliberately does NOT carve the open editor out here;
+  // see the doc comment. These pin the model the editor now relies on: a peer's
+  // text lands like any other field, and the DOM is protected in the editor.
+  test("a peer's text edit lands like any other field — last-write-wins is the model", () => {
+    const openSticky: StickyStroke = {
+      id: 'note',
+      tool: 'sticky',
+      color: '#ffe28a',
+      x: 0,
+      y: 0,
+      w: 200,
+      h: 200,
+      text: 'mine',
+      fontSize: 16,
+    };
+    const peerEdited: StickyStroke = { ...openSticky, text: 'theirs', x: 40 };
+    const out = reconcileForeignEcho([a, openSticky], [a, peerEdited]);
+    expect((out[1] as StickyStroke).text).toBe('theirs');
+    expect((out[1] as StickyStroke).x).toBe(40);
+  });
 });
 
 describe('annotations-layer / resolveImageUploadSwap (delete-during-upload must not resurrect)', () => {
@@ -1007,5 +1029,56 @@ describe('annotations-layer / Phase 24 polygon geometry', () => {
     const outline: PolygonStroke = { ...filled, fill: null };
     expect(strokeHitTest(outline, 50, 50, 4)).toBe(false); // centre, not filled
     expect(strokeHitTest(outline, 25, 25, 4)).toBe(true); // on the NW edge midpoint line
+  });
+});
+
+// issue-106 — a sticky's card never grew, and `.dc-sticky-body` is
+// `overflow: hidden`, so past its capacity every further line was invisible:
+// Shift+Enter on a full note looked like it did nothing at all.
+describe('annotations-model / grownStickyBox (a sticky grows to fit its text)', () => {
+  const box = { x: 10, y: 20, w: 200, h: 200 };
+
+  test('text that already fits asks for no growth', () => {
+    expect(grownStickyBox(box, 180)).toBeNull();
+  });
+
+  test('exactly-full is still no growth (the boundary the bug lives on)', () => {
+    expect(grownStickyBox(box, 200)).toBeNull();
+  });
+
+  test('one line over capacity grows the card to fit it', () => {
+    expect(grownStickyBox(box, 217)).toEqual({ x: 10, y: 20, w: 200, h: 217 });
+  });
+
+  test('a fractional measurement rounds UP, never leaving a clipped sliver', () => {
+    expect(grownStickyBox(box, 217.2)?.h).toBe(218);
+  });
+
+  test('grows only — a roomy sticky is never shrunk by a text edit', () => {
+    expect(grownStickyBox({ ...box, h: 600 }, 217)).toBeNull();
+  });
+
+  test('a bottom-up sticky (negative w/h) is normalized, keeping its visual box', () => {
+    // Drawn from (210, 220) back to (10, 20): same pixels, negative extents.
+    expect(grownStickyBox({ x: 210, y: 220, w: -200, h: -200 }, 260)).toEqual({
+      x: 10,
+      y: 20,
+      w: 200,
+      h: 260,
+    });
+  });
+
+  test('growth is capped — a peer-inflated fontSize cannot persist a giant card', () => {
+    expect(grownStickyBox(box, 1e9)).toEqual({ x: 10, y: 20, w: 200, h: STICKY_MAX_GROWN_H });
+  });
+
+  test('a sticky already at the cap asks for no further growth', () => {
+    expect(grownStickyBox({ ...box, h: STICKY_MAX_GROWN_H }, 1e9)).toBeNull();
+  });
+
+  test('an unusable measurement is ignored rather than collapsing the card', () => {
+    expect(grownStickyBox(box, 0)).toBeNull();
+    expect(grownStickyBox(box, Number.NaN)).toBeNull();
+    expect(grownStickyBox(box, Number.POSITIVE_INFINITY)).toBeNull();
   });
 });

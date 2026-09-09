@@ -76,6 +76,41 @@ export function placeCaretAt(
   }
 }
 
+/**
+ * Collapse an ENTRY select-all to the end of the content, if that is what the
+ * selection still is. issue-106: keyboard entry into a text surface (select the
+ * stroke, press Enter) leaves `placeCaretAt`'s select-all fallback in place, so
+ * the first keystroke replaces the whole body — which is exactly what the
+ * retype/rename convention wants for a typed CHARACTER, but never for
+ * Shift+Enter, whose entire documented meaning is "add a new line". Without
+ * this, Shift+Enter deleted the note and left a blank line in its place.
+ *
+ * Deliberately narrow: only a selection whose boundaries are still BOTH ends of
+ * the editable is collapsed. A user's own drag-selection or a partial range is
+ * left alone, so ordinary "replace the selected words" editing keeps native
+ * semantics. Returns true when it collapsed something.
+ */
+export function collapseEntrySelectAll(editable: HTMLElement, win: Window): boolean {
+  try {
+    const sel = win.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return false;
+    const cur = sel.getRangeAt(0);
+    const all = editable.ownerDocument.createRange();
+    all.selectNodeContents(editable);
+    // Range.START_TO_START / END_TO_END via the instance so no global lookup is
+    // needed (the editable may live in another document/realm).
+    if (cur.compareBoundaryPoints(cur.START_TO_START, all) !== 0) return false;
+    if (cur.compareBoundaryPoints(cur.END_TO_END, all) !== 0) return false;
+    all.collapse(false); // to the end
+    sel.removeAllRanges();
+    sel.addRange(all);
+    return true;
+  } catch {
+    /* selection API unavailable */
+    return false;
+  }
+}
+
 const STYLE_ID = 'maude-caret-css';
 
 const CARET_CSS = `
